@@ -48,9 +48,51 @@
 }
 
 .slider {
+  -webkit-appearance: none;
+  appearance: none;
   width: 100%;
-  accent-color: var(--dsw-alias-brand-primary);
+  height: 12px;
+  margin: 0;
+  border-radius: 6px;
   cursor: pointer;
+  /* 半透明亚克力轨道（替代 UA 白色实底轨道） */
+  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity));
+  background-image: var(--denpa-noise);
+  -webkit-backdrop-filter: var(--denpa-material-blur);
+  backdrop-filter: var(--denpa-material-blur);
+}
+
+.slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: transparent;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 50%;
+  border: 2px solid var(--dsw-alias-bg-base);
+  background: var(--dsw-alias-brand-primary);
+  box-shadow: var(--denpa-glow-brand);
+}
+
+.slider::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: transparent;
+}
+
+.slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--dsw-alias-bg-base);
+  background: var(--dsw-alias-brand-primary);
+  box-shadow: var(--denpa-glow-brand);
 }
 
 .slider:disabled {
@@ -105,7 +147,8 @@
   width: 36px;
   height: 30px;
   padding: 2px;
-  background: var(--dsw-alias-bg-layer-1);
+  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity));
+  background-image: var(--denpa-noise);
   cursor: pointer;
 }
 
@@ -118,9 +161,13 @@
   width: 100%;
   min-height: 36px;
   padding: 0 14px;
-  border: none;
+  border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 18px;
-  background: var(--dsw-alias-bg-module-platform);
+  /* 半透明亚克力（DenpaPush 配方）：无 fixed 后代，无包含块陷阱 */
+  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity));
+  background-image: var(--denpa-noise);
+  -webkit-backdrop-filter: var(--denpa-material-blur);
+  backdrop-filter: var(--denpa-material-blur);
   font: inherit;
   font-size: 14px;
   line-height: 22px;
@@ -154,7 +201,9 @@
   padding: 12px;
   border-radius: var(--denpa-radius, 14px);
   border: 1px solid var(--dsw-alias-border-l1);
-  background: var(--dsw-alias-bg-layer-1);
+  /* 半透明亚克力（DenpaPush 配方） */
+  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity));
+  background-image: var(--denpa-noise);
   /* 磨砂跟随"模糊强度"滑条（与其它卡片一致） */
   -webkit-backdrop-filter: var(--denpa-material-blur);
   backdrop-filter: var(--denpa-material-blur);

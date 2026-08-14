@@ -128,11 +128,14 @@ export function denpaDerivePalette(sourceHex: string | undefined, isDark: boolea
 }
 
 /** 把 M3 调色板映射为 DSH 令牌（body 内联变量，覆盖静态 denpa.css）。 */
-export function denpaApplyBrand(pal: DenpaPalette, isDark: boolean): void {
+export function denpaApplyBrand(pal: DenpaPalette, isDark: boolean, sourceHex?: string): void {
   const body = document.body
   const set = (k: string, v: string): void => { body.style.setProperty(k, v) }
   const unset = (k: string): void => { body.style.removeProperty(k) }
   const mix = (color: string, pct: number): string => `color-mix(in srgb, ${color} ${pct}%, transparent)`
+  // 用户气泡：恒用亮色 primaryContainer（DenpaPush 用户气泡亮青不随暗色变深），
+  // 配深色前景；sourceHex 缺省时回退当前派生的亮色面（默认源）。
+  const lightPal = denpaDerivePalette(sourceHex ?? DENPA_DEFAULT_SOURCE, false)
 
   // 品牌
   set('--dsw-alias-brand-primary', pal.brand)
@@ -147,8 +150,9 @@ export function denpaApplyBrand(pal: DenpaPalette, isDark: boolean): void {
   set('--dsw-alias-interactive-bg-hover', mix(pal.brand, 7))
   set('--dsw-alias-interactive-bg-hover-accent', mix(pal.brand, 12))
   set('--dsw-alias-interactive-bg-active', mix(pal.brand, 16))
-  set('--dsw-specific-bubble', pal.surface)
-  set('--dsw-specific-bubble-highlight', pal.weak)
+  set('--dsw-specific-bubble', lightPal.surface)
+  set('--dsw-specific-bubble-highlight', lightPal.weak)
+  set('--dsw-specific-bubble-fg', lightPal.onSurface)
   set('--dsw-specific-sidebar-nav-item-active', pal.surface)
   set('--dsw-specific-sidebar-nav-item-active-accent', pal.onSurface)
   set('--dsw-specific-sidebar-nav-item-hover', mix(pal.brand, 10))
@@ -235,7 +239,7 @@ export function denpaClearBrand(): void {
     '--dsw-alias-button-info-fill', '--dsw-alias-button-info-hover',
     '--dsw-alias-state-business-primary', '--dsw-alias-state-business-tertiary',
     '--dsw-alias-interactive-bg-hover', '--dsw-alias-interactive-bg-hover-accent', '--dsw-alias-interactive-bg-active',
-    '--dsw-specific-bubble', '--dsw-specific-bubble-highlight',
+    '--dsw-specific-bubble', '--dsw-specific-bubble-highlight', '--dsw-specific-bubble-fg',
     '--dsw-specific-sidebar-nav-item-active', '--dsw-specific-sidebar-nav-item-active-accent',
     '--dsw-specific-sidebar-nav-item-hover',
     '--dsw-alias-bg-base', '--dsw-alias-bg-layer-1', '--dsw-alias-bg-layer-2', '--dsw-alias-bg-layer-3',

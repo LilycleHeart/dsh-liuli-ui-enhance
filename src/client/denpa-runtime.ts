@@ -205,7 +205,7 @@ export async function applyDenpaSettings(settings: DenpaSettings): Promise<void>
   //   这正是"拖动滑条时主题颜色变暗"的根因。
   const isDark = currentIsDark()
   const pal = denpaDerivePalette(source, isDark)
-  denpaApplyBrand(pal, isDark)
+  denpaApplyBrand(pal, isDark, source)
 
   // ── 字体 ──
   set('--dsw-font-family', cfg.font_mode === 'builtin' ? FONT_BUILTIN : FONT_MISANS)

@@ -142,6 +142,7 @@ body {
   /* 专用 */
   --dsw-specific-bubble-highlight: #c4e2ff;
   --dsw-specific-bubble: #d0e8ff;
+  --dsw-specific-bubble-fg: #001d33;
   --dsw-specific-input-major: rgba(var(--denpa-acrylic-rgb), 0.22);
   --dsw-specific-login-input: #f8f9fa;
   --dsw-specific-menu: var(--dsw-alias-bg-layer-3);
@@ -264,6 +265,7 @@ body[data-ds-dark-theme] {
   /* 专用 */
   --dsw-specific-bubble-highlight: #005477;
   --dsw-specific-bubble: #004a73;
+  --dsw-specific-bubble-fg: #d0e8ff;
   --dsw-specific-input-major: rgba(var(--denpa-acrylic-rgb), 0.22);
   --dsw-specific-login-input: #121316;
   --dsw-specific-menu: var(--dsw-alias-bg-layer-3);
