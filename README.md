@@ -10,9 +10,19 @@ DenpaPush(电波推送)dashboard 的视觉语言——壁纸磨砂、声纹可�
 
 ## 预览
 
-| 亮色 · Light | 暗色 · Dark |
+以下截图来自插件真实运行时的 DSH Web 界面:
+
+| 开始页 · 亮色 | 开始页 · 暗色 |
 | --- | --- |
-| ![琉璃主题亮色预览](docs/preview-light.png) | ![琉璃主题暗色预览](docs/preview-dark.png) |
+| ![开始页亮色预览](docs/preview-start-light.png) | ![开始页暗色预览](docs/preview-start-dark.png) |
+
+| 动态取色变体 · 亮色 | 动态取色变体 · 暗色 |
+| --- | --- |
+| ![动态取色变体亮色预览](docs/preview-color-light.png) | ![动态取色变体暗色预览](docs/preview-color-dark.png) |
+
+| 会话页 · 暗色(header 声纹、M3 气泡、强磨砂 composer、悬浮工具球) |
+| --- |
+| ![会话页暗色预览](docs/preview-session-dark.png) |
 
 ## 设计语言:Material 3 × Fluent 2
 
@@ -72,8 +82,9 @@ packages/client/liuli-theme/
 ├── package.json              # 包声明:dsh.client.inject 平台模块、exports["./client"]
 ├── tsdown.config.ts          # clientBundle 预设(node 半 + 浏览器半)
 ├── docs/
-│   ├── preview-light.png     # 亮色预览样例
-│   └── preview-dark.png      # 暗色预览样例
+│   ├── preview-start-light.png / preview-start-dark.png   # 开始页亮/暗真实截图
+│   ├── preview-color-light.png / preview-color-dark.png   # 动态取色变体亮/暗
+│   └── preview-session-dark.png                           # 会话页暗色(声纹/气泡/悬浮球)
 ├── src/
 │   ├── index.ts              # node 半:空 apply(使插件进入宿主 Loader)
 │   ├── invariant.ts          # 包级 invariant 伴生(无运行时检查)
