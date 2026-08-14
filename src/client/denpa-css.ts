@@ -333,6 +333,11 @@ body {
   box-shadow: var(--denpa-glow-brand);
 }
 
+/* TodoPanel 完成状态：跟随主题色而非成功绿 */
+[data-testid="todo-panel"] li[data-status="completed"] svg {
+  color: var(--dsw-alias-state-business-primary);
+}
+
 /* 壁纸暗色遮罩：只在暗色主题叠加（原项目 [data-theme="dark"] 选择器语义） */
 [data-denpa-bg]::before {
   content: '';
