@@ -1,8 +1,7 @@
 # 琉璃 · Liuli Theme
 
 DeepSeek Harness 的 **Material Design 3 × Fluent 2 融合主题**插件:取 Material 3 的
-动态取色、形状系统与状态层,取 Fluent 2 的亚克力 / 云母材质与分层深度,复刻
-DenpaPush(电波推送)dashboard 的视觉语言——壁纸磨砂、声纹可视化、日/夜圆形遮罩、
+动态取色、形状系统与状态层,取 Fluent 2 的亚克力 / 云母材质与分层深度,壁纸磨砂、声纹可视化、日/夜圆形遮罩、
 悬浮工具球——并打包为可独立安装、可 git 发布的浏览器插件。
 
 > 包名 `@deepseek-ai/liuli-theme` · 版本 `0.1.0`
@@ -20,7 +19,7 @@ DenpaPush(电波推送)dashboard 的视觉语言——壁纸磨砂、声纹可�
 | --- | --- |
 | ![动态取色变体亮色预览](docs/preview-color-light.png) | ![动态取色变体暗色预览](docs/preview-color-dark.png) |
 
-| 会话页 · 暗色(header 声纹、M3 气泡、强磨砂 composer、悬浮工具球) |
+| 会话页 · 暗色 |
 | --- |
 | ![会话页暗色预览](docs/preview-session-dark.png) |
 
