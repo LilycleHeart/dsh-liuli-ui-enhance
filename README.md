@@ -82,8 +82,10 @@ packages/client/liuli-theme/
 - `dsh-client-ui-conversation`：header 的 `.titleRow` 带 `position: relative; z-index: 1`，
   使插件注入的声纹背景 canvas（absolute, z-index: 0）铺满 header 而标题行浮于其上；
   `header.actions / header.utilities / header.tabs` 三个 slot 就是本插件四个 header 组件的挂点；
-  对话框（composer）的磨砂由 `InputBar` 卡片承担（scrollBody 保持无 backdrop-filter，
-  滚动文字才能被采样）。
+  对话页壁纸磨砂由 `ConversationRoot` 的 `.wallpaperBlur` 独立背景层承担——header 与
+  scrollBody 都保持无 backdrop-filter，否则会成为内部 composer 卡 backdrop-filter 的
+  backdrop root（Chromium 中嵌套采样被祖先截断）；对话框（composer）的磨砂由 `InputBar`
+  卡片强磨砂档承担，滚动文字因此仍可被采样。
 - `dsh-client-ui-theme`：Appearance 外观行点击时 dispatch `denpa:set-theme`（带坐标），
   由本插件的事件桥接 `startViewTransition` 圆形遮罩；桥未就绪时降级直连切换。
 - `dsh-client-ui-sidebar` / `dsh-client-ui-settings`：侧栏与设置面板的亚克力磨砂、

@@ -120,8 +120,10 @@ export function currentIsDark(): boolean {
 
 /**
  * 壁纸承载层（原项目 #bg-layer 架构）：fixed 全屏层挂在 body 下，
- * 壁纸与 scrim 在这里渲染，并承担“模糊强度”的消费（filter: blur）。
- * 半透明表面（侧栏/对话区/输入卡）透出的就是这层 —— 磨砂玻璃效果。
+ * 壁纸与 scrim 在这里渲染。壁纸原图保持清晰，磨砂由各半透明表面的
+ * backdrop-filter 承担：对话页壁纸磨砂在 ConversationRoot 的
+ * .wallpaperBlur 独立背景层上（与 composer 卡互不为祖先，两层磨砂
+ * 才能同时工作）；侧栏/输入卡等表面直接使用 --denpa-material-blur。
  * 放在 body 直下而非任何列内，天然避开 fixed 后代包含块陷阱。
  */
 let bgLayerEl: HTMLDivElement | null = null
@@ -159,7 +161,8 @@ function applyBgLayer(wallpaperSrc: string, _blur: number, fit: DenpaBgFit, area
   layer.style.display = ''
   // 壁纸本身不带遮罩：暗色遮罩由 CSS [data-ds-dark-theme] 选择器叠加（原项目同构），
   // 主题切换即时响应，无 JS 时序问题。
-  // 壁纸不应用模糊：原图保持清晰（材质磨砂仅作用于卡片 backdrop-filter）。
+  // 壁纸不应用 filter：原图保持清晰（磨砂由表面 backdrop-filter 与
+  // 对话页 .wallpaperBlur 独立背景层承担）。
   layer.style.backgroundImage = `url("${wallpaperSrc}")`
   layer.style.filter = 'none'
   const g = bgGeometry(fit, area)
