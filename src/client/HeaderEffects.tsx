@@ -17,6 +17,10 @@ import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } fr
 import { createPortal } from 'react-dom'
 import css from './HeaderEffects.module.css'
 
+/** 波形逻辑高度（px）：固定基准 —— 波形按此比例绘制，垂直居中，
+ *  header 拉伸不改变波形比例；header 比基准矮时保持比例（上下微裁），不被压扁。 */
+const DRAW_H = 112
+
 /* ── 模块级单例引擎 ─────────────────────────────────────────────── */
 
 interface VpState {
@@ -265,24 +269,27 @@ export function DenpaHeaderVoiceprint() {
     /* 流动波形（空闲态 ↔ 音频驱动态平滑过渡） */
     const drawWave = (freqData: Uint8Array, C: RGB, dark: boolean): void => {
       const lineC = dark ? lighten(C, 0.35) : C
-      // 背景铺满 header：波形重心偏下，标题区上部留白
-      const cy = h * 0.66
-      const lines = Math.max(3, Math.min(16, Math.round(h / 6)))
+      // 波形固定基准高度（DRAW_H）绘制，垂直居中：header 更高时上下留白；
+      // header 比基准矮时保持比例（上下微裁），不被压扁/钳制。
+      const dh = DRAW_H
+      const off = (h - dh) / 2
+      const cy = off + dh * 0.66
+      const lineCount = Math.max(3, Math.min(16, Math.round(dh / 6)))
       const mix = vpState.audioMix
 
       idlePhase += 0.008 * (1 + mix * 2)
 
       ctx.shadowBlur = 0
-      for (let li = 0; li < lines; li++) {
-        const off = li / lines - 0.5
-        const baseY = cy + off * (h * 0.8)
-        const idleAmp = (h * 0.08 + (li % 3) * 1.2) * (1 - Math.abs(off) * 1.4) * (1 - mix * 0.8)
-        const binIdx = Math.min(freqData.length - 1, Math.floor((li / lines) * freqData.length))
+      for (let li = 0; li < lineCount; li++) {
+        const t = li / lineCount - 0.5
+        const baseY = cy + t * (dh * 0.8)
+        const idleAmp = (dh * 0.08 + (li % 3) * 1.2) * (1 - Math.abs(t) * 1.4) * (1 - mix * 0.8)
+        const binIdx = Math.min(freqData.length - 1, Math.floor((li / lineCount) * freqData.length))
         const binVal = (freqData[binIdx] ?? 0) / 255
-        const amp = idleAmp + mix * binVal * h * 0.35 * (1 - Math.abs(off) * 0.6)
+        const amp = idleAmp + mix * binVal * dh * 0.35 * (1 - Math.abs(t) * 0.6)
 
         const freq = 0.007 + li * 0.00055
-        const alpha = (dark ? 0.18 : 0.16) + (1 - Math.abs(off)) * (dark ? 0.42 : 0.32) + mix * binVal * 0.2
+        const alpha = (dark ? 0.18 : 0.16) + (1 - Math.abs(t)) * (dark ? 0.42 : 0.32) + mix * binVal * 0.2
 
         ctx.beginPath()
         ctx.strokeStyle = edgeGradient(ctx, w, lineC, Math.min(1, alpha))
@@ -290,7 +297,7 @@ export function DenpaHeaderVoiceprint() {
         for (let x = 0; x <= w; x += 3) {
           const n = Math.sin(freq * x + idlePhase + li * 0.75)
             + 0.33 * Math.sin(freq * 2.4 * x + idlePhase * 1.35 + li * 1.15)
-          const y = Math.max(1, Math.min(h - 1, baseY + amp * n))
+          const y = Math.max(off, Math.min(off + dh, baseY + amp * n))
           if (x === 0) ctx.moveTo(x, y)
           else ctx.lineTo(x, y)
         }
@@ -305,11 +312,11 @@ export function DenpaHeaderVoiceprint() {
       const mainBin = Math.floor(freqData.length * 0.25)
       const mainVal = (freqData[mainBin] ?? 0) / 255
       ctx.lineWidth = 2 + mix * mainVal * 1.5
-      const mainAmp = h * 0.34 * (1 - mix * 0.8) + mix * mainVal * h * 0.25
+      const mainAmp = dh * 0.34 * (1 - mix * 0.8) + mix * mainVal * dh * 0.25
       for (let x = 0; x <= w; x += 2) {
         const n = Math.sin(0.011 * x + idlePhase)
           + 0.33 * Math.sin(0.0264 * x + idlePhase * 1.35)
-        const y = Math.max(1, Math.min(h - 1, cy + mainAmp * n))
+        const y = Math.max(off, Math.min(off + dh, cy + mainAmp * n))
         if (x === 0) ctx.moveTo(x, y)
         else ctx.lineTo(x, y)
       }
