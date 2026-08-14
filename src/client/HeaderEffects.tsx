@@ -322,8 +322,10 @@ export function DenpaHeaderVoiceprint() {
         vpEmit()
       }
     }
+    // 依赖 host：绘制循环必须在 portal canvas 挂载后启动（首次渲染 host 为
+    // null，canvas 尚不存在，[] 依赖会让循环永不启动 —— 元素在但画面透明）。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [host])
 
   return (
     <>
