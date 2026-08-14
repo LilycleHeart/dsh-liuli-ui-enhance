@@ -4,6 +4,9 @@
  */
 import { useRef, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
+import {
+  Button, Input, Menu, IconChevronDownOutline14,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type { DenpaSettings } from '../denpa-settings.ts'
 import type { createDenpaStore } from './denpa-store.ts'
@@ -54,6 +57,44 @@ function SliderRow(props: {
   )
 }
 
+/** 下拉行：Menu + trigger（与通用设置的权限选择器同款外观）。 */
+function SelectRow(props: {
+  label: string
+  value: string
+  options: { value: string; label: string }[]
+  onChange: (v: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const label = props.options.find(o => o.value === props.value)?.label ?? props.value
+  return (
+    <Row label={props.label}>
+      <Menu
+        open={open}
+        onClose={() => { setOpen(false) }}
+        items={props.options.map(o => ({ id: o.value, label: o.label }))}
+        selectedId={props.value}
+        onSelect={(id) => {
+          setOpen(false)
+          if (id !== props.value) props.onChange(id)
+        }}
+        align="end"
+        portal
+        anchor={(
+          <button
+            type="button"
+            className={css.selector}
+            aria-haspopup="menu"
+            aria-expanded={open}
+            onClick={() => { setOpen(v => !v) }}
+          >
+            {label}
+            <IconChevronDownOutline14 className={css.chevron} />
+          </button>
+        )}
+      />
+    </Row>
+  )
+}
 /** 开关行。 */
 function ToggleRow(props: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -78,8 +119,9 @@ function ColorRow(props: { label: string; value: string; onChange: (v: string) =
           type="color" className={css.colorPicker} value={props.value}
           onChange={(e) => { props.onChange(e.target.value) }}
         />
-        <input
-          type="text" className={css.colorText} value={props.value} spellCheck={false}
+        <Input
+          type="text" value={props.value} spellCheck={false}
+          className={css.colorTextWrap ?? ''}
           onChange={(e) => { props.onChange(e.target.value) }}
         />
       </span>
@@ -113,15 +155,15 @@ export function DenpaAppearanceSection({
           onChange={(v) => { set({ wide_mode: v }) }}
         />
 
-        <Row label={t('colorMode')}>
-          <select
-            className={css.select} value={s.color_mode}
-            onChange={(e) => { set({ color_mode: e.target.value as DenpaSettings['color_mode'] }) }}
-          >
-            <option value="dynamic">{t('colorMode.dynamic')}</option>
-            <option value="static">{t('colorMode.static')}</option>
-          </select>
-        </Row>
+        <SelectRow
+          label={t('colorMode')}
+          value={s.color_mode}
+          options={[
+            { value: 'dynamic', label: t('colorMode.dynamic') },
+            { value: 'static', label: t('colorMode.static') },
+          ]}
+          onChange={(v) => { set({ color_mode: v as DenpaSettings['color_mode'] }) }}
+        />
 
         {s.color_mode === 'static' && (
           <ColorRow
@@ -131,17 +173,17 @@ export function DenpaAppearanceSection({
           />
         )}
 
-        <Row label={t('bgMode')}>
-          <select
-            className={css.select} value={s.background_mode}
-            onChange={(e) => { set({ background_mode: e.target.value as DenpaSettings['background_mode'] }) }}
-          >
-            <option value="theme">{t('bgMode.theme')}</option>
-            <option value="brand_gradient">{t('bgMode.gradient')}</option>
-            <option value="custom">{t('bgMode.custom')}</option>
-            <option value="image">{t('bgMode.image')}</option>
-          </select>
-        </Row>
+        <SelectRow
+          label={t('bgMode')}
+          value={s.background_mode}
+          options={[
+            { value: 'theme', label: t('bgMode.theme') },
+            { value: 'brand_gradient', label: t('bgMode.gradient') },
+            { value: 'custom', label: t('bgMode.custom') },
+            { value: 'image', label: t('bgMode.image') },
+          ]}
+          onChange={(v) => { set({ background_mode: v as DenpaSettings['background_mode'] }) }}
+        />
 
         {s.background_mode === 'image' && (
           <SliderRow
@@ -165,15 +207,15 @@ export function DenpaAppearanceSection({
           </>
         )}
 
-        <Row label={t('materialType')}>
-          <select
-            className={css.select} value={s.material_type}
-            onChange={(e) => { set({ material_type: e.target.value as DenpaSettings['material_type'] }) }}
-          >
-            <option value="acrylic">{t('materialType.acrylic')}</option>
-            <option value="mica">{t('materialType.mica')}</option>
-          </select>
-        </Row>
+        <SelectRow
+          label={t('materialType')}
+          value={s.material_type}
+          options={[
+            { value: 'acrylic', label: t('materialType.acrylic') },
+            { value: 'mica', label: t('materialType.mica') },
+          ]}
+          onChange={(v) => { set({ material_type: v as DenpaSettings['material_type'] }) }}
+        />
 
         <ToggleRow
           label={t('materialOn')}
@@ -194,19 +236,20 @@ export function DenpaAppearanceSection({
           </>
         )}
 
-        <Row label={t('fontMode')}>
-          <select
-            className={css.select} value={s.font_mode}
-            onChange={(e) => { set({ font_mode: e.target.value as DenpaSettings['font_mode'] }) }}
-          >
-            <option value="misans">{t('fontMode.misans')}</option>
-            <option value="builtin">{t('fontMode.builtin')}</option>
-          </select>
-        </Row>
+        <SelectRow
+          label={t('fontMode')}
+          value={s.font_mode}
+          options={[
+            { value: 'misans', label: t('fontMode.misans') },
+            { value: 'builtin', label: t('fontMode.builtin') },
+          ]}
+          onChange={(v) => { set({ font_mode: v as DenpaSettings['font_mode'] }) }}
+        />
 
         <Row label={t('radius')} hint={`${s.corner_radius}px`}>
-          <input
-            type="number" className={css.number} min={0} max={40} value={s.corner_radius}
+          <Input
+            type="number" min={0} max={40} value={s.corner_radius}
+            className={css.inputWrap ?? ''}
             onChange={(e) => { set({ corner_radius: Number(e.target.value) || 0 }) }}
           />
         </Row>
@@ -247,14 +290,11 @@ export function DenpaAppearanceSection({
               if (file) setFileLabel(file.name)
             }}
           />
-          <button
-            type="button" className={css.action} disabled={busy}
-            onClick={() => { fileRef.current?.click() }}
-          >
+          <Button variant="ghost" size="md" disabled={busy} onClick={() => { fileRef.current?.click() }}>
             {t('wallpaper.choose')}
-          </button>
-          <button
-            type="button" className={clsx(css.action, css.actionPrimary)} disabled={busy || fileLabel === ''}
+          </Button>
+          <Button
+            variant="primary" size="md" disabled={busy || fileLabel === ''}
             onClick={async () => {
               const file = fileRef.current?.files?.[0]
               if (!file) return
@@ -272,13 +312,10 @@ export function DenpaAppearanceSection({
             }}
           >
             {busy ? t('wallpaper.uploading') : t('wallpaper.upload')}
-          </button>
-          <button
-            type="button" className={css.action} disabled={wallpaper === null}
-            onClick={() => { removeWallpaper() }}
-          >
+          </Button>
+          <Button variant="ghost" size="md" disabled={wallpaper === null} onClick={() => { removeWallpaper() }}>
             {t('wallpaper.remove')}
-          </button>
+          </Button>
         </div>
         {fileLabel !== '' && <div className={css.fileName}>{fileLabel}</div>}
         {uploadError !== '' && <div className={css.uploadError}>{uploadError}</div>}
@@ -288,12 +325,9 @@ export function DenpaAppearanceSection({
       </div>
 
       <div className={css.footer}>
-        <button
-          type="button" className={clsx(css.action, css.actionPrimary)}
-          onClick={() => { reset() }}
-        >
+        <Button variant="primary" size="md" onClick={() => { reset() }}>
           {t('reset')}
-        </button>
+        </Button>
       </div>
     </div>
   )

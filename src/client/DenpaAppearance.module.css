@@ -47,28 +47,6 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
-.select {
-  width: 100%;
-  min-height: 32px;
-  padding: 4px 8px;
-  border-radius: var(--denpa-radius-sm, 10px);
-  border: 1px solid var(--dsw-alias-border-l2);
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-primary);
-  font-size: 13px;
-}
-
-.number {
-  width: 100%;
-  min-height: 32px;
-  padding: 4px 8px;
-  border-radius: var(--denpa-radius-sm, 10px);
-  border: 1px solid var(--dsw-alias-border-l2);
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-primary);
-  font-size: 13px;
-}
-
 .slider {
   width: 100%;
   accent-color: var(--dsw-alias-brand-primary);
@@ -101,7 +79,8 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: var(--dsw-alias-label-primary-foreground);
+  /* 中性表面色（非 onBrand：onBrand 随主题反相，暗色下不可见） */
+  background: var(--dsw-alias-bg-base);
   transition: transform 160ms var(--ds-ease-in-out);
 }
 
@@ -130,17 +109,42 @@
   cursor: pointer;
 }
 
-.colorText {
+/* 下拉 trigger：与通用设置的权限选择器同款（胶囊、模块平台表面） */
+.selector {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 18px;
+  background: var(--dsw-alias-bg-module-platform);
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+
+.selector:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.chevron {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* Input 组件（通用设置同款）拉伸占满行宽 */
+.inputWrap {
+  width: 100%;
+}
+
+.colorTextWrap {
   flex: 1;
   min-width: 0;
-  min-height: 32px;
-  padding: 4px 8px;
-  border-radius: var(--denpa-radius-sm, 10px);
-  border: 1px solid var(--dsw-alias-border-l2);
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-primary);
-  font-family: var(--ds-font-family-code);
-  font-size: 12px;
 }
 
 .wallpaperBlock {
@@ -192,34 +196,3 @@
   justify-content: flex-end;
 }
 
-.action {
-  min-height: 30px;
-  padding: 4px 14px;
-  border-radius: var(--denpa-radius-sm, 10px);
-  border: 1px solid var(--dsw-alias-border-l2);
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-primary);
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 140ms var(--ds-ease-in-out), box-shadow 140ms var(--ds-ease-in-out);
-}
-
-.action:hover:not(:disabled) {
-  background: var(--dsw-alias-button-ghost-active-hover);
-}
-
-.action:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.actionPrimary {
-  border-color: transparent;
-  background: var(--dsw-alias-button-primary-fill);
-  color: var(--dsw-alias-label-primary-foreground);
-  box-shadow: var(--denpa-glow-brand);
-}
-
-.actionPrimary:hover:not(:disabled) {
-  background: var(--dsw-alias-button-primary-hover);
-}
