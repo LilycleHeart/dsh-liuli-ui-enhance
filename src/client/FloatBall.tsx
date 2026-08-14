@@ -9,7 +9,7 @@
  * 位置记忆到 localStorage（denpa:floatball-pos）；hover/信息卡经 portal
  * 挂到 body，避免被 root 的 transform（半隐藏滑出）钉住。
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { attachElementPicker, describeElement, type PickedElement } from './element-picker.ts'
 import css from './FloatBall.module.css'
@@ -62,6 +62,7 @@ interface Tool {
   id: string
   label: string
   hint: string
+  hotkey?: string
   icon: React.ReactNode
   active?: boolean
   onSelect: () => void
@@ -128,6 +129,45 @@ export function FloatBall() {
     }
   }, [picking])
 
+  /* ── 展开时把 root（球+工具栏）完整拉回窗口内 ──
+     根因修复：球贴近右侧时 side='left' 工具栏向左展开，球被推向窗口外
+     （不可见也无法点击收起）；clamp 保证展开后整体可见。 */
+  useLayoutEffect(() => {
+    if (!open) return
+    const el = rootRef.current
+    if (el === null) return
+    const r = el.getBoundingClientRect()
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    const p = posRef.current
+    let left = p.left
+    let top = p.top
+    if (r.right > vw - 8) left = Math.max(0, vw - r.width - 8)
+    if (r.left < 8) left = 8
+    if (r.bottom > vh - 8) top = Math.max(0, vh - r.height - 8)
+    if (r.top < 8) top = 8
+    if (left !== p.left || top !== p.top) applyPos({ left, top })
+  }, [open])
+  /* ── 工具栏热键：Alt+Shift+<首字母> 直接触发工具（并展开工具栏显示状态） ── */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (!e.altKey || !e.shiftKey) return
+      const k = e.key.toLowerCase()
+      if (k === 'e') {
+        e.preventDefault()
+        setOpen(true)
+        if (picking) {
+          detachRef.current?.()
+          setPicking(false)
+        } else {
+          setPicked(null)
+          setPicking(true)
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('keydown', onKey) }
+  }, [picking])
   /* ── 拖拽 / 点击 / 吸附 ── */
   const onPointerDown = (e: React.PointerEvent): void => {
     if (e.button !== 0) return
@@ -206,7 +246,8 @@ export function FloatBall() {
     {
       id: 'element-picker',
       label: '元素选择器',
-      hint: '悬停高亮页面元素，点击拾取并查看信息',
+      hint: '悬停高亮页面元素，点击拾取并查看信息（Alt+Shift+E）',
+      hotkey: 'Alt+Shift+E',
       icon: <CrosshairIcon size={15} />,
       active: picking,
       onSelect: () => {
@@ -259,6 +300,7 @@ export function FloatBall() {
               >
                 {tool.icon}
                 <span>{tool.label}</span>
+                {tool.hotkey !== undefined && <kbd className={css.hotkey}>{tool.hotkey}</kbd>}
               </button>
             ))}
           </div>
