@@ -13,7 +13,8 @@
  * 复刻自 denpa_echo Waveform：品牌色单源派生、暗/亮差异化着色、shadowBlur
  * 泛光、IntersectionObserver 视口外暂停、ResizeObserver + dpr 自适应。
  */
-import { useEffect, useRef, useSyncExternalStore } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { createPortal } from 'react-dom'
 import css from './HeaderEffects.module.css'
 
 /* ── 模块级单例引擎 ─────────────────────────────────────────────── */
@@ -156,12 +157,19 @@ function edgeGradient(ctx: CanvasRenderingContext2D, w: number, C: RGB, alpha: n
 /* ── 声纹背景 canvas ────────────────────────────────────────────── */
 
 /**
- * 背景层：声纹 canvas 铺满 header。注入 `conversation.session.header.actions`，
- * 绝对定位相对 header 卡片（header 是 relative 包含块），标题行浮于其上
- * （shell 的 .titleRow 带 z-index:1；本模块 .wrap 显式 z-index:0）。
+ * 背景层：声纹 canvas 铺满 header。注入 `conversation.session.header.actions`
+ * （slot 树在 titleRow 内，而 titleRow 是 relative 包含块），所以先渲染一个
+ * 隐藏锚点找到 <header>，再把背景层 portal 到 header 直接子节点：
+ * 包含块回到 header 卡片（inset:0 铺满全高），z-index:0 低于标题行/标签行。
  */
 export function DenpaHeaderVoiceprint() {
+  const anchorRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const [host, setHost] = useState<HTMLElement | null>(null)
+
+  useLayoutEffect(() => {
+    setHost(anchorRef.current?.closest('header') ?? null)
+  }, [])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -318,9 +326,16 @@ export function DenpaHeaderVoiceprint() {
   }, [])
 
   return (
-    <div className={css.wrap} aria-hidden="true">
-      <canvas ref={canvasRef} className={css.canvas} />
-    </div>
+    <>
+      {/* 锚点（display:none 不占位）：定位 slot 树所属的会话 header */}
+      <div ref={anchorRef} style={{ display: 'none' }} />
+      {host !== null && createPortal(
+        <div className={css.wrap} aria-hidden="true">
+          <canvas ref={canvasRef} className={css.canvas} />
+        </div>,
+        host,
+      )}
+    </>
   )
 }
 
