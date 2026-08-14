@@ -464,13 +464,20 @@ const MIN_H = 52
 const MAX_H = 320
 
 /**
- * 拉伸手柄。注入 `conversation.session.header.tabs`；absolute 定位相对
- * header 底部边缘（header 是 relative 包含块），垂直拖拽改变 header 高度
- * （min-height，内容自然高度为下限，声纹 canvas 随高度铺满）；松开后高度
- * 持久化到 localStorage，刷新/切换会话自动恢复。
+ * 拉伸手柄。注入 `conversation.session.header.tabs`，但手柄层经 portal 挂到
+ * header 直接子节点：tabs 行是 relative 包含块，absolute bottom 会钉在
+ * tabs 底部（header 中部）而非 header 底部 —— 之前拉伸失效的根因。
+ * 垂直拖拽改变 header 高度（min-height，内容自然高度为下限，声纹 canvas
+ * 随高度铺满）；松开后高度持久化到 localStorage，刷新/切换会话自动恢复。
  */
 export function DenpaHeaderResizer() {
-  const handleRef = useRef<HTMLDivElement>(null)
+  const anchorRef = useRef<HTMLDivElement | null>(null)
+  const handleRef = useRef<HTMLDivElement | null>(null)
+  const [host, setHost] = useState<HTMLElement | null>(null)
+
+  useLayoutEffect(() => {
+    setHost(anchorRef.current?.closest('header') ?? null)
+  }, [])
 
   useEffect(() => {
     const el = handleRef.current
@@ -518,7 +525,18 @@ export function DenpaHeaderResizer() {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
     }
-  }, [])
+    // 依赖 host：手柄 portal 挂载后（同声纹 canvas 时序）再绑定拖拽
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [host])
 
-  return <div ref={handleRef} className={css.resizer} aria-hidden="true" />
+  return (
+    <>
+      {/* 锚点（display:none 不占位）：定位 slot 树所属的会话 header */}
+      <div ref={anchorRef} style={{ display: 'none' }} />
+      {host !== null && createPortal(
+        <div ref={handleRef} className={css.resizer} aria-hidden="true" />,
+        host,
+      )}
+    </>
+  )
 }

@@ -1,9 +1,8 @@
 /* 琉璃主题 · 会话 header 效果（声纹/监听/主题切换/拉伸手柄） */
 
 /* 声纹作为 header 卡片的背景层（denpa_echo hero-wave 布局）：
-   canvas 铺满 header 宽度，标题/工具浮于其上（shell .titleRow z-index:1），
-   监听按钮贴工具区右侧。header 被拉伸手柄拉高时 canvas 高度封顶
-   （min(100%, 112px)），波形不随卡片拉伸缩放，垂直居中显示。 */
+   canvas 铺满整个 header（含拉伸手柄拉高后的高度），标题/工具浮于其上
+   （shell .titleRow z-index:1），监听按钮贴工具区右侧。 */
 
 .wrap {
   position: absolute;
@@ -16,12 +15,9 @@
 
 .canvas {
   position: absolute;
-  left: 0;
-  top: 50%;
+  inset: 0;
   width: 100%;
-  /* 高度上限：header 更高时波形保持 112px 高、上下居中（不拉伸） */
-  height: min(100%, 112px);
-  transform: translateY(-50%);
+  height: 100%;
   display: block;
   /* 与 header 卡片同圆角，裁剪直角边缘（inherit 取到的是 wrap，须显式同值） */
   border-radius: var(--denpa-radius, 14px);
