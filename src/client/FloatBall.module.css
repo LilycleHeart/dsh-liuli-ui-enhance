@@ -1,0 +1,283 @@
+/* 琉璃主题 · 常驻悬浮圆点工具窗 */
+
+/* 根容器：fixed 全局置顶；吸附半隐藏滑出用 transform（拖拽中禁用过渡） */
+.root {
+  position: fixed;
+  z-index: 2147483000;
+  display: flex;
+  align-items: center;
+  transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1), top 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.root.dragging {
+  transition: none;
+}
+
+/* 圆点：品牌渐变 + 辉光 + 亚克力描边 */
+.ball {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  flex: none;
+  color: #fff;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  background:
+    radial-gradient(120% 120% at 30% 25%, color-mix(in srgb, var(--dsw-alias-brand-primary) 88%, #fff) 0%, var(--dsw-alias-brand-primary) 62%, color-mix(in srgb, var(--dsw-alias-brand-primary) 72%, #000) 100%);
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 55%, #fff 20%);
+  box-shadow:
+    var(--denpa-glow-brand),
+    0 4px 14px rgb(0 0 0 / 0.35);
+  transition: filter 160ms var(--ds-ease-in-out), transform 160ms var(--ds-ease-in-out);
+}
+
+.ball:hover {
+  filter: brightness(1.08);
+}
+
+.root.dragging .ball {
+  cursor: grabbing;
+  transform: scale(1.06);
+}
+
+/* 吸附半隐藏：球主体移出视口，仅露窄条；悬停滑出完整 */
+.root[data-snapped='left'] {
+  transform: translateX(0);
+}
+.root[data-snapped='left']:hover {
+  transform: translateX(36px);
+}
+.root[data-snapped='right'] {
+  transform: translateX(0);
+}
+.root[data-snapped='right']:hover {
+  transform: translateX(-36px);
+}
+.root[data-snapped='top'] {
+  transform: translateY(0);
+}
+.root[data-snapped='top']:hover {
+  transform: translateY(36px);
+}
+.root[data-snapped='bottom'] {
+  transform: translateY(0);
+}
+.root[data-snapped='bottom']:hover {
+  transform: translateY(-36px);
+}
+
+/* 工具栏：球旁横向面板（亚克力 + 噪声 + 辉光），按球所在半区展开方向 */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 10px;
+  padding: 6px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--denpa-radius-sm, 10px);
+  background-color: rgba(var(--denpa-acrylic-rgb), 0.92);
+  background-image: var(--denpa-noise);
+  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow);
+  backdrop-filter: var(--denpa-material-blur);
+  -webkit-backdrop-filter: var(--denpa-material-blur);
+  flex: none;
+}
+
+.root[data-side='left'] .toolbar {
+  margin-left: 0;
+  margin-right: 10px;
+  order: -1;
+}
+
+.tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 140ms var(--ds-ease-in-out), background 140ms var(--ds-ease-in-out),
+    border-color 140ms var(--ds-ease-in-out);
+}
+
+.tool:hover {
+  color: var(--dsw-alias-brand-primary);
+  background: var(--dsw-alias-interactive-bg-hover-accent);
+}
+
+.toolActive,
+.toolActive:hover {
+  color: var(--dsw-alias-brand-primary);
+  border-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 45%, transparent);
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 10%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--dsw-alias-brand-primary) 30%, transparent);
+}
+
+/* 拾取悬停信息卡（body 级跟随鼠标） */
+.hoverCard {
+  position: fixed;
+  z-index: 2147483100;
+  max-width: 340px;
+  padding: 5px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background-color: rgba(var(--denpa-acrylic-rgb), 0.95);
+  background-image: var(--denpa-noise);
+  box-shadow: var(--denpa-shadow);
+  font-family: var(--ds-font-family-code);
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 拾取结果信息卡（body 级） */
+.infoCard {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 2147483200;
+  width: 300px;
+  padding: 12px 14px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--denpa-radius-sm, 10px);
+  background-color: rgba(var(--denpa-acrylic-rgb), 0.97);
+  background-image: var(--denpa-noise);
+  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow);
+  backdrop-filter: var(--denpa-material-blur);
+  -webkit-backdrop-filter: var(--denpa-material-blur);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.infoHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dsw-alias-brand-primary);
+}
+
+.infoTag {
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  font-weight: 600;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.infoClose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.infoClose:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.infoSelector {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--dsw-alias-markdown-code-segment-unselected);
+  font-family: var(--ds-font-family-code);
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+  word-break: break-all;
+}
+
+.infoRow {
+  margin-top: 6px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+  word-break: break-all;
+}
+
+.infoText {
+  margin-top: 6px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  line-height: 16px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.infoSwatches {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--ds-font-family-code);
+  font-size: 10px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.swatch i {
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+  border: 1px solid var(--dsw-alias-border-l3);
+  display: inline-block;
+}
+
+.infoActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.infoBtn {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: rgba(var(--denpa-acrylic-rgb), 0.7);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 16px;
+  cursor: pointer;
+  transition: color 140ms var(--ds-ease-in-out), background 140ms var(--ds-ease-in-out),
+    border-color 140ms var(--ds-ease-in-out);
+}
+
+.infoBtn:hover {
+  color: var(--dsw-alias-brand-primary);
+  border-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 40%, transparent);
+  background: var(--dsw-alias-interactive-bg-hover-accent);
+}

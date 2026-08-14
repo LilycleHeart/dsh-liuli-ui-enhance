@@ -37,6 +37,9 @@ import { denpaCss } from './denpa-css.ts'
 import {
   DenpaHeaderVoiceprint, DenpaHeaderChrome, DenpaHeaderResizer,
 } from './HeaderEffects.tsx'
+import { createElement } from 'react'
+import { FloatBall } from './FloatBall.tsx'
+import { createRoot } from 'react-dom/client'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -73,6 +76,19 @@ function injectThemeCss(): void {
  */
 export function apply(ctx: ClientContext): void {
   injectThemeCss()
+
+  // ── 常驻悬浮圆点工具窗（fixed 全局置顶，独立 React root）──
+  ctx.effect(() => {
+    const host = document.createElement('div')
+    host.id = 'liuli-floatball-host'
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    root.render(createElement(FloatBall))
+    return () => {
+      root.unmount()
+      host.remove()
+    }
+  }, 'liuli-theme: float ball mount')
 
   ctx.effect(() => ctx.locale.register(DENPA_LOCALE_NS, { zh, en }), 'liuli-theme: denpa dictionaries')
 
