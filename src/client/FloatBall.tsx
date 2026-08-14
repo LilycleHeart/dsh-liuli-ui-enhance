@@ -82,6 +82,7 @@ export function FloatBall({ insertElement }: { insertElement: InsertElementFn })
   const [dragging, setDragging] = useState(false)
   const [snapped, setSnapped] = useState<Side | null>(null)
   const [open, setOpen] = useState(false)
+  const [hovered, setHovered] = useState(false)
   const [picking, setPicking] = useState(false)
   const [picked, setPicked] = useState<PickedElement | null>(null)
 
@@ -90,6 +91,35 @@ export function FloatBall({ insertElement }: { insertElement: InsertElementFn })
     setPos(next)
   }
 
+  /* ── 贴边半隐藏的悬停判定（JS 热区，替代 :hover）──
+     根因：CSS :hover 滑出时 root 整体移动，鼠标落点会滑出 hover 区域
+     → 收回 → 又落回露出条 → 抖动。热区固定为「吸附位 ∪ 滑出位」
+     两个 box，鼠标在任一内保持滑出，位置不再抖动。 */
+  useEffect(() => {
+    if (snapped === null) {
+      setHovered(false)
+      return
+    }
+    const onMove = (e: MouseEvent): void => {
+      const el = rootRef.current
+      if (el === null) return
+      const w = el.offsetWidth
+      const h = el.offsetHeight
+      const p = posRef.current
+      const boxes: { left: number; right: number; top: number; bottom: number }[] = [
+        { left: p.left, right: p.left + w, top: p.top, bottom: p.top + h },
+      ]
+      const SLIDE = 36
+      if (snapped === 'left') boxes.push({ left: p.left + SLIDE, right: p.left + SLIDE + w, top: p.top, bottom: p.top + h })
+      else if (snapped === 'right') boxes.push({ left: p.left - SLIDE, right: p.left - SLIDE + w, top: p.top, bottom: p.top + h })
+      else if (snapped === 'top') boxes.push({ left: p.left, right: p.left + w, top: p.top + SLIDE, bottom: p.top + SLIDE + h })
+      else boxes.push({ left: p.left, right: p.left + w, top: p.top - SLIDE, bottom: p.top - SLIDE + h })
+      const hit = boxes.some(b => e.clientX >= b.left && e.clientX <= b.right && e.clientY >= b.top && e.clientY <= b.bottom)
+      setHovered(hit)
+    }
+    window.addEventListener('mousemove', onMove)
+    return () => { window.removeEventListener('mousemove', onMove) }
+  }, [snapped])
   /* ── 拾取模式生命周期 ── */
   useEffect(() => {
     if (!picking) return
@@ -276,6 +306,7 @@ export function FloatBall({ insertElement }: { insertElement: InsertElementFn })
         ref={rootRef}
         className={css.root + (dragging ? ' ' + css.dragging : '')}
         data-snapped={snapped ?? undefined}
+        data-hovered={hovered || undefined}
         data-side={side}
         style={{ left: pos.left, top: pos.top }}
       >

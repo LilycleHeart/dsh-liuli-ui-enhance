@@ -48,25 +48,25 @@
 .root[data-snapped='left'] {
   transform: translateX(0);
 }
-.root[data-snapped='left']:hover {
+.root[data-hovered][data-snapped='left'] {
   transform: translateX(36px);
 }
 .root[data-snapped='right'] {
   transform: translateX(0);
 }
-.root[data-snapped='right']:hover {
+.root[data-hovered][data-snapped='right'] {
   transform: translateX(-36px);
 }
 .root[data-snapped='top'] {
   transform: translateY(0);
 }
-.root[data-snapped='top']:hover {
+.root[data-hovered][data-snapped='top'] {
   transform: translateY(36px);
 }
 .root[data-snapped='bottom'] {
   transform: translateY(0);
 }
-.root[data-snapped='bottom']:hover {
+.root[data-hovered][data-snapped='bottom'] {
   transform: translateY(-36px);
 }
 
