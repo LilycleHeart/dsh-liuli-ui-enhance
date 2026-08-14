@@ -21,6 +21,8 @@ import css from './HeaderEffects.module.css'
 
 interface VpState {
   listening: boolean
+  /** 捕获来源：system（屏幕共享音频）/ mic（麦克风降级）。 */
+  mode: 'system' | 'mic' | null
   error: string
   analyser: AnalyserNode | null
   audioCtx: AudioContext | null
@@ -32,6 +34,7 @@ interface VpState {
 
 const vpState: VpState = {
   listening: false,
+  mode: null,
   error: '',
   analyser: null,
   audioCtx: null,
@@ -69,30 +72,18 @@ async function vpToggle(): Promise<void> {
   if (vpState.listening) {
     vpStopCapture()
     vpState.listening = false
+    vpState.mode = null
     vpEmit()
     return
   }
   vpState.error = ''
   vpEmit()
-  if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-    // 区分两类原因：非安全上下文（http + 非 localhost）拿不到 mediaDevices；
-    // 浏览器本身缺 getDisplayMedia。真实共享弹窗需要安全上下文，提示可操作。
-    if (typeof window !== 'undefined' && window.isSecureContext === false) {
-      vpState.error = '系统音频捕获需要安全上下文：请用 https:// 或 http://localhost/127.0.0.1 访问本页面'
-    } else {
-      vpState.error = '当前浏览器不支持系统音频捕获（getDisplayMedia 不可用）'
-    }
-    vpEmit()
-    return
-  }
-  try {
-    const stream = await navigator.mediaDevices.getDisplayMedia({ video: false, audio: true })
+  /** 启动分析器（共用引擎）；成功返回 true。 */
+  const startAnalyser = (stream: MediaStream, mode: 'system' | 'mic'): boolean => {
     const audioTrack = stream.getAudioTracks()[0]
     if (audioTrack === undefined) {
-      stream.getTracks().forEach(t => t.stop())
-      vpState.error = '未捕获到音频（需勾选“分享标签页音频”）'
-      vpEmit()
-      return
+      stream.getTracks().forEach(tr => tr.stop())
+      return false
     }
     const audioCtx = new AudioContext()
     const analyser = audioCtx.createAnalyser()
@@ -103,17 +94,56 @@ async function vpToggle(): Promise<void> {
     vpState.analyser = analyser
     vpState.source = source
     vpState.stream = stream
+    vpState.mode = mode
     audioTrack.addEventListener('ended', () => {
       vpStopCapture()
       vpState.listening = false
+      vpState.mode = null
       vpEmit()
     })
     vpState.listening = true
     vpEmit()
-  } catch (err) {
-    vpState.error = err instanceof Error ? err.message : '无法监听系统音频'
-    vpEmit()
+    return true
   }
+
+  // 非安全上下文：mediaDevices 整体不可用，给出精确诊断（含当前地址）。
+  if (typeof navigator === 'undefined' || !navigator.mediaDevices) {
+    if (typeof window !== 'undefined' && window.isSecureContext === false) {
+      vpState.error = '音频捕获需要安全上下文：请用 https:// 或 http://localhost/127.0.0.1 访问本页面（当前 ' + window.location.protocol + '//' + window.location.host + '）'
+    } else {
+      vpState.error = '当前浏览器不支持音频捕获（mediaDevices 不可用）'
+    }
+    vpEmit()
+    return
+  }
+
+  // 1) 系统音频：屏幕共享（getDisplayMedia）。
+  if (typeof navigator.mediaDevices.getDisplayMedia === 'function') {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: false, audio: true })
+      if (startAnalyser(stream, 'system')) return
+      // 未勾选「分享标签页音频」时轨道为空 → 继续降级麦克风
+    } catch (err) {
+      const name = (err as DOMException | undefined)?.name
+      if (name === 'NotAllowedError' || name === 'SecurityError') {
+        vpState.error = '屏幕共享不可用：' + (name === 'NotAllowedError' ? '已拒绝授权' : '浏览器策略限制')
+        vpEmit()
+        return
+      }
+      // 其他失败（无音频轨道、设备不可用等）→ 降级麦克风
+    }
+  }
+
+  // 2) 降级：麦克风（getUserMedia）——无需屏幕共享，可监听系统播放音量。
+  if (typeof navigator.mediaDevices.getUserMedia === 'function') {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      if (startAnalyser(stream, 'mic')) return
+    } catch (_) { /* 拒绝或不可用：落到最终提示 */ }
+  }
+
+  vpState.error = '音频捕获不可用：请用 https://localhost 访问（当前 ' + window.location.protocol + '//' + window.location.host + '），并允许麦克风/屏幕共享权限'
+  vpEmit()
 }
 
 /* ── 绘制工具（与 denpa_echo Waveform 同曲线） ─────────────────── */
@@ -345,9 +375,9 @@ export function DenpaHeaderVoiceprint() {
 
 /** 监听按钮：渲染在 titleRow 工具区（主题切换一侧），与背景 canvas 共享引擎。 */
 export function DenpaHeaderAudioButton() {
-  const { listening, error } = useSyncExternalStore(vpSubscribe, vpGetState)
+  const { listening, mode, error } = useSyncExternalStore(vpSubscribe, vpGetState)
   return (
-    <span className={css.btnWrap} title={listening ? '正在监听系统音频' : '点击监听系统音频'}>
+    <span className={css.btnWrap} title={listening ? (mode === 'mic' ? '正在监听（麦克风）' : '正在监听系统音频') : '点击监听系统音频'}>
       <button
         type="button"
         className={css.toggle}
