@@ -154,13 +154,14 @@ export function bgGeometry(fit: DenpaBgFit, area: DenpaBgArea | null): { size: s
   return { size: 'cover', position: 'center' }
 }
 
-function applyBgLayer(wallpaperSrc: string, blur: number, fit: DenpaBgFit, area: DenpaBgArea | null): void {
+function applyBgLayer(wallpaperSrc: string, _blur: number, fit: DenpaBgFit, area: DenpaBgArea | null): void {
   const layer = ensureBgLayer()
   layer.style.display = ''
   // 壁纸本身不带遮罩：暗色遮罩由 CSS [data-ds-dark-theme] 选择器叠加（原项目同构），
   // 主题切换即时响应，无 JS 时序问题。
+  // 壁纸不应用模糊：原图保持清晰（材质磨砂仅作用于卡片 backdrop-filter）。
   layer.style.backgroundImage = `url("${wallpaperSrc}")`
-  layer.style.filter = `blur(${blur}px) saturate(1.6)`
+  layer.style.filter = 'none'
   const g = bgGeometry(fit, area)
   layer.style.backgroundSize = g.size
   layer.style.backgroundPosition = g.position
