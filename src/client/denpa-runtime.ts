@@ -188,6 +188,10 @@ export async function applyDenpaSettings(settings: DenpaSettings): Promise<void>
   // ── 字体 ──
   set('--dsw-font-family', cfg.font_mode === 'builtin' ? FONT_BUILTIN : FONT_MISANS)
 
+  // ── 宽边模式（宽屏下对话信息区撑满可用宽度） ──
+  if (cfg.wide_mode === true) body.dataset.liuliWide = '1'
+  else delete body.dataset.liuliWide
+
   // ── 圆角 / 泛光 / 阴影 ──
   const radius = Math.max(0, Math.min(40, Number(cfg.corner_radius ?? 14)))
   set('--denpa-radius', radius + 'px')

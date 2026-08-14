@@ -32,6 +32,8 @@ export interface DenpaSettings {
   glow_intensity: number
   shadow_enabled: boolean
   shadow_intensity: number
+  /** 宽边模式：对话信息区在宽屏下撑满可用宽度（提高空间利用率）。 */
+  wide_mode: boolean
 }
 
 /** 默认设置（与 DenpaPush 界面设置一致）。 */
@@ -52,6 +54,7 @@ export const DENPA_SETTINGS_DEFAULTS: DenpaSettings = {
   glow_intensity: 15,
   shadow_enabled: true,
   shadow_intensity: 60,
+  wide_mode: false,
 }
 
 /** 持久化 schema（浏览器 scope 复用同一描述）。 */
@@ -72,6 +75,7 @@ export const DenpaSettingsSchema: z<DenpaSettings> = z.object({
   glow_intensity: z.number().default(15),
   shadow_enabled: z.boolean().default(true),
   shadow_intensity: z.number().default(60),
+  wide_mode: z.boolean().default(false),
 }) as unknown as z<DenpaSettings>
 
 /** 合并任意部分值到完整设置（读侧防御）。 */

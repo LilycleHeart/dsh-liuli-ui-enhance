@@ -59,13 +59,21 @@ const DENPA_LS_KEY = 'denpa:settings'
 /** Required services: slots/locale for the settings section, theme for the toggle bridge. */
 export const inject = ['slots', 'locale', 'theme']
 
+/** 宽边模式样式：对话信息区在宽屏下撑满可用宽度（提高左右空间利用率）。 */
+const WIDE_MODE_CSS = [
+  '/* 宽边模式：覆盖会话列的内容宽度轴（--dsh-chat-content-width 定义于会话 root） */',
+  "body[data-liuli-wide] [data-phase] {",
+  "  --dsh-chat-content-width: min(1280px, calc(100% - 160px));",
+  "}",
+].join('\n')
+
 /** 注入主题样式（幂等；已存在则跳过）。 */
 function injectThemeCss(): void {
   if (document.getElementById(STYLE_ID) !== null) return
   const style = document.createElement('style')
   style.id = STYLE_ID
   style.setAttribute('data-liuli-theme', '')
-  style.textContent = denpaCss
+  style.textContent = denpaCss + '\n' + WIDE_MODE_CSS
   document.head.appendChild(style)
 }
 

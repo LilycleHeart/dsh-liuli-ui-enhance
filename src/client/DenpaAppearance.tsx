@@ -55,9 +55,9 @@ function SliderRow(props: {
 }
 
 /** 开关行。 */
-function ToggleRow(props: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+function ToggleRow(props: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <Row label={props.label}>
+    <Row label={props.label} {...(props.hint !== undefined ? { hint: props.hint } : {})}>
       <button
         type="button" role="switch" aria-checked={props.checked}
         className={clsx(css.toggle, props.checked && css.toggleOn)}
@@ -106,6 +106,13 @@ export function DenpaAppearanceSection({
       <p className={css.desc}>{t('desc')}</p>
 
       <div className={css.grid}>
+        <ToggleRow
+          label={t('wideMode')}
+          hint={t('wideModeHint')}
+          checked={s.wide_mode}
+          onChange={(v) => { set({ wide_mode: v }) }}
+        />
+
         <Row label={t('colorMode')}>
           <select
             className={css.select} value={s.color_mode}
