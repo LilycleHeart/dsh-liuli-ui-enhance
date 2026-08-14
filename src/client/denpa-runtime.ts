@@ -10,7 +10,7 @@ import { hexFromArgb, sourceColorFromImage } from '../vendor/material-color-util
 import {
   DENPA_DEFAULT_SOURCE, denpaApplyBrand, denpaDerivePalette,
 } from './denpa-palette.ts'
-import { DENPA_SETTINGS_DEFAULTS, type DenpaSettings } from '../denpa-settings.ts'
+import { DENPA_SETTINGS_DEFAULTS, type DenpaBgArea, type DenpaBgFit, type DenpaSettings } from '../denpa-settings.ts'
 
 /** 壁纸持久化键（localStorage，dataURL）。 */
 const WALLPAPER_KEY = 'denpa:wallpaper'
@@ -136,13 +136,35 @@ function ensureBgLayer(): HTMLDivElement {
   return div
 }
 
-function applyBgLayer(wallpaperSrc: string, blur: number): void {
+/** 由适应模式 + 选区推导 background-size/position（cover 选区放大公式：
+    size = 100%/w 100%/h；position = x/(1-w) y/(1-h) 百分比）。 */
+export function bgGeometry(fit: DenpaBgFit, area: DenpaBgArea | null): { size: string; position: string } {
+  if (fit === 'contain') return { size: 'contain', position: 'center' }
+  if (fit === 'stretch') return { size: '100% 100%', position: 'center' }
+  if (area !== null && area.w > 0.04 && area.h > 0.04 && area.w < 0.999 && area.h < 0.999) {
+    const w = Math.min(1, Math.max(0.05, area.w))
+    const h = Math.min(1, Math.max(0.05, area.h))
+    const px = Math.min(1, Math.max(0, area.x / (1 - w)))
+    const py = Math.min(1, Math.max(0, area.y / (1 - h)))
+    return {
+      size: `calc(100% / ${w}) calc(100% / ${h})`,
+      position: `${(px * 100).toFixed(2)}% ${(py * 100).toFixed(2)}%`,
+    }
+  }
+  return { size: 'cover', position: 'center' }
+}
+
+function applyBgLayer(wallpaperSrc: string, blur: number, fit: DenpaBgFit, area: DenpaBgArea | null): void {
   const layer = ensureBgLayer()
   layer.style.display = ''
   // 壁纸本身不带遮罩：暗色遮罩由 CSS [data-ds-dark-theme] 选择器叠加（原项目同构），
   // 主题切换即时响应，无 JS 时序问题。
   layer.style.backgroundImage = `url("${wallpaperSrc}")`
   layer.style.filter = `blur(${blur}px) saturate(1.6)`
+  const g = bgGeometry(fit, area)
+  layer.style.backgroundSize = g.size
+  layer.style.backgroundPosition = g.position
+  layer.style.backgroundRepeat = 'no-repeat'
 }
 
 function clearBgLayer(): void {
@@ -231,7 +253,7 @@ export async function applyDenpaSettings(settings: DenpaSettings): Promise<void>
     const blurPx = cfg.acrylic_enabled === false ? 0
       : cfg.material_type === 'mica' ? 4 : Math.max(0, Math.min(100, cfg.material_blur ?? 5))
     set('--denpa-scrim', scrim + '')
-    applyBgLayer(wallpaperSrc, blurPx)
+    applyBgLayer(wallpaperSrc, blurPx, cfg.bg_fit, cfg.bg_area)
     set('--denpa-frame-bg', 'transparent')
     unset('--denpa-frame-bg-image')
     unset('--denpa-frame-bg-size')

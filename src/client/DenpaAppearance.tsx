@@ -2,13 +2,14 @@
  * DenpaPush 界面设置 section（设置页「界面」）：取色/壁纸/材质/字体/圆角/泛光阴影。
  * 复刻自电波推送 dashboard 的「界面设置」面板。
  */
-import { useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
   Button, Input, Menu, IconChevronDownOutline14,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
-import type { DenpaSettings } from '../denpa-settings.ts'
+import type { PropsLocale, PropsRuntime, PropsStore, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
+import type { DenpaBgArea, DenpaSettings } from '../denpa-settings.ts'
+import { bgGeometry } from './denpa-runtime.ts'
 import type { createDenpaStore } from './denpa-store.ts'
 import css from './DenpaAppearance.module.css'
 
@@ -93,6 +94,140 @@ function SelectRow(props: {
         )}
       />
     </Row>
+  )
+}
+/** 壁纸预览：按实际窗口比例显示效果（fit/选区所见即所得），可框选自定义选区。 */
+function WallpaperPreview(props: {
+  src: string
+  fit: DenpaSettings['bg_fit']
+  area: DenpaBgArea | null
+  onArea: (area: DenpaBgArea) => void
+  onClearArea: () => void
+  t: TranslateNS<'denpa-appearance'>
+}) {
+  const stageRef = useRef<HTMLDivElement | null>(null)
+  const [winRatio, setWinRatio] = useState(() => window.innerWidth / window.innerHeight)
+  const [selectMode, setSelectMode] = useState(false)
+  const [selBox, setSelBox] = useState<DenpaBgArea | null>(null)
+  const drag = useRef<{ x: number; y: number } | null>(null)
+
+  useEffect(() => {
+    const onResize = (): void => { setWinRatio(window.innerWidth / window.innerHeight) }
+    window.addEventListener('resize', onResize)
+    return () => { window.removeEventListener('resize', onResize) }
+  }, [])
+
+  /** 指针位置 → 预览归一化坐标（0..1，与图坐标 1:1 对应）。 */
+  const norm = (e: React.PointerEvent): { x: number; y: number } | null => {
+    const el = stageRef.current
+    if (el === null) return null
+    const r = el.getBoundingClientRect()
+    if (r.width < 2 || r.height < 2) return null
+    return {
+      x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)),
+      y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)),
+    }
+  }
+
+  const onDown = (e: React.PointerEvent): void => {
+    e.preventDefault()
+    const p0 = norm(e)
+    if (p0 === null) return
+    drag.current = p0
+    setSelBox({ x: p0.x, y: p0.y, w: 0, h: 0 })
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  }
+
+  const onMove = (e: React.PointerEvent): void => {
+    const d = drag.current
+    if (d === null) return
+    const p = norm(e)
+    if (p === null) return
+    setSelBox({
+      x: Math.min(d.x, p.x),
+      y: Math.min(d.y, p.y),
+      w: Math.abs(p.x - d.x),
+      h: Math.abs(p.y - d.y),
+    })
+  }
+
+  const onUp = (): void => {
+    const d = drag.current
+    drag.current = null
+    if (d === null) return
+    if (selBox !== null && selBox.w > 0.04 && selBox.h > 0.04) {
+      props.onArea({ x: selBox.x, y: selBox.y, w: selBox.w, h: selBox.h })
+    }
+    setSelectMode(false)
+    setSelBox(null)
+  }
+
+  const g = bgGeometry(props.fit, props.area)
+  const stageStyle: React.CSSProperties = {
+    aspectRatio: winRatio,
+    width: 'min(100%, calc(220px * ' + winRatio + '))',
+  }
+  const effectStyle: React.CSSProperties = {
+    backgroundImage: 'url("' + props.src + '")',
+    backgroundSize: g.size,
+    backgroundPosition: g.position,
+    backgroundRepeat: 'no-repeat',
+  }
+
+  return (
+    <>
+      <div className={css.previewActions}>
+        <span className={css.previewHint}>{props.t('area.hint')}</span>
+        {selectMode ? (
+          <Button variant="primary" size="sm"
+            onClick={() => { setSelectMode(false); setSelBox(null) }}
+          >
+            {props.t('area.done')}
+          </Button>
+        ) : (
+          <>
+            <Button variant="ghost" size="sm" disabled={props.fit !== 'cover'}
+              onClick={() => { setSelectMode(true); setSelBox(null) }}
+            >
+              {props.t('area.reselect')}
+            </Button>
+            {props.area !== null && (
+              <Button variant="ghost" size="sm" onClick={props.onClearArea}>
+                {props.t('area.clear')}
+              </Button>
+            )}
+          </>
+        )}
+      </div>
+      <div
+        ref={stageRef}
+        className={css.previewStage + (selectMode ? ' ' + css.selecting : '')}
+        style={stageStyle}
+        onPointerDown={selectMode ? onDown : undefined}
+        onPointerMove={selectMode ? onMove : undefined}
+        onPointerUp={selectMode ? onUp : undefined}
+      >
+        {selectMode ? (
+          <>
+            <img className={css.previewFull} src={props.src} alt="" draggable={false} />
+            {selBox !== null && selBox.w > 0 && (
+              <div
+                className={css.previewCropBox}
+                style={{
+                  left: selBox.x * 100 + '%',
+                  top: selBox.y * 100 + '%',
+                  width: selBox.w * 100 + '%',
+                  height: selBox.h * 100 + '%',
+                }}
+              />
+            )}
+          </>
+        ) : (
+          <div className={css.previewEffect} style={effectStyle} />
+        )}
+      </div>
+      {props.fit !== 'cover' && <div className={css.previewNote}>{props.t('area.disabled')}</div>}
+    </>
   )
 }
 /** 开关行。 */
@@ -317,11 +452,30 @@ export function DenpaAppearanceSection({
             {t('wallpaper.remove')}
           </Button>
         </div>
+
+        <SelectRow
+          label={t('bgFit')}
+          value={s.bg_fit}
+          options={[
+            { value: 'cover', label: t('bgFit.cover') },
+            { value: 'contain', label: t('bgFit.contain') },
+            { value: 'stretch', label: t('bgFit.stretch') },
+          ]}
+          onChange={(v) => { set({ bg_fit: v as DenpaSettings['bg_fit'] }) }}
+        />
+
+        {wallpaper !== null && (
+          <WallpaperPreview
+            src={wallpaper}
+            fit={s.bg_fit}
+            area={s.bg_area}
+            onArea={(area) => { set({ bg_area: area }) }}
+            onClearArea={() => { set({ bg_area: null }) }}
+            t={t}
+          />
+        )}
         {fileLabel !== '' && <div className={css.fileName}>{fileLabel}</div>}
         {uploadError !== '' && <div className={css.uploadError}>{uploadError}</div>}
-        {wallpaper !== null && (
-          <img className={css.preview} src={wallpaper} alt={t('wallpaper.preview')} />
-        )}
       </div>
 
       <div className={css.footer}>

@@ -13,6 +13,15 @@ export type DenpaBackgroundMode = 'theme' | 'brand_gradient' | 'custom' | 'image
 export type DenpaMaterialType = 'acrylic' | 'mica'
 /** 字体模式 */
 export type DenpaFontMode = 'misans' | 'builtin'
+/** 壁纸适应模式 */
+export type DenpaBgFit = 'cover' | 'contain' | 'stretch'
+/** 壁纸自定义选区（相对原图的归一化矩形，0..1）。 */
+export interface DenpaBgArea {
+  x: number
+  y: number
+  w: number
+  h: number
+}
 
 /** 琉璃界面设置（全部字段）。 */
 export interface DenpaSettings {
@@ -34,6 +43,10 @@ export interface DenpaSettings {
   shadow_intensity: number
   /** 宽边模式：对话信息区在宽屏下撑满可用宽度（提高空间利用率）。 */
   wide_mode: boolean
+  /** 壁纸适应模式（cover 填充 / contain 适应 / stretch 拉伸）。 */
+  bg_fit: DenpaBgFit
+  /** 壁纸自定义选区（cover 模式下放大显示该区域）；null 为全图。 */
+  bg_area: DenpaBgArea | null
 }
 
 /** 默认设置（与 DenpaPush 界面设置一致）。 */
@@ -55,6 +68,8 @@ export const DENPA_SETTINGS_DEFAULTS: DenpaSettings = {
   shadow_enabled: true,
   shadow_intensity: 60,
   wide_mode: false,
+  bg_fit: 'cover',
+  bg_area: null,
 }
 
 /** 持久化 schema（浏览器 scope 复用同一描述）。 */
@@ -76,6 +91,8 @@ export const DenpaSettingsSchema: z<DenpaSettings> = z.object({
   shadow_enabled: z.boolean().default(true),
   shadow_intensity: z.number().default(60),
   wide_mode: z.boolean().default(false),
+  bg_fit: z.union(['cover', 'contain', 'stretch']).default('cover'),
+  // bg_area 为可选对象（null 表示全图），schemastery 无 nullable 组合，由 denpaSettingsOf 合并默认值。
 }) as unknown as z<DenpaSettings>
 
 /** 合并任意部分值到完整设置（读侧防御）。 */
