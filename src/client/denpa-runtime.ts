@@ -235,6 +235,9 @@ export async function applyDenpaSettings(settings: DenpaSettings): Promise<void>
       set('--denpa-material-blur', `blur(${blur}px) saturate(1.6)`)
       set('--denpa-material-blur-px', blur + '')
     }
+    // 强磨砂（对话框等嵌套 backdrop 采样衰减的场景）：滑条值 x2.5
+    const strong = Math.min(100, Math.round(blur * 2.5))
+    set('--denpa-material-blur-strong', `blur(${strong}px) saturate(1.6)`)
     set('--denpa-surface-opacity', opacity + '')
   } else {
     set('--denpa-material-opacity', '1')
