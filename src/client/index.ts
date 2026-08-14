@@ -22,6 +22,8 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls ui-conversation's header slots + ui-settings' section slot names.
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+// Type-only: the input-trigger source roster (element picker reference chip codec).
+import type { InputTriggerSource, ReferenceCodec } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import { DenpaAppearanceSection, type DenpaAppearanceInjected } from './DenpaAppearance.tsx'
 import { createDenpaStore } from './denpa-store.ts'
 import {
@@ -40,6 +42,7 @@ import {
 import { createElement } from 'react'
 import { FloatBall } from './FloatBall.tsx'
 import { createRoot } from 'react-dom/client'
+import { formatSelection, type PickedElement } from './element-picker.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -57,7 +60,7 @@ const STYLE_ID = 'liuli-theme-css'
 const DENPA_LS_KEY = 'denpa:settings'
 
 /** Required services: slots/locale for the settings section, theme for the toggle bridge. */
-export const inject = ['slots', 'locale', 'theme']
+export const inject = ['slots', 'locale', 'theme', 'sessions', 'conversation', 'inputTriggers']
 
 /** 宽边模式样式：对话信息区在宽屏下撑满可用宽度（提高左右空间利用率）。 */
 const WIDE_MODE_CSS = [
@@ -66,6 +69,15 @@ const WIDE_MODE_CSS = [
   "  --dsh-chat-content-width: min(1280px, calc(100% - 160px));",
   "}",
 ].join('\n')
+
+/** 解析元素选择器引用（ui-preview 同构：ref = JSON.stringify(PickedElement)）。 */
+function parseLiuliRef(raw: string): PickedElement {
+  try {
+    const parsed = JSON.parse(raw) as PickedElement
+    if (parsed !== null && typeof parsed === 'object' && typeof parsed.selector === 'string') return parsed
+  } catch (_) { /* 损坏则回落 */ }
+  return { tag: 'element', selector: raw, attributes: '', text: '', rect: { x: 0, y: 0, width: 0, height: 0 }, color: '', background: '', font: '' }
+}
 
 /** 注入主题样式（幂等；已存在则跳过）。 */
 function injectThemeCss(): void {
@@ -85,13 +97,42 @@ function injectThemeCss(): void {
 export function apply(ctx: ClientContext): void {
   injectThemeCss()
 
+  // ── 元素选择器：选中元素作为引用 chip 插入当前会话输入框 ──
+  const codec: ReferenceCodec = {
+    clipboardText: ref => parseLiuliRef(ref).selector,
+    serialize: ref => Promise.resolve(formatSelection(parseLiuliRef(ref))),
+  }
+  const source: InputTriggerSource = {
+    trigger: '@',
+    name: 'liuli-picker',
+    candidates: () => Promise.resolve([]),
+    onPick: () => undefined,
+    codec,
+  }
+  ctx.effect(() => ctx.inputTriggers.registerSource(source), 'liuli-theme: element picker source')
+  const insertElement = (info: PickedElement): void => {
+    const current = ctx.sessions.list.getSnapshot().current
+    if (current === undefined) return
+    const actx = ctx.sessions.scope(current)
+    if (actx === undefined) return
+    const input = ctx.conversation.input.for(actx)
+    const state = input.state.getSnapshot()
+    const span = { start: state.draft.length, end: state.draft.length, draftRev: state.draftRev }
+    input.insertReference({
+      source: 'liuli-picker',
+      ref: JSON.stringify(info),
+      label: '元素: <' + info.tag + '> ' + info.selector,
+      clipboardText: info.selector,
+    }, span)
+  }
+
   // ── 常驻悬浮圆点工具窗（fixed 全局置顶，独立 React root）──
   ctx.effect(() => {
     const host = document.createElement('div')
     host.id = 'liuli-floatball-host'
     document.body.appendChild(host)
     const root = createRoot(host)
-    root.render(createElement(FloatBall))
+    root.render(createElement(FloatBall, { insertElement }))
     return () => {
       root.unmount()
       host.remove()

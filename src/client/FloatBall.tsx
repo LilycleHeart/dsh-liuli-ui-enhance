@@ -12,6 +12,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { attachElementPicker, describeElement, type PickedElement } from './element-picker.ts'
+import type { InsertElementFn } from './FloatBall.types.ts'
 import css from './FloatBall.module.css'
 
 /** 圆点尺寸（px）。 */
@@ -68,8 +69,9 @@ interface Tool {
   onSelect: () => void
 }
 
-/** 悬浮圆点 + 工具栏 + 全局元素选择器。 */
-export function FloatBall() {
+/** 悬浮圆点 + 工具栏 + 全局元素选择器。
+ * @param props.insertElement - 把拾取的元素作为引用 chip 插入当前会话输入框。 */
+export function FloatBall({ insertElement }: { insertElement: InsertElementFn }) {
   const rootRef = useRef<HTMLDivElement | null>(null)
   const hoverRef = useRef<HTMLDivElement | null>(null)
   const drag = useRef<{ sx: number; sy: number; px: number; py: number; moved: boolean } | null>(null)
@@ -116,8 +118,11 @@ export function FloatBall() {
         card.textContent = '<' + el.tagName.toLowerCase() + '> ' + describeElement(el).selector
       },
       onPick: (el) => {
-        setPicked(describeElement(el))
+        const info = describeElement(el)
+        setPicked(info)
         setPicking(false)
+        // 选择后插入到对话框（引用 chip 追加到 draft 末尾）
+        try { insertElement(info) } catch (_) { /* 无活跃会话时静默 */ }
       },
     }, root)
     detachRef.current = detach

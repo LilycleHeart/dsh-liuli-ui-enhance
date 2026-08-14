@@ -30,7 +30,8 @@
         "@deepseek-ai/dsh-client-ui-primitives",
         "@deepseek-ai/dsh-client-ui-slots",
         "@deepseek-ai/dsh-client-ui-theme",
-        "@deepseek-ai/dsh-client-ui-settings"
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-input-trigger"
       ],
       "platform": "web"
     }
@@ -62,7 +63,8 @@
     "@deepseek-ai/dsh-client-ui-theme": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-client-ui-settings": "workspace:^"
+    "@deepseek-ai/dsh-client-ui-settings": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-input-trigger": "workspace:^"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-client-locale": "workspace:^",
@@ -75,7 +77,8 @@
     "@types/react": "~18.3.1",
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-client-ui-settings": "workspace:^",
-    "@types/react-dom": "~18.3.0"
+    "@types/react-dom": "~18.3.0",
+    "@deepseek-ai/dsh-client-ui-input-trigger": "workspace:^"
   },
   "files": [
     "lib/index.js",
