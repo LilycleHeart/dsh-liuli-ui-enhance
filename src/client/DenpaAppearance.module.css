@@ -1,0 +1,225 @@
+/* DenpaPush 界面设置 section（设置页「界面」） */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 2px 8px;
+  max-width: 640px;
+}
+
+.desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 4px 20px;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0;
+  min-width: 0;
+}
+
+.label {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.hint {
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.select {
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 8px;
+  border-radius: var(--denpa-radius-sm, 10px);
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+}
+
+.number {
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 8px;
+  border-radius: var(--denpa-radius-sm, 10px);
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+}
+
+.slider {
+  width: 100%;
+  accent-color: var(--dsw-alias-brand-primary);
+  cursor: pointer;
+}
+
+.slider:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.toggle {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--dsw-alias-border-l3);
+  position: relative;
+  transition: background 160ms var(--ds-ease-in-out);
+}
+
+.toggleKnob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--dsw-alias-label-primary-foreground);
+  transition: transform 160ms var(--ds-ease-in-out);
+}
+
+.toggleOn {
+  background: var(--dsw-alias-brand-primary);
+}
+
+.toggleOn .toggleKnob {
+  transform: translateX(18px);
+}
+
+.colorWrap {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.colorPicker {
+  appearance: none;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--denpa-radius-sm, 10px);
+  width: 36px;
+  height: 30px;
+  padding: 2px;
+  background: var(--dsw-alias-bg-layer-1);
+  cursor: pointer;
+}
+
+.colorText {
+  flex: 1;
+  min-width: 0;
+  min-height: 32px;
+  padding: 4px 8px;
+  border-radius: var(--denpa-radius-sm, 10px);
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+}
+
+.wallpaperBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--denpa-radius, 14px);
+  border: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-1);
+  /* 磨砂跟随"模糊强度"滑条（与其它卡片一致） */
+  -webkit-backdrop-filter: var(--denpa-material-blur);
+  backdrop-filter: var(--denpa-material-blur);
+}
+
+.wallpaperTitle {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.wallpaperRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fileName {
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.uploadError {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.preview {
+  max-width: 100%;
+  max-height: 180px;
+  object-fit: contain;
+  border-radius: var(--denpa-radius-sm, 10px);
+  border: 1px solid var(--dsw-alias-border-l2);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.action {
+  min-height: 30px;
+  padding: 4px 14px;
+  border-radius: var(--denpa-radius-sm, 10px);
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 140ms var(--ds-ease-in-out), box-shadow 140ms var(--ds-ease-in-out);
+}
+
+.action:hover:not(:disabled) {
+  background: var(--dsw-alias-button-ghost-active-hover);
+}
+
+.action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.actionPrimary {
+  border-color: transparent;
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-foreground);
+  box-shadow: var(--denpa-glow-brand);
+}
+
+.actionPrimary:hover:not(:disabled) {
+  background: var(--dsw-alias-button-primary-hover);
+}

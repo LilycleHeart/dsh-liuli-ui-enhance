@@ -1,0 +1,371 @@
+/** 琉璃主题样式 —— denpa.css 的字符串化拷贝（运行时注入 <style>，幂等）。 */
+export const denpaCss = `
+/* ============================================================
+ * DenpaPush 风格覆盖层 (DeepSeek Harness 复刻)
+ * ------------------------------------------------------------
+ * 在 design-platform.css 之后加载，整体替换 --dsw-* 语义令牌为
+ * 电波推送 DenpaPush 的 M3 配色（亮/暗双主题），并注入字体、
+ * 圆角、材质、泛光等外观令牌与全局铬色样式。
+ * 源色 = Twitter 蓝 #1d9bf0 (M3 light/dark 派生)。
+ * ============================================================ */
+
+/* ── 字体与基础外观 (全局) ── */
+:root {
+  --dsw-font-family: "MiSans", "Inter", "Space Grotesk", "Segoe UI", system-ui,
+    -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --ds-font-family-code: "JetBrains Mono", "SF Mono", "Fira Code", Consolas,
+    "Liberation Mono", Menlo, "PingFang SC", "Microsoft YaHei";
+  --dsw-font-family-display: "MiSans", "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+
+  /* DenpaPush 外观令牌（供模块 CSS 引用；运行时按设置覆盖） */
+  --denpa-radius: 14px;
+  --denpa-radius-sm: 10px;
+  --denpa-glow-strength: 0.15;
+  --denpa-shadow-strength: 0.6;
+  --denpa-material-opacity: 0.55;
+  --denpa-material-blur: blur(18px) saturate(1.6);
+  --denpa-acrylic-rgb: 221, 229, 237;
+  --denpa-acrylic-rgb-low: 232, 238, 244;
+  --denpa-acrylic-rgb-high: 200, 212, 223;
+  --denpa-control-rgb: 210, 220, 230;
+  --denpa-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.045'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+  --denpa-text-depth: 0 1px 1px rgba(17, 20, 28, 0.14);
+}
+
+/* ════════════════════════════════════════════════════════════
+ * 亮色主题 — DenpaPush M3 light (#1d9bf0 派生)
+ * ════════════════════════════════════════════════════════════ */
+body {
+  /* 泛光/阴影（引用 body 级品牌令牌，必须在 body 上定义才能解析） */
+  --denpa-glow-brand: 0 0 10px color-mix(in srgb, var(--dsw-alias-brand-primary) calc(var(--denpa-glow-strength) * 100%), transparent);
+  --denpa-glow-brand-strong: 0 0 14px color-mix(in srgb, var(--dsw-alias-brand-primary) calc(var(--denpa-glow-strength) * 165%), transparent);
+  --denpa-shadow: 0 2px 10px rgba(0, 0, 0, calc(0.4 * var(--denpa-shadow-strength)));
+
+  /* 背景 */
+  --dsw-alias-bg-base: #f8f9fa;
+  --dsw-alias-bg-layer-1: #eaf0f4;
+  --dsw-alias-bg-layer-2: #dde5ed;
+  --dsw-alias-bg-layer-3: #d2dce6;
+  --dsw-alias-bg-mask-1: rgba(0, 0, 0, 0.32);
+  --dsw-alias-bg-mask-2: rgba(0, 0, 0, 0.12);
+  --dsw-alias-bg-mask-3: rgba(0, 0, 0, 0.55);
+  --dsw-alias-bg-mask-photo: rgba(0, 0, 0, 0.88);
+  --dsw-alias-bg-mask-drop: rgba(255, 255, 255, 0.7);
+  --dsw-alias-bg-module-platform: #f0f4f8;
+  --dsw-alias-bg-multi-select: #eef2f6;
+  --dsw-alias-bg-overlay: #dde5ed;
+  --dsw-alias-bg-skeleton: rgba(0, 0, 0, 0.05);
+  --dsw-alias-bg-mask-photo: rgba(0, 0, 0, 0.88);
+  --dsw-alias-bg-mask-drop: rgba(255, 255, 255, 0.7);
+
+  /* 描边 */
+  --dsw-alias-border-inverted2: rgba(0, 0, 0, 0);
+  --dsw-alias-border-inverted: rgba(0, 0, 0, 0);
+  --dsw-alias-border-l1: rgba(15, 20, 28, 0.06);
+  --dsw-alias-border-l2-darkmode-thin: rgba(15, 20, 28, 0.1);
+  --dsw-alias-border-l2: rgba(15, 20, 28, 0.1);
+  --dsw-alias-border-l3: rgba(15, 20, 28, 0.14);
+  --dsw-alias-border-l4: rgba(15, 20, 28, 0.18);
+
+  /* 品牌 */
+  --dsw-alias-brand-primary-invert: #0c0e13;
+  --dsw-alias-brand-primary-new-colorprimary-new-color: #0079bf;
+  --dsw-alias-brand-primary: #0079bf;
+  --dsw-alias-brand-text: #1a1c1e;
+  --dsw-alias-button-contrast-fill: #52606d;
+  --dsw-alias-button-elevated-fill: #f2f6fa;
+  --dsw-alias-button-floating-fill: #f2f6fa;
+  --dsw-alias-button-floating-hover: #e8eef4;
+  --dsw-alias-button-ghost-active-border: #5e636b;
+  --dsw-alias-button-ghost-active-fill: #e8eef4;
+  --dsw-alias-button-ghost-active-hover: #dde5ed;
+  --dsw-alias-button-info-fill: #0079bf;
+  --dsw-alias-button-info-hover: #0085d1;
+  --dsw-alias-button-primary-dimmed: rgba(0, 121, 191, 0.12);
+  --dsw-alias-button-primary-fill: #0079bf;
+  --dsw-alias-button-primary-hover: #0085d1;
+  --dsw-alias-button-tool-bar-fill-invisible: rgba(31, 31, 31, 0.36);
+  --dsw-alias-button-tool-bar-fill: rgba(84, 85, 87, 0.5);
+  --dsw-alias-button-tool-bar-hover: rgba(84, 85, 87, 0.6);
+
+  /* 交互 */
+  --dsw-alias-interactive-bg-active: rgba(0, 121, 191, 0.1);
+  --dsw-alias-interactive-bg-hover-accent: rgba(0, 121, 191, 0.09);
+  --dsw-alias-interactive-bg-hover-danger: rgba(186, 26, 26, 0.05);
+  --dsw-alias-interactive-bg-hover-solid: #e8eef4;
+  --dsw-alias-interactive-bg-hover: rgba(0, 121, 191, 0.05);
+
+  /* 文字 */
+  --dsw-alias-label-caption: #5e636b;
+  --dsw-alias-label-dimmed: #9aa0a6;
+  --dsw-alias-label-primary-bluish: #001d33;
+  --dsw-alias-label-primary-dimmed: #1a1c1e;
+  --dsw-alias-label-primary-foreground: #ffffff;
+  --dsw-alias-label-primary-inverted: #ffffff;
+  --dsw-alias-label-primary: #1a1c1e;
+  --dsw-alias-label-secondary: #43474e;
+  --dsw-alias-label-tertiary: #5e636b;
+
+  /* Markdown */
+  --dsw-alias-markdown-citation: #eef2f6;
+  --dsw-alias-markdown-code-block-banner: #f0f4f8;
+  --dsw-alias-markdown-code-block: #eef2f6;
+  --dsw-alias-markdown-code-segment-selected: #ffffff;
+  --dsw-alias-markdown-code-segment-unselected: #e8eef4;
+  --dsw-alias-markdown-inline-code: #e8eef4;
+  --dsw-alias-markdown-placeholder: #f0f4f8;
+  --dsw-alias-markdown-tag: #e8eef4;
+
+  /* 滚动条 */
+  --dsw-alias-scrollbar-bg-l1: #d8dde3;
+  --dsw-alias-scrollbar-bg-l2: #c6cdd6;
+  --dsw-alias-scrollbar-hover-l1: #c6cdd6;
+  --dsw-alias-scrollbar-hover-l2: #b3bcc8;
+
+  /* 状态 */
+  --dsw-alias-state-business-primary: #0079bf;
+  --dsw-alias-state-business-tertiary: #d0e8ff;
+  --dsw-alias-state-error-primary: #ba1a1a;
+  --dsw-alias-state-error-secondary: #ffdad6;
+  --dsw-alias-state-success-primary: #006d3d;
+  --dsw-alias-state-success-secondary: #69dd96;
+  --dsw-alias-state-success-tertiary: #86fab1;
+  --dsw-alias-state-warn-label: #815500;
+  --dsw-alias-state-warn-primary: #815500;
+  --dsw-alias-state-warn-secondary: #ffb94d;
+  --dsw-alias-state-warn-tertiary: #ffddb2;
+
+  /* 弹出/提示 */
+  --dsw-alias-toast-bg: #1a1c1e;
+  --dsw-alias-tooltip-bg: #2f3133;
+
+  /* 专用 */
+  --dsw-specific-bubble-highlight: #c4e2ff;
+  --dsw-specific-bubble: #d0e8ff;
+  --dsw-specific-input-major: rgba(var(--denpa-acrylic-rgb), 0.22);
+  --dsw-specific-login-input: #f8f9fa;
+  --dsw-specific-menu: var(--dsw-alias-bg-layer-3);
+  --dsw-specific-selector: #eef2f6;
+  --dsw-specific-sidebar-fill: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity));
+  --dsw-specific-sidebar-nav-item-active-accent: #001d33;
+  --dsw-specific-sidebar-nav-item-active: #d0e8ff;
+  --dsw-specific-sidebar-nav-item-hover: rgba(0, 121, 191, 0.08);
+  --dsw-specific-tip: rgba(var(--denpa-acrylic-rgb), 0.5);
+
+  --denpa-acrylic-rgb: 221, 229, 237;
+  --denpa-acrylic-rgb-low: 232, 238, 244;
+  --denpa-acrylic-rgb-high: 200, 212, 223;
+  --denpa-control-rgb: 210, 220, 230;
+  --denpa-material-opacity: 0.55;
+  --denpa-text-depth: 0 1px 1px rgba(17, 20, 28, 0.14);
+  color-scheme: light;
+}
+
+/* ════════════════════════════════════════════════════════════
+ * 暗色主题 — DenpaPush M3 dark (#1d9bf0 派生)
+ * ════════════════════════════════════════════════════════════ */
+body[data-ds-dark-theme] {
+  /* 背景 */
+  --dsw-alias-bg-base: #121316;
+  --dsw-alias-bg-layer-1: #1e2530;
+  --dsw-alias-bg-layer-2: #283040;
+  --dsw-alias-bg-layer-3: #333d4e;
+  --dsw-alias-bg-mask-1: rgba(0, 0, 0, 0.5);
+  --dsw-alias-bg-mask-2: rgba(0, 0, 0, 0.2);
+  --dsw-alias-bg-mask-3: rgba(0, 0, 0, 0.48);
+  --dsw-alias-bg-mask-photo: rgba(0, 0, 0, 0.88);
+  --dsw-alias-bg-mask-drop: rgba(39, 39, 48, 0.7);
+  --dsw-alias-bg-module-platform: #1e2530;
+  --dsw-alias-bg-multi-select: #333d4e;
+  --dsw-alias-bg-overlay: #283040;
+  --dsw-alias-bg-skeleton: rgba(255, 255, 255, 0.07);
+
+  /* 描边 */
+  --dsw-alias-border-inverted2: rgba(255, 255, 255, 0.08);
+  --dsw-alias-border-inverted: rgba(255, 255, 255, 0.06);
+  --dsw-alias-border-l1: rgba(255, 255, 255, 0.07);
+  --dsw-alias-border-l2-darkmode-thin: rgba(255, 255, 255, 0.07);
+  --dsw-alias-border-l2: rgba(255, 255, 255, 0.11);
+  --dsw-alias-border-l3: rgba(255, 255, 255, 0.16);
+  --dsw-alias-border-l4: rgba(255, 255, 255, 0.2);
+
+  /* 品牌 */
+  --dsw-alias-brand-primary-invert: #121316;
+  --dsw-alias-brand-primary-new-colorprimary-new-color: #8ecdf8;
+  --dsw-alias-brand-primary: #8ecdf8;
+  --dsw-alias-brand-text: #e2e2e6;
+  --dsw-alias-button-contrast-fill: #bac8d8;
+  --dsw-alias-button-elevated-fill: #1e2530;
+  --dsw-alias-button-floating-fill: #283040;
+  --dsw-alias-button-floating-hover: #333d4e;
+  --dsw-alias-button-ghost-active-border: #8d9199;
+  --dsw-alias-button-ghost-active-fill: #333d4e;
+  --dsw-alias-button-ghost-active-hover: #3f4a5c;
+  --dsw-alias-button-info-fill: #6bbcf5;
+  --dsw-alias-button-info-hover: #8ecdf8;
+  --dsw-alias-button-primary-dimmed: rgba(142, 205, 248, 0.14);
+  --dsw-alias-button-primary-fill: #8ecdf8;
+  --dsw-alias-button-primary-hover: #a0d6fa;
+  --dsw-alias-button-tool-bar-fill-invisible: rgba(31, 31, 31, 0.36);
+  --dsw-alias-button-tool-bar-fill: rgba(84, 85, 87, 0.5);
+  --dsw-alias-button-tool-bar-hover: rgba(84, 85, 87, 0.6);
+
+  /* 交互 */
+  --dsw-alias-interactive-bg-active: rgba(255, 255, 255, 0.12);
+  --dsw-alias-interactive-bg-hover-accent: rgba(142, 205, 248, 0.12);
+  --dsw-alias-interactive-bg-hover-danger: rgba(255, 180, 171, 0.12);
+  --dsw-alias-interactive-bg-hover-solid: #283040;
+  --dsw-alias-interactive-bg-hover: rgba(255, 255, 255, 0.07);
+
+  /* 文字 */
+  --dsw-alias-label-caption: #9d9da3;
+  --dsw-alias-label-dimmed: #5e636b;
+  --dsw-alias-label-primary-bluish: #d0e8ff;
+  --dsw-alias-label-primary-dimmed: #c6c6ca;
+  --dsw-alias-label-primary-foreground: #003450;
+  --dsw-alias-label-primary-inverted: #121316;
+  --dsw-alias-label-primary: #e2e2e6;
+  --dsw-alias-label-secondary: #c6c6ca;
+  --dsw-alias-label-tertiary: #9d9da3;
+
+  /* Markdown */
+  --dsw-alias-markdown-citation: #191d24;
+  --dsw-alias-markdown-code-block-banner: #1e2530;
+  --dsw-alias-markdown-code-block: #191d24;
+  --dsw-alias-markdown-code-segment-selected: #283040;
+  --dsw-alias-markdown-code-segment-unselected: #1e2530;
+  --dsw-alias-markdown-inline-code: #1e2530;
+  --dsw-alias-markdown-placeholder: #191d24;
+  --dsw-alias-markdown-tag: #1e2530;
+
+  /* 滚动条 */
+  --dsw-alias-scrollbar-bg-l1: #3f4a5c;
+  --dsw-alias-scrollbar-bg-l2: #333d4e;
+  --dsw-alias-scrollbar-hover-l1: #4d5a6e;
+  --dsw-alias-scrollbar-hover-l2: #3f4a5c;
+
+  /* 状态 */
+  --dsw-alias-state-business-primary: #8ecdf8;
+  --dsw-alias-state-business-tertiary: #004a73;
+  --dsw-alias-state-error-primary: #ffb4ab;
+  --dsw-alias-state-error-secondary: #ffb4ab;
+  --dsw-alias-state-success-primary: #69dd96;
+  --dsw-alias-state-success-secondary: #69dd96;
+  --dsw-alias-state-success-tertiary: #00522d;
+  --dsw-alias-state-warn-label: #ffb94d;
+  --dsw-alias-state-warn-primary: #ffb94d;
+  --dsw-alias-state-warn-secondary: #ffb94d;
+  --dsw-alias-state-warn-tertiary: #624000;
+
+  /* 弹出/提示 */
+  --dsw-alias-toast-bg: #333d4e;
+  --dsw-alias-tooltip-bg: #3f4a5c;
+
+  /* 专用 */
+  --dsw-specific-bubble-highlight: #005477;
+  --dsw-specific-bubble: #004a73;
+  --dsw-specific-input-major: rgba(var(--denpa-acrylic-rgb), 0.22);
+  --dsw-specific-login-input: #121316;
+  --dsw-specific-menu: var(--dsw-alias-bg-layer-3);
+  --dsw-specific-selector: #283040;
+  --dsw-specific-sidebar-fill: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity));
+  --dsw-specific-sidebar-nav-item-active-accent: #d0e8ff;
+  --dsw-specific-sidebar-nav-item-active: #004a73;
+  --dsw-specific-sidebar-nav-item-hover: rgba(142, 205, 248, 0.08);
+  --dsw-specific-tip: rgba(var(--denpa-acrylic-rgb), 0.5);
+
+  --denpa-acrylic-rgb: 30, 37, 48;
+  --denpa-acrylic-rgb-low: 26, 32, 42;
+  --denpa-acrylic-rgb-high: 63, 74, 92;
+  --denpa-control-rgb: 51, 61, 78;
+  --denpa-material-opacity: 0.5;
+  --denpa-text-depth: 0 1px 2px rgba(0, 0, 0, 0.45);
+  color-scheme: dark;
+}
+
+/* ════════════════════════════════════════════════════════════
+ * 全局铬色样式
+ * ════════════════════════════════════════════════════════════ */
+
+/* 选中文本：品牌色底 */
+::selection {
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 24%, transparent);
+}
+
+/* 焦点环：品牌描边（与 DenpaPush --focus-ring 一致） */
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 70%, transparent);
+  outline-offset: 1px;
+}
+
+/* 滚动条：细、圆角、品牌悬停 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--dsw-alias-scrollbar-bg-l2) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--dsw-alias-scrollbar-bg-l2);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 40%, var(--dsw-alias-scrollbar-hover-l2));
+  background-clip: content-box;
+  border: 2px solid transparent;
+}
+
+/* 正文渲染细节：与 DenpaPush 一致的字重与文本阴影 */
+body {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 品牌高亮微泛光（用于侧栏活动项、主按钮等，按需挂类） */
+.denpa-glow {
+  box-shadow: var(--denpa-glow-brand);
+}
+
+/* 壁纸暗色遮罩：只在暗色主题叠加（原项目 [data-theme="dark"] 选择器语义） */
+[data-denpa-bg]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0);
+  pointer-events: none;
+}
+
+body[data-ds-dark-theme] [data-denpa-bg]::before {
+  background: rgba(0, 0, 0, var(--denpa-scrim, 0.4));
+}
+
+/* ════════════════════════════════════════════════════════════
+ * 主题切换圆形遮罩（照搬 DenpaPush ::view-transition）
+ * ════════════════════════════════════════════════════════════ */
+::view-transition-old(root) {
+  animation: none;
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  z-index: 2;
+  animation: denpa-vt-circle-reveal 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes denpa-vt-circle-reveal {
+  from { clip-path: circle(0px at var(--vt-x, 50%) var(--vt-y, 50%)); }
+  to   { clip-path: circle(var(--vt-r, 150%) at var(--vt-x, 50%) var(--vt-y, 50%)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}
+`

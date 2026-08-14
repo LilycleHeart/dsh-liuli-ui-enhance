@@ -1,0 +1,258 @@
+/** DenpaPush 运行时：把界面设置应用到 DOM（品牌取色/壁纸/材质/字体/圆角/泛光阴影）。 */
+
+/* applyDenpaSettings 竞态保护：async 链（壁纸取色 await）与主题切换/滑条
+   高频写入并发时，只有最后一次调用允许落地 —— 旧调用捕获的 isDark 与最新
+   主题不一致时会整份覆盖调色板（界面变暗/变亮错配）。令牌在 await 之后、
+   任何 DOM 写入之前校验，被淘汰的调用不写任何变量。 */
+let denpaApplySeq = 0
+
+import { hexFromArgb, sourceColorFromImage } from '../vendor/material-color-utilities.js'
+import {
+  DENPA_DEFAULT_SOURCE, denpaApplyBrand, denpaDerivePalette,
+} from './denpa-palette.ts'
+import { DENPA_SETTINGS_DEFAULTS, type DenpaSettings } from '../denpa-settings.ts'
+
+/** 壁纸持久化键（localStorage，dataURL）。 */
+const WALLPAPER_KEY = 'denpa:wallpaper'
+/** 壁纸大小上限（dataURL 长度）。 */
+export const WALLPAPER_MAX_LENGTH = 3.5 * 1024 * 1024
+
+export function loadWallpaper(): string | null {
+  try {
+    const raw = localStorage.getItem(WALLPAPER_KEY)
+    return raw && raw.length > 0 ? raw : null
+  } catch (_) { return null }
+}
+
+export function saveWallpaper(dataUrl: string): void {
+  try { localStorage.setItem(WALLPAPER_KEY, dataUrl) } catch (_) {}
+}
+
+export function clearWallpaper(): void {
+  try { localStorage.removeItem(WALLPAPER_KEY) } catch (_) {}
+}
+
+export function readFileAsDataURL(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(String(r.result))
+    r.onerror = () => reject(new Error('读取文件失败'))
+    r.readAsDataURL(file)
+  })
+}
+
+/**
+ * 压缩图片为 JPEG dataURL：长边限制 + 质量档位，让本地存储能容纳照片级图片。
+ * 透明图会以白色底合成（壁纸场景可接受）。
+ */
+export async function compressImage(file: File, maxDim = 1920, quality = 0.85): Promise<string> {
+  const url = URL.createObjectURL(file)
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const i = new Image()
+      i.onload = () => resolve(i)
+      i.onerror = () => reject(new Error('图片解码失败'))
+      i.src = url
+    })
+    const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight))
+    const w = Math.max(1, Math.round(img.naturalWidth * scale))
+    const h = Math.max(1, Math.round(img.naturalHeight * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    if (ctx === null) throw new Error('canvas 不可用')
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, w, h)
+    ctx.drawImage(img, 0, 0, w, h)
+    let dataUrl = canvas.toDataURL('image/jpeg', quality)
+    if (dataUrl.length > WALLPAPER_MAX_LENGTH) {
+      dataUrl = canvas.toDataURL('image/jpeg', 0.6)
+    }
+    if (dataUrl.length > WALLPAPER_MAX_LENGTH) {
+      throw new Error('图片过大（压缩后仍超过存储上限）')
+    }
+    return dataUrl
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
+/** 加载一张图片（跨域放行）。 */
+function loadImage(imageSrc: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('背景图加载失败'))
+    img.src = imageSrc
+  })
+}
+
+/**
+ * 从背景图提取 Material 源色 —— 照搬原项目逻辑：
+ * 1. 缩小到 64x64（避免全分辨率量化卡顿）
+ * 2. sourceColorFromImage 是 async（MCU 0.4），必须 await 它的 ARGB 结果
+ */
+export async function dynamicSourceFromImage(imageSrc: string): Promise<string> {
+  const img = await loadImage(imageSrc)
+  const size = 64
+  const cvs = document.createElement('canvas')
+  cvs.width = size
+  cvs.height = size
+  const c = cvs.getContext('2d')
+  if (c === null) throw new Error('canvas 不可用')
+  c.drawImage(img, 0, 0, size, size)
+  const small = new Image()
+  small.src = cvs.toDataURL('image/png')
+  await new Promise<void>((res, rej) => {
+    small.onload = () => res()
+    small.onerror = () => rej(new Error('取色图生成失败'))
+  })
+  const srcArgb = await sourceColorFromImage(small)
+  return hexFromArgb(srcArgb)
+}
+
+/** 当前是否暗色（presenter 写在 body 上）。 */
+export function currentIsDark(): boolean {
+  return document.body.hasAttribute('data-ds-dark-theme')
+}
+
+/**
+ * 壁纸承载层（原项目 #bg-layer 架构）：fixed 全屏层挂在 body 下，
+ * 壁纸与 scrim 在这里渲染，并承担“模糊强度”的消费（filter: blur）。
+ * 半透明表面（侧栏/对话区/输入卡）透出的就是这层 —— 磨砂玻璃效果。
+ * 放在 body 直下而非任何列内，天然避开 fixed 后代包含块陷阱。
+ */
+let bgLayerEl: HTMLDivElement | null = null
+function ensureBgLayer(): HTMLDivElement {
+  if (bgLayerEl !== null && document.body.contains(bgLayerEl)) return bgLayerEl
+  const div = document.createElement('div')
+  div.dataset.denpaBg = ''
+  div.style.cssText =
+    'position:fixed;inset:0;z-index:-1;background-size:cover;background-position:center;background-repeat:no-repeat;pointer-events:none;'
+  document.body.appendChild(div)
+  bgLayerEl = div
+  return div
+}
+
+function applyBgLayer(wallpaperSrc: string, blur: number): void {
+  const layer = ensureBgLayer()
+  layer.style.display = ''
+  // 壁纸本身不带遮罩：暗色遮罩由 CSS [data-ds-dark-theme] 选择器叠加（原项目同构），
+  // 主题切换即时响应，无 JS 时序问题。
+  layer.style.backgroundImage = `url("${wallpaperSrc}")`
+  layer.style.filter = `blur(${blur}px) saturate(1.6)`
+}
+
+function clearBgLayer(): void {
+  if (bgLayerEl !== null && document.body.contains(bgLayerEl)) {
+    bgLayerEl.style.display = 'none'
+  }
+}
+
+const FONT_MISANS = '"MiSans", "Inter", "Space Grotesk", "Segoe UI", system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif'
+const FONT_BUILTIN = '"Inter", "Segoe UI", system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif'
+
+/**
+ * 应用一份 DenpaPush 设置。动态取色是异步的（壁纸解码），品牌映射分两步：
+ * 先同步应用静态部分，壁纸取色完成后回填品牌色。
+ */
+export async function applyDenpaSettings(settings: DenpaSettings): Promise<void> {
+  const seq = ++denpaApplySeq
+  const cfg = { ...DENPA_SETTINGS_DEFAULTS, ...(settings ?? {}) }
+  const wallpaper = loadWallpaper()
+  const body = document.body
+  const set = (k: string, v: string): void => { body.style.setProperty(k, v) }
+  const unset = (k: string): void => { body.style.removeProperty(k) }
+
+  // ── 源色 ──
+  const dynamic = cfg.color_mode === 'dynamic'
+  const wallpaperSrc = cfg.background_mode === 'image' ? wallpaper : null
+  const fallbackSource = dynamic ? DENPA_DEFAULT_SOURCE : (cfg.brand_color || DENPA_DEFAULT_SOURCE)
+  let source = fallbackSource
+  if (dynamic && wallpaperSrc) {
+    try {
+      source = await dynamicSourceFromImage(wallpaperSrc)
+    } catch (_) { source = DENPA_DEFAULT_SOURCE }
+  }
+  // 竞态保护：期间有更新的 apply 启动（主题切换/后续滑条），本调用作废。
+  if (seq !== denpaApplySeq) return
+  // ★ isDark 必须在 await 之后、写入之前读取：async 取色期间主题可能已切换
+  //   （presenter 先/后于本调用执行），用旧值会把错配明暗的调色板落地 ——
+  //   这正是"拖动滑条时主题颜色变暗"的根因。
+  const isDark = currentIsDark()
+  const pal = denpaDerivePalette(source, isDark)
+  denpaApplyBrand(pal, isDark)
+
+  // ── 字体 ──
+  set('--dsw-font-family', cfg.font_mode === 'builtin' ? FONT_BUILTIN : FONT_MISANS)
+
+  // ── 圆角 / 泛光 / 阴影 ──
+  const radius = Math.max(0, Math.min(40, Number(cfg.corner_radius ?? 14)))
+  set('--denpa-radius', radius + 'px')
+  set('--denpa-radius-sm', Math.min(radius, 10) + 'px')
+  set('--denpa-glow-strength', (cfg.glow_enabled ? (cfg.glow_intensity ?? 15) : 0) / 100 + '')
+  set('--denpa-shadow-strength', (cfg.shadow_enabled ? (cfg.shadow_intensity ?? 60) : 0) / 100 + '')
+
+  // ── 材质 ──
+  if (cfg.acrylic_enabled !== false) {
+    const opacity = Math.max(0.2, Math.min(1, (cfg.material_opacity ?? 45) / 100))
+    set('--denpa-material-opacity', opacity + '')
+    const blur = Math.max(0, Math.min(100, cfg.material_blur ?? 5))
+    if (cfg.material_type === 'mica') {
+      set('--denpa-material-blur', 'blur(4px) saturate(1.25)')
+      set('--denpa-material-blur-px', '4')
+    } else {
+      // 模糊强度直接映射为壁纸层 blur（原项目 material_blur 单位 px）
+      set('--denpa-material-blur', `blur(${blur}px) saturate(1.6)`)
+      set('--denpa-material-blur-px', blur + '')
+    }
+    set('--denpa-surface-opacity', opacity + '')
+  } else {
+    set('--denpa-material-opacity', '1')
+    set('--denpa-material-blur', 'none')
+    set('--denpa-material-blur-px', '0')
+    set('--denpa-surface-opacity', '1')
+  }
+
+  // ── 背景 / 壁纸 ──
+  const frameBg = cfg.background_mode === 'custom'
+    ? (isDark ? cfg.custom_background_dark || '#0C0E13' : cfg.custom_background || '#F5F6F8')
+    : ''
+  const scrim = Math.max(0, Math.min(80, cfg.bg_scrim ?? 40)) / 100
+  if (cfg.background_mode === 'image' && wallpaperSrc) {
+    // 壁纸移交 bg-layer（承载模糊）；frame 转透明让层透出。
+    // 暗色遮罩值写入 --denpa-scrim，由 CSS 在暗色主题下叠加（亮色不遮）。
+    const blurPx = cfg.acrylic_enabled === false ? 0
+      : cfg.material_type === 'mica' ? 4 : Math.max(0, Math.min(100, cfg.material_blur ?? 5))
+    set('--denpa-scrim', scrim + '')
+    applyBgLayer(wallpaperSrc, blurPx)
+    set('--denpa-frame-bg', 'transparent')
+    unset('--denpa-frame-bg-image')
+    unset('--denpa-frame-bg-size')
+  } else {
+    clearBgLayer()
+    if (cfg.background_mode === 'brand_gradient') {
+      set('--denpa-frame-bg', pal.appBg)
+      set('--denpa-frame-bg-image',
+        `radial-gradient(120% 90% at 82% -10%, color-mix(in srgb, ${pal.brand} 24%, transparent), transparent 60%),
+         radial-gradient(90% 70% at -10% 110%, color-mix(in srgb, ${pal.brand} 15%, transparent), transparent 55%)`)
+      set('--denpa-frame-bg-size', 'auto')
+    } else if (cfg.background_mode === 'custom') {
+      set('--denpa-frame-bg', frameBg)
+      unset('--denpa-frame-bg-image')
+      unset('--denpa-frame-bg-size')
+    } else {
+      // theme：回到 denpa.css 的默认渐变
+      unset('--denpa-frame-bg')
+      unset('--denpa-frame-bg-image')
+      unset('--denpa-frame-bg-size')
+    }
+  }
+}
+
+/** 出厂默认应用（scope 快照到达前调用）。 */
+export async function applyDenpaDefaults(): Promise<void> {
+  await applyDenpaSettings(DENPA_SETTINGS_DEFAULTS)
+}
