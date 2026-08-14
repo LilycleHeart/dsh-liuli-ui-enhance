@@ -1,5 +1,9 @@
 # 琉璃 · Liuli Theme
 
+<p align="center">
+  <img src="https://count.getloli.com/@liuli-theme?theme=rule34" alt="MoeCounter" />
+</p>
+
 DeepSeek Harness 的 **Material Design 3 × Fluent 2 融合主题**插件:取 Material 3 的
 动态取色、形状系统与状态层,取 Fluent 2 的亚克力 / 云母材质与分层深度,壁纸磨砂、声纹可视化、日/夜圆形遮罩、
 悬浮工具球——并打包为可独立安装、可 git 发布的浏览器插件。
