@@ -216,14 +216,14 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
     scrollport.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
   }
 
-  const relativeTop = (current: HTMLElement): number => {
+  const relativeTop = (current: Element): number => {
     if (host === null) return 0
     return current.getBoundingClientRect().top - host.getBoundingClientRect().top
   }
 
-  const tickCenterTop = (tick: HTMLElement): number => relativeTop(tick) + tick.offsetHeight / 2
+  const tickCenterTop = (tick: Element): number => relativeTop(tick) + tick.getBoundingClientRect().height / 2
 
-  const movePillToTick = (tick: HTMLElement): void => {
+  const movePillToTick = (tick: Element): void => {
     setPillTop(tickCenterTop(tick))
   }
 
@@ -245,7 +245,7 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
         if (best === null || dist < best.dist) best = { turn: item.turn, dist }
       }
       if (best !== null) {
-        const tick = host.querySelector<HTMLElement>(`[data-turn="${best.turn}"]`)
+        const tick = host.querySelector<Element>(`[data-turn="${best.turn}"]`)
         if (tick !== null) {
           setFollowTurn(best.turn)
           movePillToTick(tick)
@@ -263,14 +263,14 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [host, turnItems, hoveredTurn, selectedTurn, locations])
 
-  const onTickClick = (e: ReactMouseEvent<HTMLButtonElement>, turn: number): void => {
+  const onTickClick = (e: ReactMouseEvent<SVGSVGElement>, turn: number): void => {
     movePillToTick(e.currentTarget)
     setSelectedTurn(previous => previous === turn ? null : turn)
     setHoveredTurn(null)
     jumpToTurn(turn)
   }
 
-  const onTickHover = (e: { currentTarget: HTMLButtonElement }, turn: number): void => {
+  const onTickHover = (e: { currentTarget: SVGSVGElement }, turn: number): void => {
     movePillToTick(e.currentTarget)
     setHoveredTurn(turn)
   }
@@ -290,15 +290,19 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
         <>
           <nav className={css.rail} aria-label="对话轮次导航">
             {turnItems.map(({ turn, index }) => (
-              <button
+              <svg
                 key={turn}
-                type="button"
                 data-turn={turn}
                 className={css.tick
                   + (selectedTurn === turn ? ' ' + css.tickSelected : '')
                   + (hoveredTurn === turn ? ' ' + css.tickHover : '')
                   + (followTurn === turn && selectedTurn !== turn && hoveredTurn !== turn ? ' ' + css.tickFollow : '')
                   + (turn === turnItems[turnItems.length - 1]?.turn ? ' ' + css.tickActive : '')}
+                viewBox="0 0 24 24"
+                width={28}
+                height={28}
+                role="button"
+                tabIndex={0}
                 title={`第 ${index + 1} 轮`}
                 aria-label={`跳到第 ${index + 1} 轮`}
                 aria-expanded={selectedTurn === turn || undefined}
@@ -307,7 +311,15 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
                 onMouseLeave={() => { setHoveredTurn(null) }}
                 onFocus={(e) => { onTickHover(e, turn) }}
                 onBlur={() => { setHoveredTurn(null) }}
-              />
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    onTickClick(e as unknown as ReactMouseEvent<SVGSVGElement>, turn)
+                  }
+                }}
+              >
+                <rect x="2" y="10" width="20" height="4" rx="2" fill="currentColor" />
+              </svg>
             ))}
           </nav>
 
