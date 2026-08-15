@@ -204,6 +204,32 @@
   word-break: break-all;
 }
 
+.capsuleCommitButton {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: var(--dsw-font-family);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0.3px;
+  color: var(--dsw-alias-label-secondary);
+  text-align: left;
+  word-break: break-all;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: color 120ms var(--ds-ease-in-out);
+}
+
+.capsuleCommitButton:hover,
+.capsuleCommitButton:focus-visible {
+  color: var(--dsw-alias-brand-primary);
+  text-decoration: underline;
+  outline: none;
+}
+
 /* 悬停/跟随胶囊内容弱化，与选中胶囊区分 */
 .capsuleHover .capsuleCommit,
 .capsuleFollow .capsuleCommit {
