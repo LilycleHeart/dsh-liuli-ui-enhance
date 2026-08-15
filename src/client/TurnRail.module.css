@@ -126,11 +126,10 @@
 
 .capsuleTurnSummary {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   gap: 6px;
   flex: 1;
   min-width: 0;
-  overflow: hidden;
 }
 
 .capsuleTurn {
@@ -145,12 +144,12 @@
 .capsuleSummary {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
   font-size: 11px;
   line-height: 1.3;
   color: var(--dsw-alias-label-tertiary);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .capsuleMeta {
