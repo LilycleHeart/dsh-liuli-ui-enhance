@@ -274,6 +274,37 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [host, turnItems, hoveredTurn, selectedTurn, locations])
 
+  /** 点击 commit 后回到对话窗口，并临时把该轮消息“包装”成高亮卡片。 */
+  const highlightTurnCard = (turn: number): void => {
+    if (host === null) return
+    const row = findTurnRow(host, locations.getTurn(turn))
+    if (row === null) return
+    const previous = {
+      outline: row.style.outline,
+      outlineOffset: row.style.outlineOffset,
+      boxShadow: row.style.boxShadow,
+      borderRadius: row.style.borderRadius,
+      transition: row.style.transition,
+    }
+    row.style.outline = '2px solid var(--dsw-alias-brand-primary)'
+    row.style.outlineOffset = '2px'
+    row.style.borderRadius = 'var(--denpa-radius, 14px)'
+    row.style.boxShadow = 'var(--denpa-glow-brand)'
+    row.style.transition = 'outline 200ms ease, box-shadow 200ms ease'
+    window.setTimeout(() => {
+      row.style.outline = previous.outline
+      row.style.outlineOffset = previous.outlineOffset
+      row.style.boxShadow = previous.boxShadow
+      row.style.borderRadius = previous.borderRadius
+      row.style.transition = previous.transition
+    }, 2200)
+  }
+
+  const onCommitClick = (turn: number): void => {
+    jumpToTurn(turn)
+    highlightTurnCard(turn)
+  }
+
   const onTickClick = (_e: ReactMouseEvent<SVGSVGElement>, turn: number): void => {
     setSelectedTurn(previous => previous === turn ? null : turn)
     setFollowTurn(null)
@@ -345,7 +376,14 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
                 </span>
               </div>
               <div className={css.capsuleCommitRow}>
-                <span className={css.capsuleCommit}>{pillItem.info.commit !== '' ? pillItem.info.commit : '无 commit'}</span>
+                <button
+                  type="button"
+                  className={css.capsuleCommitButton}
+                  title="点击回到对话并高亮该轮"
+                  onClick={() => { onCommitClick(pillItem.turn) }}
+                >
+                  {pillItem.info.commit !== '' ? pillItem.info.commit : '无 commit'}
+                </button>
               </div>
             </div>
           )}
