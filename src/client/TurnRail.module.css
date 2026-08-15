@@ -93,7 +93,7 @@
   background-image: var(--denpa-noise);
   -webkit-backdrop-filter: var(--denpa-material-blur);
   backdrop-filter: var(--denpa-material-blur);
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsw-alias-brand-primary);
   box-shadow: var(--denpa-shadow), var(--denpa-glow-brand);
   pointer-events: auto;
   transition: top 60ms linear, border-color 120ms var(--ds-ease-in-out),
@@ -148,7 +148,7 @@
   min-width: 0;
   font-size: 11px;
   line-height: 1.3;
-  color: color-mix(in srgb, var(--dsw-alias-brand-primary) 45%, var(--dsw-alias-label-secondary));
+  color: var(--dsw-alias-state-business-primary);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -188,7 +188,7 @@
   font-weight: 500;
   line-height: 1.2;
   letter-spacing: 0.3px;
-  color: color-mix(in srgb, var(--dsw-alias-brand-primary) 55%, var(--dsw-alias-label-secondary));
+  color: var(--dsw-alias-state-business-primary);
 }
 
 .capsuleCommitRow {
