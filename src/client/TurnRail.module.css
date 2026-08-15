@@ -114,52 +114,94 @@
   pointer-events: auto;
 }
 
-/* ── 胶囊内容：时间 / 日期 / commit / 摘要 四栏纵向排列 ────── */
+/* ── 胶囊内容：轮数+摘要 在前，时间/日期右对齐，commit 独立一栏 ── */
+.capsuleHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+
+.capsuleTurnSummary {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.capsuleTurn {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--dsw-alias-label-primary);
+  white-space: nowrap;
+}
+
+.capsuleSummary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.capsuleMeta {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+}
+
 .capsuleTime,
 .capsuleDate,
-.capsuleCommit,
-.capsuleSummary {
+.capsuleCommit {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   max-width: 100%;
-}
-
-.capsuleTime,
-.capsuleDate,
-.capsuleCommit,
-.capsuleSummary {
   font-family: var(--dsw-font-family);
 }
 
 .capsuleTime {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.2;
   color: var(--dsw-alias-brand-primary);
 }
 
 .capsuleDate {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
   line-height: 1.2;
   letter-spacing: 0.3px;
   color: var(--dsw-alias-label-secondary);
 }
 
+.capsuleCommitRow {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+  width: 100%;
+  min-width: 0;
+}
+
 .capsuleCommit {
+  display: block;
   font-size: 11px;
   font-weight: 500;
   line-height: 1.2;
   letter-spacing: 0.3px;
   color: var(--dsw-alias-label-secondary);
   word-break: break-all;
-}
-
-.capsuleSummary {
-  font-size: 11px;
-  line-height: 1.3;
-  color: var(--dsw-alias-label-tertiary);
 }
 
 /* 悬停/跟随胶囊内容弱化，与选中胶囊区分 */
