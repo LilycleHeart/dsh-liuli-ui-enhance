@@ -404,6 +404,16 @@ div[data-phase] > div[aria-hidden="true"]:first-child {
 }
 
 /* ════════════════════════════════════════════════════════════
+ * 主页 / 非 active 阶段：模糊层按整个容器走，去掉 header+body 的
+ * 中间缝，并用 clip-path 圆角跟随容器，避免直角。
+ * ════════════════════════════════════════════════════════════ */
+div[data-phase]:not([data-phase='active']) > div[aria-hidden="true"]:first-child {
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+  clip-path: inset(0 round var(--denpa-radius, 14px));
+}
+
+/* ════════════════════════════════════════════════════════════
  * Agent 询问卡片磨砂：与输入框（composer）一致的亚克力效果。
  * QuestionComposer / PlanReviewPanel 都是接管输入框位置的卡片，
  * 背景沿用 --dsw-specific-input-major，但宿主 CSS 未带 backdrop-filter。

@@ -505,6 +505,16 @@ export function DenpaHeaderResizer() {
       root.style.setProperty('--dsh-header-height', `${headerRect.height}px`)
       const body = root.querySelector<HTMLElement>('[data-conversation-scroll]')
       const bodyRect = body?.getBoundingClientRect()
+      // 非 active 阶段（主页 hero / settling 等）不是 header + scrollBody 双卡，
+      // 模糊层应按整个容器走，避免中间留缝和直角。
+      if (root.dataset.phase !== 'active') {
+        const w = blurRect.width
+        const h = blurRect.height
+        const radius = Number.parseFloat(getComputedStyle(root).borderTopLeftRadius) || 14
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><rect x="0" y="0" width="${w}" height="${h}" rx="${radius}"/></svg>`
+        root.style.setProperty('--dsh-wallpaper-mask', `url("data:image/svg+xml,${encodeURIComponent(svg)}")`)
+        return
+      }
       const w = blurRect.width
       const h = blurRect.height
       const local = (r: DOMRect): { x: number; y: number; width: number; height: number } => ({

@@ -138,18 +138,32 @@ function ensureBgLayer(): HTMLDivElement {
   return div
 }
 
+/** 把选区归一化为当前窗口比例（预览/背景层均为窗口比例时，归一化 w/h=1
+    才能使选框的像素比例与窗口一致）。 */
+export function normalizeBgAreaToWindowRatio(area: DenpaBgArea): DenpaBgArea {
+  const side = Math.min(1, Math.max(0.04, Math.max(area.w, area.h)))
+  const cx = area.x + area.w / 2
+  const cy = area.y + area.h / 2
+  return {
+    x: Math.min(1 - side, Math.max(0, cx - side / 2)),
+    y: Math.min(1 - side, Math.max(0, cy - side / 2)),
+    w: side,
+    h: side,
+  }
+}
+
 /** 由适应模式 + 选区推导 background-size/position（cover 选区放大公式：
-    size = 100%/w 100%/h；position = x/(1-w) y/(1-h) 百分比）。 */
+    size = 100%/w 100%/h；position = x/(1-w) y/(1-h) 百分比）。
+    选区统一先归一化为窗口比例，避免旧数据/手填数据产生非窗口比例裁切。 */
 export function bgGeometry(fit: DenpaBgFit, area: DenpaBgArea | null): { size: string; position: string } {
   if (fit === 'contain') return { size: 'contain', position: 'center' }
   if (fit === 'stretch') return { size: '100% 100%', position: 'center' }
   if (area !== null && area.w > 0.04 && area.h > 0.04 && area.w < 0.999 && area.h < 0.999) {
-    const w = Math.min(1, Math.max(0.05, area.w))
-    const h = Math.min(1, Math.max(0.05, area.h))
-    const px = Math.min(1, Math.max(0, area.x / (1 - w)))
-    const py = Math.min(1, Math.max(0, area.y / (1 - h)))
+    const n = normalizeBgAreaToWindowRatio(area)
+    const px = Math.min(1, Math.max(0, n.x / (1 - n.w)))
+    const py = Math.min(1, Math.max(0, n.y / (1 - n.h)))
     return {
-      size: `calc(100% / ${w}) calc(100% / ${h})`,
+      size: `calc(100% / ${n.w}) calc(100% / ${n.h})`,
       position: `${(px * 100).toFixed(2)}% ${(py * 100).toFixed(2)}%`,
     }
   }

@@ -15,7 +15,7 @@ export type DenpaMaterialType = 'acrylic' | 'mica'
 export type DenpaFontMode = 'misans' | 'builtin'
 /** 壁纸适应模式 */
 export type DenpaBgFit = 'cover' | 'contain' | 'stretch'
-/** 壁纸自定义选区（相对原图的归一化矩形，0..1）。 */
+/** 壁纸自定义选区（相对原图的归一化矩形，0..1；Cover 下按窗口比例约束，即 w/h=1）。 */
 export interface DenpaBgArea {
   x: number
   y: number
@@ -45,7 +45,7 @@ export interface DenpaSettings {
   wide_mode: boolean
   /** 壁纸适应模式（cover 填充 / contain 适应 / stretch 拉伸）。 */
   bg_fit: DenpaBgFit
-  /** 壁纸自定义选区（cover 模式下放大显示该区域）；null 为全图。 */
+  /** 壁纸自定义选区（cover 模式下放大显示该区域，按窗口比例约束）；null 为全图。 */
   bg_area: DenpaBgArea | null
 }
 

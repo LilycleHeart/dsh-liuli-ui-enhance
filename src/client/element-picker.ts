@@ -168,8 +168,16 @@ function asElement(target: EventTarget | null): HTMLElement | null {
  * element under the cursor with an outline and reports it through `onHover`,
  * click picks it. Elements inside `ignoreWithin` are skipped entirely (no
  * highlight, no pick, and their clicks keep their default behavior), so the
- * host picker can leave the preview panel's own chrome interactive. Returns
- * the detach function that restores the outline and cursor.
+ * host picker can leave the preview panel's own chrome interactive.
+ *
+ * While active, the picker freezes the page at the event level: hover-open
+ * events (`mouseover`/`mouseenter`) are allowed through so hover UI can still
+ * appear, while `mouseout`/`mouseleave` are swallowed so that hover menus and
+ * popups stay open even after the pointer leaves them. Clicks, pointer
+ * presses, wheel, and touch scrolling are also intercepted so the page cannot
+ * react to the picker's cursor.
+ *
+ * Returns the detach function that restores the outline and cursor.
  * @param doc - the document to instrument (preview iframe or host page).
  * @param handlers - the hover and pick callbacks.
  * @param ignoreWithin - elements to skip, typically the panel's own root.
@@ -181,6 +189,8 @@ export function attachElementPicker(
   ignoreWithin?: HTMLElement | null,
 ): () => void {
   let current: HTMLElement | null = null
+  let lastHovered: HTMLElement | null = null
+  let lastPoint: { x: number; y: number } | null = null
   const previousOutlines = new Map<HTMLElement, string>()
 
   const highlight = (el: HTMLElement | null): void => {
@@ -191,6 +201,7 @@ export function attachElementPicker(
     }
     current = el
     if (el !== null) {
+      lastHovered = el
       previousOutlines.set(el, el.style.outline)
       el.style.outline = '2px solid #4c8dff'
     }
@@ -210,35 +221,141 @@ export function attachElementPicker(
   const skipped = (el: HTMLElement): boolean =>
     ignoreWithin !== undefined && ignoreWithin !== null && ignoreWithin.contains(el)
 
-  const onMouseOver = (e: MouseEvent): void => {
+  // While picking, make `role="tooltip"` elements (e.g. the turn-rail capsule)
+  // hit-testable so the user can actually pick them even though their normal
+  // CSS sets pointer-events: none.
+  const tooltipPointerEvents = new Map<HTMLElement, string>()
+  const enableTooltip = (el: HTMLElement): void => {
+    if (tooltipPointerEvents.has(el)) return
+    tooltipPointerEvents.set(el, el.style.pointerEvents)
+    el.style.pointerEvents = 'auto'
+  }
+  const tooltipHost = doc.body ?? doc.documentElement
+  if (tooltipHost !== null) {
+    for (const el of Array.from(tooltipHost.querySelectorAll<HTMLElement>('[role="tooltip"]'))) {
+      enableTooltip(el)
+    }
+  }
+  const tooltipObserver = tooltipHost === null ? null : new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (node.nodeType !== 1) continue
+        const el = node as HTMLElement
+        if (el.matches?.('[role="tooltip"]') === true) enableTooltip(el)
+        for (const child of Array.from(el.querySelectorAll<HTMLElement>('[role="tooltip"]'))) {
+          enableTooltip(child)
+        }
+      }
+    }
+  })
+  tooltipObserver?.observe(tooltipHost, { childList: true, subtree: true })
+
+  // Freeze the page at the event level instead of covering it with an opaque
+  // layer: `mouseover`/`mouseenter` are allowed through so hover UI can still
+  // open (e.g. the turn-rail capsule), while `mouseout`/`mouseleave` are
+  // swallowed so that hover UI stays open after the pointer leaves. Pointer
+  // presses, clicks, wheel, and touch scrolling are also intercepted so the
+  // page cannot react to the picker's cursor.
+  const onPointerEvent = (e: Event): void => {
+    const mouse = e as MouseEvent
     const el = asElement(e.target)
-    if (el !== null && skipped(el)) {
+    if (el === null) return
+
+    if (skipped(el)) {
       // Over the panel chrome: clear the highlight and hide the card, but
       // leave the pointer events alone so the chrome stays interactive.
-      highlight(null)
-      handlers.onHover?.(null, { x: e.clientX, y: e.clientY })
+      if (e.type === 'mouseover' || e.type === 'mousemove') {
+        highlight(null)
+        handlers.onHover?.(null, { x: mouse.clientX, y: mouse.clientY })
+      }
       return
     }
-    highlight(el)
-    handlers.onHover?.(el, { x: e.clientX, y: e.clientY })
-  }
-  const onClick = (e: MouseEvent): void => {
-    const el = asElement(e.target)
-    if (el === null || skipped(el)) return
-    e.preventDefault()
-    e.stopPropagation()
-    highlight(null)
-    handlers.onHover?.(null, { x: e.clientX, y: e.clientY })
-    handlers.onPick(el)
+
+    switch (e.type) {
+      case 'mouseover':
+        // Let the page open hover content, and update the picker highlight.
+        lastPoint = { x: mouse.clientX, y: mouse.clientY }
+        highlight(el)
+        handlers.onHover?.(el, { x: mouse.clientX, y: mouse.clientY })
+        break
+      case 'mousemove':
+        lastPoint = { x: mouse.clientX, y: mouse.clientY }
+        highlight(el)
+        handlers.onHover?.(el, { x: mouse.clientX, y: mouse.clientY })
+        e.stopPropagation()
+        break
+      case 'mouseout':
+      case 'mouseleave':
+        // Keep hover UI open when the pointer leaves the element.
+        e.stopPropagation()
+        break
+      case 'mousedown':
+        // Keep focus on the currently focused element and block outside presses.
+        e.preventDefault()
+        e.stopPropagation()
+        break
+      case 'mouseup':
+        e.stopPropagation()
+        break
+      case 'click':
+        e.preventDefault()
+        e.stopPropagation()
+        highlight(null)
+        handlers.onHover?.(null, { x: mouse.clientX, y: mouse.clientY })
+        handlers.onPick(el)
+        break
+      case 'wheel':
+      case 'touchmove':
+        e.preventDefault()
+        e.stopPropagation()
+        break
+      // mouseenter is intentionally not stopped: it lets hover UI open.
+    }
   }
 
-  doc.addEventListener('mouseover', onMouseOver, true)
-  doc.addEventListener('click', onClick, true)
+  const eventTypes = [
+    'mouseover',
+    'mouseout',
+    'mouseenter',
+    'mouseleave',
+    'mousemove',
+    'mousedown',
+    'mouseup',
+    'click',
+    'wheel',
+    'touchmove',
+  ] as const
+  for (const type of eventTypes) {
+    if (type === 'wheel' || type === 'touchmove') {
+      doc.addEventListener(type, onPointerEvent, { capture: true, passive: false })
+    } else {
+      doc.addEventListener(type, onPointerEvent, true)
+    }
+  }
+
   return () => {
     highlight(null)
     // oxlint-disable-next-line typescript/no-unnecessary-condition -- runtime guard, see the attach-time cursor note.
     if (cursorRoot !== null) cursorRoot.style.cursor = previousCursor
-    doc.removeEventListener('mouseover', onMouseOver, true)
-    doc.removeEventListener('click', onClick, true)
+    for (const type of eventTypes) {
+      doc.removeEventListener(type, onPointerEvent, true)
+    }
+    tooltipObserver?.disconnect()
+    for (const [el, value] of tooltipPointerEvents) {
+      if (el.isConnected) el.style.pointerEvents = value
+    }
+    // Let hover UI know the picker is gone; while picking we swallowed
+    // mouseout/mouseleave, so replay a leave on the last hovered element to
+    // avoid leaving a frozen capsule/tooltip visible after detach. If the
+    // pointer is still over that element, leave the native hover state alone.
+    if (lastHovered !== null && lastHovered.isConnected) {
+      const stillOver = lastPoint !== null && (() => {
+        const hit = doc.elementFromPoint(lastPoint.x, lastPoint.y)
+        return hit !== null && (hit === lastHovered || lastHovered.contains(hit))
+      })()
+      if (!stillOver) {
+        lastHovered.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }))
+      }
+    }
   }
 }
