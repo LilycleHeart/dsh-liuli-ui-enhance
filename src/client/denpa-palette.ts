@@ -133,8 +133,6 @@ export function denpaApplyBrand(pal: DenpaPalette, isDark: boolean, sourceHex?: 
   const set = (k: string, v: string): void => { body.style.setProperty(k, v) }
   const unset = (k: string): void => { body.style.removeProperty(k) }
   const mix = (color: string, pct: number): string => `color-mix(in srgb, ${color} ${pct}%, transparent)`
-  // 源色（MCU sourceColorFromImage / 手动品牌色）暴露为 CSS 变量，供胶囊等使用原始取色。
-  if (sourceHex !== undefined) set('--denpa-source-color', sourceHex)
   // 用户气泡：明暗互换 —— 亮色主题用暗色面（深青气泡 + 浅字），
   // 暗色主题用亮色面（亮青气泡 + 深字）。sourceHex 缺省时回退默认源。
   const lightPal = denpaDerivePalette(sourceHex ?? DENPA_DEFAULT_SOURCE, false)
