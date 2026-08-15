@@ -87,7 +87,7 @@
   max-width: min(300px, calc(100% - 64px));
   box-sizing: border-box;
   padding: 8px 12px;
-  border: none;
+  border: 1px solid var(--dsw-alias-border-l2-darkmode-thin);
   border-radius: var(--denpa-radius, 14px);
   background: var(--dsw-specific-input-major);
   -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
@@ -103,12 +103,14 @@
   opacity: 0.8;
 }
 
-/* 悬停态：无描边，仅保留内容高亮 */
+/* 悬停态：品牌描边加强，接近 DenpaPush `.hovering` */
 .capsuleHover {
+  border-color: var(--dsw-alias-brand-primary);
 }
 
-/* 选中态：无描边，保留可交互 */
+/* 选中态：持久高亮，比悬停更实 */
 .capsuleSelected {
+  border-color: var(--dsw-alias-brand-primary);
   pointer-events: auto;
 }
 
