@@ -157,6 +157,7 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
   const [hoveredTurn, setHoveredTurn] = useState<number | null>(null)
   const [followTurn, setFollowTurn] = useState<number | null>(null)
   const [pillTop, setPillTop] = useState(0)
+  const hoverTimer = useRef<number | null>(null)
 
   const timeline = useSession(s => s.chat.timeline)
   const locations = useSession(s => s.chat.locations)
@@ -179,6 +180,10 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
     mo.observe(host, { childList: true, subtree: true })
     return () => { mo.disconnect() }
   }, [host])
+
+  useEffect(() => () => {
+    if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current)
+  }, [])
 
   const turnItems = useMemo(
     () => timeline.turnOrder
@@ -312,7 +317,23 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
     jumpToTurn(turn)
   }
 
+  const clearHoverTimer = (): void => {
+    if (hoverTimer.current !== null) {
+      window.clearTimeout(hoverTimer.current)
+      hoverTimer.current = null
+    }
+  }
+
+  const scheduleHoverClear = (): void => {
+    clearHoverTimer()
+    hoverTimer.current = window.setTimeout(() => {
+      hoverTimer.current = null
+      setHoveredTurn(null)
+    }, 180)
+  }
+
   const onTickHover = (e: { currentTarget: SVGSVGElement }, turn: number): void => {
+    clearHoverTimer()
     movePillToTick(e.currentTarget)
     setHoveredTurn(turn)
   }
@@ -344,9 +365,9 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
                 aria-expanded={selectedTurn === turn || undefined}
                 onClick={(e) => { onTickClick(e, turn) }}
                 onMouseEnter={(e) => { onTickHover(e, turn) }}
-                onMouseLeave={() => { setHoveredTurn(null) }}
+                onMouseLeave={() => { scheduleHoverClear() }}
                 onFocus={(e) => { onTickHover(e, turn) }}
-                onBlur={() => { setHoveredTurn(null) }}
+                onBlur={() => { clearHoverTimer(); setHoveredTurn(null) }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault()
@@ -364,6 +385,8 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
               className={css.capsule + ' ' + pillClass}
               style={{ left: 56, top: pillTop }}
               role="tooltip"
+              onMouseEnter={() => { clearHoverTimer(); setHoveredTurn(pillItem.turn) }}
+              onMouseLeave={() => { clearHoverTimer(); setHoveredTurn(null) }}
             >
               <div className={css.capsuleHeader}>
                 <span className={css.capsuleTurnSummary}>
