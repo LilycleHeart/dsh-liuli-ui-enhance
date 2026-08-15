@@ -132,94 +132,83 @@
   color: var(--dsw-alias-state-business-primary);
 }
 
-/* ── 胶囊：沿竖线居中滑动 ───────────────────────────────────── */
+/* ── 胶囊：沿竖线居中滑动（复刻 DenpaPush tl-rail-pill） ────── */
 .capsule {
   position: absolute;
   z-index: 8;
   transform: translate(-50%, -50%);
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 1px;
   width: max-content;
-  max-width: 360px;
+  max-width: 240px;
   box-sizing: border-box;
-  padding: 3px 10px;
+  padding: 5px 10px;
   border-radius: 999px;
-  font-size: 10px;
-  line-height: 14px;
+  background: color-mix(in srgb, var(--dsw-specific-menu) 82%, transparent);
+  -webkit-backdrop-filter: var(--denpa-material-blur);
+  backdrop-filter: var(--denpa-material-blur);
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 30%, transparent);
+  box-shadow: var(--denpa-shadow), 0 0 16px color-mix(in srgb, var(--dsw-alias-brand-primary) 12%, transparent);
+  white-space: nowrap;
   pointer-events: none;
-  transition: top 80ms linear, border-color 120ms var(--ds-ease-in-out),
+  transition: top 60ms linear, border-color 120ms var(--ds-ease-in-out),
     box-shadow 120ms var(--ds-ease-in-out), background 120ms var(--ds-ease-in-out);
 }
 
 /* 跟随态：最弱，仅作当前轮提示 */
 .capsuleFollow {
-  color: var(--dsw-alias-label-secondary);
-  background: color-mix(in srgb, var(--dsw-specific-menu) 55%, transparent);
-  border: 1px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 20%, transparent);
-  box-shadow: var(--denpa-shadow);
+  opacity: 0.8;
 }
 
-/* 悬停态：半透明、虚线边框 */
+/* 悬停态：品牌描边加强，接近 DenpaPush `.hovering` */
 .capsuleHover {
-  color: var(--dsw-alias-label-secondary);
-  background: color-mix(in srgb, var(--dsw-specific-menu) 72%, transparent);
-  border: 1px dashed var(--dsw-alias-border-l2);
-  box-shadow: var(--denpa-shadow);
+  background: color-mix(in srgb, var(--dsw-specific-menu) 88%, transparent);
+  border-color: var(--dsw-alias-brand-primary);
+  box-shadow: var(--denpa-shadow), 0 0 24px color-mix(in srgb, var(--dsw-alias-brand-primary) 25%, transparent);
 }
 
-/* 选中态：实底、品牌描边、持久高亮 */
+/* 选中态：持久高亮，比悬停更实 */
 .capsuleSelected {
-  color: var(--dsw-alias-label-primary);
   background: var(--dsw-specific-menu);
-  border: 1px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 55%, var(--dsw-alias-border-l2));
-  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow);
+  border-color: var(--dsw-alias-brand-primary);
+  box-shadow: var(--denpa-glow-brand), 0 0 24px color-mix(in srgb, var(--dsw-alias-brand-primary) 25%, transparent);
   pointer-events: auto;
 }
 
-/* ── 三栏内容 ───────────────────────────────────────────────── */
+/* ── 胶囊内容：时间 / commit / 摘要 纵向排列 ────────────────── */
 .capsuleTime,
 .capsuleCommit,
 .capsuleSummary {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-
-.capsuleTime,
-.capsuleCommit {
-  flex: none;
-  max-width: 120px;
+  max-width: 180px;
 }
 
 .capsuleTime {
-  font-size: 10px;
-  line-height: 14px;
-  color: var(--dsw-alias-label-tertiary);
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--dsw-alias-brand-primary);
 }
 
 .capsuleCommit {
   font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 11px;
-  line-height: 14px;
-  color: var(--dsw-alias-state-business-primary);
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.3px;
+  color: var(--dsw-alias-label-secondary);
   word-break: break-all;
 }
 
 .capsuleSummary {
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 160px;
-  font-size: 10px;
-  line-height: 14px;
-  color: var(--dsw-alias-label-secondary);
-}
-
-/* 栏间分隔 */
-.capsuleTime + .capsuleCommit,
-.capsuleCommit + .capsuleSummary {
-  border-left: 1px solid var(--dsw-alias-border-l2);
-  padding-left: 8px;
+  font-size: 9px;
+  line-height: 1.2;
+  color: var(--dsw-alias-label-tertiary);
 }
 
 /* 悬停/跟随胶囊内容弱化，与选中胶囊区分 */
