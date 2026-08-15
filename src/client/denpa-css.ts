@@ -434,6 +434,17 @@ ul[class$="_menu"] {
 }
 
 /* ════════════════════════════════════════════════════════════
+ * 菜单内分组标题：把实底 --dsw-specific-menu 改为与菜单一致的半透明，
+ * 避免出现一块硬编码实底挡住模糊。
+ * ════════════════════════════════════════════════════════════ */
+[class$="_menu"] [class$="_groupTitle"],
+div[role="menu"] [class$="_groupTitle"] {
+  border-radius: 8px;
+  background-color: var(--dsw-specific-input-major);
+  background-image: var(--denpa-noise);
+}
+
+/* ════════════════════════════════════════════════════════════
  * Composer 内部弹层模糊修正：把输入卡的 backdrop-filter 移到 ::before
  * 伪元素上，避免输入卡自身成为子菜单/弹层的 backdrop root。
  * 这样输入卡仍保持磨砂，子弹层也能独立模糊。
