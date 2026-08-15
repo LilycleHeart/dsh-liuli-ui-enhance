@@ -78,15 +78,15 @@
   align-items: center;
   gap: 1px;
   width: max-content;
-  max-width: min(280px, calc(100% - 64px));
+  max-width: min(300px, calc(100% - 64px));
   box-sizing: border-box;
-  padding: 6px 10px;
+  padding: 8px 12px;
   border: 1px solid var(--dsw-alias-border-l2-darkmode-thin);
-  border-radius: 22px;
+  border-radius: var(--denpa-radius, 14px);
   background: var(--dsw-specific-input-major);
   -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
   backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
-  box-shadow: var(--dsw-shadow-lv2), var(--denpa-glow-brand), var(--denpa-shadow);
+  box-shadow: var(--denpa-shadow), var(--denpa-glow-brand);
   pointer-events: none;
   transition: top 60ms linear, border-color 120ms var(--ds-ease-in-out),
     box-shadow 120ms var(--ds-ease-in-out), background 120ms var(--ds-ease-in-out);
@@ -121,7 +121,7 @@
 
 .capsuleTime {
   font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   line-height: 1.2;
   color: var(--dsw-alias-brand-primary);
@@ -129,26 +129,26 @@
 
 .capsuleDate {
   font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 500;
-  line-height: 1;
+  line-height: 1.2;
   letter-spacing: 0.3px;
   color: var(--dsw-alias-label-secondary);
 }
 
 .capsuleCommit {
   font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 500;
-  line-height: 1;
+  line-height: 1.2;
   letter-spacing: 0.3px;
   color: var(--dsw-alias-label-secondary);
   word-break: break-all;
 }
 
 .capsuleSummary {
-  font-size: 9px;
-  line-height: 1.2;
+  font-size: 11px;
+  line-height: 1.3;
   color: var(--dsw-alias-label-tertiary);
 }
 
