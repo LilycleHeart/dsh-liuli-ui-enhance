@@ -50,6 +50,12 @@
   filter: drop-shadow(0 0 4px color-mix(in srgb, var(--dsw-alias-state-business-primary) 45%, transparent));
 }
 
+/* 当前所在轮：同样放大，但颜色保持跟随态 */
+.tickFollow {
+  width: 28px;
+  height: 28px;
+}
+
 /* 最新一轮：常亮弱高亮 */
 .tickActive {
   color: var(--dsw-alias-label-primary);

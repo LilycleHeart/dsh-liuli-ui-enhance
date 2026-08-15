@@ -249,13 +249,27 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
         if (tick !== null) setFollowTurn(best.turn)
       }
     }
+    let raf = 0
+    const schedule = (): void => {
+      if (raf !== 0) return
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        update()
+      })
+    }
     update()
     scrollport.addEventListener('scroll', update, { passive: true })
-    const ro = new ResizeObserver(update)
+    const ro = new ResizeObserver(schedule)
     ro.observe(scrollport)
+    // 冷启动/切换会话时消息行可能晚于组件挂载才渲染，
+    // 监听 DOM 变化补一次跟随，避免“当前轮”直到滚动才变大。
+    const mo = new MutationObserver(schedule)
+    mo.observe(scrollport, { childList: true, subtree: true })
     return () => {
+      if (raf !== 0) cancelAnimationFrame(raf)
       scrollport.removeEventListener('scroll', update)
       ro.disconnect()
+      mo.disconnect()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [host, turnItems, hoveredTurn, selectedTurn, locations])
