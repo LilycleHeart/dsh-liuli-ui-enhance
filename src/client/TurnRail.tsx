@@ -276,6 +276,7 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
 
   const onTickClick = (_e: ReactMouseEvent<SVGSVGElement>, turn: number): void => {
     setSelectedTurn(previous => previous === turn ? null : turn)
+    setFollowTurn(null)
     setHoveredTurn(null)
     jumpToTurn(turn)
   }
@@ -302,7 +303,7 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
                 className={css.tick
                   + (selectedTurn === turn ? ' ' + css.tickSelected : '')
                   + (hoveredTurn === turn ? ' ' + css.tickHover : '')
-                  + (followTurn === turn && selectedTurn !== turn ? ' ' + css.tickFollow : '')
+                  + (followTurn === turn && selectedTurn === null ? ' ' + css.tickFollow : '')
                   + (turn === turnItems[turnItems.length - 1]?.turn ? ' ' + css.tickActive : '')}
                 viewBox="0 0 24 24"
                 role="button"
