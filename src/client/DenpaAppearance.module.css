@@ -277,14 +277,17 @@ body:not([data-ds-dark-theme]) .previewEffect::after {
   -webkit-user-drag: none;
 }
 
-/* 选框：选区外暗化（大扩散阴影 + 容器裁剪），选区内品牌描边 */
+/* 选框：选区外暗化（大扩散阴影 + 容器裁剪），选区内品牌描边；
+   框内可拖动移动，故允许命中并显示 move 光标 */
 .previewCropBox {
   position: absolute;
   box-sizing: border-box;
   border: 1.5px solid var(--dsw-alias-brand-primary);
   background: color-mix(in srgb, var(--dsw-alias-brand-primary) 12%, transparent);
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.4);
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: move;
+  touch-action: none;
 }
 
 .previewActions {

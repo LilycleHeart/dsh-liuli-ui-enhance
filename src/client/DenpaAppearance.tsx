@@ -9,7 +9,7 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime, PropsStore, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { DenpaBgArea, DenpaSettings } from '../denpa-settings.ts'
-import { bgGeometry } from './denpa-runtime.ts'
+import { bgGeometry, normalizeBgAreaToWindowRatio } from './denpa-runtime.ts'
 import type { createDenpaStore } from './denpa-store.ts'
 import css from './DenpaAppearance.module.css'
 
@@ -109,7 +109,11 @@ function WallpaperPreview(props: {
   const [winRatio, setWinRatio] = useState(() => window.innerWidth / window.innerHeight)
   const [selectMode, setSelectMode] = useState(false)
   const [selBox, setSelBox] = useState<DenpaBgArea | null>(null)
-  const drag = useRef<{ x: number; y: number } | null>(null)
+  const drag = useRef<
+    | { mode: 'create'; start: { x: number; y: number }; prev: DenpaBgArea | null }
+    | { mode: 'move'; offsetX: number; offsetY: number; box: DenpaBgArea }
+    | null
+  >(null)
 
   useEffect(() => {
     const onResize = (): void => { setWinRatio(window.innerWidth / window.innerHeight) }
@@ -129,12 +133,24 @@ function WallpaperPreview(props: {
     }
   }
 
+  const clamp = (v: number, min: number, max: number): number => Math.min(max, Math.max(min, v))
+
+  const startSelect = (): void => {
+    setSelBox(props.area !== null ? normalizeBgAreaToWindowRatio(props.area) : null)
+    setSelectMode(true)
+  }
+
   const onDown = (e: React.PointerEvent): void => {
     e.preventDefault()
     const p0 = norm(e)
     if (p0 === null) return
-    drag.current = p0
-    setSelBox({ x: p0.x, y: p0.y, w: 0, h: 0 })
+    const box = selBox
+    if (box !== null && box.w > 0 && p0.x >= box.x && p0.x <= box.x + box.w && p0.y >= box.y && p0.y <= box.y + box.h) {
+      drag.current = { mode: 'move', offsetX: p0.x - box.x, offsetY: p0.y - box.y, box }
+    } else {
+      drag.current = { mode: 'create', start: p0, prev: box }
+      setSelBox({ x: p0.x, y: p0.y, w: 0, h: 0 })
+    }
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
   }
 
@@ -143,20 +159,41 @@ function WallpaperPreview(props: {
     if (d === null) return
     const p = norm(e)
     if (p === null) return
-    setSelBox({
-      x: Math.min(d.x, p.x),
-      y: Math.min(d.y, p.y),
-      w: Math.abs(p.x - d.x),
-      h: Math.abs(p.y - d.y),
-    })
+    if (d.mode === 'create') {
+      const { start } = d
+      const dx = p.x - start.x
+      const dy = p.y - start.y
+      const dirX = dx >= 0 ? 1 : -1
+      const dirY = dy >= 0 ? 1 : -1
+      const maxX = dirX > 0 ? 1 - start.x : start.x
+      const maxY = dirY > 0 ? 1 - start.y : start.y
+      // 保持归一化 w/h=1：在已按窗口比例显示的预览上，选框像素比例即窗口比例。
+      const size = Math.min(Math.max(Math.abs(dx), Math.abs(dy)), Math.min(maxX, maxY))
+      const x = dirX > 0 ? start.x : start.x - size
+      const y = dirY > 0 ? start.y : start.y - size
+      setSelBox({ x, y, w: size, h: size })
+    } else {
+      const box = d.box
+      const x = clamp(p.x - d.offsetX, 0, 1 - box.w)
+      const y = clamp(p.y - d.offsetY, 0, 1 - box.h)
+      setSelBox({ ...box, x, y })
+    }
   }
 
   const onUp = (): void => {
     const d = drag.current
     drag.current = null
     if (d === null) return
+    if (d.mode === 'create') {
+      // 拖拽完成后停留在框选模式，方便继续移动微调；点“完成选区”再保存。
+      // 若只是误点（未形成有效选框），恢复进入创建前的选区。
+      setSelBox(prev => (prev !== null && prev.w > 0.04 && prev.h > 0.04 ? prev : d.prev))
+    }
+  }
+
+  const onDone = (): void => {
     if (selBox !== null && selBox.w > 0.04 && selBox.h > 0.04) {
-      props.onArea({ x: selBox.x, y: selBox.y, w: selBox.w, h: selBox.h })
+      props.onArea(normalizeBgAreaToWindowRatio(selBox))
     }
     setSelectMode(false)
     setSelBox(null)
@@ -179,15 +216,18 @@ function WallpaperPreview(props: {
       <div className={css.previewActions}>
         <span className={css.previewHint}>{props.t('area.hint')}</span>
         {selectMode ? (
-          <Button variant="primary" size="sm"
-            onClick={() => { setSelectMode(false); setSelBox(null) }}
-          >
-            {props.t('area.done')}
-          </Button>
+          <>
+            <Button variant="ghost" size="sm" onClick={() => { setSelBox(null) }}>
+              {props.t('area.reselect')}
+            </Button>
+            <Button variant="primary" size="sm" onClick={onDone}>
+              {props.t('area.done')}
+            </Button>
+          </>
         ) : (
           <>
             <Button variant="ghost" size="sm" disabled={props.fit !== 'cover'}
-              onClick={() => { setSelectMode(true); setSelBox(null) }}
+              onClick={startSelect}
             >
               {props.t('area.reselect')}
             </Button>
