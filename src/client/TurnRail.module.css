@@ -33,8 +33,14 @@
   color: var(--dsw-alias-label-tertiary);
   cursor: pointer;
   pointer-events: auto;
+  outline: none;
   transition: width 120ms var(--ds-ease-in-out), height 120ms var(--ds-ease-in-out),
     color 120ms var(--ds-ease-in-out), filter 120ms var(--ds-ease-in-out);
+}
+
+.tick:focus,
+.tick:focus-visible {
+  outline: none;
 }
 
 .tick:hover,
