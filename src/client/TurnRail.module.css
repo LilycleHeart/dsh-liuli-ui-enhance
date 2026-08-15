@@ -62,7 +62,7 @@
   filter: drop-shadow(0 0 5px color-mix(in srgb, var(--dsw-alias-state-business-primary) 40%, transparent));
 }
 
-/* ── 胶囊：沿竖线滑动，圆角与卡片一致，不超出卡片容器 ──────── */
+/* ── 胶囊：使用与输入卡（composer card）同款卡片样式 ─────────── */
 .capsule {
   position: absolute;
   z-index: 8;
@@ -75,12 +75,12 @@
   max-width: min(280px, calc(100% - 64px));
   box-sizing: border-box;
   padding: 6px 10px;
-  border-radius: var(--denpa-radius, 14px);
-  background: color-mix(in srgb, var(--dsw-specific-menu) 82%, transparent);
-  -webkit-backdrop-filter: var(--denpa-material-blur);
-  backdrop-filter: var(--denpa-material-blur);
-  border: 1px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 30%, transparent);
-  box-shadow: var(--denpa-shadow), var(--denpa-glow-brand);
+  border: 1px solid var(--dsw-alias-border-l2-darkmode-thin);
+  border-radius: 22px;
+  background: var(--dsw-specific-input-major);
+  -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+  backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+  box-shadow: var(--dsw-shadow-lv2), var(--denpa-glow-brand), var(--denpa-shadow);
   pointer-events: none;
   transition: top 60ms linear, border-color 120ms var(--ds-ease-in-out),
     box-shadow 120ms var(--ds-ease-in-out), background 120ms var(--ds-ease-in-out);
@@ -93,13 +93,11 @@
 
 /* 悬停态：品牌描边加强，接近 DenpaPush `.hovering` */
 .capsuleHover {
-  background: color-mix(in srgb, var(--dsw-specific-menu) 88%, transparent);
   border-color: var(--dsw-alias-brand-primary);
 }
 
 /* 选中态：持久高亮，比悬停更实 */
 .capsuleSelected {
-  background: var(--dsw-specific-menu);
   border-color: var(--dsw-alias-brand-primary);
   pointer-events: auto;
 }
