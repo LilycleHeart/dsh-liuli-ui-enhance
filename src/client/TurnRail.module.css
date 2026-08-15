@@ -132,26 +132,25 @@
   color: var(--dsw-alias-state-business-primary);
 }
 
-/* ── 胶囊：沿竖线居中滑动（复刻 DenpaPush tl-rail-pill） ────── */
+/* ── 胶囊：沿竖线滑动，圆角与卡片一致，不超出卡片容器 ──────── */
 .capsule {
   position: absolute;
   z-index: 8;
-  transform: translate(-50%, -50%);
+  transform: translateY(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 1px;
   width: max-content;
-  max-width: 240px;
+  max-width: min(280px, calc(100% - 64px));
   box-sizing: border-box;
-  padding: 5px 10px;
-  border-radius: 999px;
+  padding: 6px 10px;
+  border-radius: var(--denpa-radius, 14px);
   background: color-mix(in srgb, var(--dsw-specific-menu) 82%, transparent);
   -webkit-backdrop-filter: var(--denpa-material-blur);
   backdrop-filter: var(--denpa-material-blur);
   border: 1px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 30%, transparent);
   box-shadow: var(--denpa-shadow), 0 0 16px color-mix(in srgb, var(--dsw-alias-brand-primary) 12%, transparent);
-  white-space: nowrap;
   pointer-events: none;
   transition: top 60ms linear, border-color 120ms var(--ds-ease-in-out),
     box-shadow 120ms var(--ds-ease-in-out), background 120ms var(--ds-ease-in-out);
@@ -177,14 +176,15 @@
   pointer-events: auto;
 }
 
-/* ── 胶囊内容：时间 / commit / 摘要 纵向排列 ────────────────── */
+/* ── 胶囊内容：时间 / 日期 / commit / 摘要 四栏纵向排列 ────── */
 .capsuleTime,
+.capsuleDate,
 .capsuleCommit,
 .capsuleSummary {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  max-width: 180px;
+  max-width: 100%;
 }
 
 .capsuleTime {
@@ -193,6 +193,15 @@
   font-weight: 600;
   line-height: 1.2;
   color: var(--dsw-alias-brand-primary);
+}
+
+.capsuleDate {
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.3px;
+  color: var(--dsw-alias-label-secondary);
 }
 
 .capsuleCommit {

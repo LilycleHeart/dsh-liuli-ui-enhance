@@ -29,14 +29,18 @@ interface TurnInfo {
   readonly commit: string
   readonly summary: string
   readonly time: string
+  readonly date: string
 }
 
-/** 把 turn/start 或 turn/end 时间格式化为 `MM-DD HH:mm`。 */
-function formatTurnTime(time: number | undefined): string {
-  if (time === undefined) return ''
+/** 把 turn/start 或 turn/end 时间拆成 `HH:mm` 与 `MM-DD`。 */
+function formatTurnDateTime(time: number | undefined): { time: string; date: string } {
+  if (time === undefined) return { time: '', date: '' }
   const date = new Date(time)
   const pad = (value: number): string => String(value).padStart(2, '0')
-  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+  return {
+    time: `${pad(date.getHours())}:${pad(date.getMinutes())}`,
+    date: `${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+  }
 }
 
 /** 从一段文本里提取 git commit 号（短哈希，7-40 位 hex）。 */
@@ -127,6 +131,7 @@ function extractTurnInfo(
     commit: [...new Set(commits.filter(Boolean))].join(' '),
     summary: summaries.find(text => text !== '') ?? '',
     time: '',
+    date: '',
   }
 }
 
@@ -181,12 +186,14 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
       .map((turn, index) => {
         const base = extractTurnInfo(turn, nodes, locations)
         const location = timeline.turns.get(turn)
+        const { time, date } = formatTurnDateTime(location?.start?.time ?? location?.end?.time)
         return {
           turn,
           index,
           info: {
             ...base,
-            time: formatTurnTime(location?.start?.time ?? location?.end?.time),
+            time,
+            date,
           },
         }
       }),
@@ -308,11 +315,12 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
           {pillItem !== undefined && (
             <div
               className={css.capsule + ' ' + pillClass}
-              style={{ left: 44, top: pillTop }}
+              style={{ left: 56, top: pillTop }}
               role={selectedTurn === pillTurn ? 'region' : 'tooltip'}
               aria-label={selectedTurn === pillTurn ? `第 ${pillItem.index + 1} 轮详情` : undefined}
             >
               <span className={css.capsuleTime}>{pillItem.info.time !== '' ? pillItem.info.time : '--'}</span>
+              <span className={css.capsuleDate}>{pillItem.info.date !== '' ? pillItem.info.date : '--'}</span>
               <span className={css.capsuleCommit}>{pillItem.info.commit !== '' ? pillItem.info.commit : '无'}</span>
               <span className={css.capsuleSummary}>{pillItem.info.summary !== '' ? pillItem.info.summary : '无摘要'}</span>
             </div>
