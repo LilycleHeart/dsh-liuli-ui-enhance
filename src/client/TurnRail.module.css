@@ -87,11 +87,13 @@
   max-width: min(300px, calc(100% - 64px));
   box-sizing: border-box;
   padding: 8px 12px;
-  border: 1px solid var(--dsw-alias-border-l2-darkmode-thin);
+  border: 1px solid var(--dsw-alias-border-l1);
   border-radius: var(--denpa-radius, 14px);
-  background: var(--dsw-specific-input-major);
-  -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
-  backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+  background: var(--dsw-specific-sidebar-fill);
+  background-image: var(--denpa-noise);
+  -webkit-backdrop-filter: var(--denpa-material-blur);
+  backdrop-filter: var(--denpa-material-blur);
+  color: var(--dsw-alias-label-primary);
   box-shadow: var(--denpa-shadow), var(--denpa-glow-brand);
   pointer-events: auto;
   transition: top 60ms linear, border-color 120ms var(--ds-ease-in-out),
