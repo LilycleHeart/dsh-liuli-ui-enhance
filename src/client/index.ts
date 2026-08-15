@@ -42,7 +42,7 @@ import { denpaCss } from './denpa-css.ts'
 import {
   DenpaHeaderVoiceprint, DenpaHeaderChrome, DenpaHeaderResizer,
 } from './HeaderEffects.tsx'
-import { TurnRail } from './TurnRail.tsx'
+import { setTurnRailCommitHandler, TurnRail } from './TurnRail.tsx'
 import { disposeSupplierQuota, initSupplierQuota, refreshSupplierQuota } from './supplier-quota.ts'
 import { SupplierQuota } from './SupplierQuota.tsx'
 import { createElement } from 'react'
@@ -146,6 +146,36 @@ export function apply(ctx: ClientContext): void {
       clipboardText: info.selector,
     }, span)
   }
+
+  // ── commit 引用：点击 TurnRail 胶囊里的 commit，把 commit 号作为引用卡片插入输入框 ──
+  const commitCodec: ReferenceCodec = {
+    clipboardText: ref => ref,
+    serialize: ref => Promise.resolve(ref),
+  }
+  const commitSource: InputTriggerSource = {
+    trigger: '@',
+    name: 'liuli-commit',
+    candidates: () => Promise.resolve([]),
+    onPick: () => undefined,
+    codec: commitCodec,
+  }
+  ctx.effect(() => ctx.inputTriggers.registerSource(commitSource), 'liuli-theme: commit reference source')
+  const insertCommitReference = (commit: string): void => {
+    const current = ctx.sessions.list.getSnapshot().current
+    if (current === undefined) return
+    const actx = ctx.sessions.scope(current)
+    if (actx === undefined) return
+    const input = ctx.conversation.input.for(actx)
+    const state = input.state.getSnapshot()
+    const span = { start: state.draft.length, end: state.draft.length, draftRev: state.draftRev }
+    input.insertReference({
+      source: 'liuli-commit',
+      ref: commit,
+      label: 'commit: ' + commit,
+      clipboardText: commit,
+    }, span)
+  }
+  setTurnRailCommitHandler(insertCommitReference)
 
   // ── 常驻悬浮圆点工具窗（fixed 全局置顶，独立 React root）──
   ctx.effect(() => {

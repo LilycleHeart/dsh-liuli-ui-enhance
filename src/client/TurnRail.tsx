@@ -32,6 +32,14 @@ interface TurnInfo {
   readonly date: string
 }
 
+/** 由插件 apply 注入：把 commit 号作为引用卡片送回当前会话输入框。 */
+type CommitReturnHandler = (commit: string) => void
+let commitReturnHandler: CommitReturnHandler | null = null
+
+export function setTurnRailCommitHandler(handler: CommitReturnHandler | null): void {
+  commitReturnHandler = handler
+}
+
 /** 把 turn/start 或 turn/end 时间拆成 `HH:mm` 与 `MM-DD`。 */
 function formatTurnDateTime(time: number | undefined): { time: string; date: string } {
   if (time === undefined) return { time: '', date: '' }
@@ -279,35 +287,11 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [host, turnItems, hoveredTurn, selectedTurn, locations])
 
-  /** 点击 commit 后回到对话窗口，并临时把该轮消息“包装”成高亮卡片。 */
-  const highlightTurnCard = (turn: number): void => {
-    if (host === null) return
-    const row = findTurnRow(host, locations.getTurn(turn))
-    if (row === null) return
-    const previous = {
-      outline: row.style.outline,
-      outlineOffset: row.style.outlineOffset,
-      boxShadow: row.style.boxShadow,
-      borderRadius: row.style.borderRadius,
-      transition: row.style.transition,
-    }
-    row.style.outline = '2px solid var(--dsw-alias-brand-primary)'
-    row.style.outlineOffset = '2px'
-    row.style.borderRadius = 'var(--denpa-radius, 14px)'
-    row.style.boxShadow = 'var(--denpa-glow-brand)'
-    row.style.transition = 'outline 200ms ease, box-shadow 200ms ease'
-    window.setTimeout(() => {
-      row.style.outline = previous.outline
-      row.style.outlineOffset = previous.outlineOffset
-      row.style.boxShadow = previous.boxShadow
-      row.style.borderRadius = previous.borderRadius
-      row.style.transition = previous.transition
-    }, 2200)
-  }
-
+  /** 点击 commit 后把 commit 号送回对话窗口（由插件注入处理函数）。 */
   const onCommitClick = (turn: number): void => {
-    jumpToTurn(turn)
-    highlightTurnCard(turn)
+    const item = turnItems.find(candidate => candidate.turn === turn)
+    const commit = item?.info.commit ?? ''
+    if (commit !== '' && commitReturnHandler !== null) commitReturnHandler(commit)
   }
 
   const onTickClick = (_e: ReactMouseEvent<SVGSVGElement>, turn: number): void => {
