@@ -375,4 +375,165 @@ body[data-ds-dark-theme] [data-denpa-bg]::before {
     animation: none;
   }
 }
+
+/* ════════════════════════════════════════════════════════════
+ * 对话页中间模糊缝修正：只挖掉 header 与 scrollBody 之间 12px 的
+ * 壁纸模糊层，保留 header/正文卡片的亚克力磨砂。
+ * --dsh-header-height 由 HeaderEffects 在运行时测量并写到 root 上。
+ * ════════════════════════════════════════════════════════════ */
+div[data-phase] > div[aria-hidden="true"]:first-child {
+  --dsh-header-gap: 12px;
+  -webkit-mask-image: var(--dsh-wallpaper-mask, linear-gradient(to bottom,
+    #000 0,
+    #000 var(--dsh-header-height, 80px),
+    transparent var(--dsh-header-height, 80px),
+    transparent calc(var(--dsh-header-height, 80px) + var(--dsh-header-gap)),
+    #000 calc(var(--dsh-header-height, 80px) + var(--dsh-header-gap)),
+    #000 100%));
+  mask-image: var(--dsh-wallpaper-mask, linear-gradient(to bottom,
+    #000 0,
+    #000 var(--dsh-header-height, 80px),
+    transparent var(--dsh-header-height, 80px),
+    transparent calc(var(--dsh-header-height, 80px) + var(--dsh-header-gap)),
+    #000 calc(var(--dsh-header-height, 80px) + var(--dsh-header-gap)),
+    #000 100%));
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+/* ════════════════════════════════════════════════════════════
+ * Agent 询问卡片磨砂：与输入框（composer）一致的亚克力效果。
+ * QuestionComposer / PlanReviewPanel 都是接管输入框位置的卡片，
+ * 背景沿用 --dsw-specific-input-major，但宿主 CSS 未带 backdrop-filter。
+ * ════════════════════════════════════════════════════════════ */
+[data-question-key] > section,
+[data-plan-review-key] > section {
+  -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+  backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+}
+
+/* ════════════════════════════════════════════════════════════
+ * 其余浮动卡片统一补磨砂：审批卡、HoverCard、命令弹层、对话框、
+ * 上下文详情弹层、下拉菜单/树菜单。
+ * 背景改为与侧栏/输入框一致的半透明亚克力 + 噪声，避免实底遮住模糊。
+ * ════════════════════════════════════════════════════════════ */
+[data-approval-key] > div,
+body > [class*="_card"],
+div[aria-label][class*="_card"],
+[role="dialog"][class*="_dialog"],
+[role="dialog"][class*="_panel"],
+div[role="menu"],
+div[class$="_menu"],
+ul[class$="_menu"] {
+  background-color: var(--dsw-specific-input-major);
+  background-image: var(--denpa-noise);
+  -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+  backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+}
+
+/* ════════════════════════════════════════════════════════════
+ * Composer 内部弹层模糊修正：把输入卡的 backdrop-filter 移到 ::before
+ * 伪元素上，避免输入卡自身成为子菜单/弹层的 backdrop root。
+ * 这样输入卡仍保持磨砂，子弹层也能独立模糊。
+ * ════════════════════════════════════════════════════════════ */
+[data-composer-card] {
+  position: relative;
+  isolation: isolate;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  background: transparent !important;
+}
+
+[data-composer-card]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background-color: var(--dsw-specific-input-major);
+  background-image: var(--denpa-noise);
+  -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+  backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+  pointer-events: none;
+}
+
+/* ════════════════════════════════════════════════════════════
+ * 命令卡片（GenericCommandCard）磨砂：聊天流里的命令执行卡。
+ * 用 :not([data-tool]) 排除通用工具卡，只命中命令卡。
+ * ════════════════════════════════════════════════════════════ */
+[data-variant="others"]:not([data-tool]) {
+  border-radius: 12px;
+  background-color: var(--dsw-specific-input-major);
+  background-image: var(--denpa-noise);
+  -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+  backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+}
+
+/* ════════════════════════════════════════════════════════════
+ * 模型/提供商设置卡片：rowCard / addCard / setupCard 及内嵌 editor。
+ * ════════════════════════════════════════════════════════════ */
+li[class$="rowCard"],
+li[class$="setupCard"],
+div[class$="addCard"] {
+  background-color: var(--dsw-specific-input-major);
+  background-image: var(--denpa-noise);
+  -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+  backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+}
+
+li[class$="rowCard"] div[class$="_editor"],
+div[class$="addCard"] div[class$="_editor"],
+li[class$="setupCard"] div[class$="_editor"] {
+  background-color: var(--dsw-specific-input-major);
+  background-image: var(--denpa-noise);
+  -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+  backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+}
+
+/* ════════════════════════════════════════════════════════════
+ * 工具/技能展开内容卡：ioCard / instructionsCard。
+ * ════════════════════════════════════════════════════════════ */
+div[class$="ioCard"],
+div[class$="instructionsCard"] {
+  background-color: var(--dsw-specific-input-major);
+  background-image: var(--denpa-noise);
+  -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+  backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+}
+
+/* ════════════════════════════════════════════════════════════
+ * 悬浮球 hover 信息卡（已有半透明底，只补模糊）。
+ * ════════════════════════════════════════════════════════════ */
+div[class$="hoverCard"] {
+  background-color: var(--dsw-specific-input-major);
+  background-image: var(--denpa-noise);
+  -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+  backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+}
+
+/* ════════════════════════════════════════════════════════════
+ * DenpaPush 侧边栏会话选中样式（从 astrbot_plugin_twitter_monitor 移植）
+ * 选中会话/搜索结果行使用品牌 surface 底、accent 文字与左侧指示条，
+ * 并带 DenpaPush 辉光/阴影。
+ * ════════════════════════════════════════════════════════════ */
+[role="treeitem"][aria-selected="true"] {
+  background-color: var(--dsw-specific-sidebar-nav-item-active);
+  /* 左侧短指示条：与 DenpaPush 的 ::before 3px 圆角条等价，避免和拖拽 marker 伪元素冲突 */
+  background-image: linear-gradient(
+    var(--dsw-specific-sidebar-nav-item-active-accent),
+    var(--dsw-specific-sidebar-nav-item-active-accent)
+  );
+  background-repeat: no-repeat;
+  background-position: left center;
+  background-size: 3px 18px;
+  color: var(--dsw-specific-sidebar-nav-item-active-accent);
+  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow);
+}
+
+/* 选中行内文字统一走 accent；StateDot 自身状态色因更高优先级保持。 */
+[role="treeitem"][aria-selected="true"] span {
+  color: inherit;
+}
 `

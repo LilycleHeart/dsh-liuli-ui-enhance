@@ -492,6 +492,52 @@ export function DenpaHeaderResizer() {
     if (el === null) return
     const header = el.closest('header')
     if (header === null) return
+    // 把 header 实际高度同步到 root 的 --dsh-header-height，
+    // 并生成跟随卡片圆角的 SVG mask（--dsh-wallpaper-mask），
+    // 让壁纸模糊层只在 header / 正文两张圆角卡片范围内可见。
+    const root = header.closest<HTMLElement>('[data-phase]')
+    const sync = (): void => {
+      if (root === null) return
+      const headerRect = header.getBoundingClientRect()
+      const blur = root.querySelector<HTMLElement>(':scope > [aria-hidden="true"]:first-child')
+      const blurRect = blur?.getBoundingClientRect()
+      if (blurRect === undefined || blurRect.height <= 0) return
+      root.style.setProperty('--dsh-header-height', `${headerRect.height}px`)
+      const body = root.querySelector<HTMLElement>('[data-conversation-scroll]')
+      const bodyRect = body?.getBoundingClientRect()
+      const w = blurRect.width
+      const h = blurRect.height
+      const local = (r: DOMRect): { x: number; y: number; width: number; height: number } => ({
+        x: r.left - blurRect.left,
+        y: r.top - blurRect.top,
+        width: r.width,
+        height: r.height,
+      })
+      const headerRadius = Number.parseFloat(getComputedStyle(header).borderTopLeftRadius) || 14
+      const headerSvg = headerRect.height > 0
+        ? (() => {
+          const r = local(headerRect)
+          return `<rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" rx="${headerRadius}"/>`
+        })()
+        : ''
+      let bodySvg = ''
+      if (bodyRect !== undefined && bodyRect.height > 0) {
+        const r = local(bodyRect)
+        const bodyStyle = getComputedStyle(body!)
+        const topRadius = Number.parseFloat(bodyStyle.borderTopLeftRadius) || 14
+        const bottomRadius = Math.max(
+          Number.parseFloat(bodyStyle.borderBottomLeftRadius) || 0,
+          Number.parseFloat(bodyStyle.borderBottomRightRadius) || 0,
+        )
+        if (bottomRadius > 0) {
+          bodySvg = `<rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" rx="${topRadius}"/>`
+        } else {
+          bodySvg = `<path d="M${r.x} ${r.y + topRadius} L${r.x + topRadius} ${r.y} L${r.x + r.width - topRadius} ${r.y} Q${r.x + r.width} ${r.y} ${r.x + r.width} ${r.y + topRadius} L${r.x + r.width} ${r.y + r.height} L${r.x} ${r.y + r.height} Z"/>`
+        }
+      }
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${headerSvg}${bodySvg}</svg>`
+      root.style.setProperty('--dsh-wallpaper-mask', `url("data:image/svg+xml,${encodeURIComponent(svg)}")`)
+    }
 
     // 布局记忆：恢复上次拖拽高度
     try {
@@ -500,12 +546,24 @@ export function DenpaHeaderResizer() {
         header.style.minHeight = saved + 'px'
       }
     } catch (_) { /* 存储不可用则跳过 */ }
+    sync()
+    const headerObserver = new ResizeObserver(sync)
+    headerObserver.observe(header)
+    const rootObserver = root !== null ? new ResizeObserver(sync) : null
+    rootObserver?.observe(root!)
+    const scrollBody = root?.querySelector<HTMLElement>('[data-conversation-scroll]') ?? null
+    const scrollBodyObserver = scrollBody !== null ? new ResizeObserver(sync) : null
+    scrollBodyObserver?.observe(scrollBody!)
+    // 圆角/材质等设置会写 body 内联变量，变化时重新生成 mask。
+    const bodyObserver = new MutationObserver(sync)
+    bodyObserver.observe(document.body, { attributes: true, attributeFilter: ['style'] })
 
     let drag: { startY: number; startH: number } | null = null
     const onMove = (e: PointerEvent): void => {
       if (drag === null) return
       const h = Math.max(MIN_H, Math.min(MAX_H, drag.startH + (e.clientY - drag.startY)))
       header.style.minHeight = h + 'px'
+      sync()
     }
     const onUp = (e: PointerEvent): void => {
       if (drag === null) return
@@ -529,6 +587,10 @@ export function DenpaHeaderResizer() {
     }
     el.addEventListener('pointerdown', onDown)
     return () => {
+      headerObserver.disconnect()
+      rootObserver?.disconnect()
+      scrollBodyObserver?.disconnect()
+      bodyObserver.disconnect()
       el.removeEventListener('pointerdown', onDown)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)

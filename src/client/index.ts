@@ -14,6 +14,9 @@
  * presenter 应用与 theme/change 事件均由该服务承担，本插件只消费。
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
+// Type-only: pulls the forwarded remote event vocabulary for ctx.remote.$on.
+import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls the theme service's Context merge (ctx.theme + theme/change).
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
@@ -39,6 +42,8 @@ import { denpaCss } from './denpa-css.ts'
 import {
   DenpaHeaderVoiceprint, DenpaHeaderChrome, DenpaHeaderResizer,
 } from './HeaderEffects.tsx'
+import { disposeSupplierQuota, initSupplierQuota, refreshSupplierQuota } from './supplier-quota.ts'
+import { SupplierQuota } from './SupplierQuota.tsx'
 import { createElement } from 'react'
 import { FloatBall } from './FloatBall.tsx'
 import { createRoot } from 'react-dom/client'
@@ -59,8 +64,8 @@ const STYLE_ID = 'liuli-theme-css'
 /** 设置持久化键（localStorage，随浏览器持久化）。 */
 const DENPA_LS_KEY = 'denpa:settings'
 
-/** Required services: slots/locale for the settings section, theme for the toggle bridge. */
-export const inject = ['slots', 'locale', 'theme', 'sessions', 'conversation', 'inputTriggers']
+/** Required services: slots/locale for the settings section, theme for the toggle bridge, connection/remote for supplier quota. */
+export const inject = ['slots', 'locale', 'theme', 'sessions', 'conversation', 'inputTriggers', 'connection', 'remote']
 
 /** 宽边模式样式：对话信息区在宽屏下撑满可用宽度（提高左右空间利用率）。 */
 const WIDE_MODE_CSS = [
@@ -96,6 +101,21 @@ function injectThemeCss(): void {
  */
 export function apply(ctx: ClientContext): void {
   injectThemeCss()
+
+  // ── 供应商额度：注入 connection/remote，供 header 工具区显示当前供应商额度 ──
+  initSupplierQuota(ctx.get('connection') as ConnectionHandle, ctx.get('modelDirectories'))
+  ctx.effect(() => () => disposeSupplierQuota(), 'liuli-theme: supplier quota dispose')
+  const refreshQuota = (): void => { void refreshSupplierQuota() }
+  ctx.effect(() => {
+    const disposers = [
+      ctx.remote.$on('llm/adapters-updated', refreshQuota),
+      ctx.remote.$on('settings/document-updated', refreshQuota),
+      ctx.on('connection/reset', refreshQuota),
+    ]
+    return () => {
+      for (const dispose of disposers) dispose()
+    }
+  }, 'liuli-theme: supplier quota refresh')
 
   // ── 元素选择器：选中元素作为引用 chip 插入当前会话输入框 ──
   const codec: ReferenceCodec = {
@@ -273,7 +293,13 @@ export function apply(ctx: ClientContext): void {
     inject: denpaInjected,
   }, DenpaAppearanceSection))
 
-  // ── 会话 header 效果（声纹/监听/主题切换/拉伸手柄）──
+  // ── 会话 header 效果（供应商额度/声纹/监听/主题切换/拉伸手柄）──
+  // 额度放在 header.actions：跟在 agent preset 标签右侧，作为普通文本而非工具区胶囊。
+  ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
+    name: 'conversation.session.header.actions',
+    id: 'liuli-supplier-quota',
+    order: 5,
+  }, SupplierQuota))
   ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
     name: 'conversation.session.header.actions',
     id: 'liuli-voiceprint',
