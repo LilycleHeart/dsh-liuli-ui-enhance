@@ -15,7 +15,7 @@ export type DenpaMaterialType = 'acrylic' | 'mica'
 export type DenpaFontMode = 'misans' | 'builtin'
 /** 壁纸适应模式 */
 export type DenpaBgFit = 'cover' | 'contain' | 'stretch'
-/** 壁纸自定义选区（相对原图的归一化矩形，0..1；Cover 下按窗口比例约束，即 w/h=1）。 */
+/** 壁纸自定义选区（相对原图的归一化矩形，0..1；Cover 下按窗口比例约束）。 */
 export interface DenpaBgArea {
   x: number
   y: number
@@ -92,7 +92,8 @@ export const DenpaSettingsSchema: z<DenpaSettings> = z.object({
   shadow_intensity: z.number().default(60),
   wide_mode: z.boolean().default(false),
   bg_fit: z.union(['cover', 'contain', 'stretch']).default('cover'),
-  // bg_area 为可选对象（null 表示全图），schemastery 无 nullable 组合，由 denpaSettingsOf 合并默认值。
+  // bg_area 为可选对象（null 表示全图），这里用 unknown 占位避免被 schema 过滤掉。
+  bg_area: z.any(),
 }) as unknown as z<DenpaSettings>
 
 /** 合并任意部分值到完整设置（读侧防御）。 */
