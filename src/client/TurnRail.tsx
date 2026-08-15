@@ -246,10 +246,7 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
       }
       if (best !== null) {
         const tick = host.querySelector<Element>(`[data-turn="${best.turn}"]`)
-        if (tick !== null) {
-          setFollowTurn(best.turn)
-          movePillToTick(tick)
-        }
+        if (tick !== null) setFollowTurn(best.turn)
       }
     }
     update()
@@ -263,8 +260,7 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [host, turnItems, hoveredTurn, selectedTurn, locations])
 
-  const onTickClick = (e: ReactMouseEvent<SVGSVGElement>, turn: number): void => {
-    movePillToTick(e.currentTarget)
+  const onTickClick = (_e: ReactMouseEvent<SVGSVGElement>, turn: number): void => {
     setSelectedTurn(previous => previous === turn ? null : turn)
     setHoveredTurn(null)
     jumpToTurn(turn)
@@ -275,13 +271,9 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
     setHoveredTurn(turn)
   }
 
-  const pillTurn = selectedTurn ?? hoveredTurn ?? followTurn
-  const pillItem = pillTurn === null ? undefined : turnItems.find(item => item.turn === pillTurn)
-  const pillClass = selectedTurn === pillTurn
-    ? css.capsuleSelected
-    : hoveredTurn === pillTurn
-      ? css.capsuleHover
-      : css.capsuleFollow
+  // 胶囊只在指针悬浮时出现；选中/跟随只影响刻度样式，不展开胶囊。
+  const pillItem = hoveredTurn === null ? undefined : turnItems.find(item => item.turn === hoveredTurn)
+  const pillClass = css.capsuleHover
 
   return (
     <>
@@ -299,8 +291,6 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
                   + (followTurn === turn && selectedTurn !== turn && hoveredTurn !== turn ? ' ' + css.tickFollow : '')
                   + (turn === turnItems[turnItems.length - 1]?.turn ? ' ' + css.tickActive : '')}
                 viewBox="0 0 24 24"
-                width={28}
-                height={28}
                 role="button"
                 tabIndex={0}
                 title={`第 ${index + 1} 轮`}
@@ -327,8 +317,7 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
             <div
               className={css.capsule + ' ' + pillClass}
               style={{ left: 56, top: pillTop }}
-              role={selectedTurn === pillTurn ? 'region' : 'tooltip'}
-              aria-label={selectedTurn === pillTurn ? `第 ${pillItem.index + 1} 轮详情` : undefined}
+              role="tooltip"
             >
               <span className={css.capsuleTime}>{pillItem.info.time !== '' ? pillItem.info.time : '--'}</span>
               <span className={css.capsuleDate}>{pillItem.info.date !== '' ? pillItem.info.date : '--'}</span>
