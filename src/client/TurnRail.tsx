@@ -334,10 +334,19 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
               style={{ left: 56, top: pillTop }}
               role="tooltip"
             >
-              <span className={css.capsuleTime}>{pillItem.info.time !== '' ? pillItem.info.time : '--'}</span>
-              <span className={css.capsuleDate}>{pillItem.info.date !== '' ? pillItem.info.date : '--'}</span>
-              <span className={css.capsuleCommit}>{pillItem.info.commit !== '' ? pillItem.info.commit : '无'}</span>
-              <span className={css.capsuleSummary}>{pillItem.info.summary !== '' ? pillItem.info.summary : '无摘要'}</span>
+              <div className={css.capsuleHeader}>
+                <span className={css.capsuleTurnSummary}>
+                  <span className={css.capsuleTurn}>第 {pillItem.index + 1} 轮</span>
+                  <span className={css.capsuleSummary}>{pillItem.info.summary !== '' ? pillItem.info.summary : '无摘要'}</span>
+                </span>
+                <span className={css.capsuleMeta}>
+                  <span className={css.capsuleTime}>{pillItem.info.time !== '' ? pillItem.info.time : '--'}</span>
+                  <span className={css.capsuleDate}>{pillItem.info.date !== '' ? pillItem.info.date : '--'}</span>
+                </span>
+              </div>
+              <div className={css.capsuleCommitRow}>
+                <span className={css.capsuleCommit}>{pillItem.info.commit !== '' ? pillItem.info.commit : '无 commit'}</span>
+              </div>
             </div>
           )}
         </>,
