@@ -289,7 +289,6 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
       {host !== null && chatMounted && turnItems.length > 0 && createPortal(
         <>
           <nav className={css.rail} aria-label="对话轮次导航">
-            <div className={css.line} aria-hidden="true" />
             {turnItems.map(({ turn, index }) => (
               <button
                 key={turn}
