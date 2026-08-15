@@ -302,7 +302,7 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
                 className={css.tick
                   + (selectedTurn === turn ? ' ' + css.tickSelected : '')
                   + (hoveredTurn === turn ? ' ' + css.tickHover : '')
-                  + (followTurn === turn && selectedTurn !== turn && hoveredTurn !== turn ? ' ' + css.tickFollow : '')
+                  + (followTurn === turn && selectedTurn !== turn ? ' ' + css.tickFollow : '')
                   + (turn === turnItems[turnItems.length - 1]?.turn ? ' ' + css.tickActive : '')}
                 viewBox="0 0 24 24"
                 role="button"
