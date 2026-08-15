@@ -6,6 +6,9 @@
    任何 DOM 写入之前校验，被淘汰的调用不写任何变量。 */
 let denpaApplySeq = 0
 
+/** 当前壁纸图片的原始宽高比，用于窗口尺寸变化时保持裁切不拉伸。 */
+let currentImageRatio: number | null = null
+
 import { hexFromArgb, sourceColorFromImage } from '../vendor/material-color-utilities.js'
 import {
   DENPA_DEFAULT_SOURCE, denpaApplyBrand, denpaDerivePalette,
@@ -79,7 +82,7 @@ export async function compressImage(file: File, maxDim = 1920, quality = 0.85): 
 }
 
 /** 加载一张图片（跨域放行）。 */
-function loadImage(imageSrc: string): Promise<HTMLImageElement> {
+export function loadImage(imageSrc: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()
     img.crossOrigin = 'anonymous'
@@ -96,6 +99,9 @@ function loadImage(imageSrc: string): Promise<HTMLImageElement> {
  */
 export async function dynamicSourceFromImage(imageSrc: string): Promise<string> {
   const img = await loadImage(imageSrc)
+  if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+    currentImageRatio = img.naturalWidth / img.naturalHeight
+  }
   const size = 64
   const cvs = document.createElement('canvas')
   cvs.width = size
@@ -138,28 +144,47 @@ function ensureBgLayer(): HTMLDivElement {
   return div
 }
 
-/** 把选区归一化为当前窗口比例（预览/背景层均为窗口比例时，归一化 w/h=1
-    才能使选框的像素比例与窗口一致）。 */
-export function normalizeBgAreaToWindowRatio(area: DenpaBgArea): DenpaBgArea {
-  const side = Math.min(1, Math.max(0.04, Math.max(area.w, area.h)))
+/** 把选区按指定比例（窗口宽高比 / 图片宽高比）归一化，保留面积与中心。 */
+export function normalizeAreaToRatio(area: DenpaBgArea, ratio: number): DenpaBgArea {
+  const safeRatio = Math.max(0.05, Math.min(20, ratio))
+  const areaSize = Math.max(area.w * area.h, 0.04 * 0.04)
+  let w = Math.sqrt(areaSize * safeRatio)
+  let h = Math.sqrt(areaSize / safeRatio)
+  const scale = Math.min(1, 1 / w, 1 / h)
+  w *= scale
+  h *= scale
   const cx = area.x + area.w / 2
   const cy = area.y + area.h / 2
   return {
-    x: Math.min(1 - side, Math.max(0, cx - side / 2)),
-    y: Math.min(1 - side, Math.max(0, cy - side / 2)),
-    w: side,
-    h: side,
+    x: Math.min(1 - w, Math.max(0, cx - w / 2)),
+    y: Math.min(1 - h, Math.max(0, cy - h / 2)),
+    w,
+    h,
   }
 }
 
 /** 由适应模式 + 选区推导 background-size/position（cover 选区放大公式：
     size = 100%/w 100%/h；position = x/(1-w) y/(1-h) 百分比）。
-    选区统一先归一化为窗口比例，避免旧数据/手填数据产生非窗口比例裁切。 */
-export function bgGeometry(fit: DenpaBgFit, area: DenpaBgArea | null): { size: string; position: string } {
+    传入图片宽高比时，会按当前窗口比例动态归一化选区，避免窗口尺寸变化后拉伸。 */
+export function bgGeometry(
+  fit: DenpaBgFit,
+  area: DenpaBgArea | null,
+  imageRatio?: number | null,
+  viewportRatio?: number,
+): { size: string; position: string } {
   if (fit === 'contain') return { size: 'contain', position: 'center' }
   if (fit === 'stretch') return { size: '100% 100%', position: 'center' }
   if (area !== null && area.w > 0.04 && area.h > 0.04 && area.w < 0.999 && area.h < 0.999) {
-    const n = normalizeBgAreaToWindowRatio(area)
+    const vRatio = viewportRatio && viewportRatio > 0 ? viewportRatio : window.innerWidth / window.innerHeight
+    const iRatio = imageRatio && imageRatio > 0 ? imageRatio : currentImageRatio
+    const n = iRatio !== null && iRatio > 0
+      ? normalizeAreaToRatio(area, vRatio / iRatio)
+      : {
+          x: area.x,
+          y: area.y,
+          w: Math.min(1, Math.max(0.05, area.w)),
+          h: Math.min(1, Math.max(0.05, area.h)),
+        }
     const px = Math.min(1, Math.max(0, n.x / (1 - n.w)))
     const py = Math.min(1, Math.max(0, n.y / (1 - n.h)))
     return {
@@ -179,7 +204,7 @@ function applyBgLayer(wallpaperSrc: string, _blur: number, fit: DenpaBgFit, area
   // 对话页 .wallpaperBlur 独立背景层承担）。
   layer.style.backgroundImage = `url("${wallpaperSrc}")`
   layer.style.filter = 'none'
-  const g = bgGeometry(fit, area)
+  const g = bgGeometry(fit, area, currentImageRatio)
   layer.style.backgroundSize = g.size
   layer.style.backgroundPosition = g.position
   layer.style.backgroundRepeat = 'no-repeat'
@@ -188,6 +213,20 @@ function applyBgLayer(wallpaperSrc: string, _blur: number, fit: DenpaBgFit, area
 function clearBgLayer(): void {
   if (bgLayerEl !== null && document.body.contains(bgLayerEl)) {
     bgLayerEl.style.display = 'none'
+  }
+}
+
+/** 只更新壁纸背景层（同步、轻量），用于窗口 resize 时避免重新跑动态取色造成延迟。 */
+export function applyDenpaWallpaper(settings: DenpaSettings): void {
+  const cfg = { ...DENPA_SETTINGS_DEFAULTS, ...(settings ?? {}) }
+  const wallpaper = loadWallpaper()
+  const wallpaperSrc = cfg.background_mode === 'image' ? wallpaper : null
+  if (wallpaperSrc) {
+    const blurPx = cfg.acrylic_enabled === false ? 0
+      : cfg.material_type === 'mica' ? 4 : Math.max(0, Math.min(100, cfg.material_blur ?? 5))
+    applyBgLayer(wallpaperSrc, blurPx, cfg.bg_fit, cfg.bg_area)
+  } else {
+    clearBgLayer()
   }
 }
 
@@ -215,6 +254,15 @@ export async function applyDenpaSettings(settings: DenpaSettings): Promise<void>
     try {
       source = await dynamicSourceFromImage(wallpaperSrc)
     } catch (_) { source = DENPA_DEFAULT_SOURCE }
+  }
+  // 非动态取色时也记录图片比例，供窗口 resize 后保持裁切不拉伸。
+  if (wallpaperSrc && currentImageRatio === null) {
+    try {
+      const img = await loadImage(wallpaperSrc)
+      if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+        currentImageRatio = img.naturalWidth / img.naturalHeight
+      }
+    } catch (_) { /* 忽略取图失败 */ }
   }
   // 竞态保护：期间有更新的 apply 启动（主题切换/后续滑条），本调用作废。
   if (seq !== denpaApplySeq) return

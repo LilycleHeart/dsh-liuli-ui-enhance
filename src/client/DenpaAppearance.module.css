@@ -235,6 +235,9 @@
 /* 壁纸预览：按实际窗口比例显示（宽度自适应，高度 ≤220px），所见即所得 */
 .previewStage {
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   align-self: flex-start;
   overflow: hidden;
   border-radius: var(--denpa-radius-sm, 10px);
@@ -265,16 +268,17 @@ body:not([data-ds-dark-theme]) .previewEffect::after {
   background: transparent;
 }
 
-/* 框选模式：完整图铺满（坐标 1:1 对应图坐标） */
-.previewFull {
+/* 框选模式：按图片原始比例显示（contain），避免壁纸被拉伸 */
+.previewImageWrap {
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+  background-repeat: no-repeat;
+}
+
+.previewLoading {
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: fill;
-  display: block;
-  user-select: none;
-  -webkit-user-drag: none;
 }
 
 /* 选框：选区外暗化（大扩散阴影 + 容器裁剪），选区内品牌描边；
@@ -288,6 +292,41 @@ body:not([data-ds-dark-theme]) .previewEffect::after {
   pointer-events: auto;
   cursor: move;
   touch-action: none;
+}
+
+.cropHandle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--dsw-alias-brand-primary);
+  background: var(--dsw-alias-bg-base);
+  border-radius: 2px;
+  pointer-events: auto;
+}
+
+.cropHandleTl {
+  top: -4px;
+  left: -4px;
+  cursor: nwse-resize;
+}
+
+.cropHandleTr {
+  top: -4px;
+  right: -4px;
+  cursor: nesw-resize;
+}
+
+.cropHandleBl {
+  bottom: -4px;
+  left: -4px;
+  cursor: nesw-resize;
+}
+
+.cropHandleBr {
+  bottom: -4px;
+  right: -4px;
+  cursor: nwse-resize;
 }
 
 .previewActions {

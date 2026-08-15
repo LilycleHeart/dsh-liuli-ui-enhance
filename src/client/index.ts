@@ -30,12 +30,12 @@ import type { InputTriggerSource, ReferenceCodec } from '@deepseek-ai/dsh-client
 import { DenpaAppearanceSection, type DenpaAppearanceInjected } from './DenpaAppearance.tsx'
 import { createDenpaStore } from './denpa-store.ts'
 import {
-  clearWallpaper, loadWallpaper, compressImage, saveWallpaper,
-  applyDenpaSettings,
+  clearWallpaper, loadWallpaper, compressImage, saveWallpaper, loadImage,
+  applyDenpaSettings, applyDenpaWallpaper,
 } from './denpa-runtime.ts'
 import {
   DENPA_SETTINGS_DEFAULTS, denpaSettingsOf,
-  type DenpaSettings,
+  type DenpaBgArea, type DenpaSettings,
 } from '../denpa-settings.ts'
 import { en, zh, type DenpaAppearanceKey } from './locales.ts'
 import { denpaCss } from './denpa-css.ts'
@@ -211,6 +211,18 @@ export function apply(ctx: ClientContext): void {
     denpaRev += 1
     denpaBound?.syncSettings(value, denpaRev)
   }
+  // 记录上次应用选区时的窗口尺寸与选区，用于 resize 时围绕中心点按比例缩放。
+  let lastViewportWidth = window.innerWidth
+  let lastViewportHeight = window.innerHeight
+  let lastBgArea: DenpaBgArea | null = readDenpaSettings().bg_area
+  const commitDenpa = (next: DenpaSettings): void => {
+    writeDenpaSettings(next)
+    syncDenpa(next)
+    lastBgArea = next.bg_area
+    lastViewportWidth = window.innerWidth
+    lastViewportHeight = window.innerHeight
+    void applyDenpaSettings(next)
+  }
   const denpaInjected = (actions: BoundActions<typeof denpaStore>): DenpaAppearanceInjected => {
     denpaBound = actions
     denpaBound.syncWallpaper(loadWallpaper())
@@ -218,15 +230,16 @@ export function apply(ctx: ClientContext): void {
     return {
       save: (patch) => {
         const next = { ...readDenpaSettings(), ...patch }
-        writeDenpaSettings(next)
-        syncDenpa(next)
-        void applyDenpaSettings(next)
+        commitDenpa(next)
       },
       reset: () => {
         writeDenpaSettings(DENPA_SETTINGS_DEFAULTS)
         clearWallpaper()
         denpaBound?.syncWallpaper(null)
         syncDenpa(DENPA_SETTINGS_DEFAULTS)
+        lastBgArea = null
+        lastViewportWidth = window.innerWidth
+        lastViewportHeight = window.innerHeight
         void applyDenpaSettings(DENPA_SETTINGS_DEFAULTS)
       },
       uploadWallpaper: async (file) => {
@@ -234,11 +247,29 @@ export function apply(ctx: ClientContext): void {
         saveWallpaper(dataUrl)
         // DenpaPush 原版行为：上传后自动切换到壁纸背景模式（动态取色随之生效）
         const current = readDenpaSettings()
-        const next = current.background_mode === 'image' ? current : { ...current, background_mode: 'image' as const }
-        writeDenpaSettings(next)
-        syncDenpa(next)
+        let next: DenpaSettings = current.background_mode === 'image' ? current : { ...current, background_mode: 'image' as const }
+        // 首次上传且还没有自定义选区时，按窗口比例生成一个默认居中选区。
+        if (current.bg_area === null) {
+          try {
+            const img = await loadImage(dataUrl)
+            const imgRatio = img.naturalWidth / img.naturalHeight
+            const winRatio = window.innerWidth / window.innerHeight
+            const maxW = imgRatio > winRatio ? winRatio / imgRatio : 1
+            const maxH = imgRatio > winRatio ? 1 : imgRatio / winRatio
+            const scale = 0.9
+            const w = maxW * scale
+            const h = maxH * scale
+            const bg_area: DenpaBgArea = {
+              x: (1 - w) / 2,
+              y: (1 - h) / 2,
+              w,
+              h,
+            }
+            next = { ...next, bg_area }
+          } catch (_) { /* 取不到图片尺寸时跳过默认选区 */ }
+        }
         denpaBound?.syncWallpaper(dataUrl)
-        void applyDenpaSettings(next)
+        commitDenpa(next)
       },
       removeWallpaper: () => {
         clearWallpaper()
@@ -247,9 +278,7 @@ export function apply(ctx: ClientContext): void {
         const current = readDenpaSettings()
         if (current.background_mode === 'image') {
           const next = { ...current, background_mode: 'theme' as const }
-          writeDenpaSettings(next)
-          syncDenpa(next)
-          void applyDenpaSettings(next)
+          commitDenpa(next)
         } else {
           void applyDenpaSettings(current)
         }
@@ -269,6 +298,56 @@ export function apply(ctx: ClientContext): void {
     mo.observe(document.body, { attributes: true, attributeFilter: ['data-ds-dark-theme'] })
     return () => { mo.disconnect() }
   }, 'liuli-theme: body theme observer')
+
+  // 窗口尺寸变化后实时围绕选区中心点按窗口变化比例缩放，避免壁纸被拉伸。
+  ctx.effect(() => {
+    let raf = 0
+    const onResize = (): void => {
+      if (raf !== 0) return
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        const current = readDenpaSettings()
+        const vw = window.innerWidth
+        const vh = window.innerHeight
+        if (current.bg_area !== null && lastBgArea !== null && lastViewportWidth > 0 && lastViewportHeight > 0) {
+          const scaleX = vw / lastViewportWidth
+          const scaleY = vh / lastViewportHeight
+          const cx = lastBgArea.x + lastBgArea.w / 2
+          const cy = lastBgArea.y + lastBgArea.h / 2
+          let w = lastBgArea.w * scaleX
+          let h = lastBgArea.h * scaleY
+          const fit = Math.min(1, 1 / w, 1 / h)
+          w *= fit
+          h *= fit
+          w = Math.max(0.04, Math.min(1, w))
+          h = Math.max(0.04, Math.min(1, h))
+          const nextArea: DenpaBgArea = {
+            x: Math.min(1 - w, Math.max(0, cx - w / 2)),
+            y: Math.min(1 - h, Math.max(0, cy - h / 2)),
+            w,
+            h,
+          }
+          const next = { ...current, bg_area: nextArea }
+          // 轻量同步：只更新壁纸层，不重新跑动态取色，避免 resize 延迟。
+          writeDenpaSettings(next)
+          syncDenpa(next)
+          lastBgArea = next.bg_area
+          lastViewportWidth = vw
+          lastViewportHeight = vh
+          applyDenpaWallpaper(next)
+        } else {
+          lastViewportWidth = vw
+          lastViewportHeight = vh
+          lastBgArea = current.bg_area
+        }
+      })
+    }
+    window.addEventListener('resize', onResize)
+    return () => {
+      if (raf !== 0) cancelAnimationFrame(raf)
+      window.removeEventListener('resize', onResize)
+    }
+  }, 'liuli-theme: window resize reapply')
 
   // ── DenpaPush 日/夜切换事件桥：header 主题按钮 dispatch，这里走正式路径 ──
   // 照搬原项目：startViewTransition 圆形遮罩（--vt-* 变量由按钮带坐标）。

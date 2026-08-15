@@ -300,23 +300,32 @@ body[data-ds-dark-theme] {
   outline-offset: 1px;
 }
 
-/* 滚动条：细、圆角、品牌悬停 */
+/* 提示浮层：统一使用主题 tooltip 令牌，避免宿主硬编码浅色底/白字 */
+[role="tooltip"] {
+  background: var(--dsw-alias-tooltip-bg) !important;
+  color: var(--dsw-alias-label-primary-inverted) !important;
+}
+[role="tooltip"] * {
+  color: inherit !important;
+}
+
+/* 滚动条：细、圆角、主题色 */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--dsw-alias-scrollbar-bg-l2) transparent;
+  scrollbar-color: var(--dsw-alias-brand-primary) transparent;
 }
 *::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 *::-webkit-scrollbar-thumb {
-  background: var(--dsw-alias-scrollbar-bg-l2);
+  background: var(--dsw-alias-brand-primary);
   border-radius: 8px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 40%, var(--dsw-alias-scrollbar-hover-l2));
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 80%, white);
   background-clip: content-box;
   border: 2px solid transparent;
 }
@@ -557,4 +566,29 @@ div[class$="hoverCard"] {
 [role="treeitem"][aria-selected="true"] span {
   color: inherit;
 }
+
+/* ════════════════════════════════════════════════════════════
+ * 侧边栏项目/会话入场：从底部浮上来
+ * ════════════════════════════════════════════════════════════ */
+@keyframes liuli-treeitem-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+[role="treeitem"] {
+  animation: liuli-treeitem-rise 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [role="treeitem"] {
+    animation: none;
+  }
+}
+
 `

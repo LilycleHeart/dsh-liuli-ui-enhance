@@ -9,7 +9,7 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime, PropsStore, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { DenpaBgArea, DenpaSettings } from '../denpa-settings.ts'
-import { bgGeometry, normalizeBgAreaToWindowRatio } from './denpa-runtime.ts'
+import { bgGeometry } from './denpa-runtime.ts'
 import type { createDenpaStore } from './denpa-store.ts'
 import css from './DenpaAppearance.module.css'
 
@@ -106,12 +106,16 @@ function WallpaperPreview(props: {
   t: TranslateNS<'denpa-appearance'>
 }) {
   const stageRef = useRef<HTMLDivElement | null>(null)
+  const imageWrapRef = useRef<HTMLDivElement | null>(null)
   const [winRatio, setWinRatio] = useState(() => window.innerWidth / window.innerHeight)
+  const [imgRatio, setImgRatio] = useState<number | null>(null)
   const [selectMode, setSelectMode] = useState(false)
   const [selBox, setSelBox] = useState<DenpaBgArea | null>(null)
+  const [displayArea, setDisplayArea] = useState<DenpaBgArea | null>(props.area)
   const drag = useRef<
     | { mode: 'create'; start: { x: number; y: number }; prev: DenpaBgArea | null }
     | { mode: 'move'; offsetX: number; offsetY: number; box: DenpaBgArea }
+    | { mode: 'resize'; box: DenpaBgArea; corner: 'tl' | 'tr' | 'bl' | 'br' }
     | null
   >(null)
 
@@ -121,32 +125,153 @@ function WallpaperPreview(props: {
     return () => { window.removeEventListener('resize', onResize) }
   }, [])
 
-  /** 指针位置 → 预览归一化坐标（0..1，与图坐标 1:1 对应）。 */
+  // 读取图片原始宽高比：框选模式下按原图比例显示，避免被拉伸。
+  useEffect(() => {
+    let alive = true
+    setImgRatio(null)
+    const img = new Image()
+    img.onload = () => {
+      if (alive && img.naturalWidth > 0 && img.naturalHeight > 0) {
+        setImgRatio(img.naturalWidth / img.naturalHeight)
+      }
+    }
+    img.src = props.src
+    return () => { alive = false }
+  }, [props.src])
+
+  // 同步外部已保存的选区；同时本地在“完成选区”后立即更新，避免依赖 store 刷新延迟。
+  useEffect(() => {
+    setDisplayArea(props.area)
+  }, [props.area])
+
+  /** 指针位置 → 图片归一化坐标（0..1）。框选模式按 Cover 可见区域换算，保证与真实效果一致。 */
   const norm = (e: React.PointerEvent): { x: number; y: number } | null => {
-    const el = stageRef.current
+    const el = imageWrapRef.current ?? stageRef.current
     if (el === null) return null
     const r = el.getBoundingClientRect()
     if (r.width < 2 || r.height < 2) return null
+    const sx = (e.clientX - r.left) / r.width
+    const sy = (e.clientY - r.top) / r.height
+    if (sx < 0 || sx > 1 || sy < 0 || sy > 1) return null
+    const vis = coverVisible()
     return {
-      x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)),
-      y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)),
+      x: vis.x + sx * vis.w,
+      y: vis.y + sy * vis.h,
     }
   }
 
   const clamp = (v: number, min: number, max: number): number => Math.min(max, Math.max(min, v))
 
+  // 框选要保持“实际窗口比例”：在原图坐标系中，w/h = 窗口宽高比 / 图片宽高比。
+  const cropRatio = imgRatio !== null && imgRatio > 0 ? winRatio / imgRatio : 1
+
+  /** Cover 显示时，原图中实际可见的归一化区域。 */
+  const coverVisible = (): { x: number; y: number; w: number; h: number } => {
+    const A = imgRatio ?? 1
+    const R = winRatio
+    if (A > R) {
+      const h = R / A
+      return { x: 0, y: (1 - h) / 2, w: 1, h }
+    }
+    const w = A / R
+    return { x: (1 - w) / 2, y: 0, w, h: 1 }
+  }
+
+  /** 把已有选区转换为指定比例（保留面积与中心，并限制在 0..1 内）。 */
+  const normalizeAreaToRatio = (area: DenpaBgArea, ratio: number): DenpaBgArea => {
+    const safeRatio = Math.max(0.05, Math.min(20, ratio))
+    const areaSize = Math.max(area.w * area.h, 0.04 * 0.04)
+    let w = Math.sqrt(areaSize * safeRatio)
+    let h = Math.sqrt(areaSize / safeRatio)
+    const scale = Math.min(1, 1 / w, 1 / h)
+    w *= scale
+    h *= scale
+    const cx = area.x + area.w / 2
+    const cy = area.y + area.h / 2
+    return {
+      x: clamp(cx - w / 2, 0, 1 - w),
+      y: clamp(cy - h / 2, 0, 1 - h),
+      w,
+      h,
+    }
+  }
+
+  /** 从起点向指针方向创建指定比例的选区（自动限制在图片范围内）。 */
+  const createArea = (start: { x: number; y: number }, p: { x: number; y: number }, ratio: number): DenpaBgArea => {
+    const safeRatio = Math.max(0.05, Math.min(20, ratio))
+    const dx = p.x - start.x
+    const dy = p.y - start.y
+    const dirX = dx >= 0 ? 1 : -1
+    const dirY = dy >= 0 ? 1 : -1
+    const maxW = dirX > 0 ? 1 - start.x : start.x
+    const maxH = dirY > 0 ? 1 - start.y : start.y
+    const w = Math.min(Math.max(Math.abs(dx), Math.abs(dy) * safeRatio), maxW, maxH * safeRatio)
+    const h = w / safeRatio
+    return {
+      x: dirX > 0 ? start.x : start.x - w,
+      y: dirY > 0 ? start.y : start.y - h,
+      w,
+      h,
+    }
+  }
+
+  /** 从固定角拖动缩放选区，保持窗口比例。corner 为被拖动的角。 */
+  const resizeArea = (
+    box: DenpaBgArea,
+    corner: 'tl' | 'tr' | 'bl' | 'br',
+    p: { x: number; y: number },
+    ratio: number,
+  ): DenpaBgArea => {
+    const safeRatio = Math.max(0.05, Math.min(20, ratio))
+    const fixed = {
+      x: corner === 'tl' || corner === 'bl' ? box.x + box.w : box.x,
+      y: corner === 'tl' || corner === 'tr' ? box.y + box.h : box.y,
+    }
+    const dirX = corner === 'tr' || corner === 'br' ? 1 : -1
+    const dirY = corner === 'bl' || corner === 'br' ? 1 : -1
+    const distX = Math.abs(p.x - fixed.x)
+    const distY = Math.abs(p.y - fixed.y)
+    const maxW = dirX > 0 ? 1 - fixed.x : fixed.x
+    const maxH = dirY > 0 ? 1 - fixed.y : fixed.y
+    const w = Math.min(Math.max(distX, distY * safeRatio), maxW, maxH * safeRatio)
+    const h = w / safeRatio
+    return {
+      x: dirX > 0 ? fixed.x : fixed.x - w,
+      y: dirY > 0 ? fixed.y : fixed.y - h,
+      w,
+      h,
+    }
+  }
+
   const startSelect = (): void => {
-    setSelBox(props.area !== null ? normalizeBgAreaToWindowRatio(props.area) : null)
+    const source = displayArea ?? props.area
+    if (source !== null) {
+      const next = normalizeAreaToRatio(source, cropRatio)
+      setSelBox(next.w > 0 && next.h > 0 ? next : source)
+    } else {
+      setSelBox(null)
+    }
     setSelectMode(true)
   }
 
   const onDown = (e: React.PointerEvent): void => {
     e.preventDefault()
+    if (imgRatio === null) return
     const p0 = norm(e)
     if (p0 === null) return
     const box = selBox
     if (box !== null && box.w > 0 && p0.x >= box.x && p0.x <= box.x + box.w && p0.y >= box.y && p0.y <= box.y + box.h) {
-      drag.current = { mode: 'move', offsetX: p0.x - box.x, offsetY: p0.y - box.y, box }
+      const edge = 0.03
+      const nearLeft = Math.abs(p0.x - box.x) < edge
+      const nearRight = Math.abs(p0.x - (box.x + box.w)) < edge
+      const nearTop = Math.abs(p0.y - box.y) < edge
+      const nearBottom = Math.abs(p0.y - (box.y + box.h)) < edge
+      if ((nearLeft || nearRight) && (nearTop || nearBottom)) {
+        const corner = `${nearLeft ? 'l' : 'r'}${nearTop ? 't' : 'b'}` as 'tl' | 'tr' | 'bl' | 'br'
+        drag.current = { mode: 'resize', box, corner }
+      } else {
+        drag.current = { mode: 'move', offsetX: p0.x - box.x, offsetY: p0.y - box.y, box }
+      }
     } else {
       drag.current = { mode: 'create', start: p0, prev: box }
       setSelBox({ x: p0.x, y: p0.y, w: 0, h: 0 })
@@ -160,18 +285,9 @@ function WallpaperPreview(props: {
     const p = norm(e)
     if (p === null) return
     if (d.mode === 'create') {
-      const { start } = d
-      const dx = p.x - start.x
-      const dy = p.y - start.y
-      const dirX = dx >= 0 ? 1 : -1
-      const dirY = dy >= 0 ? 1 : -1
-      const maxX = dirX > 0 ? 1 - start.x : start.x
-      const maxY = dirY > 0 ? 1 - start.y : start.y
-      // 保持归一化 w/h=1：在已按窗口比例显示的预览上，选框像素比例即窗口比例。
-      const size = Math.min(Math.max(Math.abs(dx), Math.abs(dy)), Math.min(maxX, maxY))
-      const x = dirX > 0 ? start.x : start.x - size
-      const y = dirY > 0 ? start.y : start.y - size
-      setSelBox({ x, y, w: size, h: size })
+      setSelBox(createArea(d.start, p, cropRatio))
+    } else if (d.mode === 'resize') {
+      setSelBox(resizeArea(d.box, d.corner, p, cropRatio))
     } else {
       const box = d.box
       const x = clamp(p.x - d.offsetX, 0, 1 - box.w)
@@ -193,13 +309,15 @@ function WallpaperPreview(props: {
 
   const onDone = (): void => {
     if (selBox !== null && selBox.w > 0.04 && selBox.h > 0.04) {
-      props.onArea(normalizeBgAreaToWindowRatio(selBox))
+      const next = normalizeAreaToRatio(selBox, cropRatio)
+      props.onArea(next)
+      setDisplayArea(next)
     }
     setSelectMode(false)
     setSelBox(null)
   }
 
-  const g = bgGeometry(props.fit, props.area)
+  const g = bgGeometry(props.fit, props.area, imgRatio, winRatio)
   const stageStyle: React.CSSProperties = {
     aspectRatio: winRatio,
     width: 'min(100%, calc(220px * ' + winRatio + '))',
@@ -210,6 +328,29 @@ function WallpaperPreview(props: {
     backgroundPosition: g.position,
     backgroundRepeat: 'no-repeat',
   }
+  const imageAspect = imgRatio ?? 1
+  const wrapStyle: React.CSSProperties = {
+    position: 'relative',
+    width: imageAspect > winRatio ? '100%' : `calc(${(imageAspect / winRatio) * 100}%)`,
+    height: imageAspect > winRatio ? `calc(${(winRatio / imageAspect) * 100}%)` : '100%',
+    backgroundImage: 'url("' + props.src + '")',
+    backgroundSize: '100% 100%',
+    backgroundRepeat: 'no-repeat',
+  }
+  // 框选模式使用 Cover 铺满预览窗口，与真实壁纸效果保持一致。
+  const coverWrapStyle: React.CSSProperties = {
+    position: 'absolute',
+    inset: 0,
+    backgroundImage: 'url("' + props.src + '")',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundRepeat: 'no-repeat',
+  }
+  // 非框选模式也显示当前选区：让用户直接看到当前保存的壁纸选区位置。
+  const currentBox = displayArea !== null && imgRatio !== null && props.fit === 'cover'
+    ? normalizeAreaToRatio(displayArea, cropRatio)
+    : null
+  const vis = coverVisible()
 
   return (
     <>
@@ -226,13 +367,13 @@ function WallpaperPreview(props: {
           </>
         ) : (
           <>
-            <Button variant="ghost" size="sm" disabled={props.fit !== 'cover'}
+            <Button variant="ghost" size="sm" disabled={props.fit !== 'cover' || imgRatio === null}
               onClick={startSelect}
             >
               {props.t('area.reselect')}
             </Button>
-            {props.area !== null && (
-              <Button variant="ghost" size="sm" onClick={props.onClearArea}>
+            {displayArea !== null && (
+              <Button variant="ghost" size="sm" onClick={() => { setDisplayArea(null); props.onClearArea() }}>
                 {props.t('area.clear')}
               </Button>
             )}
@@ -248,22 +389,45 @@ function WallpaperPreview(props: {
         onPointerUp={selectMode ? onUp : undefined}
       >
         {selectMode ? (
-          <>
-            <img className={css.previewFull} src={props.src} alt="" draggable={false} />
-            {selBox !== null && selBox.w > 0 && (
+          imgRatio !== null ? (
+            <div ref={imageWrapRef} className={css.previewImageWrap} style={coverWrapStyle}>
+              {selBox !== null && selBox.w > 0 && (
+                <div
+                  className={css.previewCropBox}
+                  style={{
+                    left: ((selBox.x - vis.x) / vis.w) * 100 + '%',
+                    top: ((selBox.y - vis.y) / vis.h) * 100 + '%',
+                    width: (selBox.w / vis.w) * 100 + '%',
+                    height: (selBox.h / vis.h) * 100 + '%',
+                  }}
+                >
+                  <span className={css.cropHandle + ' ' + css.cropHandleTl} />
+                  <span className={css.cropHandle + ' ' + css.cropHandleTr} />
+                  <span className={css.cropHandle + ' ' + css.cropHandleBl} />
+                  <span className={css.cropHandle + ' ' + css.cropHandleBr} />
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className={css.previewLoading} />
+          )
+        ) : (
+          currentBox !== null ? (
+            <div className={css.previewImageWrap} style={wrapStyle}>
               <div
                 className={css.previewCropBox}
                 style={{
-                  left: selBox.x * 100 + '%',
-                  top: selBox.y * 100 + '%',
-                  width: selBox.w * 100 + '%',
-                  height: selBox.h * 100 + '%',
+                  left: currentBox.x * 100 + '%',
+                  top: currentBox.y * 100 + '%',
+                  width: currentBox.w * 100 + '%',
+                  height: currentBox.h * 100 + '%',
+                  pointerEvents: 'none',
                 }}
               />
-            )}
-          </>
-        ) : (
-          <div className={css.previewEffect} style={effectStyle} />
+            </div>
+          ) : (
+            <div className={css.previewEffect} style={effectStyle} />
+          )
         )}
       </div>
       {props.fit !== 'cover' && <div className={css.previewNote}>{props.t('area.disabled')}</div>}
