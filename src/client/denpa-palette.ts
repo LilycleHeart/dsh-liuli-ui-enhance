@@ -159,6 +159,21 @@ export function denpaApplyBrand(pal: DenpaPalette, isDark: boolean, sourceHex?: 
   set('--dsw-specific-sidebar-nav-item-active-accent', pal.onSurface)
   set('--dsw-specific-sidebar-nav-item-hover', mix(pal.brand, 10))
 
+  // MCU 多角色色板：primary / secondary / tertiary / surface 全量暴露，
+  // 供 TurnRail 等组件按角色使用不同颜色，而不是全部套同一个 brand。
+  set('--denpa-mcu-primary', pal.brand)
+  set('--denpa-mcu-on-primary', pal.onBrand)
+  set('--denpa-mcu-primary-container', pal.surface)
+  set('--denpa-mcu-on-primary-container', pal.onSurface)
+  set('--denpa-mcu-secondary', pal.secondary)
+  set('--denpa-mcu-on-secondary', pal.onSecondary)
+  set('--denpa-mcu-secondary-container', pal.secondaryContainer)
+  set('--denpa-mcu-on-secondary-container', pal.onSecondaryContainer)
+  set('--denpa-mcu-tertiary', pal.tertiary)
+  set('--denpa-mcu-tertiary-container', pal.tertiaryContainer)
+  set('--denpa-mcu-on-tertiary-container', pal.onTertiaryContainer)
+
+
   // 背景
   set('--dsw-alias-bg-base', pal.appBg)
   set('--dsw-alias-bg-layer-1', pal.bg1)
