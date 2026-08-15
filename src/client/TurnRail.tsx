@@ -329,7 +329,7 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
     hoverTimer.current = window.setTimeout(() => {
       hoverTimer.current = null
       setHoveredTurn(null)
-    }, 180)
+    }, 300)
   }
 
   const onTickHover = (e: { currentTarget: SVGSVGElement }, turn: number): void => {
