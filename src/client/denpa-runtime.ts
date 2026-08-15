@@ -92,10 +92,48 @@ export function loadImage(imageSrc: string): Promise<HTMLImageElement> {
   })
 }
 
+/** 从 RGB 拼 hex。 */
+function rgbToHex(r: number, g: number, b: number): string {
+  const to = (v: number): string => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')
+  return `#${to(r)}${to(g)}${to(b)}`
+}
+
+/** 计算颜色的彩度（chroma = max - min），用于避开 MCU 可能选出的中性色。 */
+function chromaOfHex(hex: string): number {
+  const h = hex.replace('#', '')
+  if (!/^[0-9a-f]{6}$/i.test(h)) return 0
+  const r = parseInt(h.slice(0, 2), 16)
+  const g = parseInt(h.slice(2, 4), 16)
+  const b = parseInt(h.slice(4, 6), 16)
+  return Math.max(r, g, b) - Math.min(r, g, b)
+}
+
+/** 从 64x64 缩略图里挑一个“最鲜艳且不太暗/太亮”的颜色，作为动态取色源。 */
+function chromaticSourceFromCanvas(c: CanvasRenderingContext2D): string {
+  const data = c.getImageData(0, 0, c.canvas.width, c.canvas.height).data
+  let best = { r: 29, g: 155, b: 240, score: -1 }
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i] ?? 0
+    const g = data[i + 1] ?? 0
+    const b = data[i + 2] ?? 0
+    const a = data[i + 3] ?? 0
+    if (a < 128) continue
+    const max = Math.max(r, g, b)
+    const min = Math.min(r, g, b)
+    const chroma = max - min
+    const l = (max + min) / 2
+    if (l < 35 || l > 220) continue
+    const score = chroma - Math.abs(l - 128) * 0.4
+    if (score > best.score) best = { r, g, b, score }
+  }
+  return rgbToHex(best.r, best.g, best.b)
+}
+
 /**
  * 从背景图提取 Material 源色 —— 照搬原项目逻辑：
  * 1. 缩小到 64x64（避免全分辨率量化卡顿）
  * 2. sourceColorFromImage 是 async（MCU 0.4），必须 await 它的 ARGB 结果
+ * 3. 如果 MCU 给出的源色太中性，则改用缩略图里最鲜艳的颜色；两者都太灰时回退默认蓝。
  */
 export async function dynamicSourceFromImage(imageSrc: string): Promise<string> {
   const img = await loadImage(imageSrc)
@@ -116,7 +154,10 @@ export async function dynamicSourceFromImage(imageSrc: string): Promise<string> 
     small.onerror = () => rej(new Error('取色图生成失败'))
   })
   const srcArgb = await sourceColorFromImage(small)
-  return hexFromArgb(srcArgb)
+  const mcuHex = hexFromArgb(srcArgb)
+  const chromaticHex = chromaticSourceFromCanvas(c)
+  const source = chromaOfHex(chromaticHex) > chromaOfHex(mcuHex) + 10 ? chromaticHex : mcuHex
+  return chromaOfHex(source) >= 24 ? source : DENPA_DEFAULT_SOURCE
 }
 
 /** 当前是否暗色（presenter 写在 body 上）。 */
