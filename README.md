@@ -50,6 +50,7 @@ DeepSeek Harness 的 **Material Design 3 × Fluent 2 融合主题**插件:取 Ma
 | 🔊 声纹可视化 | 会话 header 背景 canvas:空闲态品牌色流动波形;点击按钮经 `getDisplayMedia`(系统/标签页音频)授权后监听,真实频谱驱动柱状图与波形振幅;降级链 `getDisplayMedia → getUserMedia(麦克风)→ 非安全上下文诊断` |
 | 🌗 日/夜切换 | header 圆形按钮 + 设置页外观行,`startViewTransition` 圆形遮罩过渡(带坐标) |
 | 📏 header 拉伸 | header 底部垂直拖拽手柄,高度记忆到 localStorage,刷新/切换会话自动恢复 |
+| 📐 对话轮次刻度侧边栏 | DenpaPush 时间线风格:左侧竖线刻度,胶囊沿竖线滑动,显示该轮时间/commit号/摘要,点击刻度跳转对应轮次(仅 Chat 视图显示) |
 | 💳 供应商额度显示 | header 标题区普通文本,跟在 agent preset 标签右侧:套餐供应商显示本月/本周/5小时三项额度,非套餐供应商显示余额;已内置 DeepSeek 余额(`/user/balance`)与 OpenCode Go 套餐(`/zen/go/v1/usage`),密钥经 Host `/liuli-quota` 路由从 credentials/env 读取,不进浏览器 |
 | ⚪ 悬浮工具球 | 常驻悬浮圆点:贴边吸附半隐藏(JS 热区防抖动)、拖拽随行、打开后自动夹进视口;快捷键 `Alt+Shift+E` 唤起 |
 | 🎯 元素选择器 | 悬浮球进入拾取模式后点击任意页面元素,生成引用 chip 插入当前会话输入框(`@` 触发源 + ReferenceCodec) |
@@ -111,6 +112,7 @@ packages/client/liuli-theme/
 │       ├── HeaderEffects.tsx / .module.css     # 声纹/监听/主题切换/拉伸手柄(单例引擎)
 │       ├── supplier-quota.ts                    # 供应商额度适配层(适配器任务列表 + 通用 settings 识别 + 控制器)
 │       ├── SupplierQuota.tsx / .module.css      # header 标题区额度/余额普通文本
+│       ├── TurnRail.tsx / .module.css           # DenpaPush 时间线风格轮次刻度侧边栏
 │       ├── FloatBall.tsx / .module.css / .types.ts  # 悬浮工具球 + 拾取模式
 │       ├── element-picker.ts # 元素选择器:selector/文本/矩形/颜色信息提取与序列化
 │       ├── locales.ts        # denpa-appearance 文案(zh/en,键集完整性互检)

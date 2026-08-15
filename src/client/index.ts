@@ -42,6 +42,7 @@ import { denpaCss } from './denpa-css.ts'
 import {
   DenpaHeaderVoiceprint, DenpaHeaderChrome, DenpaHeaderResizer,
 } from './HeaderEffects.tsx'
+import { TurnRail } from './TurnRail.tsx'
 import { disposeSupplierQuota, initSupplierQuota, refreshSupplierQuota } from './supplier-quota.ts'
 import { SupplierQuota } from './SupplierQuota.tsx'
 import { createElement } from 'react'
@@ -315,4 +316,9 @@ export function apply(ctx: ClientContext): void {
     id: 'liuli-header-resizer',
     order: 10,
   }, DenpaHeaderResizer))
+  ctx.slots.inject('conversation.session.header.tabs', () => ctx.slots.register({
+    name: 'conversation.session.header.tabs',
+    id: 'liuli-turn-rail',
+    order: 20,
+  }, TurnRail))
 }
