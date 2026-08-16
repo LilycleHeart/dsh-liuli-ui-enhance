@@ -1,17 +1,36 @@
 /**
  * 琉璃主题（liuli-theme）—— 节点半。
  *
- * 除了作为宿主 Loader 中的插件存在，节点半还提供一个本地 HTTP 路由
- * `/liuli-quota`：浏览器半用它查询 DeepSeek / OpenCode Go 的余额或套餐额度。
- * 密钥只在这条 Host 路由里通过 `ctx.credentials` 解析，绝不进入浏览器 bundle。
+ * 除了作为宿主 Loader 中的插件存在，节点半还提供两个本地 HTTP 路由：
+ * - `/liuli-quota`：浏览器半用它查询 DeepSeek / OpenCode Go 的余额或套餐额度。
+ *   密钥只在这条 Host 路由里通过 `ctx.credentials` 解析，绝不进入浏览器 bundle。
+ * - `/preview`：把当前会话 cwd 作为同源静态站点（预览面板 iframe 用），
+ *   只服务会话目录内的文件，Host fence 防 DNS rebinding。
  */
+import { createReadStream } from 'node:fs'
+import { stat } from 'node:fs/promises'
+import { extname, resolve as resolvePath, sep } from 'node:path'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 
 export const name = 'liuli-theme'
 
-export const inject = ['webServer', 'credentials']
+export const inject = ['webServer', 'credentials', 'sessions']
+
+/**
+ * Host 会话存储的最小读面。刻意不 import @deepseek-ai/dsh-session：它的
+ * `Context.sessions: SessionStore` 声明会与 dsh-client-runtime 的浏览器侧
+ * `ISessions` 声明合并冲突，污染同一编译单元里的浏览器半。
+ */
+interface HostSessionCwd {
+  header: { cwd?: string }
+}
+
+function hostSessions(ctx: Context): { get(id: string): HostSessionCwd | undefined } {
+  return (ctx as unknown as { sessions: { get(id: string): HostSessionCwd | undefined } }).sessions
+}
 
 const DEEPSEEK_KEY_REFS = ['DEEPSEEK_API_KEY', 'DEEPSEEK_OFFICIAL_API_KEY']
 const DEEPSEEK_BASE_URL = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.DEEPSEEK_BASE_URL
@@ -123,7 +142,7 @@ async function queryQuota(ctx: Context, provider: string): Promise<QuotaPayload>
   }
 }
 
-/** 宿主插件体：注册 /liuli-quota 本地路由供浏览器半查询供应商额度。 */
+/** 宿主插件体：注册 /liuli-quota 与 /preview 本地路由。 */
 export function apply(ctx: Context): void {
   const route: WebRoute = {
     kind: 'prefix',
@@ -158,4 +177,150 @@ export function apply(ctx: Context): void {
     },
   }
   ctx.effect(() => ctx.webServer.register(route), 'liuli-theme: /liuli-quota route')
+  ctx.effect(() => ctx.webServer.register(previewRoute(ctx)), 'liuli-theme: /preview route')
+}
+
+/* ── /preview：会话 cwd 同源静态服务（预览面板 iframe）────────────── */
+
+/** Content types keyed by lowercase extension; anything unknown is an octet stream. */
+const PREVIEW_MIME: Readonly<Record<string, string>> = {
+  '.html': 'text/html; charset=utf-8',
+  '.htm': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.map': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+  '.txt': 'text/plain; charset=utf-8',
+  '.xml': 'application/xml; charset=utf-8',
+}
+
+/** Whether a WHATWG URL hostname names the local loopback authority. */
+function isLoopbackHostname(hostname: string): boolean {
+  if (hostname === 'localhost' || hostname === '[::1]') return true
+  const parts = hostname.split('.')
+  return parts.length === 4
+    && parts[0] === '127'
+    && parts.every(part => /^\d{1,3}$/.test(part) && Number(part) <= 255)
+}
+
+/** Parse a `/preview/<sessionId>/<relative-path>` pathname into its two parts. */
+function parsePreviewPath(pathname: string): { sessionId: string; rel: string } | undefined {
+  const PREFIX = '/preview'
+  if (pathname !== PREFIX && !pathname.startsWith(`${PREFIX}/`)) return undefined
+  const trimmed = pathname.slice(PREFIX.length).replace(/^\//, '')
+  const slash = trimmed.indexOf('/')
+  const rawSession = slash === -1 ? trimmed : trimmed.slice(0, slash)
+  const rawRel = slash === -1 ? '' : trimmed.slice(slash + 1)
+  let sessionId: string
+  let rel: string
+  try {
+    sessionId = decodeURIComponent(rawSession)
+    rel = decodeURIComponent(rawRel)
+  } catch {
+    return undefined
+  }
+  if (sessionId === '') return undefined
+  return { sessionId, rel }
+}
+
+/** Resolve a requested relative path strictly within a root directory. */
+function resolveWithin(root: string, rel: string): string | undefined {
+  const target = resolvePath(root, rel)
+  if (target !== root && !target.startsWith(`${root}${sep}`)) return undefined
+  return target
+}
+
+function previewSendError(res: ServerResponse, code: number, text: string): void {
+  res.writeHead(code, { 'content-type': 'text/plain; charset=utf-8' })
+  res.end(text)
+}
+
+function previewSendFile(res: ServerResponse, path: string, size: number, method: string | undefined): void {
+  res.writeHead(200, {
+    'content-type': PREVIEW_MIME[extname(path).toLowerCase()] ?? 'application/octet-stream',
+    'content-length': String(size),
+    'x-content-type-options': 'nosniff',
+    'cache-control': 'no-store',
+  })
+  if (method === 'HEAD') {
+    res.end()
+    return
+  }
+  createReadStream(path).pipe(res)
+}
+
+/** Resolve and serve one preview request（Host fence：loopback 或同源）。 */
+async function servePreview(ctx: Context, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    previewSendError(res, 405, 'method not allowed')
+    return
+  }
+  const host = req.headers.host
+  if (host === undefined || !isLoopbackHostname(new URL(`http://${host}`).hostname)) {
+    previewSendError(res, 403, 'forbidden')
+    return
+  }
+  const pathname = new URL(req.url ?? '/', 'http://x').pathname
+  const parsed = parsePreviewPath(pathname)
+  if (parsed === undefined) {
+    previewSendError(res, 404, 'not found')
+    return
+  }
+  const session = hostSessions(ctx).get(parsed.sessionId)
+  const root = session?.header.cwd
+  if (root === undefined) {
+    previewSendError(res, 404, 'not found')
+    return
+  }
+  const target = resolveWithin(root, parsed.rel)
+  if (target === undefined) {
+    previewSendError(res, 403, 'forbidden')
+    return
+  }
+  let info
+  try {
+    info = await stat(target)
+  } catch {
+    previewSendError(res, 404, 'not found')
+    return
+  }
+  if (info.isDirectory()) {
+    const index = resolvePath(target, 'index.html')
+    try {
+      const indexInfo = await stat(index)
+      if (indexInfo.isFile()) {
+        previewSendFile(res, index, indexInfo.size, req.method)
+        return
+      }
+    } catch {
+      // Fall through to the directory-not-served answer.
+    }
+    previewSendError(res, 404, 'not found')
+    return
+  }
+  if (!info.isFile()) {
+    previewSendError(res, 404, 'not found')
+    return
+  }
+  previewSendFile(res, target, info.size, req.method)
+}
+
+/** Build the /preview prefix route over the live-session cwd store. */
+function previewRoute(ctx: Context): WebRoute {
+  return {
+    kind: 'prefix',
+    path: '/preview',
+    handler: (req, res) => { void servePreview(ctx, req, res) },
+  }
 }
