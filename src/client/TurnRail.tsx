@@ -268,7 +268,9 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
     const scrollport = host.querySelector<HTMLElement>('[data-conversation-scroll]')
     if (scrollport === null) return
     const update = (): void => {
-      if (hoveredTurn !== null || selectedTurn !== null) return
+      // hover 胶囊时跟随暂停（胶囊展示 hover 轮）；选中轮后滚动仍要
+      // 跟随当前轮（tickFollow 与 tickSelected 可共存）。
+      if (hoveredTurn !== null) return
       const rect = scrollport.getBoundingClientRect()
       const centerY = rect.top + rect.height / 2
       let best: { turn: number; dist: number } | null = null
@@ -361,7 +363,7 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
                 className={css.tick
                   + (selectedTurn === turn ? ' ' + css.tickSelected : '')
                   + (hoveredTurn === turn ? ' ' + css.tickHover : '')
-                  + (followTurn === turn && selectedTurn === null ? ' ' + css.tickFollow : '')
+                  + (followTurn === turn ? ' ' + css.tickFollow : '')
                   + (turn === turnItems[turnItems.length - 1]?.turn ? ' ' + css.tickActive : '')}
                 viewBox="0 0 24 24"
                 role="button"
