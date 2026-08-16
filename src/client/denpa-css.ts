@@ -393,7 +393,7 @@ body[data-ds-dark-theme] [data-denpa-bg]::before {
  * 壁纸模糊层，保留 header/正文卡片的亚克力磨砂。
  * --dsh-header-height 由 HeaderEffects 在运行时测量并写到 root 上。
  * ════════════════════════════════════════════════════════════ */
-div[data-phase] > div[aria-hidden="true"]:first-child {
+[data-phase]::before {
   --dsh-header-gap: 12px;
   -webkit-mask-image: var(--dsh-wallpaper-mask, linear-gradient(to bottom,
     #000 0,
@@ -419,7 +419,7 @@ div[data-phase] > div[aria-hidden="true"]:first-child {
  * 主页 / 非 active 阶段：模糊层按整个容器走，去掉 header+body 的
  * 中间缝，并用 clip-path 圆角跟随容器，避免直角。
  * ════════════════════════════════════════════════════════════ */
-div[data-phase]:not([data-phase='active']) > div[aria-hidden="true"]:first-child {
+[data-phase]:not([data-phase='active'])::before {
   -webkit-mask-image: none !important;
   mask-image: none !important;
   clip-path: inset(0 round var(--denpa-radius, 14px));
@@ -629,8 +629,6 @@ div[class$="hoverCard"] {
   padding: 12px 28px 0 20px !important;
   border: 1px solid var(--dsw-alias-border-l1) !important;
   border-radius: var(--denpa-radius, 14px) !important;
-  background: var(--dsw-alias-bg-base) !important;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 6px 20px rgb(0 0 0 / 0.08) !important;
 }
 
 /* 官方 header 底部 1px 分隔线会与卡片圆角冲突，去掉 */
@@ -648,8 +646,35 @@ div[class$="hoverCard"] {
 [data-conversation-scroll] {
   border: 1px solid var(--dsw-alias-border-l1) !important;
   border-radius: var(--denpa-radius, 14px) !important;
-  background: var(--dsw-alias-bg-base) !important;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 6px 20px rgb(0 0 0 / 0.08) !important;
+}
+
+/* 双卡亚克力配方（与侧栏同款：染色 + 噪声 + 辉光/阴影），壁纸透出。
+   卡片自身不持有 backdrop-filter（会截断后代 composer 卡的磨砂采样），
+   壁纸模糊由 [data-phase]::before 独立背景层承担。 */
+[data-phase] header,
+[data-conversation-scroll] {
+  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity)) !important;
+  background-image: var(--denpa-noise) !important;
+  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* 壁纸模糊独立层：铺满会话列、位于卡片背后（根级 stacking context 的
+   负层），透明玻璃只糊住 body 直下壁纸层（官方 DOM 无此元素，伪元素注入）。 */
+[data-phase] {
+  position: relative !important;
+  z-index: 0 !important;
+}
+
+[data-phase]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  -webkit-backdrop-filter: var(--denpa-material-blur);
+  backdrop-filter: var(--denpa-material-blur);
 }
 
 /* 会话列根：自身不画表面，让 frame 背景透出（卡片间隙可见） */
