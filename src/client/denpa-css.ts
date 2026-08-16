@@ -747,8 +747,10 @@ div[data-phase] {
 }
 
 /* 新建会话主按钮（DenpaPush 主按钮观感：圆角/品牌色，按钮本体由官方
-   组件渲染，这里只补观感） */
-[class*="_sidebarCol"] [class*="_newSession"] {
+   组件渲染，这里只补观感）。
+   :not([class*="_newSessionLabel"]) 排除按钮内的文字 span
+   （class="_newSessionLabel" 也含 "_newSession" 子串）。 */
+[class*="_sidebarCol"] [class*="_newSession"]:not([class*="_newSessionLabel"]) {
   border-radius: var(--denpa-radius-sm, 10px) !important;
 }
 
