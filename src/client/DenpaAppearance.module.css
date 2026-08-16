@@ -65,7 +65,8 @@
 
 .tipPortal {
   position: fixed;
-  z-index: 999;
+  /* 必须高于设置面板自身浮层（模态/抽屉常达 1000+），否则被面板盖住 */
+  z-index: 2147483000;
   padding: 6px 10px;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
