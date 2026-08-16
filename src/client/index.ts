@@ -416,18 +416,20 @@ export function apply(ctx: ClientContext): void {
     id: 'liuli-voiceprint',
     order: 10,
   }, DenpaHeaderVoiceprint))
+  // 手柄与回合导轨挂在官方 header.utilities（最右端）：tabs 条挂载点只存在于
+  // 未发布的 harness 改动里，官方版本没有该 slot；utilities 位置最接近。
   ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
     name: 'conversation.session.header.utilities',
     id: 'liuli-header-chrome',
     order: 10,
   }, DenpaHeaderChrome))
-  ctx.slots.inject('conversation.session.header.tabs', () => ctx.slots.register({
-    name: 'conversation.session.header.tabs',
+  ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
+    name: 'conversation.session.header.utilities',
     id: 'liuli-header-resizer',
-    order: 10,
+    order: 15,
   }, DenpaHeaderResizer))
-  ctx.slots.inject('conversation.session.header.tabs', () => ctx.slots.register({
-    name: 'conversation.session.header.tabs',
+  ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
+    name: 'conversation.session.header.utilities',
     id: 'liuli-turn-rail',
     order: 20,
   }, TurnRail))
