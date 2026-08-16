@@ -919,6 +919,28 @@ div[data-phase='active'] {
   backdrop-filter: var(--denpa-material-blur) !important;
 }
 
+/* 设置分区卡片（插件配置卡 / 插件目录卡 / Agent preset 卡）：
+   官方实底 bg-layer-3（#333C44 硬编码，不随主题），WIP 改为半透明
+   亚克力配方。用直接子选择器（cards > card 或 cards > div > card），
+   避免命中 card 内部的 cardMain/cardHead 等子类（它们应保持透明）。 */
+[role="dialog"] [class*="_cards"] > [class*="_card"],
+[role="dialog"] [class*="_cards"] > div > [class*="_card"] {
+  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity)) !important;
+  background-image: var(--denpa-noise) !important;
+  -webkit-backdrop-filter: var(--denpa-material-blur) !important;
+  backdrop-filter: var(--denpa-material-blur) !important;
+}
+
+/* 展开/激活卡：比基础卡更实（WIP：opacity + 0.15） */
+[role="dialog"] [class*="_cards"] > [class*="_card"][data-open="true"],
+[role="dialog"] [class*="_cards"] > div > [class*="_card"][data-open="true"],
+[role="dialog"] [class*="_cards"] > [class*="_card"][class*="Open"],
+[role="dialog"] [class*="_cards"] > div > [class*="_card"][class*="Open"],
+[role="dialog"] [class*="_cards"] > [class*="_card"][class*="Active"],
+[role="dialog"] [class*="_cards"] > div > [class*="_card"][class*="Active"] {
+  background-color: rgba(var(--denpa-acrylic-rgb), calc(var(--denpa-material-opacity) + 0.15)) !important;
+}
+
 /* ════════════════════════════════════════════════════════════
  * 会话切换/新消息入场动画（denpa-transition.ts 挂类）
  * 长属性写法：animation 简写里嵌 var()（级联延迟）在个别引擎上有解析
