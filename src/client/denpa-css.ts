@@ -721,6 +721,31 @@ div[class$="hoverCard"] {
   margin-bottom: 4px !important;
 }
 
+/* 收起态顶部品牌鱼（WIP 的 railBrand 新元素，官方等价物是 toggle 按钮：
+   点击展开功能不变，这里把它样式化成 36px 圆形品牌鱼 + hover 圆底） */
+[class$="_sidebarCol"] [class$="_collapsed"] [class$="_logoRow"] {
+  justify-content: center !important;
+}
+
+[class$="_sidebarCol"] [class$="_collapsed"] [class$="_toggle"] {
+  flex: none !important;
+  width: 36px !important;
+  height: 36px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: none !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+  color: var(--dsw-alias-label-primary) !important;
+  cursor: pointer !important;
+  padding: 0 !important;
+}
+
+[class$="_sidebarCol"] [class$="_collapsed"] [class$="_toggle"]:hover {
+  background: var(--dsw-alias-interactive-bg-hover) !important;
+}
+
 /* 新建会话主按钮（DenpaPush 主按钮观感：圆角/品牌色，按钮本体由官方
    组件渲染，这里只补观感） */
 [class$="_sidebarCol"] [class$="_newSession"] {
