@@ -234,26 +234,19 @@ async function vpToggle(): Promise<void> {
   // 系统音频：仅经 getDisplayMedia 捕获扬声器输出，不降级麦克风。
   // 在共享选择器中分享「整个屏幕」并勾选「分享系统音频」，即可监听到
   // 系统正在播放的声音（音乐/视频等），而非麦克风输入。
-  // suppressLocalAudioPlayback：禁止 Chrome 把捕获的系统音频回放到本标签页
-  // 输出通道——否则形成"捕获→输出→loopback 再捕获"自反馈环：音量合成器
-  // 里 Chrome 输出电平跳动、波形混入回放环噪音（拉 0 Chrome 音量波形即停）。
+  // 注：不设置 suppressLocalAudioPlayback —— 实测该约束会把系统主音量静音
+  // （疑似其实现直接置零输出音量）；捕获环噪音由检测侧噪声底扣除压制。
   if (typeof navigator.mediaDevices.getDisplayMedia === 'function') {
     try {
       let stream: MediaStream
       try {
-        stream = await navigator.mediaDevices.getDisplayMedia({
-          video: false,
-          audio: { suppressLocalAudioPlayback: true },
-        })
+        stream = await navigator.mediaDevices.getDisplayMedia({ video: false, audio: true })
       } catch (err) {
         const name = (err as DOMException | undefined)?.name
         if (name !== 'NotSupportedError' && name !== 'TypeError') throw err
         // 部分浏览器不接受纯音频共享（仅系统音频捕获的兼容性回退）：
         // 共享视频轨后立即丢弃，仍只监听系统音频。授权拒绝不会走到这里。
-        stream = await navigator.mediaDevices.getDisplayMedia({
-          video: true,
-          audio: { suppressLocalAudioPlayback: true },
-        })
+        stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
         stream.getVideoTracks().forEach(t => t.stop())
       }
       if (startAnalyser(stream)) return
