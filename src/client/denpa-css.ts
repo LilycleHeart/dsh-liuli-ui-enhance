@@ -836,6 +836,20 @@ div[data-phase='active'] {
   color: var(--dsw-specific-bubble-fg, var(--dsw-alias-label-primary)) !important;
 }
 
+/* 回合状态 shimmer（"Deep diving..."）：官方渐变用静态 deepseek-500/200
+   （不随主题），WIP 改为 M3 动态品牌色 + 混白浅点。背景被 background-clip:
+   text 用作文字色（官方已设 color:transparent），只覆盖背景渐变即可。 */
+[class*="_turnStatus"] {
+  background: linear-gradient(
+    90deg,
+    var(--dsw-alias-brand-primary) 0%,
+    var(--dsw-alias-brand-primary) 40%,
+    color-mix(in srgb, var(--dsw-alias-brand-primary) 45%, #ffffff) 50%,
+    var(--dsw-alias-brand-primary) 60%,
+    var(--dsw-alias-brand-primary) 100%
+  ) !important;
+}
+
 /* 输入卡：官方已读 --dsw-specific-input-major（插件半透明变量），补辉光/
    阴影；磨砂已由插件 [data-composer-card]::before 独立层承担。 */
 [data-composer-card] {
