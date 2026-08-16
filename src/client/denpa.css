@@ -298,15 +298,6 @@ body[data-ds-dark-theme] {
   outline-offset: 1px;
 }
 
-/* 提示浮层：统一使用主题 tooltip 令牌，避免宿主硬编码浅色底/白字 */
-[role="tooltip"] {
-  background: var(--dsw-alias-tooltip-bg) !important;
-  color: var(--dsw-alias-label-primary-inverted) !important;
-}
-[role="tooltip"] * {
-  color: inherit !important;
-}
-
 /* 滚动条：细、圆角、主题色 */
 * {
   scrollbar-width: thin;

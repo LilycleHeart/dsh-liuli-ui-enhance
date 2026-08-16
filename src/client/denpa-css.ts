@@ -303,15 +303,6 @@ body[data-ds-dark-theme] {
   outline-offset: 1px;
 }
 
-/* 提示浮层：统一使用主题 tooltip 令牌，避免宿主硬编码浅色底/白字 */
-[role="tooltip"] {
-  background: var(--dsw-alias-tooltip-bg) !important;
-  color: var(--dsw-alias-label-primary-inverted) !important;
-}
-[role="tooltip"] * {
-  color: inherit !important;
-}
-
 /* 滚动条：细、圆角、主题色 */
 * {
   scrollbar-width: thin;
@@ -821,8 +812,11 @@ div[data-phase='active'] {
  * ════════════════════════════════════════════════════════════ */
 
 /* 用户气泡：亮青气泡配深色前景（官方组件只读 label-primary，补读
-   --dsw-specific-bubble-fg；token 由插件定义，暗色下保持深色前景） */
-[class*="_bubble"] {
+   --dsw-specific-bubble-fg；token 由插件定义，暗色下保持深色前景）。
+   :not([role="tooltip"]) 排除 Tooltip primitive 的气泡（类名同为
+   "_bubble" 后缀）：tooltip 有自己的深色板 + 浅色文字配色，不能
+   被这里强改成 bubble-fg（否则暗色主题下 tooltip 文字变深色）。 */
+[class*="_bubble"]:not([role="tooltip"]) {
   color: var(--dsw-specific-bubble-fg, var(--dsw-alias-label-primary)) !important;
 }
 
