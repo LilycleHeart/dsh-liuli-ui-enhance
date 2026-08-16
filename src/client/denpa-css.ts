@@ -591,4 +591,88 @@ div[class$="hoverCard"] {
   }
 }
 
+/* ════════════════════════════════════════════════════════════
+ * 会话切换/新消息入场动画（denpa-transition.ts 挂类）
+ * 长属性写法：animation 简写里嵌 var()（级联延迟）在个别引擎上有解析
+ * 风险，拆开后每条规则独立解析，延迟变量绝对可靠。
+ * ════════════════════════════════════════════════════════════ */
+.denpa-enter {
+  animation-duration: 200ms;
+  animation-timing-function: var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1));
+  animation-delay: var(--denpa-enter-delay, 0ms);
+  animation-fill-mode: backwards;
+}
+
+.denpa-enter-fade { animation-name: denpa-enter-fade; }
+.denpa-enter-rise { animation-name: denpa-enter-rise; }
+.denpa-enter-drop { animation-name: denpa-enter-drop; }
+.denpa-enter-slide { animation-name: denpa-enter-slide; }
+.denpa-enter-zoom { animation-name: denpa-enter-zoom; }
+.denpa-enter-blur { animation-name: denpa-enter-blur; }
+.denpa-enter-spring { animation-name: denpa-enter-spring; }
+
+/* 级联：同批多条按 --denpa-enter-delay 递增入场（fade/rise 变体） */
+.denpa-enter-stagger { animation-name: denpa-enter-fade; animation-duration: 180ms; }
+.denpa-enter-staggerRise { animation-name: denpa-enter-rise; animation-duration: 180ms; }
+
+@keyframes denpa-enter-fade {
+  from { opacity: 0; }
+}
+
+@keyframes denpa-enter-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes denpa-enter-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes denpa-enter-slide {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+}
+
+@keyframes denpa-enter-zoom {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+@keyframes denpa-enter-blur {
+  from {
+    opacity: 0;
+    filter: blur(5px);
+  }
+}
+
+@keyframes denpa-enter-spring {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  70% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .denpa-enter {
+    animation: none;
+  }
+}
+
 `

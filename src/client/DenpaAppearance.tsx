@@ -701,6 +701,24 @@ export function DenpaAppearanceSection({
           disabled={!s.shadow_enabled}
           onChange={(v) => { set({ shadow_intensity: v }) }}
         />
+
+        <SelectRow
+          label={t('transition')}
+          value={s.transition_effect}
+          options={[
+            { value: 'rise', label: t('transition.rise') },
+            { value: 'fade', label: t('transition.fade') },
+            { value: 'drop', label: t('transition.drop') },
+            { value: 'slide', label: t('transition.slide') },
+            { value: 'zoom', label: t('transition.zoom') },
+            { value: 'blur', label: t('transition.blur') },
+            { value: 'spring', label: t('transition.spring') },
+            { value: 'stagger', label: t('transition.stagger') },
+            { value: 'staggerRise', label: t('transition.staggerRise') },
+            { value: 'none', label: t('transition.none') },
+          ]}
+          onChange={(v) => { set({ transition_effect: v as DenpaSettings['transition_effect'] }) }}
+        />
       </div>
 
       {/* 声纹响应（Nanoleaf Desktop 移植检测的参数，即时生效） */}

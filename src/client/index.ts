@@ -43,6 +43,7 @@ import {
   DenpaHeaderVoiceprint, DenpaHeaderChrome, DenpaHeaderResizer,
 } from './HeaderEffects.tsx'
 import { setTurnRailCommitHandler, TurnRail } from './TurnRail.tsx'
+import { startDenpaTransition } from './denpa-transition.ts'
 import { disposeSupplierQuota, initSupplierQuota, refreshSupplierQuota } from './supplier-quota.ts'
 import { SupplierQuota } from './SupplierQuota.tsx'
 import { createElement } from 'react'
@@ -101,6 +102,9 @@ function injectThemeCss(): void {
  */
 export function apply(ctx: ClientContext): void {
   injectThemeCss()
+
+  // ── 会话切换/新消息入场动画：MutationObserver 挂类（动画定义在 denpa.css）──
+  ctx.effect(() => startDenpaTransition(), 'liuli-theme: message transition observer')
 
   // ── 供应商额度：注入 connection/remote，供 header 工具区显示当前供应商额度 ──
   initSupplierQuota(ctx.get('connection') as ConnectionHandle, ctx.get('modelDirectories'))
