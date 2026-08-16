@@ -648,6 +648,15 @@ div[data-phase] header [class*="_titleRow"] {
   border-radius: var(--denpa-radius, 14px) !important;
 }
 
+/* 琉璃：正文卡片底部直切、向下延伸到窗口边缘（WIP ConversationRoot
+   同款：centerCol 底部有 16px 内边距，卡片用负 margin 补偿，下缘贴窗口
+   底边，底部圆角归零）。hero 阶段（composer 居中）不补偿，保持居中几何。 */
+div[data-phase='active'] [data-conversation-scroll] {
+  border-bottom-left-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  margin-bottom: -16px !important;
+}
+
 /* 双卡亚克力配方（与侧栏同款：染色 + 噪声 + 辉光/阴影），壁纸透出。
    卡片自身不持有 backdrop-filter（会截断后代 composer 卡的磨砂采样），
    壁纸模糊由 [data-phase]::before 独立背景层承担。 */
@@ -677,6 +686,12 @@ div[data-phase]::before {
   backdrop-filter: var(--denpa-material-blur);
 }
 
+/* active 态正文卡片下缘贴窗口底边（scrollBody margin-bottom:-16px），
+   模糊层同步下探 16px，覆盖卡片延伸出的区域。 */
+div[data-phase='active']::before {
+  bottom: -16px;
+}
+
 /* 会话列根：自身不画表面，让 frame 背景透出（卡片间隙可见） */
 div[data-phase] {
   background: transparent !important;
@@ -701,18 +716,44 @@ div[data-phase] {
 
 /* ════════════════════════════════════════════════════════════
  * 侧栏悬浮亚克力面板（DenpaPush 配方）：左贴边直角、右侧圆角，
- * 半透明 + 噪声 + 磨砂 + 辉光/阴影。磨砂可用：设置面板已由官方
- * portal 到 body（官方 SettingsRoot 本就 portal），侧栏无 fixed 后代
- * 包含块陷阱。
+ * 半透明 + 噪声 + 磨砂 + 辉光/阴影。
+ *
+ * 磨砂必须由 ::before 独立背景层承担，根元素自身不能持有
+ * backdrop-filter：backdrop-filter 会让元素成为 fixed 后代的包含块，
+ * 而官方设置外壳（ui-settings-general 的 SettingsRoot）是渲染在侧栏
+ * footArea 内部的 "position: fixed; inset: 0" 全屏模态 —— 若侧栏根持有
+ * backdrop-filter，设置 overlay 的包含块会退化成侧栏根（280px），
+ * flex 容器随之收缩，面板被压成侧栏宽度（"设置页面打开在侧边栏"）。
+ * 与 composer 卡同一套路：背景层放 ::before，根只做定位/圆角/阴影。
+ *
+ * 根上还需要 position:relative + z-index:1 自建堆叠上下文：
+ * 1) ::before 的 z-index:-1 不逃逸到 body 层（否则会被 frame 的壁纸
+ *    背景盖住而不可见）；
+ * 2) 会话列 div[data-phase] 已被设为 z-index:0 堆叠上下文，侧栏根
+ *    抬高到 1，设置 overlay（fixed, z-index:1000，位于侧栏根上下文内）
+ *    才能盖住会话列，恢复全屏居中模态。
  * ════════════════════════════════════════════════════════════ */
 [class*="_sidebarCol"] > div > [class*="_root"] {
+  position: relative !important;
+  z-index: 1 !important;
   border-radius: 0 var(--denpa-radius, 14px) var(--denpa-radius, 14px) 0 !important;
-  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity)) !important;
-  background-image: var(--denpa-noise) !important;
-  -webkit-backdrop-filter: var(--denpa-material-blur) !important;
-  backdrop-filter: var(--denpa-material-blur) !important;
+  background-color: transparent !important;
+  background-image: none !important;
   box-shadow: var(--denpa-glow-brand), var(--denpa-shadow) !important;
   overflow: hidden !important;
+}
+
+[class*="_sidebarCol"] > div > [class*="_root"]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity));
+  background-image: var(--denpa-noise);
+  -webkit-backdrop-filter: var(--denpa-material-blur);
+  backdrop-filter: var(--denpa-material-blur);
+  pointer-events: none;
 }
 
 /* 品牌头部留白（DenpaPush sidebar-header 配方） */
