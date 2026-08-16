@@ -932,12 +932,20 @@ div[data-phase='active'] {
 
 /* dock 卡（TodoPanel / GoalBar）：噪声 + 磨砂 + 辉光/阴影。
    必须用组件的 data 锚点精确命中 —— [class$=] 后缀会误伤消息流里
-   的每个节点 root（构建产物的类后缀太常见）。
-   QueueDock（排队提示条）刻意排除：用户要求去除其磨砂/辉光
-   （提示条不应有模糊遮罩感），保留官方半透明底。 */
+   的每个节点 root（构建产物的类后缀太常见）。 */
 [data-testid="todo-panel"],
 [data-goal-bar] {
   background-image: var(--denpa-noise) !important;
+  -webkit-backdrop-filter: var(--denpa-material-blur) !important;
+  backdrop-filter: var(--denpa-material-blur) !important;
+  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow) !important;
+}
+
+/* 排队面板（QueueDock 内部 .panel）：WIP 配方 —— 磨砂 + 辉光/阴影
+   加在实际面板上（外层 .dock 只是布局 wrapper，blur 会形成整块遮罩，
+   用户要求去外层遮罩、但面板本身要有与 composer 卡一致的磨砂）。
+   面板无 fixed 后代，无包含块陷阱。 */
+[data-queue-dock] [class*="_panel"] {
   -webkit-backdrop-filter: var(--denpa-material-blur) !important;
   backdrop-filter: var(--denpa-material-blur) !important;
   box-shadow: var(--denpa-glow-brand), var(--denpa-shadow) !important;
