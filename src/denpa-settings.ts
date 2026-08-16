@@ -16,6 +16,10 @@ export type DenpaBackgroundMode = 'theme' | 'brand_gradient' | 'custom' | 'image
 export type DenpaMaterialType = 'acrylic' | 'mica'
 /** 字体模式 */
 export type DenpaFontMode = 'misans' | 'builtin'
+/** 会话切换/新消息入场动画效果（none 关闭；stagger* 为级联入场）。 */
+export type DenpaTransitionEffect =
+  | 'fade' | 'rise' | 'drop' | 'slide' | 'zoom' | 'blur' | 'spring'
+  | 'stagger' | 'staggerRise' | 'none'
 /** 壁纸适应模式 */
 export type DenpaBgFit = 'cover' | 'contain' | 'stretch'
 /** 壁纸自定义选区（相对原图的归一化矩形，0..1；Cover 下按窗口比例约束）。 */
@@ -76,6 +80,8 @@ export interface DenpaSettings {
   vp_spec_smooth: number
   /** 声纹静音门限（低于此电平的频段驱动归零，越大静音/底噪时越安静）。 */
   vp_noise_gate: number
+  /** 会话切换/新消息入场动画（'rise' 默认；'none' 关闭）。 */
+  transition_effect: DenpaTransitionEffect
 }
 
 /** 默认设置（与 DenpaPush 界面设置一致）。 */
@@ -112,6 +118,7 @@ export const DENPA_SETTINGS_DEFAULTS: DenpaSettings = {
   vp_env_speed: 50,
   vp_spec_smooth: 0.3,
   vp_noise_gate: 0.025,
+  transition_effect: 'rise',
 }
 
 /** 持久化 schema（浏览器 scope 复用同一描述）。 */
@@ -149,6 +156,9 @@ export const DenpaSettingsSchema: z<DenpaSettings> = z.object({
   vp_env_speed: z.number().default(50),
   vp_spec_smooth: z.number().default(0.3),
   vp_noise_gate: z.number().default(0.025),
+  transition_effect: z.union([
+    'fade', 'rise', 'drop', 'slide', 'zoom', 'blur', 'spring', 'stagger', 'staggerRise', 'none',
+  ]).default('rise'),
 }) as unknown as z<DenpaSettings>
 
 /** 合并任意部分值到完整设置（读侧防御）。 */
