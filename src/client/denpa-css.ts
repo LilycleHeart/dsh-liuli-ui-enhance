@@ -640,6 +640,30 @@ div[data-phase] header [class*="_titleRow"] {
   z-index: 1 !important;
 }
 
+/* Session log 按钮：WIP 亚克力胶囊配方 + 用户要求只保留图标
+   （隐藏"Session log"文字 span，按钮 30x30 与相邻图标按钮一致） */
+[class*="_sessionLogButton"] {
+  min-width: 30px !important;
+  width: 30px !important;
+  height: 30px !important;
+  padding: 4px !important;
+  border: 1px solid var(--dsw-alias-border-l1) !important;
+  border-radius: 999px !important;
+  color: var(--dsw-alias-label-secondary) !important;
+  background: rgba(var(--denpa-acrylic-rgb), 0.6) !important;
+  -webkit-backdrop-filter: var(--denpa-material-blur) !important;
+  backdrop-filter: var(--denpa-material-blur) !important;
+}
+
+[class*="_sessionLogButton"]:hover:not(:disabled) {
+  color: var(--dsw-alias-brand-primary) !important;
+  background: var(--dsw-alias-interactive-bg-hover-accent) !important;
+}
+
+[class*="_sessionLogButton"] > span {
+  display: none !important;
+}
+
 /* 正文滚动区浮动卡片：官方 [data-conversation-scroll] 为滚动容器 */
 [data-conversation-scroll] {
   border: 1px solid var(--dsw-alias-border-l1) !important;
