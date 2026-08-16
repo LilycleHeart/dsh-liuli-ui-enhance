@@ -50,6 +50,7 @@ import { createElement } from 'react'
 import { FloatBall } from './FloatBall.tsx'
 import { createRoot } from 'react-dom/client'
 import { formatSelection, type PickedElement } from './element-picker.ts'
+import { PreviewPanel, PreviewButton } from './PreviewPanel.tsx'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -192,6 +193,24 @@ export function apply(ctx: ClientContext): void {
       host.remove()
     }
   }, 'liuli-theme: float ball mount')
+
+  // ── 工作区预览面板：右侧 overlay + /preview iframe + 元素选择器 ──
+  ctx.effect(() => {
+    const host = document.createElement('div')
+    host.id = 'liuli-preview-host'
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    root.render(createElement(PreviewPanel, {
+      subscribeSession: (fn) => ctx.sessions.list.subscribe(() => {
+        fn(ctx.sessions.list.getSnapshot().current ?? null)
+      }),
+      insertElement,
+    }))
+    return () => {
+      root.unmount()
+      host.remove()
+    }
+  }, 'liuli-theme: preview panel mount')
 
   ctx.effect(() => ctx.locale.register(DENPA_LOCALE_NS, { zh, en }), 'liuli-theme: denpa dictionaries')
 
@@ -437,4 +456,10 @@ export function apply(ctx: ClientContext): void {
     id: 'liuli-turn-rail',
     order: 20,
   }, TurnRail))
+  // 工作区预览开关（官方 harness 无 preview 列/面板，插件自带 overlay）
+  ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
+    name: 'conversation.session.header.utilities',
+    id: 'liuli-preview-button',
+    order: 25,
+  }, PreviewButton))
 }
