@@ -705,7 +705,7 @@ div[class$="hoverCard"] {
  * portal 到 body（官方 SettingsRoot 本就 portal），侧栏无 fixed 后代
  * 包含块陷阱。
  * ════════════════════════════════════════════════════════════ */
-[class$="_sidebarCol"] [class$="_root"] {
+[class$="_sidebarCol"] > div > [class$="_root"] {
   border-radius: 0 var(--denpa-radius, 14px) var(--denpa-radius, 14px) 0 !important;
   background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity)) !important;
   background-image: var(--denpa-noise) !important;
@@ -789,17 +789,20 @@ div[class$="hoverCard"] {
   color: var(--dsw-alias-brand-primary) !important;
 }
 
-/* dock 卡（TodoPanel / GoalBar / QueueDock）：噪声 + 磨砂 + 辉光/阴影 */
-[data-conversation-scroll] [class$="_root"],
-[data-conversation-scroll] [class$="_dock"],
-[data-conversation-scroll] [class$="_panel"] {
+/* dock 卡（TodoPanel / GoalBar / QueueDock）：噪声 + 磨砂 + 辉光/阴影。
+   必须用组件的 data 锚点精确命中 —— [class$=] 后缀会误伤消息流里
+   的每个节点 root（构建产物的类后缀太常见）。 */
+[data-testid="todo-panel"],
+[data-goal-bar],
+[data-queue-dock] {
   background-image: var(--denpa-noise) !important;
   -webkit-backdrop-filter: var(--denpa-material-blur) !important;
   backdrop-filter: var(--denpa-material-blur) !important;
   box-shadow: var(--denpa-glow-brand), var(--denpa-shadow) !important;
 }
 
-/* 详情列：去左侧分割线（DenpaPush 复刻） */
+/* 详情列：去左侧分割线（DenpaPush 复刻）。列内 _root 唯一（面板根），
+   与侧栏不同没有树/列表子 root，宽匹配安全。 */
 [class$="_detailsCol"] [class$="_root"] {
   border-left: none !important;
 }
