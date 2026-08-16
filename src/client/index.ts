@@ -20,6 +20,7 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls the theme service's Context merge (ctx.theme + theme/change).
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
+import type { ThemePreference } from '@deepseek-ai/dsh-client-ui-theme/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls ui-conversation's header slots + ui-settings' section slot names.
@@ -28,6 +29,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 // Type-only: the input-trigger source roster (element picker reference chip codec).
 import type { InputTriggerSource, ReferenceCodec } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import { DenpaAppearanceSection, type DenpaAppearanceInjected } from './DenpaAppearance.tsx'
+import { LiuliAppearanceRow, type LiuliAppearanceRowInjected } from './LiuliAppearanceRow.tsx'
+import { createLiuliAppearanceStore } from './liuli-appearance-store.ts'
 import { createDenpaStore } from './denpa-store.ts'
 import {
   clearWallpaper, loadWallpaper, compressImage, saveWallpaper, loadImage,
@@ -426,6 +429,32 @@ export function apply(ctx: ClientContext): void {
     locale: DENPA_LOCALE_NS,
     inject: denpaInjected,
   }, DenpaAppearanceSection))
+
+  // ── 设置页「外观」行：以同 id + 更低 priority 替换官方 AppearanceRow ──
+  //    点击带圆形遮罩过渡（denpa:set-theme 事件桥），桥未就绪时降级直连。
+  const appearanceStore = createLiuliAppearanceStore()
+  let appearanceBound: BoundActions<typeof appearanceStore> | undefined
+  const syncAppearance = (snapshot: { preference: ThemePreference; revision: number }): void => {
+    appearanceBound?.sync(snapshot.preference, snapshot.revision)
+  }
+  ctx.on('theme/change', syncAppearance)
+  ctx.slots.inject('settings.general.item', () => ctx.slots.register({
+    name: 'settings.general.item',
+    id: 'appearance',
+    priority: -1,
+    order: 10,
+    locale: 'settings.theme',
+    store: appearanceStore,
+    inject: (actions: BoundActions<typeof appearanceStore>): LiuliAppearanceRowInjected => {
+      appearanceBound = actions
+      // 注册与首次渲染之间可能错过 theme/change，从 getter 补同步一次。
+      const snapshot = ctx.theme.getTheme()
+      appearanceBound.sync(snapshot.preference, snapshot.revision)
+      return {
+        setTheme: (id) => { ctx.theme.setTheme(id) },
+      }
+    },
+  }, LiuliAppearanceRow))
 
   // ── 会话 header 效果（供应商额度/声纹/监听/主题切换/拉伸手柄）──
   // 额度放在 header.actions：跟在 agent preset 标签右侧，作为普通文本而非工具区胶囊。
