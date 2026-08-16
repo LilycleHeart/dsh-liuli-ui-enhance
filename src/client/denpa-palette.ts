@@ -224,7 +224,10 @@ export function denpaApplyBrand(pal: DenpaPalette, isDark: boolean, sourceHex?: 
   set('--dsw-alias-button-ghost-active-hover', pal.bg3)
   set('--dsw-alias-button-ghost-active-border', pal.stroke1)
   set('--dsw-alias-toast-bg', pal.bgInv)
-  set('--dsw-alias-tooltip-bg', pal.bgInv)
+  // Tooltip 板官方语义是"亮暗两模式都保持深色"（ui-primitives/Tooltip.module.css），
+  // 不能用 bgInv（inverseSurface：暗色下反而变浅）——否则暗色主题下 tooltip
+  // 变成浅底，配合白色文字不可读。固定为中性深灰。
+  set('--dsw-alias-tooltip-bg', '#2f3133')
   set('--dsw-alias-bg-mask-drop', isDark ? 'rgba(39,39,48,0.7)' : 'rgba(255,255,255,0.7)')
 
   // Markdown 表面
