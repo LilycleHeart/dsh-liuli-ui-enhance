@@ -483,15 +483,11 @@ div[role="menu"] [class*="_groupTitle"] {
   pointer-events: none;
 }
 
-/* 输入遮罩改亚克力淡出（WIP 同款）：官方渐变渐隐到不透明 bg-base
-   （rgb 18,19,22 实色硬边，压在统计卡上像一块渐变遮罩），WIP 改为
-   渐隐到 20% 亚克力 —— 半透明，壁纸/磨砂透出，柔和过渡。 */
+/* 输入遮罩完全移除（用户要求）：官方渐变渐隐到不透明 bg-base、
+   以及上一版改为的亚克力淡出，都是 composer 顶部的渐变遮罩层，
+   一律去掉 —— 让消息流/输入区干净透出。 */
 [data-composer-seat] {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, rgb(var(--denpa-acrylic-rgb)) 0%, transparent) 0px,
-    color-mix(in srgb, rgb(var(--denpa-acrylic-rgb)) 20%, transparent) 36px
-  ) !important;
+  background: transparent !important;
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -877,12 +873,13 @@ div[data-phase='active'] {
   color: var(--dsw-alias-brand-primary) !important;
 }
 
-/* dock 卡（TodoPanel / GoalBar / QueueDock）：噪声 + 磨砂 + 辉光/阴影。
+/* dock 卡（TodoPanel / GoalBar）：噪声 + 磨砂 + 辉光/阴影。
    必须用组件的 data 锚点精确命中 —— [class$=] 后缀会误伤消息流里
-   的每个节点 root（构建产物的类后缀太常见）。 */
+   的每个节点 root（构建产物的类后缀太常见）。
+   QueueDock（排队提示条）刻意排除：用户要求去除其磨砂/辉光
+   （提示条不应有模糊遮罩感），保留官方半透明底。 */
 [data-testid="todo-panel"],
-[data-goal-bar],
-[data-queue-dock] {
+[data-goal-bar] {
   background-image: var(--denpa-noise) !important;
   -webkit-backdrop-filter: var(--denpa-material-blur) !important;
   backdrop-filter: var(--denpa-material-blur) !important;
