@@ -82,7 +82,7 @@ function Tip({ text }: { text: string }) {
 }
 
 /** 一个表单行：标签 + 控件；tip 提供指针悬浮功能描述（ⓘ 图标）。 */
-function Row(props: { label: string; hint?: string; tip?: string; children: ReactNode }) {
+function Row(props: { label: string; hint?: string; tip?: string | undefined; children: ReactNode }) {
   return (
     <label className={css.row}>
       <span className={css.label}>

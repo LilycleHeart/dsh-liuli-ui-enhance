@@ -1,7 +1,8 @@
 /**
  * 琉璃主题 · 对话轮次刻度侧边栏（DenpaPush 时间线风格）。
  *
- * 挂在 `conversation.session.header.tabs` slot（仅作挂载点），随后把真正的
+ * 挂在 `conversation.session.header.utilities` slot（仅作挂载点，官方版本
+ * 没有 header.tabs），随后把真正的
  * 时间线 rail portal 到会话根 `[data-phase]`：
  * - 左侧一条竖向刻度线，每轮对话一个刻度；
  * - 刻度上的胶囊会沿竖线滑动：悬停/选中时定位到对应刻度，滚动时跟随视口
@@ -23,7 +24,7 @@ import type { ChatNode } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-runtime/client'
 import css from './TurnRail.module.css'
 
-type TurnRailProps = PropsRuntime<'conversation.session.header.tabs'>
+type TurnRailProps = PropsRuntime<'conversation.session.header.utilities'>
 
 interface TurnInfo {
   readonly commit: string
@@ -365,7 +366,6 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
                 viewBox="0 0 24 24"
                 role="button"
                 tabIndex={0}
-                title={`第 ${index + 1} 轮`}
                 aria-label={`跳到第 ${index + 1} 轮`}
                 aria-expanded={selectedTurn === turn || undefined}
                 onClick={(e) => { onTickClick(e, turn) }}

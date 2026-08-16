@@ -4,7 +4,7 @@
  * 通过 `conversation.session.header.*` slots 注入四件 chrome：
  *   - header.actions   → DenpaHeaderVoiceprint：声纹 canvas 铺满 header 卡片背景；
  *   - header.utilities → DenpaHeaderChrome：系统音频监听按钮 + 日/夜主题切换；
- *   - header.tabs      → DenpaHeaderResizer：header 垂直拉伸手柄（布局记忆）。
+ *   - header.utilities → DenpaHeaderResizer：header 垂直拉伸手柄（布局记忆）。
  *
  * 声纹 canvas 与监听按钮分属不同 slot 渲染树（无法共享 React context），
  * 二者经模块级单例引擎 VoiceprintEngine 协作：canvas 的 rAF 循环直接读取
@@ -709,7 +709,8 @@ const MIN_H = 52
 const MAX_H = 320
 
 /**
- * 拉伸手柄。注入 `conversation.session.header.tabs`，但手柄层经 portal 挂到
+ * 拉伸手柄。注入 `conversation.session.header.utilities`（官方没有 tabs
+ * 挂载点），但手柄层经 portal 挂到
  * header 直接子节点：tabs 行是 relative 包含块，absolute bottom 会钉在
  * tabs 底部（header 中部）而非 header 底部 —— 之前拉伸失效的根因。
  * 垂直拖拽改变 header 高度（min-height，内容自然高度为下限，声纹 canvas
