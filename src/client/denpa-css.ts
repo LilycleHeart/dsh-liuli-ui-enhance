@@ -1,5 +1,8 @@
 /** 琉璃主题样式 —— denpa.css 的字符串化拷贝（运行时注入 <style>，幂等）。 */
 export const denpaCss = `
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://cdn-font.hyperos.mi.com/font/css?family=MiSans:100,200,300,400,450,500,600,650,700,900:Chinese_Simplify,Latin&display=swap');
+
 /* ============================================================
  * DenpaPush 风格覆盖层 (DeepSeek Harness 复刻)
  * ------------------------------------------------------------
