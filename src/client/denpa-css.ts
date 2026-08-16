@@ -749,6 +749,59 @@ div[class$="hoverCard"] {
 }
 
 /* ════════════════════════════════════════════════════════════
+ * 剩余小件观感（原宿主 module.css 差异，全部为 DenpaPush 配方）：
+ * dock 卡磨砂/辉光、状态点动态取色、详情列去分割线、底部淡出层移除、
+ * 设置对话框辉光。
+ * ════════════════════════════════════════════════════════════ */
+
+/* 状态点（StateDot）：ongoing/done 跟随 M3 动态品牌色（原为静态刻度/成功绿） */
+[class$="_dot"],
+[class$="_matrix"] {
+  --dsh-state-ongoing: var(--dsw-alias-brand-primary);
+}
+
+[class$="_dot"][data-state="done"] {
+  color: var(--dsw-alias-brand-primary) !important;
+}
+
+/* dock 卡（TodoPanel / GoalBar / QueueDock）：噪声 + 磨砂 + 辉光/阴影 */
+[data-conversation-scroll] [class$="_root"],
+[data-conversation-scroll] [class$="_dock"],
+[data-conversation-scroll] [class$="_panel"] {
+  background-image: var(--denpa-noise) !important;
+  -webkit-backdrop-filter: var(--denpa-material-blur) !important;
+  backdrop-filter: var(--denpa-material-blur) !important;
+  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow) !important;
+}
+
+/* 详情列：去左侧分割线（DenpaPush 复刻） */
+[class$="_detailsCol"] [class$="_root"] {
+  border-left: none !important;
+}
+
+/* 工作区树底部淡出层：WIP 已移除该元素，插件隐藏官方残留层 */
+[class$="_fade"] {
+  display: none !important;
+}
+
+/* 设置对话框/面板：辉光阴影（磨砂已由通用对话框规则覆盖） */
+[role="dialog"][class$="_panel"],
+[role="dialog"][class$="_dialog"] {
+  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow) !important;
+}
+
+/* 设置行药丸控件（语言/Agent preset/Enter 行为/权限选择器）：
+   官方实底换亚克力配方（border-radius 18px 控件） */
+[role="dialog"] [class$="_row"] button,
+[role="dialog"] [class$="_row"] select,
+[role="dialog"] [class$="_row"] input {
+  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity)) !important;
+  background-image: var(--denpa-noise) !important;
+  -webkit-backdrop-filter: var(--denpa-material-blur) !important;
+  backdrop-filter: var(--denpa-material-blur) !important;
+}
+
+/* ════════════════════════════════════════════════════════════
  * 会话切换/新消息入场动画（denpa-transition.ts 挂类）
  * 长属性写法：animation 简写里嵌 var()（级联延迟）在个别引擎上有解析
  * 风险，拆开后每条规则独立解析，延迟变量绝对可靠。
