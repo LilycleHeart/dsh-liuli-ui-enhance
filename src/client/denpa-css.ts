@@ -604,7 +604,7 @@ div[class$="hoverCard"] {
  * ════════════════════════════════════════════════════════════ */
 
 /* 帧背景：壁纸/品牌渐变/自定义（denpa-runtime 写入变量） */
-[class$="_frame"] {
+[class*="_frame"] {
   background-color: var(--denpa-frame-bg, var(--dsw-alias-bg-base)) !important;
   background-image: var(--denpa-frame-bg-image, none) !important;
   background-size: var(--denpa-frame-bg-size, auto) !important;
@@ -613,13 +613,13 @@ div[class$="hoverCard"] {
 }
 
 /* 列留白：卡片悬浮观感（侧栏与中间列各留边距） */
-[class$="_sidebarCol"] {
+[class*="_sidebarCol"] {
   padding: 16px 16px 16px 0 !important;
   background: transparent !important;
   border-right: none !important;
 }
 
-[class$="_centerCol"] {
+[class*="_centerCol"] {
   padding: 16px 16px 16px 12px !important;
 }
 
@@ -637,7 +637,7 @@ div[data-phase] header::after {
 }
 
 /* 标题行浮于声纹 canvas 之上（canvas absolute z-index:0） */
-div[data-phase] header [class$="_titleRow"] {
+div[data-phase] header [class*="_titleRow"] {
   position: relative !important;
   z-index: 1 !important;
 }
@@ -683,7 +683,7 @@ div[data-phase] {
 }
 
 /* 英雄区（空状态欢迎页）：品牌辉光标题 + 副标题（DenpaPush 风格） */
-[class$="_headline"] {
+[class*="_headline"] {
   font-family: var(--dsw-font-family-display) !important;
   letter-spacing: -0.5px !important;
   color: var(--dsw-alias-label-primary) !important;
@@ -691,7 +691,7 @@ div[data-phase] {
     0 0 14px color-mix(in srgb, var(--dsw-alias-brand-primary) 22%, transparent) !important;
 }
 
-[class$="_subtitle"] {
+[class*="_subtitle"] {
   margin: 0 !important;
   text-align: center !important;
   font-size: 14px !important;
@@ -705,7 +705,7 @@ div[data-phase] {
  * portal 到 body（官方 SettingsRoot 本就 portal），侧栏无 fixed 后代
  * 包含块陷阱。
  * ════════════════════════════════════════════════════════════ */
-[class$="_sidebarCol"] > div > [class$="_root"] {
+[class*="_sidebarCol"] > div > [class*="_root"] {
   border-radius: 0 var(--denpa-radius, 14px) var(--denpa-radius, 14px) 0 !important;
   background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity)) !important;
   background-image: var(--denpa-noise) !important;
@@ -716,18 +716,18 @@ div[data-phase] {
 }
 
 /* 品牌头部留白（DenpaPush sidebar-header 配方） */
-[class$="_sidebarCol"] [class$="_logoRow"] {
+[class*="_sidebarCol"] [class*="_logoRow"] {
   padding: 8px 2px 8px 4px !important;
   margin-bottom: 4px !important;
 }
 
 /* 收起态顶部品牌鱼（WIP 的 railBrand 新元素，官方等价物是 toggle 按钮：
    点击展开功能不变，这里把它样式化成 36px 圆形品牌鱼 + hover 圆底） */
-[class$="_sidebarCol"] [class$="_collapsed"] [class$="_logoRow"] {
+[class*="_sidebarCol"] [class*="_collapsed"] [class*="_logoRow"] {
   justify-content: center !important;
 }
 
-[class$="_sidebarCol"] [class$="_collapsed"] [class$="_toggle"] {
+[class*="_sidebarCol"] [class*="_collapsed"] [class*="_toggle"] {
   flex: none !important;
   width: 36px !important;
   height: 36px !important;
@@ -742,13 +742,13 @@ div[data-phase] {
   padding: 0 !important;
 }
 
-[class$="_sidebarCol"] [class$="_collapsed"] [class$="_toggle"]:hover {
+[class*="_sidebarCol"] [class*="_collapsed"] [class*="_toggle"]:hover {
   background: var(--dsw-alias-interactive-bg-hover) !important;
 }
 
 /* 新建会话主按钮（DenpaPush 主按钮观感：圆角/品牌色，按钮本体由官方
    组件渲染，这里只补观感） */
-[class$="_sidebarCol"] [class$="_newSession"] {
+[class*="_sidebarCol"] [class*="_newSession"] {
   border-radius: var(--denpa-radius-sm, 10px) !important;
 }
 
@@ -758,7 +758,7 @@ div[data-phase] {
 
 /* 用户气泡：亮青气泡配深色前景（官方组件只读 label-primary，补读
    --dsw-specific-bubble-fg；token 由插件定义，暗色下保持深色前景） */
-[class$="_bubble"] {
+[class*="_bubble"] {
   color: var(--dsw-specific-bubble-fg, var(--dsw-alias-label-primary)) !important;
 }
 
@@ -769,7 +769,7 @@ div[data-phase] {
 }
 
 /* 引用 chip：缩放标签与底色观感（chip 本体是官方元素，类后缀命中） */
-[class$="_chip"] [class$="_chipLabel"] {
+[class*="_chip"] [class*="_chipLabel"] {
   color: var(--dsw-alias-label-primary) !important;
 }
 
@@ -780,12 +780,12 @@ div[data-phase] {
  * ════════════════════════════════════════════════════════════ */
 
 /* 状态点（StateDot）：ongoing/done 跟随 M3 动态品牌色（原为静态刻度/成功绿） */
-[class$="_dot"],
-[class$="_matrix"] {
+[class*="_dot"],
+[class*="_matrix"] {
   --dsh-state-ongoing: var(--dsw-alias-brand-primary);
 }
 
-[class$="_dot"][data-state="done"] {
+[class*="_dot"][data-state="done"] {
   color: var(--dsw-alias-brand-primary) !important;
 }
 
@@ -803,26 +803,26 @@ div[data-phase] {
 
 /* 详情列：去左侧分割线（DenpaPush 复刻）。列内 _root 唯一（面板根），
    与侧栏不同没有树/列表子 root，宽匹配安全。 */
-[class$="_detailsCol"] [class$="_root"] {
+[class*="_detailsCol"] [class*="_root"] {
   border-left: none !important;
 }
 
 /* 工作区树底部淡出层：WIP 已移除该元素，插件隐藏官方残留层 */
-[class$="_fade"] {
+[class*="_fade"] {
   display: none !important;
 }
 
 /* 设置对话框/面板：辉光阴影（磨砂已由通用对话框规则覆盖） */
-[role="dialog"][class$="_panel"],
-[role="dialog"][class$="_dialog"] {
+[role="dialog"][class*="_panel"],
+[role="dialog"][class*="_dialog"] {
   box-shadow: var(--denpa-glow-brand), var(--denpa-shadow) !important;
 }
 
 /* 设置行药丸控件（语言/Agent preset/Enter 行为/权限选择器）：
    官方实底换亚克力配方（border-radius 18px 控件） */
-[role="dialog"] [class$="_row"] button,
-[role="dialog"] [class$="_row"] select,
-[role="dialog"] [class$="_row"] input {
+[role="dialog"] [class*="_row"] button,
+[role="dialog"] [class*="_row"] select,
+[role="dialog"] [class*="_row"] input {
   background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity)) !important;
   background-image: var(--denpa-noise) !important;
   -webkit-backdrop-filter: var(--denpa-material-blur) !important;
