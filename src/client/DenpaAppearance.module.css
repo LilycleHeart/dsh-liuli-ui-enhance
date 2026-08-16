@@ -205,8 +205,10 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  /* 中性表面色（非 onBrand：onBrand 随主题反相，暗色下不可见） */
-  background: var(--dsw-alias-bg-base);
+  /* 主文字色（暗色=浅、亮色=深）：与开关轨道（开=品牌色、关=灰）
+     都形成对比 —— 之前用 bg-base（暗色下深色）在暗灰轨道上不可见，
+     label-primary-inverted（inverseOnSurface）暗色下反而是深色，也不对。 */
+  background: var(--dsw-alias-label-primary);
   transition: transform 160ms var(--ds-ease-in-out);
 }
 

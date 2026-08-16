@@ -799,12 +799,28 @@ div[data-phase='active'] {
   background: var(--dsw-alias-interactive-bg-hover) !important;
 }
 
-/* 新建会话主按钮（DenpaPush 主按钮观感：圆角/品牌色，按钮本体由官方
-   组件渲染，这里只补观感）。
+/* 新建会话主按钮（DenpaPush 主按钮：品牌色实底 + 深色前景 + 品牌辉光，
+   WIP 配方完整移植；官方背景是中性 elevated-fill，非主题色）。
    :not([class*="_newSessionLabel"]) 排除按钮内的文字 span
    （class="_newSessionLabel" 也含 "_newSession" 子串）。 */
 [class*="_sidebarCol"] [class*="_newSession"]:not([class*="_newSessionLabel"]) {
   border-radius: var(--denpa-radius-sm, 10px) !important;
+  border-color: transparent !important;
+  background: var(--dsw-alias-button-primary-fill) !important;
+  color: var(--dsw-alias-label-primary-foreground) !important;
+  box-shadow: var(--denpa-glow-brand) !important;
+}
+
+[class*="_sidebarCol"] [class*="_newSession"]:not([class*="_newSessionLabel"]):hover {
+  background: var(--dsw-alias-button-primary-hover) !important;
+  box-shadow: var(--denpa-glow-brand-strong) !important;
+}
+
+/* 收起态退为透明底图标钮：前景回普通文本色（onBrand 两向俱错） */
+[class*="_sidebarCol"] [class*="_collapsed"] [class*="_newSession"]:not([class*="_newSessionLabel"]) {
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--dsw-alias-label-primary) !important;
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -877,8 +893,10 @@ div[data-phase='active'] {
 }
 
 /* 设置行药丸控件（语言/Agent preset/Enter 行为/权限选择器）：
-   官方实底换亚克力配方（border-radius 18px 控件） */
-[role="dialog"] [class*="_row"] button,
+   官方实底换亚克力配方（border-radius 18px 控件）。
+   :not([class*="_toggle"]) 排除开关：toggle 有独立轨道设计
+   （关=border-l3 灰、开=品牌色），亚克力覆盖会让开态失去品牌色。 */
+[role="dialog"] [class*="_row"] button:not([class*="_toggle"]),
 [role="dialog"] [class*="_row"] select,
 [role="dialog"] [class*="_row"] input {
   background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity)) !important;
