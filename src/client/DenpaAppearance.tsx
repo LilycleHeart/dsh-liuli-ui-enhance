@@ -97,8 +97,14 @@ function Row(props: { label: string; hint?: string; tip?: string; children: Reac
 
 /** 滑块行（可越界数字输入 + 独立复位，仅值≠默认时显示复位）。 */
 function SliderRow(props: {
-  label: string; value: number; suffix: string; min: number; max: number; step?: number;
-  onChange: (v: number) => void; disabled?: boolean
+  label: string
+  value: number
+  suffix: string
+  min: number
+  max: number
+  step?: number
+  onChange: (v: number) => void
+  disabled?: boolean
   /** 提供后显示独立复位按钮（仅当值偏离默认时出现）。 */
   defaultValue?: number
   /** 指针悬浮功能描述（ⓘ）。 */
@@ -126,7 +132,10 @@ function SliderRow(props: {
           <button
             type="button" className={css.resetBtn} title={props.label}
             aria-label="恢复该参数默认值"
-            onClick={() => { props.onChange(props.defaultValue!) }}
+            onClick={() => {
+              // changed 为真时 defaultValue 必然存在（见上方条件）。
+              if (props.defaultValue !== undefined) props.onChange(props.defaultValue)
+            }}
           >
             ↺
           </button>

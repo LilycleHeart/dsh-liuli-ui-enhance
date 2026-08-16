@@ -184,14 +184,6 @@ async function fetchDeepSeek(api: IApiClient, ctx: { provider: string; model: st
   return fetchFromSettings(api, ctx)
 }
 
-async function fetchOpencodeGo(api: IApiClient, ctx: { provider: string; model: string }): Promise<SupplierQuotaData> {
-  try {
-    const data = await fetchFromHost(ctx.provider)
-    if (data.kind !== 'unavailable') return data
-  } catch (_) { /* fallthrough */ }
-  return fetchFromSettings(api, ctx)
-}
-
 /* ── 适配器列表 ───────────────────────────────────────────────── */
 
 const adapters: SupplierQuotaAdapter[] = [
@@ -208,7 +200,7 @@ const adapters: SupplierQuotaAdapter[] = [
   {
     id: 'opencode-go',
     match: provider => provider === 'opencode-go',
-    fetch: fetchOpencodeGo,
+    fetch: fetchDeepSeek,
   },
   {
     id: 'openai',

@@ -238,8 +238,8 @@ export function FloatBall({ insertElement }: { insertElement: InsertElementFn })
         const p = posRef.current
         const full: Pos = snapped === 'left' ? { left: 8, top: p.top }
           : snapped === 'right' ? { left: vw - BALL - 8, top: p.top }
-          : snapped === 'top' ? { left: p.left, top: 8 }
-          : { left: p.left, top: vh - BALL - 8 }
+            : snapped === 'top' ? { left: p.left, top: 8 }
+              : { left: p.left, top: vh - BALL - 8 }
         applyPos(full)
         setSnapped(null)
       }
@@ -261,8 +261,8 @@ export function FloatBall({ insertElement }: { insertElement: InsertElementFn })
       const side: Side = min === dl ? 'left' : min === dr ? 'right' : min === dt ? 'top' : 'bottom'
       const target: Pos = side === 'left' ? { left: -BALL + PEEK, top: p.top }
         : side === 'right' ? { left: vw - PEEK, top: p.top }
-        : side === 'top' ? { left: p.left, top: -BALL + PEEK }
-        : { left: p.left, top: vh - PEEK }
+          : side === 'top' ? { left: p.left, top: -BALL + PEEK }
+            : { left: p.left, top: vh - PEEK }
       applyPos(target)
       setSnapped(side)
     } else {

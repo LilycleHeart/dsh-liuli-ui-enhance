@@ -60,11 +60,15 @@ function loadVpParams(): void {
     const hw = num('vp_high_weight')
     if (bw !== undefined || mw !== undefined || hw !== undefined) {
       const w = [
+        // oxlint-disable-next-line typescript/no-non-null-assertion -- weights is a fixed 3-band array initialized at setup
         bw !== undefined ? clampVp(bw, 0, 100) : vpParams.weights[0]! * 100,
+        // oxlint-disable-next-line typescript/no-non-null-assertion -- weights is a fixed 3-band array initialized at setup
         mw !== undefined ? clampVp(mw, 0, 100) : vpParams.weights[1]! * 100,
+        // oxlint-disable-next-line typescript/no-non-null-assertion -- weights is a fixed 3-band array initialized at setup
         hw !== undefined ? clampVp(hw, 0, 100) : vpParams.weights[2]! * 100,
       ]
       // 全零时退回默认权重，避免驱动恒为零
+      // oxlint-disable-next-line typescript/no-non-null-assertion -- w is a 3-element tuple built above
       if (w[0]! + w[1]! + w[2]! > 0) vpParams.weights = [w[0]! / 100, w[1]! / 100, w[2]! / 100]
     }
     const bc = num('vp_beat_cooldown')
@@ -279,6 +283,7 @@ function brandRGB(): RGB {
     .getPropertyValue('--dsw-alias-brand-primary').trim() || '#8ecdf8'
   const m = v.match(/^#?([0-9a-f]{6})$/i)
   if (!m) return [142, 205, 248]
+  // oxlint-disable-next-line typescript/no-non-null-assertion -- the match succeeded, so the single capture group exists
   const n = parseInt(m[1]!, 16)
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
 }
@@ -370,6 +375,7 @@ export function DenpaHeaderVoiceprint() {
       if (vpState.analyser !== null) {
         for (let i = 0; i < freqData.length; i++) {
           const raw = freqData[i] ?? 0
+          // oxlint-disable-next-line typescript/no-non-null-assertion -- specSmooth is sized to freqData above; i stays in bounds
           vpDraw.specSmooth[i] = vpDraw.specSmooth[i]! + (raw - vpDraw.specSmooth[i]!) * vpParams.specSmooth
         }
       } else {
@@ -381,6 +387,7 @@ export function DenpaHeaderVoiceprint() {
       let drive = 0
       if (vpState.analyser !== null) {
         for (let b = 0; b < BAND_EDGES.length; b++) {
+          // oxlint-disable-next-line typescript/no-non-null-assertion -- b iterates BAND_EDGES.length
           const [from, to] = BAND_EDGES[b]!
           const n = Math.min(to, freqData.length - 1) - from + 1
           let sum = 0
@@ -392,8 +399,11 @@ export function DenpaHeaderVoiceprint() {
           if (raw < nz) vpDraw.bandNoise[b] = raw
           else vpDraw.bandNoise[b] = nz + (raw - nz) * 0.0005
           const clean = Math.max(0, raw - (vpDraw.bandNoise[b] ?? 0))
+          // oxlint-disable-next-line typescript/no-non-null-assertion -- bandEnv is a fixed 3-band array; b < 3
           vpDraw.bandEnv[b]! += (clean - vpDraw.bandEnv[b]!) * (clean > vpDraw.bandEnv[b]! ? vpParams.envAttack : vpParams.envRelease)
+          // oxlint-disable-next-line typescript/no-non-null-assertion -- bandEnv is a fixed 3-band array; b < 3
           const v = vpDraw.bandEnv[b]! < vpParams.noiseGate ? 0 : Math.min(1, vpDraw.bandEnv[b]! / vpParams.sensitivity)
+          // oxlint-disable-next-line typescript/no-non-null-assertion -- weights is a fixed 3-band array; b < 3
           drive += vpParams.weights[b]! * v
         }
         drive = Math.min(1, drive)
@@ -470,26 +480,28 @@ export function DenpaHeaderVoiceprint() {
     /* 流动波形（空闲态 ↔ 响应态平滑过渡；绘制公式逐字参照 denpa_echo
        Waveform：22 线 + 逐线 binVal 频谱纹理 + 三正弦主波。
        空闲态幅度压制由 denpa_echo 式 presence 包络驱动（进入响应即压低
-       空闲流动，×0.8 系数原样）；22 条线按频段权重分组——低/中/高
-       各组由各自频段包络独立驱动（低频线跟鼓点、高频线跟镲片）。 */
+       空闲流动，×0.8 系数原样）；低/中/高频各自产生一种视觉事件叠加在
+       整幅波形上（不按线条分组）：
+         bass → 冲击：低频能量让波形整体膨胀、线条变粗
+         mid  → 流速：旋律能量加快波形流动
+         high → 星闪：镲片能量提升线条与主波亮度 */
     const drawWave = (freqData: Uint8Array, C: RGB, dark: boolean): void => {
       const lineC = dark ? lighten(C, 0.35) : C
-      vpDraw.idlePhase += 0.008 * (1 + vpDraw.presence * 2)
       const cy = h / 2
       const lines = 22
       const mix = vpState.audioMix
 
-      // 按设置权重把线分组：低频 nBass 条、中频 nMid 条、剩余高频
-      const weights = vpParams.weights
-      const wSum = Math.max(0.001, weights[0]! + weights[1]! + weights[2]!)
-      let nBass = Math.max(1, Math.round((lines * weights[0]!) / wSum))
-      let nMid = Math.max(1, Math.round((lines * weights[1]!) / wSum))
-      if (nBass + nMid > lines - 1) nMid = Math.max(1, lines - nBass - 1)
-      // 各组驱动 = 该频段归一化包络（与连续响应同款：参考响度 + 静音门限）
+      // 频段驱动（与连续响应同款：参考响度 + 静音门限）
       const bandDrive = (b: number): number => {
         const env = vpDraw.bandEnv[b] ?? 0
         return env < vpParams.noiseGate ? 0 : Math.min(1, env / vpParams.sensitivity)
       }
+      const bassDrive = bandDrive(0)
+      const midDrive = bandDrive(1)
+      const highDrive = bandDrive(2)
+
+      // mid 事件：流速——旋律/人声能量让波形流动加快
+      vpDraw.idlePhase += 0.008 * (1 + vpDraw.presence * 2) * (1 + midDrive * 1.2)
 
       // 外层细线不设 shadowBlur：canvas 高斯模糊是每帧最大开销（同 denpa_echo）；
       // 辉光焦点保留给中央主波。
@@ -498,9 +510,6 @@ export function DenpaHeaderVoiceprint() {
       for (let li = 0; li < lines; li++) {
         const off = li / lines - 0.5
         const baseY = cy + off * (h * 0.38)
-        // 所属频段组：低 < nBass，中 < nBass+nMid，其余高频
-        const g = li < nBass ? 0 : li < nBass + nMid ? 1 : 2
-        const vg = bandDrive(g)
 
         // 基础振幅（空闲态）：进入响应时按 denpa_echo 的 ×0.8 系数压缩，
         // 为音频驱动振幅腾出空间
@@ -508,16 +517,21 @@ export function DenpaHeaderVoiceprint() {
         // 音频驱动：逐线取平滑频谱对应 bin 的能量映射为额外振幅
         const tex = vpDraw.specSmooth ?? freqData
         const binIdx = Math.min(tex.length - 1, Math.floor((li / lines) * tex.length))
+        // oxlint-disable-next-line typescript/no-non-null-assertion -- binIdx is clamped to tex.length - 1
         const binVal = tex[binIdx]! / 255
-        // 混合振幅：空闲压缩保底 + 本组频段能量叠加；鼓点击中时 punch 全波加成
-        const amp = idleAmp + vg * binVal * h * 0.3 * (1 - Math.abs(off) * 0.6) * (1 + vpParams.beatGain * vpDraw.punch)
+        // bass 事件：冲击——低频能量让波形整体膨胀（节拍 punch 为爆发加成）
+        const amp = idleAmp + mix * binVal * h * 0.3 * (1 - Math.abs(off) * 0.6)
+          * (1 + vpParams.beatGain * vpDraw.punch + bassDrive * 0.4)
+        // high 事件：星闪——镲片/高频能量提升线条亮度
+        const alpha = (dark ? 0.18 : 0.16) + (1 - Math.abs(off)) * (dark ? 0.42 : 0.32)
+          + mix * binVal * 0.2 + highDrive * 0.3
 
         const freq = 0.007 + li * 0.00055
-        const alpha = (dark ? 0.18 : 0.16) + (1 - Math.abs(off)) * (dark ? 0.42 : 0.32) + vg * binVal * 0.2
 
         ctx.beginPath()
         ctx.strokeStyle = edgeGradient(ctx, w, lineC, Math.min(1, alpha))
-        ctx.lineWidth = 1 + vg * binVal * 0.8
+        // bass 事件同时加粗线条（冲击感）
+        ctx.lineWidth = 1 + mix * binVal * 0.8 + bassDrive * 0.6
         for (let x = 0; x <= w; x += 3) {
           const n = Math.sin(freq * x + vpDraw.idlePhase + li * 0.75)
             + 0.33 * Math.sin(freq * 2.4 * x + vpDraw.idlePhase * 1.35 + li * 1.15)
@@ -528,13 +542,14 @@ export function DenpaHeaderVoiceprint() {
         ctx.stroke()
       }
 
-      // 中央主波（辉光焦点，同 denpa_echo 参数）
+      // 中央主波（辉光焦点，同 denpa_echo 参数；high 事件提升辉光亮度）
       ctx.shadowColor = rgba(lineC, dark ? 0.9 : 0.45)
       ctx.shadowBlur = dark ? 20 : 6
       ctx.beginPath()
-      ctx.strokeStyle = edgeGradient(ctx, w, lineC, dark ? 1 : 0.7)
+      ctx.strokeStyle = edgeGradient(ctx, w, lineC, Math.min(1, (dark ? 1 : 0.7) + highDrive * 0.25))
       const tex = vpDraw.specSmooth ?? freqData
       const mainBin = Math.floor(tex.length * 0.25)
+      // oxlint-disable-next-line typescript/no-non-null-assertion -- mainBin is a quarter of tex.length
       const mainVal = tex[mainBin]! / 255
       ctx.lineWidth = 2 + mix * mainVal * 1.5
       const mainAmp = (46 * (1 - vpDraw.presence * 0.8) + mix * mainVal * h * 0.2) * (1 + vpParams.beatGain * vpDraw.punch)
@@ -755,6 +770,7 @@ export function DenpaHeaderResizer() {
       let bodySvg = ''
       if (bodyRect !== undefined && bodyRect.height > 0) {
         const r = local(bodyRect)
+        // oxlint-disable-next-line typescript/no-non-null-assertion -- bodyRect is defined only when body exists
         const bodyStyle = getComputedStyle(body!)
         const topRadius = Number.parseFloat(bodyStyle.borderTopLeftRadius) || 14
         const bottomRadius = Math.max(
@@ -782,9 +798,11 @@ export function DenpaHeaderResizer() {
     const headerObserver = new ResizeObserver(sync)
     headerObserver.observe(header)
     const rootObserver = root !== null ? new ResizeObserver(sync) : null
+    // oxlint-disable-next-line typescript/no-non-null-assertion -- the ternary above proves root exists
     rootObserver?.observe(root!)
     const scrollBody = root?.querySelector<HTMLElement>('[data-conversation-scroll]') ?? null
     const scrollBodyObserver = scrollBody !== null ? new ResizeObserver(sync) : null
+    // oxlint-disable-next-line typescript/no-non-null-assertion -- the ternary above proves scrollBody exists
     scrollBodyObserver?.observe(scrollBody!)
     // 圆角/材质等设置会写 body 内联变量，变化时重新生成 mask。
     const bodyObserver = new MutationObserver(sync)

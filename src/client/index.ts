@@ -70,9 +70,9 @@ export const inject = ['slots', 'locale', 'theme', 'sessions', 'conversation', '
 /** 宽边模式样式：对话信息区在宽屏下撑满可用宽度（提高左右空间利用率）。 */
 const WIDE_MODE_CSS = [
   '/* 宽边模式：覆盖会话列的内容宽度轴（--dsh-chat-content-width 定义于会话 root） */',
-  "body[data-liuli-wide] [data-phase] {",
-  "  --dsh-chat-content-width: min(1280px, calc(100% - 160px));",
-  "}",
+  'body[data-liuli-wide] [data-phase] {',
+  '  --dsh-chat-content-width: min(1280px, calc(100% - 160px));',
+  '}',
 ].join('\n')
 
 /** 解析元素选择器引用（ui-preview 同构：ref = JSON.stringify(PickedElement)）。 */
