@@ -708,6 +708,16 @@ div[data-phase] {
   background: transparent !important;
 }
 
+/* active 态根列不裁剪卡片外阴影/下缘延伸（WIP 同款）：
+   官方 .root[data-phase='active'] { overflow: hidden } 会把 scrollBody
+   margin-bottom:-16px 向下延伸的 16px 裁掉，卡片视觉底部停在根列底边
+   （窗口底上 16px 处），露出壁纸 gap。改 visible 让卡片真正贴到窗口
+   底边，卡片辉光/阴影也完整可见（横向溢出由 scrollBody 自己的
+   overflow-x:hidden 承担）。 */
+div[data-phase='active'] {
+  overflow: visible !important;
+}
+
 /* 英雄区（空状态欢迎页）：品牌辉光标题 + 副标题（DenpaPush 风格） */
 [class*="_headline"] {
   font-family: var(--dsw-font-family-display) !important;
