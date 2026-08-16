@@ -795,6 +795,24 @@ div[data-phase='active'] {
   background: var(--dsw-alias-interactive-bg-hover) !important;
 }
 
+/* 图标按钮 hover：品牌弱化底 + 品牌色图标（WIP 配方） */
+[class*="_sidebarCol"] [class*="_iconButton"]:hover {
+  background: var(--dsw-alias-interactive-bg-hover-accent) !important;
+  color: var(--dsw-alias-brand-primary) !important;
+}
+
+/* 收起态图标按钮：品牌色（WIP：rail 图标用主品牌墨色） */
+[class*="_sidebarCol"] [class*="_collapsed"] [class*="_iconButton"] {
+  color: var(--dsw-alias-brand-primary) !important;
+}
+
+/* 移除官方 rail logo swap（WIP 已删）：收起态始终显示品牌鱼，
+   hover 不变面板图标 —— 否则 hover 时品牌鱼会被官方规则
+   .collapsed .toggle:hover .panelIcon 换成面板图标，与 WIP 不符。 */
+[class*="_sidebarCol"] [class*="_collapsed"] [class*="_toggle"] [class*="_panelIcon"] {
+  display: none !important;
+}
+
 /* 新建会话主按钮（DenpaPush 主按钮：品牌色实底 + 深色前景 + 品牌辉光，
    WIP 配方完整移植；官方背景是中性 elevated-fill，非主题色）。
    :not([class*="_newSessionLabel"]) 排除按钮内的文字 span
