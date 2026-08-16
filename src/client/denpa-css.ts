@@ -447,8 +447,8 @@ div[aria-label][class*="_card"],
 [role="dialog"][class*="_dialog"],
 [role="dialog"][class*="_panel"],
 div[role="menu"],
-div[class$="_menu"],
-ul[class$="_menu"] {
+div[class*="_menu"],
+ul[class*="_menu"] {
   background-color: var(--dsw-specific-input-major);
   background-image: var(--denpa-noise);
   -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
@@ -459,8 +459,8 @@ ul[class$="_menu"] {
  * 菜单内分组标题：把实底 --dsw-specific-menu 改为与菜单一致的半透明，
  * 避免出现一块硬编码实底挡住模糊。
  * ════════════════════════════════════════════════════════════ */
-[class$="_menu"] [class$="_groupTitle"],
-div[role="menu"] [class$="_groupTitle"] {
+[class*="_menu"] [class*="_groupTitle"],
+div[role="menu"] [class*="_groupTitle"] {
   border-radius: 8px;
   background-color: var(--dsw-specific-input-major);
   background-image: var(--denpa-noise);
@@ -507,18 +507,18 @@ div[role="menu"] [class$="_groupTitle"] {
 /* ════════════════════════════════════════════════════════════
  * 模型/提供商设置卡片：rowCard / addCard / setupCard 及内嵌 editor。
  * ════════════════════════════════════════════════════════════ */
-li[class$="rowCard"],
-li[class$="setupCard"],
-div[class$="addCard"] {
+li[class*="rowCard"],
+li[class*="setupCard"],
+div[class*="addCard"] {
   background-color: var(--dsw-specific-input-major);
   background-image: var(--denpa-noise);
   -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
   backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
 }
 
-li[class$="rowCard"] div[class$="_editor"],
-div[class$="addCard"] div[class$="_editor"],
-li[class$="setupCard"] div[class$="_editor"] {
+li[class*="rowCard"] div[class*="_editor"],
+div[class*="addCard"] div[class*="_editor"],
+li[class*="setupCard"] div[class*="_editor"] {
   background-color: var(--dsw-specific-input-major);
   background-image: var(--denpa-noise);
   -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
@@ -528,8 +528,8 @@ li[class$="setupCard"] div[class$="_editor"] {
 /* ════════════════════════════════════════════════════════════
  * 工具/技能展开内容卡：ioCard / instructionsCard。
  * ════════════════════════════════════════════════════════════ */
-div[class$="ioCard"],
-div[class$="instructionsCard"] {
+div[class*="ioCard"],
+div[class*="instructionsCard"] {
   background-color: var(--dsw-specific-input-major);
   background-image: var(--denpa-noise);
   -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
@@ -539,7 +539,7 @@ div[class$="instructionsCard"] {
 /* ════════════════════════════════════════════════════════════
  * 悬浮球 hover 信息卡（已有半透明底，只补模糊）。
  * ════════════════════════════════════════════════════════════ */
-div[class$="hoverCard"] {
+div[class*="hoverCard"] {
   background-color: var(--dsw-specific-input-major);
   background-image: var(--denpa-noise);
   -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
