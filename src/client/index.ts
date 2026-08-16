@@ -201,7 +201,7 @@ export function apply(ctx: ClientContext): void {
     document.body.appendChild(host)
     const root = createRoot(host)
     root.render(createElement(PreviewPanel, {
-      subscribeSession: (fn) => ctx.sessions.list.subscribe(() => {
+      subscribeSession: fn => ctx.sessions.list.subscribe(() => {
         fn(ctx.sessions.list.getSnapshot().current ?? null)
       }),
       insertElement,
