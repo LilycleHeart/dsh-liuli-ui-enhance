@@ -833,10 +833,12 @@ div[data-phase='active'] {
 }
 
 /* 回合状态 shimmer（"Deep diving..."）：官方渐变用静态 deepseek-500/200
-   （不随主题），WIP 改为 M3 动态品牌色 + 混白浅点。背景被 background-clip:
-   text 用作文字色（官方已设 color:transparent），只覆盖背景渐变即可。 */
+   （不随主题），WIP 改为 M3 动态品牌色 + 混白浅点。
+   只覆盖 background-image —— 不能写 background 简写（!important 简写会
+   把官方的 background-clip: text 重置成 border-box，渐变不再裁剪进文字，
+   配合 color:transparent 导致文字完全不可见）。 */
 [class*="_turnStatus"] {
-  background: linear-gradient(
+  background-image: linear-gradient(
     90deg,
     var(--dsw-alias-brand-primary) 0%,
     var(--dsw-alias-brand-primary) 40%,
