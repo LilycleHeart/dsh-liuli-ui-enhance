@@ -617,6 +617,12 @@ div[class*="hoverCard"] {
   border-right: none !important;
 }
 
+/* 收起态（rail）：官方 56px 轨道贴边、无侧栏留白 —— 展开态的 16px
+   左侧 padding 会把 rail 列挤窄（56-16=40），控件溢出错位。 */
+[class*="_sidebarCol"]:has([class*="_collapsed"]) {
+  padding: 0 !important;
+}
+
 [class*="_centerCol"] {
   padding: 16px 16px 16px 12px !important;
 }
@@ -792,6 +798,13 @@ div[data-phase='active'] {
 [class*="_sidebarCol"] [class*="_logoRow"] {
   padding: 8px 2px 8px 4px !important;
   margin-bottom: 4px !important;
+}
+
+/* 收起态 logoRow：恢复官方 rail 几何（padding 0、margin-bottom 12）
+   —— 展开态留白规则用 !important 会压过官方 .collapsed 规则。 */
+[class*="_sidebarCol"] [class*="_collapsed"] [class*="_logoRow"] {
+  padding: 0 !important;
+  margin-bottom: 12px !important;
 }
 
 /* 收起态顶部品牌鱼（WIP 的 railBrand 新元素，官方等价物是 toggle 按钮：
