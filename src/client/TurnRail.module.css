@@ -1,6 +1,7 @@
 /* 琉璃主题 · 对话轮次刻度侧边栏
    portal 到 [data-phase] 根，定位在正文卡片左侧。
-   只保留不透明刻度；胶囊从刻度右侧展开，显示 时间/日期/commit/摘要。 */
+   只保留不透明刻度；胶囊从刻度右侧展开：上栏 轮数+摘要，
+   下栏单开一行：commit 左对齐，时间 日期（X月X日）右对齐，主题色分割线。 */
 
 .rail {
   position: absolute;
@@ -46,8 +47,8 @@
 .tick:hover,
 .tick:focus-visible,
 .tickFollow {
-  color: var(--denpa-mcu-secondary, var(--dsw-alias-state-business-primary));
-  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--dsw-alias-state-business-primary) 45%, transparent));
+  color: var(--denpa-mcu-secondary, var(--dsw-alias-state-business-primary)) !important;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--denpa-mcu-secondary, var(--dsw-alias-state-business-primary)) 45%, transparent));
 }
 
 /* 当前所在轮：同样放大，但颜色保持跟随态 */
@@ -65,17 +66,17 @@
 .tickSelected {
   width: 28px;
   height: 28px;
-  color: var(--denpa-mcu-primary, var(--dsw-alias-brand-primary));
-  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--dsw-alias-brand-primary) 55%, transparent));
+  color: var(--denpa-mcu-primary, var(--dsw-alias-brand-primary)) !important;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--denpa-mcu-primary, var(--dsw-alias-brand-primary)) 55%, transparent));
 }
 
 .tickHover {
-  color: var(--denpa-mcu-secondary, var(--dsw-alias-state-business-primary));
-  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--dsw-alias-state-business-primary) 40%, transparent));
+  color: var(--denpa-mcu-secondary, var(--dsw-alias-state-business-primary)) !important;
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--denpa-mcu-secondary, var(--dsw-alias-state-business-primary)) 40%, transparent));
 }
 
 /* ── 胶囊：使用与输入卡（composer card）同款卡片样式 ─────────── */
-.capsule {
+.capsule[role="tooltip"] {
   position: absolute;
   z-index: 8;
   transform: translateY(-50%);
@@ -87,13 +88,14 @@
   max-width: min(300px, calc(100% - 64px));
   box-sizing: border-box;
   padding: 8px 12px;
-  border: 1px solid var(--dsw-alias-border-l1);
+  border: 1px solid var(--denpa-mcu-outline-variant, var(--dsw-alias-border-l2));
   border-radius: var(--denpa-radius, 14px);
-  background: var(--dsw-specific-sidebar-fill);
-  background-image: var(--denpa-noise);
+  /* 半透明亚克力（DenpaPush 配方）：让 backdrop-filter 磨砂真正透出壁纸 */
+  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity)) !important;
+  background-image: var(--denpa-noise) !important;
   -webkit-backdrop-filter: var(--denpa-material-blur);
   backdrop-filter: var(--denpa-material-blur);
-  color: var(--denpa-mcu-primary, var(--dsw-alias-brand-primary));
+  color: var(--denpa-mcu-on-surface, var(--dsw-alias-label-primary)) !important;
   box-shadow: var(--denpa-shadow), var(--denpa-glow-brand);
   pointer-events: auto;
   transition: top 60ms linear, border-color 120ms var(--ds-ease-in-out),
@@ -107,12 +109,12 @@
 
 /* 悬停态：品牌描边加强，接近 DenpaPush `.hovering` */
 .capsuleHover {
-  border-color: var(--denpa-mcu-primary, var(--dsw-alias-brand-primary));
+  border-color: var(--denpa-mcu-primary, var(--dsw-alias-brand-primary)) !important;
 }
 
 /* 选中态：持久高亮，比悬停更实 */
 .capsuleSelected {
-  border-color: var(--denpa-mcu-primary, var(--dsw-alias-brand-primary));
+  border-color: var(--denpa-mcu-primary, var(--dsw-alias-brand-primary)) !important;
   pointer-events: auto;
 }
 
@@ -134,21 +136,21 @@
   min-width: 0;
 }
 
-.capsuleTurn {
+.capsule .capsuleTurn {
   flex: none;
   font-size: 12px;
   font-weight: 600;
   line-height: 1.3;
-  color: var(--denpa-mcu-primary, var(--dsw-alias-brand-primary));
+  color: var(--denpa-mcu-primary, var(--dsw-alias-brand-primary)) !important;
   white-space: nowrap;
 }
 
-.capsuleSummary {
+.capsule .capsuleSummary {
   flex: 1;
   min-width: 0;
   font-size: 11px;
   line-height: 1.3;
-  color: var(--denpa-mcu-secondary, var(--dsw-alias-state-business-primary));
+  color: var(--denpa-mcu-on-surface-variant, var(--dsw-alias-label-secondary)) !important;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -158,17 +160,31 @@
   word-break: break-word;
 }
 
-.capsuleMeta {
-  flex: none;
+/* 底部单开一栏：commit 左对齐，时间 日期 右对齐（主题色分割线） */
+.capsuleMetaRow {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--denpa-mcu-primary, var(--dsw-alias-brand-primary));
+  width: 100%;
+  min-width: 0;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 6px;
   text-align: right;
 }
 
+/* 时间/日期组：靠右 */
+.capsuleMetaTime {
+  margin-left: auto;
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 6px;
+}
+
 .capsuleTime,
-.capsuleDate,
-.capsuleCommit {
+.capsuleDate {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -176,42 +192,28 @@
   font-family: var(--dsw-font-family);
 }
 
-.capsuleTime {
+.capsule .capsuleTime {
   font-size: 13px;
   font-weight: 600;
   line-height: 1.2;
-  color: var(--denpa-mcu-primary, var(--dsw-alias-brand-primary));
+  color: var(--denpa-mcu-primary, var(--dsw-alias-brand-primary)) !important;
 }
 
-.capsuleDate {
+.capsule .capsuleDate {
   font-size: 10px;
   font-weight: 500;
   line-height: 1.2;
   letter-spacing: 0.3px;
-  color: var(--denpa-mcu-secondary, var(--dsw-alias-state-business-primary));
+  color: var(--denpa-mcu-on-surface-variant, var(--dsw-alias-label-secondary)) !important;
 }
 
-.capsuleCommitRow {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid var(--dsw-alias-border-l2);
-  width: 100%;
-  min-width: 0;
-}
-
-.capsuleCommit {
-  display: block;
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1.2;
-  letter-spacing: 0.3px;
-  color: var(--denpa-mcu-tertiary, var(--dsw-alias-state-business-primary));
-  word-break: break-all;
-}
-
-.capsuleCommitButton {
-  display: block;
-  width: 100%;
+/* commit 左对齐；时间/日期右对齐 */
+.capsule .capsuleCommitButton {
+  flex: none;
+  max-width: 140px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   padding: 0;
   border: 0;
   background: transparent;
@@ -220,24 +222,22 @@
   font-weight: 500;
   line-height: 1.2;
   letter-spacing: 0.3px;
-  color: var(--denpa-mcu-tertiary, var(--dsw-alias-state-business-primary));
-  text-align: left;
-  word-break: break-all;
+  color: var(--denpa-mcu-tertiary, var(--dsw-alias-state-business-primary)) !important;
   cursor: pointer;
   pointer-events: auto;
   transition: color 120ms var(--ds-ease-in-out);
 }
 
-.capsuleCommitButton:hover,
-.capsuleCommitButton:focus-visible {
-  color: var(--denpa-mcu-tertiary, var(--dsw-alias-state-business-primary));
+.capsule .capsuleCommitButton:hover,
+.capsule .capsuleCommitButton:focus-visible {
+  color: var(--denpa-mcu-tertiary, var(--dsw-alias-state-business-primary)) !important;
   text-decoration: underline;
   outline: none;
 }
 
 /* 悬停/跟随胶囊内容弱化，与选中胶囊区分 */
-.capsuleHover .capsuleCommit,
-.capsuleFollow .capsuleCommit {
+.capsuleHover .capsuleCommitButton,
+.capsuleFollow .capsuleCommitButton {
   opacity: 0.85;
 }
 

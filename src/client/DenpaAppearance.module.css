@@ -47,6 +47,39 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
+/* 悬浮功能描述：ⓘ 图标 + portal 浮层（fixed 定位，不随容器裁剪） */
+.tipWrap {
+  display: inline-flex;
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: help;
+}
+
+.tipIcon {
+  display: block;
+}
+
+.tipWrap:hover .tipIcon {
+  color: var(--dsw-alias-brand-primary);
+}
+
+.tipPortal {
+  position: fixed;
+  z-index: 999;
+  padding: 6px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-overlay);
+  box-shadow: var(--denpa-shadow);
+  font-family: var(--ds-font-family-base);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+  color: var(--dsw-alias-label-primary);
+  white-space: normal;
+  pointer-events: none;
+}
+
 .slider {
   -webkit-appearance: none;
   appearance: none;
@@ -57,8 +90,7 @@
   cursor: pointer;
   /* 半透明亚克力轨道（替代 UA 白色实底轨道） */
   background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity));
-  background-image: var(--denpa-noise);
-  -webkit-backdrop-filter: var(--denpa-material-blur);
+  background-image: var(--denpa-noise);  -webkit-backdrop-filter: var(--denpa-material-blur);
   backdrop-filter: var(--denpa-material-blur);
 }
 
@@ -98,6 +130,57 @@
 .slider:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+/* 滑块行控件组：滑条 + 数字输入框 + 独立复位按钮 */
+.sliderWrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sliderWrap .slider {
+  flex: 1;
+  min-width: 60px;
+}
+
+.numInput {
+  width: 58px;
+  flex: none;
+  padding: 2px 4px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-overlay);
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  text-align: right;
+}
+
+.numInput:focus {
+  outline: none;
+  border-color: var(--dsw-alias-brand-primary);
+}
+
+.resetBtn {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 140ms var(--ds-ease-in-out), border-color 140ms var(--ds-ease-in-out);
+}
+
+.resetBtn:hover {
+  color: var(--dsw-alias-brand-primary);
+  border-color: var(--dsw-alias-brand-primary);
 }
 
 .toggle {
@@ -246,7 +329,8 @@
   touch-action: none;
 }
 
-.previewStage.selecting {
+.previewStage.selecting,
+.previewContext.selecting {
   cursor: crosshair;
 }
 
@@ -269,13 +353,6 @@ body:not([data-ds-dark-theme]) .previewEffect::after {
 }
 
 /* 框选模式：按图片原始比例显示（contain），避免壁纸被拉伸 */
-.previewImageWrap {
-  position: relative;
-  max-width: 100%;
-  max-height: 100%;
-  background-repeat: no-repeat;
-}
-
 .previewLoading {
   position: absolute;
   inset: 0;
@@ -321,6 +398,24 @@ body:not([data-ds-dark-theme]) .previewEffect::after {
   bottom: -4px;
   left: -4px;
   cursor: nesw-resize;
+}
+
+/* 上下文容器：宽度同窗口预览，高度按选区动态增减（上下补出完整壁纸，全部在容器内） */
+.previewContext {
+  position: relative;
+  overflow: hidden;
+  align-self: flex-start;
+  border-radius: var(--denpa-radius-sm, 10px);
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: #000;
+  touch-action: none;
+}
+
+/* 完整壁纸层：铺满容器，横向按窗口视口对齐 */
+.previewFull {
+  position: absolute;
+  inset: 0;
+  background-repeat: no-repeat;
 }
 
 .cropHandleBr {

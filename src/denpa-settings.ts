@@ -5,6 +5,9 @@ import z from '@deepseek-ai/schemastery'
 /** Settings namespace owned by the liuli appearance section. */
 export const LIULI_SETTINGS_NAMESPACE = 'liuli-theme-denpa'
 
+/** 设置持久化键（localStorage，浏览器端；HeaderEffects 运行时读取同一键）。 */
+export const DENPA_LS_KEY = 'denpa:settings'
+
 /** 取色模式 */
 export type DenpaColorMode = 'dynamic' | 'static'
 /** 背景模式 */
@@ -47,6 +50,32 @@ export interface DenpaSettings {
   bg_fit: DenpaBgFit
   /** 壁纸自定义选区（cover 模式下放大显示该区域，按窗口比例约束）；null 为全图。 */
   bg_area: DenpaBgArea | null
+  /** 声纹响应灵敏度：连续响应的参考响度（ENV_REF，0.05-0.5，越小越灵敏）。 */
+  vp_sensitivity: number
+  /** 声纹鼓点强度：脉冲振幅倍率加成（PUNCH_GAIN，峰值 ×(1+gain)）。 */
+  vp_beat_gain: number
+  /** 声纹脉冲长度：脉冲包络指数衰减（PUNCH_DECAY，越大脉冲越长）。 */
+  vp_beat_decay: number
+  /** 声纹节拍灵敏度：能量超均值倍数（BEAT_MULT，越大越难触发）。 */
+  vp_beat_mult: number
+  /** 声纹低频脉冲灵敏度：低频能量超均值倍数（PULSE_MULT，越大越难触发）。 */
+  vp_pulse_mult: number
+  /** 声纹低频频段权重（0-100，与中/高频归一为驱动权重）。 */
+  vp_bass_weight: number
+  /** 声纹中频频段权重（0-100）。 */
+  vp_mid_weight: number
+  /** 声纹高频频段权重（0-100）。 */
+  vp_high_weight: number
+  /** 声纹节拍冷却（ms，官方 200，越小触发密度越高）。 */
+  vp_beat_cooldown: number
+  /** 声纹低频脉冲冷却（ms，官方 220）。 */
+  vp_pulse_cooldown: number
+  /** 声纹响应速度（0-100：频段包络攻速，越大越跟手；释放按攻速 1/6 跟随）。 */
+  vp_env_speed: number
+  /** 声纹频谱平滑度（绘制纹理一阶低通系数，越小越锐利但可能抖）。 */
+  vp_spec_smooth: number
+  /** 声纹静音门限（低于此电平的频段驱动归零，越大静音/底噪时越安静）。 */
+  vp_noise_gate: number
 }
 
 /** 默认设置（与 DenpaPush 界面设置一致）。 */
@@ -70,6 +99,19 @@ export const DENPA_SETTINGS_DEFAULTS: DenpaSettings = {
   wide_mode: false,
   bg_fit: 'cover',
   bg_area: null,
+  vp_sensitivity: 0.15,
+  vp_beat_gain: 1.2,
+  vp_beat_decay: 0.96,
+  vp_beat_mult: 1.5,
+  vp_pulse_mult: 0.8,
+  vp_bass_weight: 40,
+  vp_mid_weight: 35,
+  vp_high_weight: 25,
+  vp_beat_cooldown: 200,
+  vp_pulse_cooldown: 220,
+  vp_env_speed: 50,
+  vp_spec_smooth: 0.3,
+  vp_noise_gate: 0.025,
 }
 
 /** 持久化 schema（浏览器 scope 复用同一描述）。 */
@@ -94,6 +136,19 @@ export const DenpaSettingsSchema: z<DenpaSettings> = z.object({
   bg_fit: z.union(['cover', 'contain', 'stretch']).default('cover'),
   // bg_area 为可选对象（null 表示全图），这里用 unknown 占位避免被 schema 过滤掉。
   bg_area: z.any(),
+  vp_sensitivity: z.number().default(0.15),
+  vp_beat_gain: z.number().default(1.2),
+  vp_beat_decay: z.number().default(0.96),
+  vp_beat_mult: z.number().default(1.5),
+  vp_pulse_mult: z.number().default(0.8),
+  vp_bass_weight: z.number().default(40),
+  vp_mid_weight: z.number().default(35),
+  vp_high_weight: z.number().default(25),
+  vp_beat_cooldown: z.number().default(200),
+  vp_pulse_cooldown: z.number().default(220),
+  vp_env_speed: z.number().default(50),
+  vp_spec_smooth: z.number().default(0.3),
+  vp_noise_gate: z.number().default(0.025),
 }) as unknown as z<DenpaSettings>
 
 /** 合并任意部分值到完整设置（读侧防御）。 */
