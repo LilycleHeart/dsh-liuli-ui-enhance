@@ -700,6 +700,55 @@ div[class$="hoverCard"] {
 }
 
 /* ════════════════════════════════════════════════════════════
+ * 侧栏悬浮亚克力面板（DenpaPush 配方）：左贴边直角、右侧圆角，
+ * 半透明 + 噪声 + 磨砂 + 辉光/阴影。磨砂可用：设置面板已由官方
+ * portal 到 body（官方 SettingsRoot 本就 portal），侧栏无 fixed 后代
+ * 包含块陷阱。
+ * ════════════════════════════════════════════════════════════ */
+[class$="_sidebarCol"] [class$="_root"] {
+  border-radius: 0 var(--denpa-radius, 14px) var(--denpa-radius, 14px) 0 !important;
+  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity)) !important;
+  background-image: var(--denpa-noise) !important;
+  -webkit-backdrop-filter: var(--denpa-material-blur) !important;
+  backdrop-filter: var(--denpa-material-blur) !important;
+  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow) !important;
+  overflow: hidden !important;
+}
+
+/* 品牌头部留白（DenpaPush sidebar-header 配方） */
+[class$="_sidebarCol"] [class$="_logoRow"] {
+  padding: 8px 2px 8px 4px !important;
+  margin-bottom: 4px !important;
+}
+
+/* 新建会话主按钮（DenpaPush 主按钮观感：圆角/品牌色，按钮本体由官方
+   组件渲染，这里只补观感） */
+[class$="_sidebarCol"] [class$="_newSession"] {
+  border-radius: var(--denpa-radius-sm, 10px) !important;
+}
+
+/* ════════════════════════════════════════════════════════════
+ * 对话页细节观感（消息气泡 / 输入卡 / 引用 chip）
+ * ════════════════════════════════════════════════════════════ */
+
+/* 用户气泡：亮青气泡配深色前景（官方组件只读 label-primary，补读
+   --dsw-specific-bubble-fg；token 由插件定义，暗色下保持深色前景） */
+[class$="_bubble"] {
+  color: var(--dsw-specific-bubble-fg, var(--dsw-alias-label-primary)) !important;
+}
+
+/* 输入卡：官方已读 --dsw-specific-input-major（插件半透明变量），补辉光/
+   阴影；磨砂已由插件 [data-composer-card]::before 独立层承担。 */
+[data-composer-card] {
+  box-shadow: var(--dsw-shadow-lv2, none), var(--denpa-glow-brand), var(--denpa-shadow) !important;
+}
+
+/* 引用 chip：缩放标签与底色观感（chip 本体是官方元素，类后缀命中） */
+[class$="_chip"] [class$="_chipLabel"] {
+  color: var(--dsw-alias-label-primary) !important;
+}
+
+/* ════════════════════════════════════════════════════════════
  * 会话切换/新消息入场动画（denpa-transition.ts 挂类）
  * 长属性写法：animation 简写里嵌 var()（级联延迟）在个别引擎上有解析
  * 风险，拆开后每条规则独立解析，延迟变量绝对可靠。
