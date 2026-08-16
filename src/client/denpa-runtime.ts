@@ -8,6 +8,8 @@ let denpaApplySeq = 0
 
 /** 当前壁纸图片的原始宽高比，用于窗口尺寸变化时保持裁切不拉伸。 */
 let currentImageRatio: number | null = null
+/** currentImageRatio 对应的壁纸 src：更换壁纸后必须重算比例，否则选区归一化会错位。 */
+let currentImageSrc: string | null = null
 
 import { hexFromArgb, sourceColorFromImage } from '../vendor/material-color-utilities.js'
 import {
@@ -139,6 +141,7 @@ export async function dynamicSourceFromImage(imageSrc: string): Promise<string> 
   const img = await loadImage(imageSrc)
   if (img.naturalWidth > 0 && img.naturalHeight > 0) {
     currentImageRatio = img.naturalWidth / img.naturalHeight
+    currentImageSrc = imageSrc
   }
   const size = 64
   const cvs = document.createElement('canvas')
@@ -296,12 +299,14 @@ export async function applyDenpaSettings(settings: DenpaSettings): Promise<void>
       source = await dynamicSourceFromImage(wallpaperSrc)
     } catch (_) { source = DENPA_DEFAULT_SOURCE }
   }
-  // 非动态取色时也记录图片比例，供窗口 resize 后保持裁切不拉伸。
-  if (wallpaperSrc && currentImageRatio === null) {
+  // 记录当前壁纸的图片比例（按 src 缓存）：更换壁纸后必须重算，
+  // 否则选区归一化沿用旧图片比例，壁纸放大出来的区域会与框选区域不一致。
+  if (wallpaperSrc && wallpaperSrc !== currentImageSrc) {
     try {
       const img = await loadImage(wallpaperSrc)
       if (img.naturalWidth > 0 && img.naturalHeight > 0) {
         currentImageRatio = img.naturalWidth / img.naturalHeight
+        currentImageSrc = wallpaperSrc
       }
     } catch (_) { /* 忽略取图失败 */ }
   }

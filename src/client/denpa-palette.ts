@@ -172,6 +172,13 @@ export function denpaApplyBrand(pal: DenpaPalette, isDark: boolean, sourceHex?: 
   set('--denpa-mcu-tertiary', pal.tertiary)
   set('--denpa-mcu-tertiary-container', pal.tertiaryContainer)
   set('--denpa-mcu-on-tertiary-container', pal.onTertiaryContainer)
+  set('--denpa-mcu-surface', pal.appBg)
+  set('--denpa-mcu-surface-container', pal.popupBg)
+  set('--denpa-mcu-surface-container-high', pal.bg4)
+  set('--denpa-mcu-on-surface', pal.fg1)
+  set('--denpa-mcu-on-surface-variant', pal.fg2)
+  set('--denpa-mcu-outline', pal.stroke1)
+  set('--denpa-mcu-outline-variant', pal.stroke2)
 
 
   // 背景

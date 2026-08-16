@@ -4,11 +4,13 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
+import { createPortal } from 'react-dom'
 import {
   Button, Input, Menu, IconChevronDownOutline14,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime, PropsStore, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { DenpaBgArea, DenpaSettings } from '../denpa-settings.ts'
+import { DENPA_SETTINGS_DEFAULTS } from '../denpa-settings.ts'
 import { bgGeometry } from './denpa-runtime.ts'
 import type { createDenpaStore } from './denpa-store.ts'
 import css from './DenpaAppearance.module.css'
@@ -29,12 +31,63 @@ export type DenpaAppearanceComponentProps =
   PropsRuntime<'settings.section'> & PropsStore<ReturnType<typeof createDenpaStore>>
   & PropsLocale<'denpa-appearance'> & DenpaAppearanceInjected
 
-/** 一个表单行：标签 + 控件。 */
-function Row(props: { label: string; hint?: string; children: ReactNode }) {
+/** 悬浮功能描述（portal 浮层）：渲染到 body，fixed 定位，永不被设置面板
+ *  滚动容器裁剪；上方空间不足时自动翻转到图标下方。 */
+function Tip({ text }: { text: string }) {
+  const wrapRef = useRef<HTMLSpanElement>(null)
+  const [pos, setPos] = useState<{ left: number; top: number; below: boolean } | null>(null)
+  const show = (): void => {
+    const r = wrapRef.current?.getBoundingClientRect()
+    if (!r) return
+    const tw = Math.min(280, window.innerWidth - 16)
+    const left = Math.max(8, Math.min(window.innerWidth - tw - 8, r.left + r.width / 2 - tw / 2))
+    const below = r.top < 96 // 上方空间不足 → 翻转到下方
+    setPos({ left, top: below ? r.bottom + 8 : r.top - 8, below })
+  }
+  const hide = (): void => { setPos(null) }
+  return (
+    <>
+      <span
+        ref={wrapRef}
+        className={css.tipWrap}
+        role="note"
+        onMouseOver={show}
+        onMouseOut={(e) => {
+          // 移入子元素（svg）时不隐藏；relatedTarget 不在图标内才隐藏
+          const rt = e.relatedTarget
+          if (!(rt instanceof Node) || !wrapRef.current?.contains(rt)) hide()
+        }}
+      >
+        <svg className={css.tipIcon} viewBox="0 0 14 14" width="12" height="12" fill="none" aria-hidden="true">
+          <circle cx="7" cy="7" r="5.8" stroke="currentColor" strokeWidth="1.2" />
+          <path d="M7 6.3v3.4M7 4.2v.2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+        </svg>
+      </span>
+      {pos !== null && createPortal(
+        <div
+          className={css.tipPortal}
+          style={{
+            left: pos.left,
+            top: pos.top,
+            maxWidth: Math.min(280, window.innerWidth - 16),
+            transform: pos.below ? undefined : 'translateY(-100%)',
+          }}
+        >
+          {text}
+        </div>,
+        document.body,
+      )}
+    </>
+  )
+}
+
+/** 一个表单行：标签 + 控件；tip 提供指针悬浮功能描述（ⓘ 图标）。 */
+function Row(props: { label: string; hint?: string; tip?: string; children: ReactNode }) {
   return (
     <label className={css.row}>
       <span className={css.label}>
         {props.label}
+        {props.tip !== undefined && <Tip text={props.tip} />}
         {props.hint !== undefined && <span className={css.hint}>{props.hint}</span>}
       </span>
       {props.children}
@@ -42,18 +95,43 @@ function Row(props: { label: string; hint?: string; children: ReactNode }) {
   )
 }
 
-/** 滑块行（值后缀实时显示）。 */
+/** 滑块行（可越界数字输入 + 独立复位，仅值≠默认时显示复位）。 */
 function SliderRow(props: {
   label: string; value: number; suffix: string; min: number; max: number; step?: number;
   onChange: (v: number) => void; disabled?: boolean
+  /** 提供后显示独立复位按钮（仅当值偏离默认时出现）。 */
+  defaultValue?: number
+  /** 指针悬浮功能描述（ⓘ）。 */
+  tip?: string
 }) {
+  const changed = props.defaultValue !== undefined && Math.abs(props.value - props.defaultValue) > 1e-9
   return (
-    <Row label={props.label} hint={`${props.value}${props.suffix}`}>
-      <input
-        type="range" className={css.slider} min={props.min} max={props.max} step={props.step ?? 1}
-        value={props.value} disabled={props.disabled === true}
-        onChange={(e) => { props.onChange(Number(e.target.value)) }}
-      />
+    <Row label={props.label} hint={`${props.value}${props.suffix}`} tip={props.tip}>
+      <div className={css.sliderWrap}>
+        <input
+          type="range" className={css.slider} min={props.min} max={props.max} step={props.step ?? 1}
+          value={Math.min(props.max, Math.max(props.min, props.value))} disabled={props.disabled === true}
+          onChange={(e) => { props.onChange(Number(e.target.value)) }}
+        />
+        {/* 数字输入框：不受滑条 min/max 限制，可输入任意值（运行时安全兜底） */}
+        <input
+          type="number" className={css.numInput} step={props.step ?? 1} disabled={props.disabled === true}
+          value={props.value}
+          onChange={(e) => {
+            const v = Number(e.target.value)
+            if (Number.isFinite(v) && e.target.value.trim() !== '') props.onChange(v)
+          }}
+        />
+        {changed && (
+          <button
+            type="button" className={css.resetBtn} title={props.label}
+            aria-label="恢复该参数默认值"
+            onClick={() => { props.onChange(props.defaultValue!) }}
+          >
+            ↺
+          </button>
+        )}
+      </div>
     </Row>
   )
 }
@@ -106,7 +184,6 @@ function WallpaperPreview(props: {
   t: TranslateNS<'denpa-appearance'>
 }) {
   const stageRef = useRef<HTMLDivElement | null>(null)
-  const imageWrapRef = useRef<HTMLDivElement | null>(null)
   const [winRatio, setWinRatio] = useState(() => window.innerWidth / window.innerHeight)
   const [imgRatio, setImgRatio] = useState<number | null>(null)
   const [selectMode, setSelectMode] = useState(false)
@@ -144,38 +221,22 @@ function WallpaperPreview(props: {
     setDisplayArea(props.area)
   }, [props.area])
 
-  /** 指针位置 → 图片归一化坐标（0..1）。框选模式按 Cover 可见区域换算，保证与真实效果一致。 */
+  /** 指针位置 → 图片归一化坐标（0..1）。容器按完整壁纸比例构建，直接 1:1 对应。 */
   const norm = (e: React.PointerEvent): { x: number; y: number } | null => {
-    const el = imageWrapRef.current ?? stageRef.current
+    const el = stageRef.current
     if (el === null) return null
     const r = el.getBoundingClientRect()
     if (r.width < 2 || r.height < 2) return null
-    const sx = (e.clientX - r.left) / r.width
-    const sy = (e.clientY - r.top) / r.height
-    if (sx < 0 || sx > 1 || sy < 0 || sy > 1) return null
-    const vis = coverVisible()
-    return {
-      x: vis.x + sx * vis.w,
-      y: vis.y + sy * vis.h,
-    }
+    const x = (e.clientX - r.left) / r.width
+    const y = (e.clientY - r.top) / r.height
+    if (x < 0 || x > 1 || y < 0 || y > 1) return null
+    return { x, y }
   }
 
   const clamp = (v: number, min: number, max: number): number => Math.min(max, Math.max(min, v))
 
   // 框选要保持“实际窗口比例”：在原图坐标系中，w/h = 窗口宽高比 / 图片宽高比。
   const cropRatio = imgRatio !== null && imgRatio > 0 ? winRatio / imgRatio : 1
-
-  /** Cover 显示时，原图中实际可见的归一化区域。 */
-  const coverVisible = (): { x: number; y: number; w: number; h: number } => {
-    const A = imgRatio ?? 1
-    const R = winRatio
-    if (A > R) {
-      const h = R / A
-      return { x: 0, y: (1 - h) / 2, w: 1, h }
-    }
-    const w = A / R
-    return { x: (1 - w) / 2, y: 0, w, h: 1 }
-  }
 
   /** 把已有选区转换为指定比例（保留面积与中心，并限制在 0..1 内）。 */
   const normalizeAreaToRatio = (area: DenpaBgArea, ratio: number): DenpaBgArea => {
@@ -243,14 +304,20 @@ function WallpaperPreview(props: {
     }
   }
 
+  /** 当前实际窗口大小对应的默认选区：图片坐标系中与窗口同比例的最大居中区域（Cover 下即整窗视图）。
+      预留 0.002 边距：既避免选区恰好铺满图片时背景公式除零，也保证选区低于 bgGeometry 的
+      0.999 门槛——若钳到 0.999 会被当作"无选区"忽略，壁纸与预览都不会跟随选区变化。 */
+  const windowArea = (): DenpaBgArea | null => {
+    if (imgRatio === null || imgRatio <= 0) return null
+    const maxW = Math.min(0.998, imgRatio > winRatio ? winRatio / imgRatio : 1)
+    const maxH = Math.min(0.998, imgRatio > winRatio ? 1 : imgRatio / winRatio)
+    return { x: (1 - maxW) / 2, y: (1 - maxH) / 2, w: maxW, h: maxH }
+  }
+
+  // 每次重新框选都默认框为当前实际窗口大小（不再沿用上一次保存的选区），
+  // 用户再拖角/拖动微调出想要的区域。
   const startSelect = (): void => {
-    const source = displayArea ?? props.area
-    if (source !== null) {
-      const next = normalizeAreaToRatio(source, cropRatio)
-      setSelBox(next.w > 0 && next.h > 0 ? next : source)
-    } else {
-      setSelBox(null)
-    }
+    setSelBox(windowArea())
     setSelectMode(true)
   }
 
@@ -270,6 +337,8 @@ function WallpaperPreview(props: {
         const corner = `${nearLeft ? 'l' : 'r'}${nearTop ? 't' : 'b'}` as 'tl' | 'tr' | 'bl' | 'br'
         drag.current = { mode: 'resize', box, corner }
       } else {
+        // 框内拖动一律为移动（整窗默认框无法移动时自然无操作，属标准裁剪行为）；
+        // 缩小整窗默认框请拖角手柄。
         drag.current = { mode: 'move', offsetX: p0.x - box.x, offsetY: p0.y - box.y, box }
       }
     } else {
@@ -329,36 +398,31 @@ function WallpaperPreview(props: {
     backgroundRepeat: 'no-repeat',
   }
   const imageAspect = imgRatio ?? 1
-  const wrapStyle: React.CSSProperties = {
-    position: 'relative',
-    width: imageAspect > winRatio ? '100%' : `calc(${(imageAspect / winRatio) * 100}%)`,
-    height: imageAspect > winRatio ? `calc(${(winRatio / imageAspect) * 100}%)` : '100%',
+  // 完整壁纸层：铺满容器（容器按图片比例构建，图片不变形，上下超出的部分可见）。
+  const fullImageStyle: React.CSSProperties = {
+    position: 'absolute',
+    inset: 0,
     backgroundImage: 'url("' + props.src + '")',
     backgroundSize: '100% 100%',
     backgroundRepeat: 'no-repeat',
   }
-  // 框选模式使用 Cover 铺满预览窗口，与真实壁纸效果保持一致。
-  const coverWrapStyle: React.CSSProperties = {
-    position: 'absolute',
-    inset: 0,
-    backgroundImage: 'url("' + props.src + '")',
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    backgroundRepeat: 'no-repeat',
-  }
-  // 非框选模式也显示当前选区：让用户直接看到当前保存的壁纸选区位置。
-  const currentBox = displayArea !== null && imgRatio !== null && props.fit === 'cover'
+  // 非框选：Cover 且有选区时，展示完整壁纸 + 静态选框（选区外暗色遮罩）。
+  const viewportBox = displayArea !== null && imgRatio !== null && imgRatio > 0 && props.fit === 'cover'
     ? normalizeAreaToRatio(displayArea, cropRatio)
     : null
-  const vis = coverVisible()
-
+  // 统一容器：选择态与非选择态完全一致（宽度按窗口、高度按完整壁纸比例），
+  // 进入框选时容器不变，只是选框变为可交互。
+  const contextStyle: React.CSSProperties = {
+    width: stageStyle.width,
+    aspectRatio: imageAspect,
+  }
   return (
     <>
       <div className={css.previewActions}>
         <span className={css.previewHint}>{props.t('area.hint')}</span>
         {selectMode ? (
           <>
-            <Button variant="ghost" size="sm" onClick={() => { setSelBox(null) }}>
+            <Button variant="ghost" size="sm" onClick={() => { setSelBox(windowArea()) }}>
               {props.t('area.reselect')}
             </Button>
             <Button variant="primary" size="sm" onClick={onDone}>
@@ -380,25 +444,25 @@ function WallpaperPreview(props: {
           </>
         )}
       </div>
-      <div
-        ref={stageRef}
-        className={css.previewStage + (selectMode ? ' ' + css.selecting : '')}
-        style={stageStyle}
-        onPointerDown={selectMode ? onDown : undefined}
-        onPointerMove={selectMode ? onMove : undefined}
-        onPointerUp={selectMode ? onUp : undefined}
-      >
-        {selectMode ? (
-          imgRatio !== null ? (
-            <div ref={imageWrapRef} className={css.previewImageWrap} style={coverWrapStyle}>
+      {selectMode ? (
+        <div
+          ref={stageRef}
+          className={css.previewContext + ' ' + css.selecting}
+          style={contextStyle}
+          onPointerDown={onDown}
+          onPointerMove={onMove}
+          onPointerUp={onUp}
+        >
+          {imgRatio !== null ? (
+            <div className={css.previewFull} style={fullImageStyle}>
               {selBox !== null && selBox.w > 0 && (
                 <div
                   className={css.previewCropBox}
                   style={{
-                    left: ((selBox.x - vis.x) / vis.w) * 100 + '%',
-                    top: ((selBox.y - vis.y) / vis.h) * 100 + '%',
-                    width: (selBox.w / vis.w) * 100 + '%',
-                    height: (selBox.h / vis.h) * 100 + '%',
+                    left: selBox.x * 100 + '%',
+                    top: selBox.y * 100 + '%',
+                    width: selBox.w * 100 + '%',
+                    height: selBox.h * 100 + '%',
                   }}
                 >
                   <span className={css.cropHandle + ' ' + css.cropHandleTl} />
@@ -410,26 +474,38 @@ function WallpaperPreview(props: {
             </div>
           ) : (
             <div className={css.previewLoading} />
-          )
-        ) : (
-          currentBox !== null ? (
-            <div className={css.previewImageWrap} style={wrapStyle}>
-              <div
-                className={css.previewCropBox}
-                style={{
-                  left: currentBox.x * 100 + '%',
-                  top: currentBox.y * 100 + '%',
-                  width: currentBox.w * 100 + '%',
-                  height: currentBox.h * 100 + '%',
-                  pointerEvents: 'none',
-                }}
-              />
-            </div>
-          ) : (
-            <div className={css.previewEffect} style={effectStyle} />
-          )
-        )}
-      </div>
+          )}
+        </div>
+      ) : viewportBox !== null ? (
+        <div
+          ref={stageRef}
+          className={css.previewContext}
+          style={contextStyle}
+        >
+          {/* 完整壁纸层：铺满容器，上下超出的部分可见。 */}
+          <div className={css.previewFull} style={fullImageStyle} />
+          {/* 原来的选框样式：选区外暗色遮罩，静态展示当前选区。 */}
+          <div
+            className={css.previewCropBox}
+            style={{
+              left: viewportBox.x * 100 + '%',
+              top: viewportBox.y * 100 + '%',
+              width: viewportBox.w * 100 + '%',
+              height: viewportBox.h * 100 + '%',
+              pointerEvents: 'none',
+            }}
+          />
+        </div>
+      ) : (
+        <div
+          ref={stageRef}
+          className={css.previewStage}
+          style={stageStyle}
+        >
+          {/* 无选区：按实际窗口比例铺满渲染真实壁纸效果，与真实壁纸所见即所得。 */}
+          <div className={css.previewEffect} style={effectStyle} />
+        </div>
+      )}
       {props.fit !== 'cover' && <div className={css.previewNote}>{props.t('area.disabled')}</div>}
     </>
   )
@@ -616,6 +692,78 @@ export function DenpaAppearanceSection({
           disabled={!s.shadow_enabled}
           onChange={(v) => { set({ shadow_intensity: v }) }}
         />
+      </div>
+
+      {/* 声纹响应（Nanoleaf Desktop 移植检测的参数，即时生效） */}
+      <div className={css.wallpaperBlock}>
+        <div className={css.wallpaperTitle}>{t('vp.title')}</div>
+        <div className={css.grid}>
+          <SliderRow
+            label={t('vp.sensitivity')} value={s.vp_sensitivity} suffix="" min={0.01} max={1} step={0.01}
+            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_sensitivity} tip={t('vp.tip.sensitivity')}
+            onChange={(v) => { set({ vp_sensitivity: v }) }}
+          />
+          <SliderRow
+            label={t('vp.beatGain')} value={s.vp_beat_gain} suffix="×" min={0} max={5} step={0.1}
+            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_beat_gain} tip={t('vp.tip.beatGain')}
+            onChange={(v) => { set({ vp_beat_gain: v }) }}
+          />
+          <SliderRow
+            label={t('vp.beatDecay')} value={s.vp_beat_decay} suffix="" min={0.5} max={0.995} step={0.005}
+            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_beat_decay} tip={t('vp.tip.beatDecay')}
+            onChange={(v) => { set({ vp_beat_decay: v }) }}
+          />
+          <SliderRow
+            label={t('vp.beatMult')} value={s.vp_beat_mult} suffix="×" min={1} max={5} step={0.1}
+            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_beat_mult} tip={t('vp.tip.beatMult')}
+            onChange={(v) => { set({ vp_beat_mult: v }) }}
+          />
+          <SliderRow
+            label={t('vp.pulseMult')} value={s.vp_pulse_mult} suffix="×" min={0.1} max={3} step={0.05}
+            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_pulse_mult} tip={t('vp.tip.pulseMult')}
+            onChange={(v) => { set({ vp_pulse_mult: v }) }}
+          />
+          <SliderRow
+            label={t('vp.bassWeight')} value={s.vp_bass_weight} suffix="%" min={0} max={100} step={1}
+            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_bass_weight} tip={t('vp.tip.bassWeight')}
+            onChange={(v) => { set({ vp_bass_weight: v }) }}
+          />
+          <SliderRow
+            label={t('vp.midWeight')} value={s.vp_mid_weight} suffix="%" min={0} max={100} step={1}
+            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_mid_weight} tip={t('vp.tip.midWeight')}
+            onChange={(v) => { set({ vp_mid_weight: v }) }}
+          />
+          <SliderRow
+            label={t('vp.highWeight')} value={s.vp_high_weight} suffix="%" min={0} max={100} step={1}
+            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_high_weight} tip={t('vp.tip.highWeight')}
+            onChange={(v) => { set({ vp_high_weight: v }) }}
+          />
+          <SliderRow
+            label={t('vp.beatCooldown')} value={s.vp_beat_cooldown} suffix="ms" min={50} max={1000} step={10}
+            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_beat_cooldown} tip={t('vp.tip.beatCooldown')}
+            onChange={(v) => { set({ vp_beat_cooldown: v }) }}
+          />
+          <SliderRow
+            label={t('vp.pulseCooldown')} value={s.vp_pulse_cooldown} suffix="ms" min={50} max={1000} step={10}
+            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_pulse_cooldown} tip={t('vp.tip.pulseCooldown')}
+            onChange={(v) => { set({ vp_pulse_cooldown: v }) }}
+          />
+          <SliderRow
+            label={t('vp.envSpeed')} value={s.vp_env_speed} suffix="" min={0} max={100} step={1}
+            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_env_speed} tip={t('vp.tip.envSpeed')}
+            onChange={(v) => { set({ vp_env_speed: v }) }}
+          />
+          <SliderRow
+            label={t('vp.specSmooth')} value={s.vp_spec_smooth} suffix="" min={0.02} max={0.8} step={0.01}
+            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_spec_smooth} tip={t('vp.tip.specSmooth')}
+            onChange={(v) => { set({ vp_spec_smooth: v }) }}
+          />
+          <SliderRow
+            label={t('vp.noiseGate')} value={s.vp_noise_gate} suffix="" min={0} max={0.2} step={0.005}
+            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_noise_gate} tip={t('vp.tip.noiseGate')}
+            onChange={(v) => { set({ vp_noise_gate: v }) }}
+          />
+        </div>
       </div>
 
       {/* 壁纸 */}

@@ -47,7 +47,7 @@ DeepSeek Harness 的 **Material Design 3 × Fluent 2 融合主题**插件:取 Ma
 | 🎨 M3 动态取色 | 从壁纸提取 Material 3 调色板(vendored material-color-utilities@0.4),映射为 `--dsw-alias-*` 令牌;亮/暗双主题独立派生,用户气泡明暗互换 |
 | 🖼️ 壁纸背景 | 上传图片 → 压缩为 JPEG dataURL 持久化到 localStorage;适应模式(Cover / Contain / Stretch)+ 自定义选区(拖拽框选,Cover 下放大该区域);暗色遮罩随主题即时叠加 |
 | 🪟 磨砂材质 | 亚克力 / 云母两种 Fluent 材质,透明度、模糊强度可调;含强磨砂档(滑条值 ×4,供对话框等嵌套 backdrop 采样衰减的场景) |
-| 🔊 声纹可视化 | 会话 header 背景 canvas:空闲态品牌色流动波形;点击按钮经 `getDisplayMedia`(系统/标签页音频)授权后监听,真实频谱驱动柱状图与波形振幅;降级链 `getDisplayMedia → getUserMedia(麦克风)→ 非安全上下文诊断` |
+| 🔊 声纹可视化 | 会话 header 背景 canvas:空闲态品牌色流动波形;点击按钮经 `getDisplayMedia` 授权捕获系统扬声器输出(共享「整个屏幕」并勾选「分享系统音频」);只监听系统音量,不降级麦克风;检测完全移植官方 Nanoleaf Desktop 音乐可视化(Energetic):能量包络对比节拍检测(Σx² vs 0.7s 滑动平均 + 200ms 冷却)+ 50-350Hz 低频脉冲(0.8×均值 + 220ms 冷却),两级强度(节拍 100%/脉冲 30%)叠加于三频段连续能量响应之上,波形绘制逐字参照 denpa_echo;失败给出「分享系统音频」勾选提示/授权/非安全上下文诊断 |
 | 🌗 日/夜切换 | header 圆形按钮 + 设置页外观行,`startViewTransition` 圆形遮罩过渡(带坐标) |
 | 📏 header 拉伸 | header 底部垂直拖拽手柄,高度记忆到 localStorage,刷新/切换会话自动恢复 |
 | 📐 对话轮次刻度侧边栏 | DenpaPush 时间线风格:左侧竖线刻度,胶囊沿竖线滑动,显示该轮时间/commit号/摘要,点击刻度跳转对应轮次(仅 Chat 视图显示) |
@@ -154,5 +154,5 @@ chip 内容随用户消息成为对话前缀的一部分,与普通用户消息�
 
 - 纯浏览器插件,只在 web 平台生效;无头、ACP 等无界面的会话看不到主题效果。
 - 设置、壁纸与 header 高度只存 `localStorage`,清除站点数据或更换浏览器/设备不会同步。
-- 声纹监听依赖 `getDisplayMedia` 用户授权,拒绝后降级为麦克风或显示非安全上下文诊断,不会绕过授权。
+- 声纹监听只捕获系统音频:依赖 `getDisplayMedia` 用户授权(共享「整个屏幕」并勾选「分享系统音频」),不降级麦克风,也不会绕过授权。
 - 壁纸以压缩 JPEG dataURL 持久化,受 `localStorage` 配额限制;超大原图会先压缩再保存。

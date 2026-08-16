@@ -34,7 +34,7 @@ import {
   applyDenpaSettings, applyDenpaWallpaper,
 } from './denpa-runtime.ts'
 import {
-  DENPA_SETTINGS_DEFAULTS, denpaSettingsOf,
+  DENPA_LS_KEY, DENPA_SETTINGS_DEFAULTS, denpaSettingsOf,
   type DenpaBgArea, type DenpaSettings,
 } from '../denpa-settings.ts'
 import { en, zh, type DenpaAppearanceKey } from './locales.ts'
@@ -62,8 +62,7 @@ export const DENPA_LOCALE_NS = 'denpa-appearance'
 
 /** 主题样式注入的 <style> id（幂等：重复 apply 不叠加）。 */
 const STYLE_ID = 'liuli-theme-css'
-/** 设置持久化键（localStorage，随浏览器持久化）。 */
-const DENPA_LS_KEY = 'denpa:settings'
+// 设置持久化键在 denpa-settings.ts 中定义（HeaderEffects 运行时读取同一键）。
 
 /** Required services: slots/locale for the settings section, theme for the toggle bridge, connection/remote for supplier quota. */
 export const inject = ['slots', 'locale', 'theme', 'sessions', 'conversation', 'inputTriggers', 'connection', 'remote']
@@ -222,6 +221,8 @@ export function apply(ctx: ClientContext): void {
     lastViewportWidth = window.innerWidth
     lastViewportHeight = window.innerHeight
     void applyDenpaSettings(next)
+    // 声纹响应参数热载（HeaderEffects 监听后重读）
+    window.dispatchEvent(new CustomEvent('liuli:vp-params'))
   }
   const denpaInjected = (actions: BoundActions<typeof denpaStore>): DenpaAppearanceInjected => {
     denpaBound = actions

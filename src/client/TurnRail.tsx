@@ -6,11 +6,11 @@
  * - 左侧一条竖向刻度线，每轮对话一个刻度；
  * - 刻度上的胶囊会沿竖线滑动：悬停/选中时定位到对应刻度，滚动时跟随视口
  *   中心最近的对话轮次；
- * - 胶囊内横向三栏：时间 | commit号 | 简单摘要。
+ * - 胶囊分两栏：上栏 轮数+摘要；下栏单开一行（commit 左，时间 日期 X月X日 右）。
  *
  * commit / 摘要从对话内容自动提取：
  * - commit：扫描该轮 tool-call 子树及结果的 commit 短哈希；
- * - 摘要：取该轮 assistant 文本块的第一段非空文本。
+ * - 摘要：取该轮用户消息的第一段非空文本（无用户文本时回退 assistant 文本）。
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { createPortal } from 'react-dom'
@@ -47,7 +47,7 @@ function formatTurnDateTime(time: number | undefined): { time: string; date: str
   const pad = (value: number): string => String(value).padStart(2, '0')
   return {
     time: `${pad(date.getHours())}:${pad(date.getMinutes())}`,
-    date: `${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+    date: `${date.getMonth() + 1}月${date.getDate()}日`,
   }
 }
 
@@ -94,6 +94,22 @@ function collectToolCommits(block: ToolCallBlock, hashes: string[]): void {
   for (const child of block.subCalls ?? []) collectToolCommits(child, hashes)
 }
 
+/** 从单个 Chat 节点提取用户消息文本块（user/steering 节点，结构与 contentText 同）。 */
+function userMessageTexts(node: ChatNode): readonly string[] {
+  const texts: string[] = []
+  if (node.kind === 'user' || node.kind === 'steering') {
+    const data = node.data as {
+      readonly content?: readonly { type?: string; text?: string }[]
+    }
+    for (const block of data.content ?? []) {
+      if (block.type === 'text' && typeof block.text === 'string' && block.text.trim() !== '') {
+        texts.push(block.text.trim())
+      }
+    }
+  }
+  return texts
+}
+
 /** 从单个 Chat 节点提取 assistant 文本块（优先 finalized 消息）。 */
 function assistantTexts(node: ChatNode): readonly string[] {
   const texts: string[] = []
@@ -117,13 +133,14 @@ function assistantTexts(node: ChatNode): readonly string[] {
   return texts
 }
 
-/** 提取一轮对话的 commit 与摘要。 */
+/** 提取一轮对话的 commit 与摘要（摘要优先取用户文本，无则回退 assistant 文本）。 */
 function extractTurnInfo(
   turn: number,
   nodes: ChatNodeStore,
   locations: ChatLocationNodeIndex,
 ): TurnInfo {
   const commits: string[] = []
+  const userTexts: string[] = []
   const summaries: string[] = []
   for (const key of locations.getTurn(turn)) {
     const node = nodes.get(key)
@@ -131,13 +148,17 @@ function extractTurnInfo(
     if (node.kind === 'tool-call') {
       const root = (node.data as { readonly root?: ToolCallBlock }).root
       if (root !== undefined) collectToolCommits(root, commits)
+    } else if (node.kind === 'user' || node.kind === 'steering') {
+      userTexts.push(...userMessageTexts(node as ChatNode))
     } else {
       summaries.push(...assistantTexts(node as ChatNode))
     }
   }
   return {
-    commit: [...new Set(commits.filter(Boolean))].join(' '),
-    summary: summaries.find(text => text !== '') ?? '',
+    commit: [...new Set(commits.filter(Boolean).map(hash => hash.slice(0, 7)))].join(' '),
+    summary: userTexts.find(text => text !== '')
+      ?? summaries.find(text => text !== '')
+      ?? '',
     time: '',
     date: '',
   }
@@ -377,20 +398,22 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
                   <span className={css.capsuleTurn}>第 {pillItem.index + 1} 轮</span>
                   <span className={css.capsuleSummary}>{pillItem.info.summary !== '' ? pillItem.info.summary : '无摘要'}</span>
                 </span>
-                <span className={css.capsuleMeta}>
+              </div>
+              <div className={css.capsuleMetaRow}>
+                {pillItem.info.commit !== '' && (
+                  <button
+                    type="button"
+                    className={css.capsuleCommitButton}
+                    title="点击回到对话并高亮该轮"
+                    onClick={() => { onCommitClick(pillItem.turn) }}
+                  >
+                    {pillItem.info.commit}
+                  </button>
+                )}
+                <span className={css.capsuleMetaTime}>
                   <span className={css.capsuleTime}>{pillItem.info.time !== '' ? pillItem.info.time : '--'}</span>
                   <span className={css.capsuleDate}>{pillItem.info.date !== '' ? pillItem.info.date : '--'}</span>
                 </span>
-              </div>
-              <div className={css.capsuleCommitRow}>
-                <button
-                  type="button"
-                  className={css.capsuleCommitButton}
-                  title="点击回到对话并高亮该轮"
-                  onClick={() => { onCommitClick(pillItem.turn) }}
-                >
-                  {pillItem.info.commit !== '' ? pillItem.info.commit : '无 commit'}
-                </button>
               </div>
             </div>
           )}
