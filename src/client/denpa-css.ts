@@ -657,6 +657,23 @@ div[class$="hoverCard"] {
   background: transparent !important;
 }
 
+/* 英雄区（空状态欢迎页）：品牌辉光标题 + 副标题（DenpaPush 风格） */
+[class$="_headline"] {
+  font-family: var(--dsw-font-family-display) !important;
+  letter-spacing: -0.5px !important;
+  color: var(--dsw-alias-label-primary) !important;
+  text-shadow: var(--denpa-text-depth),
+    0 0 14px color-mix(in srgb, var(--dsw-alias-brand-primary) 22%, transparent) !important;
+}
+
+[class$="_subtitle"] {
+  margin: 0 !important;
+  text-align: center !important;
+  font-size: 14px !important;
+  line-height: 20px !important;
+  color: var(--dsw-alias-label-tertiary) !important;
+}
+
 /* ════════════════════════════════════════════════════════════
  * 会话切换/新消息入场动画（denpa-transition.ts 挂类）
  * 长属性写法：animation 简写里嵌 var()（级联延迟）在个别引擎上有解析
