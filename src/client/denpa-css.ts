@@ -595,6 +595,69 @@ div[class$="hoverCard"] {
 }
 
 /* ════════════════════════════════════════════════════════════
+ * 官方 harness 观感还原（用户 WIP 曾在宿主 module.css 中实现，
+ * 现由插件全局样式承担）：浮动卡片布局 —— frame 背景消费
+ * --denpa-frame-bg*（壁纸/渐变/自定义由 denpa-runtime 写入），
+ * 侧栏/会话列留白，header 与正文滚动区各自成卡。
+ * 选择器用 [class$=] 后缀命中构建产物的哈希类名（形如 <hash>_<local>），
+ * 加 !important 压过宿主同特异性规则。
+ * ════════════════════════════════════════════════════════════ */
+
+/* 帧背景：壁纸/品牌渐变/自定义（denpa-runtime 写入变量） */
+[class$="_frame"] {
+  background-color: var(--denpa-frame-bg, var(--dsw-alias-bg-base)) !important;
+  background-image: var(--denpa-frame-bg-image, none) !important;
+  background-size: var(--denpa-frame-bg-size, auto) !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+}
+
+/* 列留白：卡片悬浮观感（侧栏与中间列各留边距） */
+[class$="_sidebarCol"] {
+  padding: 16px 16px 16px 0 !important;
+  background: transparent !important;
+  border-right: none !important;
+}
+
+[class$="_centerCol"] {
+  padding: 16px 16px 16px 12px !important;
+}
+
+/* 会话 header 浮动卡片：官方 header 为 <header> 标签 + 哈希类名 */
+[data-phase] header {
+  margin-bottom: 12px !important;
+  padding: 12px 28px 0 20px !important;
+  border: 1px solid var(--dsw-alias-border-l1) !important;
+  border-radius: var(--denpa-radius, 14px) !important;
+  background: var(--dsw-alias-bg-base) !important;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 6px 20px rgb(0 0 0 / 0.08) !important;
+}
+
+/* 官方 header 底部 1px 分隔线会与卡片圆角冲突，去掉 */
+[data-phase] header::after {
+  display: none !important;
+}
+
+/* 标题行浮于声纹 canvas 之上（canvas absolute z-index:0） */
+[data-phase] header [class$="_titleRow"] {
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+/* 正文滚动区浮动卡片：官方 [data-conversation-scroll] 为滚动容器 */
+[data-conversation-scroll] {
+  border: 1px solid var(--dsw-alias-border-l1) !important;
+  border-radius: var(--denpa-radius, 14px) !important;
+  background: var(--dsw-alias-bg-base) !important;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 6px 20px rgb(0 0 0 / 0.08) !important;
+}
+
+/* 会话列根：自身不画表面，让 frame 背景透出（卡片间隙可见） */
+[data-phase] {
+  background: transparent !important;
+}
+
+/* ════════════════════════════════════════════════════════════
  * 会话切换/新消息入场动画（denpa-transition.ts 挂类）
  * 长属性写法：animation 简写里嵌 var()（级联延迟）在个别引擎上有解析
  * 风险，拆开后每条规则独立解析，延迟变量绝对可靠。
