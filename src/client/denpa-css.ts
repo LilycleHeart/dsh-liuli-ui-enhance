@@ -492,6 +492,17 @@ div[role="menu"] [class*="_groupTitle"] {
   pointer-events: none;
 }
 
+/* 输入遮罩改亚克力淡出（WIP 同款）：官方渐变渐隐到不透明 bg-base
+   （rgb 18,19,22 实色硬边，压在统计卡上像一块渐变遮罩），WIP 改为
+   渐隐到 20% 亚克力 —— 半透明，壁纸/磨砂透出，柔和过渡。 */
+[data-composer-seat] {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, rgb(var(--denpa-acrylic-rgb)) 0%, transparent) 0px,
+    color-mix(in srgb, rgb(var(--denpa-acrylic-rgb)) 20%, transparent) 36px
+  ) !important;
+}
+
 /* ════════════════════════════════════════════════════════════
  * 命令卡片（GenericCommandCard）磨砂：聊天流里的命令执行卡。
  * 用 :not([data-tool]) 排除通用工具卡，只命中命令卡。
