@@ -224,11 +224,11 @@ export function bgGeometry(
     const n = iRatio !== null && iRatio > 0
       ? normalizeAreaToRatio(area, vRatio / iRatio)
       : {
-          x: area.x,
-          y: area.y,
-          w: Math.min(1, Math.max(0.05, area.w)),
-          h: Math.min(1, Math.max(0.05, area.h)),
-        }
+        x: area.x,
+        y: area.y,
+        w: Math.min(1, Math.max(0.05, area.w)),
+        h: Math.min(1, Math.max(0.05, area.h)),
+      }
     const px = Math.min(1, Math.max(0, n.x / (1 - n.w)))
     const py = Math.min(1, Math.max(0, n.y / (1 - n.h)))
     return {

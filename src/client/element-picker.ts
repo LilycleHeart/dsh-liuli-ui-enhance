@@ -290,7 +290,10 @@ export function attachElementPicker(
         e.stopPropagation()
         break
       case 'mousedown':
-        // Keep focus on the currently focused element and block outside presses.
+      case 'wheel':
+      case 'touchmove':
+        // Keep focus on the currently focused element and block outside presses;
+        // wheel/touchmove must not scroll or pan the page while picking.
         e.preventDefault()
         e.stopPropagation()
         break
@@ -303,11 +306,6 @@ export function attachElementPicker(
         highlight(null)
         handlers.onHover?.(null, { x: mouse.clientX, y: mouse.clientY })
         handlers.onPick(el)
-        break
-      case 'wheel':
-      case 'touchmove':
-        e.preventDefault()
-        e.stopPropagation()
         break
       // mouseenter is intentionally not stopped: it lets hover UI open.
     }
