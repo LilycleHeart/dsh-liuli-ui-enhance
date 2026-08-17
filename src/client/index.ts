@@ -56,6 +56,7 @@ import { FloatBall } from './FloatBall.tsx'
 import { createRoot } from 'react-dom/client'
 import { formatSelection, type PickedElement } from './element-picker.ts'
 import { startElementCardDecoration } from './element-card.ts'
+import { startSessionRename } from './session-rename.ts'
 import {
   PreviewDetailsPanel, PreviewButton, PREVIEW_TOGGLE_EVENT, PREVIEW_NAVIGATE_EVENT,
   resolvePreviewUrl, setPreviewOpen, togglePreviewOpen,
@@ -118,6 +119,9 @@ export function apply(ctx: ClientContext): void {
 
   // ── 用户发送的网页元素：在聊天气泡里也渲染成卡片（官方只装饰 /@ chip）──
   ctx.effect(() => startElementCardDecoration(), 'liuli-theme: element card decoration')
+
+  // ── 会话内联重命名：双击侧栏会话标题进入内联编辑（不弹菜单/对话框）──
+  ctx.effect(() => startSessionRename(ctx), 'liuli-theme: session inline rename')
 
   // ── 供应商额度：注入 connection/remote，供 header 工具区显示当前供应商额度 ──
   initSupplierQuota(ctx.get('connection') as ConnectionHandle, ctx.get('modelDirectories'))
