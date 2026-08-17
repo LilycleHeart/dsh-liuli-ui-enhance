@@ -620,15 +620,16 @@ div[class*="hoverCard"] {
   transition: padding 300ms var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1)) !important;
 }
 
-/* 收起态统一宽度到展开态（用户要求）：官方 rail 会把 AppFrame 侧栏列
-   从 280 缩到 56，侧栏面板随之变窄。保持侧栏列 280px（展开宽度），
-   rail 图标在面板内显示；内容区列自适应剩余宽度。 */
-[class*="_frame"]:has([class*="_collapsed"]) {
-  grid-template-columns: 280px minmax(0, 1fr) 0px !important;
+/* 收起态（rail）：官方 56px 轨道贴边、无侧栏留白 —— 展开态的 16px
+   左侧 padding 会把 rail 列挤窄（56-16=40），控件溢出错位。 */
+[class*="_sidebarCol"]:has([class*="_collapsed"]) {
+  padding: 0 !important;
 }
 
-[class*="_sidebarCol"]:has([class*="_collapsed"]) {
-  padding: 16px 16px 16px 0 !important;
+/* 收起态统一高度到展开态（用户要求）：logoRow 保持展开态 60px
+   （toggle 尺寸已由品牌鱼规则统一为 28px）—— 收起时内部高度不再变化。 */
+[class*="_sidebarCol"] [class*="_collapsed"] [class*="_logoRow"] {
+  height: 60px !important;
 }
 
 [class*="_centerCol"] {
@@ -826,8 +827,9 @@ div[data-phase='active'] {
 
 [class*="_sidebarCol"] [class*="_collapsed"] [class*="_toggle"] {
   flex: none !important;
-  width: 36px !important;
-  height: 36px !important;
+  /* 尺寸统一到展开态（用户要求：收起时高度不再变化） */
+  width: 28px !important;
+  height: 28px !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
