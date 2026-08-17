@@ -428,7 +428,6 @@ function WallpaperPreview(props: {
   return (
     <>
       <div className={css.previewActions}>
-        <span className={css.previewHint}>{props.t('area.hint')}</span>
         {selectMode ? (
           <>
             <Button variant="ghost" size="sm" onClick={() => { setSelBox(windowArea()) }}>
