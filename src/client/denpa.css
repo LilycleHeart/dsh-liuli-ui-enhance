@@ -579,3 +579,109 @@ div[class$="hoverCard"] {
     animation: none;
   }
 }
+
+/* ════════════════════════════════════════════════════════════
+ * 用户消息里的元素引用卡片（element-picker 发送后由 element-card.ts
+ * 把 [selected element] 纯文本替换为卡片 DOM）。
+ * ════════════════════════════════════════════════════════════ */
+.liuli-element-card {
+  display: block;
+  margin: 4px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-left: 3px solid var(--dsw-alias-brand-primary);
+  border-radius: var(--denpa-radius-sm, 10px);
+  background-color: rgba(var(--denpa-acrylic-rgb), 0.92);
+  background-image: var(--denpa-noise);
+  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
+  cursor: default;
+  transition: border-color 160ms var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.liuli-element-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  color: var(--dsw-alias-brand-primary);
+  font-weight: 600;
+}
+
+.liuli-element-card-badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 16%, transparent);
+  color: var(--dsw-alias-brand-primary);
+  font-size: 10px;
+  line-height: 16px;
+  flex: none;
+}
+
+.liuli-element-card-tag {
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.liuli-element-card-selector {
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--dsw-alias-markdown-code-segment-unselected);
+  font-family: var(--ds-font-family-code);
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+  word-break: break-all;
+}
+
+/* 详细字段默认隐藏，指针悬停 / 键盘聚焦时再展开。 */
+.liuli-element-card-details {
+  display: none;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+.liuli-element-card:hover .liuli-element-card-details,
+.liuli-element-card:focus-within .liuli-element-card-details {
+  display: block;
+}
+
+/* 无 hover 的触屏设备直接展开详情，避免信息不可达。 */
+@media (hover: none) {
+  .liuli-element-card-details {
+    display: block;
+  }
+}
+
+.liuli-element-card-row {
+  margin-top: 4px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.liuli-element-card-row b {
+  color: var(--dsw-alias-label-secondary);
+  font-weight: 500;
+}
+
+.liuli-element-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 输入框里的引用 chip 也做成更精致的“小卡片”：亚克力底 + 描边 + 品牌辉光，
+   不引入 border/padding，避免破坏 U+FFFC 与 textarea 的对齐。 */
+[class*="_chip"][data-decoration="chip"]:not([data-invalid]) {
+  background: rgba(var(--denpa-acrylic-rgb), 0.9) !important;
+  box-shadow: 0 0 0 1px var(--dsw-alias-border-l2), var(--denpa-glow-brand);
+}

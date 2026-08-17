@@ -8,7 +8,7 @@
  *   只服务会话目录内的文件，Host fence 防 DNS rebinding。
  */
 import { createReadStream } from 'node:fs'
-import { stat } from 'node:fs/promises'
+import { readdir, stat } from 'node:fs/promises'
 import { extname, resolve as resolvePath, sep } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
@@ -260,6 +260,181 @@ function previewSendFile(res: ServerResponse, path: string, size: number, method
   createReadStream(path).pipe(res)
 }
 
+/** Escape HTML text for the directory listing page. */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+/** Render a simple directory listing for the preview iframe（无 index.html 时兜底）。 */
+async function previewSendDirectoryListing(
+  res: ServerResponse,
+  target: string,
+  sessionId: string,
+  rel: string,
+  method: string | undefined,
+  artifacts: boolean,
+): Promise<void> {
+  let entries
+  try {
+    entries = await readdir(target, { withFileTypes: true })
+  } catch {
+    previewSendError(res, 500, 'failed to list directory')
+    return
+  }
+  const basePath = `/preview/${encodeURIComponent(sessionId)}/${rel === ''
+    ? ''
+    : rel.split('/').filter(Boolean).map(segment => encodeURIComponent(segment)).join('/') + '/'}`
+  const query = artifacts ? '?artifacts=1' : ''
+  const items = entries
+    .filter(entry => !entry.name.startsWith('.'))
+    .sort((a, b) => {
+      if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1
+      return a.name.localeCompare(b.name)
+    })
+    .map((entry) => {
+      const name = entry.name
+      const suffix = entry.isDirectory() ? '/' : ''
+      const href = `${basePath}${encodeURIComponent(name)}${suffix}${query}`
+      return `<li><a href="${href}">${escapeHtml(name)}${suffix}</a></li>`
+    })
+    .join('')
+  const title = rel === '' ? '会话产物' : `会话产物 / ${rel}`
+  const html = `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>${escapeHtml(title)}</title>
+<style>
+  :root {
+    --liuli-bg: #f8f9fa;
+    --liuli-card: rgba(221, 229, 237, 0.65);
+    --liuli-card-hover: rgba(221, 229, 237, 0.95);
+    --liuli-border: rgba(15, 20, 28, 0.1);
+    --liuli-text: #1a1c1e;
+    --liuli-text-secondary: #5e636b;
+    --liuli-brand: #0079bf;
+    --liuli-brand-soft: rgba(0, 121, 191, 0.1);
+    --liuli-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  }
+  html[data-liuli-dark] {
+    --liuli-bg: #121316;
+    --liuli-card: rgba(30, 37, 48, 0.65);
+    --liuli-card-hover: rgba(63, 74, 92, 0.8);
+    --liuli-border: rgba(255, 255, 255, 0.1);
+    --liuli-text: #e2e2e6;
+    --liuli-text-secondary: #9d9da3;
+    --liuli-brand: #8ecdf8;
+    --liuli-brand-soft: rgba(142, 205, 248, 0.12);
+    --liuli-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    padding: 20px;
+    font: 14px/1.6 "MiSans", "Inter", "Segoe UI", system-ui, sans-serif;
+    background: var(--liuli-bg);
+    color: var(--liuli-text);
+  }
+  .head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  h1 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--liuli-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .badge {
+    flex: none;
+    padding: 2px 10px;
+    border: 1px solid color-mix(in srgb, var(--liuli-brand) 40%, transparent);
+    border-radius: 999px;
+    background: var(--liuli-brand-soft);
+    color: var(--liuli-brand);
+    font-size: 12px;
+    line-height: 20px;
+  }
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  li {
+    border-radius: 12px;
+    border: 1px solid var(--liuli-border);
+    background: var(--liuli-card);
+    box-shadow: var(--liuli-shadow);
+    transition: background 140ms ease, transform 140ms ease;
+  }
+  li:hover {
+    background: var(--liuli-card-hover);
+    transform: translateY(-1px);
+  }
+  a {
+    display: block;
+    padding: 10px 14px;
+    color: var(--liuli-brand);
+    text-decoration: none;
+    font-family: "JetBrains Mono", "SF Mono", "Consolas", monospace;
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .empty {
+    padding: 20px;
+    border-radius: 12px;
+    border: 1px dashed var(--liuli-border);
+    color: var(--liuli-text-secondary);
+    text-align: center;
+  }
+</style>
+<script>
+  (function () {
+    try {
+      var dark = window.parent.document.body.hasAttribute('data-ds-dark-theme');
+      document.documentElement.toggleAttribute('data-liuli-dark', dark);
+    } catch (_) { /* 跨源时保持亮色 */ }
+  })();
+</script>
+</head>
+<body>
+  <div class="head">
+    <h1>${escapeHtml(title)}</h1>
+    <span class="badge">琉璃预览</span>
+  </div>
+  ${items === '' ? '<div class="empty">（空目录）</div>' : `<ul>${items}</ul>`}
+</body>
+</html>`
+  res.writeHead(200, {
+    'content-type': 'text/html; charset=utf-8',
+    'content-length': String(Buffer.byteLength(html)),
+    'x-content-type-options': 'nosniff',
+    'cache-control': 'no-store',
+  })
+  if (method === 'HEAD') {
+    res.end()
+    return
+  }
+  res.end(html)
+}
+
 /** Resolve and serve one preview request（Host fence：loopback 或同源）。 */
 async function servePreview(ctx: Context, req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -271,7 +446,9 @@ async function servePreview(ctx: Context, req: IncomingMessage, res: ServerRespo
     previewSendError(res, 403, 'forbidden')
     return
   }
-  const pathname = new URL(req.url ?? '/', 'http://x').pathname
+  const url = new URL(req.url ?? '/', 'http://x')
+  const pathname = url.pathname
+  const wantsArtifacts = url.searchParams.get('artifacts') === '1'
   const parsed = parsePreviewPath(pathname)
   if (parsed === undefined) {
     previewSendError(res, 404, 'not found')
@@ -296,6 +473,11 @@ async function servePreview(ctx: Context, req: IncomingMessage, res: ServerRespo
     return
   }
   if (info.isDirectory()) {
+    // 产物模式：始终展示目录列表，而不是自动打开 index.html。
+    if (wantsArtifacts) {
+      await previewSendDirectoryListing(res, target, parsed.sessionId, parsed.rel, req.method, true)
+      return
+    }
     const index = resolvePath(target, 'index.html')
     try {
       const indexInfo = await stat(index)
@@ -304,9 +486,9 @@ async function servePreview(ctx: Context, req: IncomingMessage, res: ServerRespo
         return
       }
     } catch {
-      // Fall through to the directory-not-served answer.
+      // Fall through to the directory listing.
     }
-    previewSendError(res, 404, 'not found')
+    await previewSendDirectoryListing(res, target, parsed.sessionId, parsed.rel, req.method, false)
     return
   }
   if (!info.isFile()) {

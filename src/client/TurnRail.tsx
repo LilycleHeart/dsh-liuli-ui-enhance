@@ -187,7 +187,6 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
   const [host, setHost] = useState<HTMLElement | null>(null)
   const [phaseRoot, setPhaseRoot] = useState<HTMLElement | null>(null)
   const [chatMounted, setChatMounted] = useState(false)
-  const [selectedTurn, setSelectedTurn] = useState<number | null>(null)
   const [hoveredTurn, setHoveredTurn] = useState<number | null>(null)
   const [followTurn, setFollowTurn] = useState<number | null>(null)
   const [pillTop, setPillTop] = useState(0)
@@ -273,15 +272,14 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
     setPillTop(tickCenterTop(tick))
   }
 
-  // 滚动时跟随视口中心最近的对话轮次（无 hover/选中时）。
+  // 滚动时跟随视口中心最近的对话轮次（无 hover 时）。
   useEffect(() => {
     if (host === null || turnItems.length === 0) return
     // host 即正文卡片（[data-conversation-scroll]），自身就是滚动容器。
     const scrollport = host
     if (scrollport === null) return
     const update = (): void => {
-      // hover 胶囊时跟随暂停（胶囊展示 hover 轮）；选中轮后滚动仍要
-      // 跟随当前轮（tickFollow 与 tickSelected 可共存）。
+      // hover 胶囊时跟随暂停（胶囊展示 hover 轮）。
       if (hoveredTurn !== null) return
       const rect = scrollport.getBoundingClientRect()
       const centerY = rect.top + rect.height / 2
@@ -321,7 +319,7 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
       mo.disconnect()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [host, turnItems, hoveredTurn, selectedTurn, locations])
+  }, [host, turnItems, hoveredTurn, locations])
 
   /** 点击 commit 后把 commit 号送回对话窗口（由插件注入处理函数）。 */
   const onCommitClick = (turn: number): void => {
@@ -331,8 +329,7 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
   }
 
   const onTickClick = (_e: ReactMouseEvent<SVGSVGElement>, turn: number): void => {
-    setSelectedTurn(previous => previous === turn ? null : turn)
-    setFollowTurn(null)
+    // 点击只负责跳转，不做持久选中。
     setHoveredTurn(null)
     jumpToTurn(turn)
   }
@@ -358,7 +355,7 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
     setHoveredTurn(turn)
   }
 
-  // 胶囊只在指针悬浮时出现；选中/跟随只影响刻度样式，不展开胶囊。
+  // 胶囊只在指针悬浮时出现；跟随只影响刻度样式，不展开胶囊。
   const pillItem = hoveredTurn === null ? undefined : turnItems.find(item => item.turn === hoveredTurn)
   const pillClass = css.capsuleHover
 
@@ -373,7 +370,6 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
                 key={turn}
                 data-turn={turn}
                 className={css.tick
-                  + (selectedTurn === turn ? ' ' + css.tickSelected : '')
                   + (hoveredTurn === turn ? ' ' + css.tickHover : '')
                   + (followTurn === turn ? ' ' + css.tickFollow : '')
                   + (turn === turnItems[turnItems.length - 1]?.turn ? ' ' + css.tickActive : '')}
@@ -381,7 +377,6 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
                 role="button"
                 tabIndex={0}
                 aria-label={`跳到第 ${index + 1} 轮`}
-                aria-expanded={selectedTurn === turn || undefined}
                 onClick={(e) => { onTickClick(e, turn) }}
                 onMouseEnter={(e) => { onTickHover(e, turn) }}
                 onMouseLeave={() => { scheduleHoverClear() }}

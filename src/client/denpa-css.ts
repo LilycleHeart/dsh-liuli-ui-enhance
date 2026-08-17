@@ -490,6 +490,21 @@ div[role="menu"] [class*="_groupTitle"] {
   background: transparent !important;
 }
 
+/* 输入卡内的“命令”圆钮、聊天区“回到底部”按钮：
+   从实色容器改为与卡片一致的亚克力表面。 */
+[data-composer-card] button[class*="_add"] {
+  background-color: var(--dsw-specific-input-major) !important;
+  background-image: var(--denpa-noise) !important;
+}
+
+/* “回到底部”按钮额外加磨砂模糊，和卡片材质一致。 */
+button[class*="_toBottom"] {
+  background-color: var(--dsw-specific-input-major) !important;
+  background-image: var(--denpa-noise) !important;
+  -webkit-backdrop-filter: var(--denpa-material-blur) !important;
+  backdrop-filter: var(--denpa-material-blur) !important;
+}
+
 /* ════════════════════════════════════════════════════════════
  * 命令卡片（GenericCommandCard）磨砂：聊天流里的命令执行卡。
  * 用 :not([data-tool]) 排除通用工具卡，只命中命令卡。
@@ -623,6 +638,9 @@ div[class*="hoverCard"] {
   padding: 16px 16px 16px 0 !important;
   background: transparent !important;
   border-right: none !important;
+  /* 宿主给 sidebarCol 设了 overflow:hidden，会把侧栏卡右侧的辉光/阴影裁掉；
+     放开横向溢出，让卡片右缘效果完整露出。 */
+  overflow: visible !important;
   transition: padding 300ms var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1)) !important;
 }
 
@@ -644,8 +662,11 @@ div[class*="hoverCard"] {
   padding: 16px 16px 16px 12px !important;
 }
 
-/* 会话 header 浮动卡片：官方 header 为 <header> 标签 + 哈希类名 */
-div[data-phase] header {
+/* 会话 header 浮动卡片：官方 header 为 <header> 标签 + 哈希类名。
+   只命中会话列顶部的 header，避免把问题/审批卡片内部的 <header> 也套上
+   卡片背景导致上下样式不统一。 */
+div[data-phase] > header,
+div[data-phase] > div > header {
   margin-bottom: 12px !important;
   padding: 12px 28px 0 20px !important;
   border: 1px solid var(--dsw-alias-border-l1) !important;
@@ -653,12 +674,14 @@ div[data-phase] header {
 }
 
 /* 官方 header 底部 1px 分隔线会与卡片圆角冲突，去掉 */
-div[data-phase] header::after {
+div[data-phase] > header::after,
+div[data-phase] > div > header::after {
   display: none !important;
 }
 
 /* 标题行浮于声纹 canvas 之上（canvas absolute z-index:0） */
-div[data-phase] header [class*="_titleRow"] {
+div[data-phase] > header [class*="_titleRow"],
+div[data-phase] > div > header [class*="_titleRow"] {
   position: relative !important;
   z-index: 1 !important;
 }
@@ -708,7 +731,8 @@ div[data-phase='active'] [data-conversation-scroll] {
 /* 双卡亚克力配方（与侧栏同款：染色 + 噪声 + 辉光/阴影），壁纸透出。
    卡片自身不持有 backdrop-filter（会截断后代 composer 卡的磨砂采样），
    壁纸模糊由 [data-phase]::before 独立背景层承担。 */
-div[data-phase] header,
+div[data-phase] > header,
+div[data-phase] > div > header,
 [data-conversation-scroll] {
   background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity)) !important;
   background-image: var(--denpa-noise) !important;
@@ -906,6 +930,8 @@ div[data-phase='active'] {
    被这里强改成 bubble-fg（否则暗色主题下 tooltip 文字变深色）。 */
 [class*="_bubble"]:not([role="tooltip"]) {
   color: var(--dsw-specific-bubble-fg, var(--dsw-alias-label-primary)) !important;
+  /* 对话消息气泡圆角跟随“圆角大小”设置 */
+  border-radius: var(--denpa-radius, 22px) !important;
 }
 
 /* 回合状态 shimmer（"Deep diving..."）：官方渐变用静态 deepseek-500/200
@@ -944,6 +970,89 @@ div[data-phase='active'] {
 /* 引用 chip：缩放标签与底色观感（chip 本体是官方元素，类后缀命中） */
 [class*="_chip"] [class*="_chipLabel"] {
   color: var(--dsw-alias-label-primary) !important;
+}
+
+/* 输入框里的引用 chip 也做成更精致的“小卡片”：亚克力底 + 描边 + 品牌辉光，
+   不引入 border/padding，避免破坏 U+FFFC 与 textarea 的对齐。 */
+[class*="_chip"][data-decoration="chip"]:not([data-invalid]) {
+  background: rgba(var(--denpa-acrylic-rgb), 0.9) !important;
+  box-shadow: 0 0 0 1px var(--dsw-alias-border-l2), var(--denpa-glow-brand);
+}
+
+/* ════════════════════════════════════════════════════════════
+ * 用户消息里的元素引用卡片（element-picker 发送后由 element-card.ts
+ * 把 [selected element] 纯文本替换为卡片 DOM）。
+ * ════════════════════════════════════════════════════════════ */
+.liuli-element-card {
+  position: relative;
+  display: inline-block;
+  margin: 4px 0;
+  padding: 4px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--denpa-radius, 999px);
+  background-color: rgba(var(--denpa-acrylic-rgb), 0.92);
+  background-image: var(--denpa-noise);
+  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
+  cursor: default;
+}
+
+.liuli-element-card-label {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* 详细字段作为悬停卡片展示，不在卡片内展开。
+   位置由 element-card.ts 的 JS 按视口动态计算并夹紧，避免超出窗口。 */
+.liuli-element-card-details {
+  display: none;
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 2147483000;
+  width: max-content;
+  max-width: 360px;
+  padding: 8px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background-color: rgba(var(--denpa-acrylic-rgb), 0.97);
+  background-image: var(--denpa-noise);
+  box-shadow: var(--denpa-shadow), var(--denpa-glow-brand);
+  color: var(--dsw-alias-label-primary);
+}
+
+/* 无 hover 的触屏设备直接展示详情，避免信息不可达。 */
+@media (hover: none) {
+  .liuli-element-card-details {
+    display: block;
+    position: static;
+    width: auto;
+    max-width: none;
+    margin-top: 6px;
+  }
+}
+
+.liuli-element-card-row {
+  margin-top: 4px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.liuli-element-card-row b {
+  color: var(--dsw-alias-label-secondary);
+  font-weight: 500;
+}
+
+.liuli-element-text {
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -1019,6 +1128,50 @@ div[data-phase='active'] {
   border-left: none !important;
 }
 
+
+/* ════════════════════════════════════════════════════════════
+ * 预览列（右侧 details）像侧栏一样：透明列留白 + 右贴边圆角卡片。
+ * 与侧栏配方镜像：padding 16/0/0/16（下方触底），圆角 左上圆其余直，背景层走 ::before。
+ * ════════════════════════════════════════════════════════════ */
+[class*="_detailsCol"] {
+  padding: 16px 0 0 16px !important;
+  background: transparent !important;
+  border-left: none !important;
+  transition: padding 300ms var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1)) !important;
+}
+
+/* 展开时放开横向溢出让卡片辉光/阴影完整露出；收起（宽度 0）必须裁掉内容。 */
+[class*="_frame"]:not([data-details-collapsed]) [class*="_detailsCol"] {
+  overflow: visible !important;
+}
+
+[class*="_frame"][data-details-collapsed] [class*="_detailsCol"] {
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+[class*="_detailsCol"] [data-preview-panel] {
+  position: relative !important;
+  z-index: 1 !important;
+  border-radius: var(--denpa-radius, 14px) 0 0 0 !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow) !important;
+  overflow: hidden !important;
+}
+
+[class*="_detailsCol"] [data-preview-panel]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity));
+  background-image: var(--denpa-noise);
+  -webkit-backdrop-filter: var(--denpa-material-blur);
+  backdrop-filter: var(--denpa-material-blur);
+  pointer-events: none;
+}
 /* 工作区树底部淡出层：WIP 已移除该元素，插件隐藏官方残留层 */
 [class*="_fade"] {
   display: none !important;
@@ -1028,6 +1181,16 @@ div[data-phase='active'] {
 [role="dialog"][class*="_panel"],
 [role="dialog"][class*="_dialog"] {
   box-shadow: var(--denpa-glow-brand), var(--denpa-shadow) !important;
+}
+
+/* 设置页去掉重复且无功能的“插件”导航项（保留官方第一个） */
+[role="dialog"] [class*="_navList"] > button:nth-of-type(6) {
+  display: none !important;
+}
+
+/* 设置页“已保存”提示去掉背景色，只保留文字 */
+[role="dialog"] [class*="_savedNotice"] {
+  background: transparent !important;
 }
 
 /* 设置行药丸控件（语言/Agent preset/Enter 行为/权限选择器）：
