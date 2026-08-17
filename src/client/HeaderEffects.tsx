@@ -491,6 +491,11 @@ export function DenpaHeaderVoiceprint() {
       const lines = 22
       const mix = vpState.audioMix
 
+      // 振幅随 header 高度自适应：denpa_echo 的固定像素振幅（外层线 14~20、
+      // 主波 46）以 96px 为舒适全幅基准；header 拉到最小（52px）时线性压缩，
+      // 避免波形被 clamp 到顶/底堆成色块。h 比例项已自适应，不受此缩放。
+      const ampScale = Math.min(1, Math.max(0.45, h / 96))
+
       // 频段驱动（与连续响应同款：参考响度 + 静音门限）
       const bandDrive = (b: number): number => {
         const env = vpDraw.bandEnv[b] ?? 0
@@ -513,7 +518,7 @@ export function DenpaHeaderVoiceprint() {
 
         // 基础振幅（空闲态）：进入响应时按 denpa_echo 的 ×0.8 系数压缩，
         // 为音频驱动振幅腾出空间
-        const idleAmp = (14 + (li % 7)) * (1 - Math.abs(off) * 1.4) * (1 - vpDraw.presence * 0.8)
+        const idleAmp = (14 + (li % 7)) * ampScale * (1 - Math.abs(off) * 1.4) * (1 - vpDraw.presence * 0.8)
         // 音频驱动：逐线取平滑频谱对应 bin 的能量映射为额外振幅
         const tex = vpDraw.specSmooth ?? freqData
         const binIdx = Math.min(tex.length - 1, Math.floor((li / lines) * tex.length))
@@ -552,7 +557,7 @@ export function DenpaHeaderVoiceprint() {
       // oxlint-disable-next-line typescript/no-non-null-assertion -- mainBin is a quarter of tex.length
       const mainVal = tex[mainBin]! / 255
       ctx.lineWidth = 2 + mix * mainVal * 1.5
-      const mainAmp = (46 * (1 - vpDraw.presence * 0.8) + mix * mainVal * h * 0.2) * (1 + vpParams.beatGain * vpDraw.punch)
+      const mainAmp = (46 * ampScale * (1 - vpDraw.presence * 0.8) + mix * mainVal * h * 0.2) * (1 + vpParams.beatGain * vpDraw.punch)
       for (let x = 0; x <= w; x += 2) {
         const n = Math.sin(0.0105 * x + vpDraw.idlePhase * 0.58)
           + 0.3 * Math.sin(0.026 * x + vpDraw.idlePhase * 1.08)
