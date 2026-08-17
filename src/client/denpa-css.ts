@@ -686,24 +686,24 @@ div[data-phase] > div > header [class*="_titleRow"] {
   z-index: 1 !important;
 }
 
-/* Session log 按钮：WIP 亚克力胶囊配方 + 用户要求只保留图标
-   （隐藏"Session log"文字 span，按钮 30x30 与相邻图标按钮一致） */
+/* Session log 按钮：只留 svg 图标，去掉圆钮容器（与相邻监听/主题按钮一致） */
 [class*="_sessionLogButton"] {
-  min-width: 30px !important;
-  width: 30px !important;
-  height: 30px !important;
-  padding: 4px !important;
-  border: 1px solid var(--dsw-alias-border-l1) !important;
-  border-radius: 999px !important;
+  min-width: auto !important;
+  width: auto !important;
+  height: auto !important;
+  padding: 9px !important;
+  gap: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
   color: var(--dsw-alias-label-secondary) !important;
-  background: rgba(var(--denpa-acrylic-rgb), 0.6) !important;
-  -webkit-backdrop-filter: var(--denpa-material-blur) !important;
-  backdrop-filter: var(--denpa-material-blur) !important;
 }
 
 [class*="_sessionLogButton"]:hover:not(:disabled) {
   color: var(--dsw-alias-brand-primary) !important;
-  background: var(--dsw-alias-interactive-bg-hover-accent) !important;
+  background: transparent !important;
 }
 
 [class*="_sessionLogButton"] > span {

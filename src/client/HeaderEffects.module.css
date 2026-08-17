@@ -32,26 +32,21 @@
   align-items: center;
 }
 
-/* 主题切换按钮（与监听按钮同造型，保持工具区节奏一致） */
+/* 主题切换 / 监听按钮：只留 svg 图标，去掉圆钮容器（暗底/边框/固定尺寸/圆角） */
 .toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 50%;
-  background: rgba(var(--denpa-acrylic-rgb), 0.6);
+  padding: 7px;
+  border: none;
+  background: transparent;
   color: var(--dsw-alias-label-tertiary);
   cursor: pointer;
-  transition: color 140ms var(--ds-ease-in-out), background 140ms var(--ds-ease-in-out),
-    filter 140ms var(--ds-ease-in-out);
+  transition: color 140ms var(--ds-ease-in-out), filter 140ms var(--ds-ease-in-out);
 }
 
 .toggle:hover {
   color: var(--dsw-alias-brand-primary);
-  background: var(--dsw-alias-interactive-bg-hover-accent);
-  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--dsw-alias-brand-primary) 40%, transparent));
 }
 
 .toggle[aria-pressed='true'] {
