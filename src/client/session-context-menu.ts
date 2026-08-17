@@ -49,7 +49,10 @@ function renderMenu(ctx: Ctx, row: HTMLElement, id: string, title: string, x: nu
     }
     if (action === 'rename') {
       const span = locateTitleSpan(row, title)
-      if (span !== null) mountEditor(ctx, id, title, span)
+      if (span === null) return
+      const session = ctx.sessions.binding(id)?.session
+      if (session === undefined) return
+      mountEditor(span, title, (t) => session.rename(t))
       return
     }
     if (action === 'fork') {

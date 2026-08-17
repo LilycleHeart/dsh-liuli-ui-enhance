@@ -59,6 +59,7 @@ import { startElementCardDecoration } from './element-card.ts'
 import { startSessionRename } from './session-rename.ts'
 import { startSessionMarkerDecoration } from './session-markers.ts'
 import { startSessionContextMenu } from './session-context-menu.ts'
+import { startWorkspaceContextMenu } from './workspace-context-menu.ts'
 import {
   PreviewDetailsPanel, PreviewButton, PREVIEW_TOGGLE_EVENT, PREVIEW_NAVIGATE_EVENT,
   resolvePreviewUrl, setPreviewOpen, togglePreviewOpen,
@@ -130,6 +131,9 @@ export function apply(ctx: ClientContext): void {
 
   // ── 会话栏右键菜单：右键会话行弹出标记/重命名/分叉/归档（不改官方代码）──
   ctx.effect(() => startSessionContextMenu(ctx), 'liuli-theme: session context menu')
+
+  // ── 工作区/目录行右键菜单：重命名/删除工作区（不改官方代码）──
+  ctx.effect(() => startWorkspaceContextMenu(ctx), 'liuli-theme: workspace context menu')
 
   // ── 供应商额度：注入 connection/remote，供 header 工具区显示当前供应商额度 ──
   initSupplierQuota(ctx.get('connection') as ConnectionHandle, ctx.get('modelDirectories'))
