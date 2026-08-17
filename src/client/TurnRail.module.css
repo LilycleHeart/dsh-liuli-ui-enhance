@@ -1,9 +1,11 @@
 /* 琉璃主题 · 对话轮次刻度侧边栏
-   portal 到 [data-phase] 根，定位在正文卡片左侧。
+   portal 到正文卡片（[data-conversation-scroll]），定位在卡片左侧内部。
    只保留不透明刻度；胶囊从刻度右侧展开：上栏 轮数+摘要，
    下栏单开一行：commit 左对齐，时间 日期（X月X日）右对齐，主题色分割线。 */
 
 .rail {
+  /* absolute 定位上下文是 [data-phase] 根（根不滚动 → rail 固定在
+     卡片区域，不随消息流滚动；DOM 父容器是正文卡片，见 TurnRail.tsx）。 */
   position: absolute;
   left: 16px;
   top: calc(var(--dsh-header-height, 80px) + 20px);

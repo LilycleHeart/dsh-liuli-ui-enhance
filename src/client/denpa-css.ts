@@ -678,7 +678,10 @@ div[data-phase] header [class*="_titleRow"] {
   display: none !important;
 }
 
-/* 正文滚动区浮动卡片：官方 [data-conversation-scroll] 为滚动容器 */
+/* 正文滚动区浮动卡片：官方 [data-conversation-scroll] 为滚动容器。
+   注意：不能给卡片设 position:relative —— TurnRail portal 到卡片内，
+   但 rail/pill 的 absolute 定位上下文须是 [data-phase] 根（根不滚动），
+   卡片一旦成为定位上下文，absolute 会随滚动内容滚动、rail 滚出视口。 */
 [data-conversation-scroll] {
   border: 1px solid var(--dsw-alias-border-l1) !important;
   border-radius: var(--denpa-radius, 14px) !important;

@@ -181,7 +181,11 @@ function findTurnRow(root: HTMLElement, keys: readonly string[]): HTMLElement | 
 
 export function TurnRail({ useSession, sessionId }: TurnRailProps) {
   const anchorRef = useRef<HTMLDivElement | null>(null)
+  // host = portal 目标（正文卡片 [data-conversation-scroll]，用户要求 rail
+  // 的 DOM 父容器是卡片）；phaseRoot = 会话列根 [data-phase]，是 rail/pill
+  // 的 absolute 定位上下文（根不滚动 → rail 固定在卡片区域，不随消息滚动）。
   const [host, setHost] = useState<HTMLElement | null>(null)
+  const [phaseRoot, setPhaseRoot] = useState<HTMLElement | null>(null)
   const [chatMounted, setChatMounted] = useState(false)
   const [selectedTurn, setSelectedTurn] = useState<number | null>(null)
   const [hoveredTurn, setHoveredTurn] = useState<number | null>(null)
@@ -196,7 +200,11 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
   const order = useSession(s => s.chat.order)
 
   useLayoutEffect(() => {
-    setHost(anchorRef.current?.closest<HTMLElement>('[data-phase]') ?? null)
+    // anchorRef 挂在 header 内（header.utilities slot），与正文卡片是兄弟，
+    // 先经 [data-phase] 根再向下找卡片作为 portal 目标。
+    const root = anchorRef.current?.closest<HTMLElement>('[data-phase]') ?? null
+    setPhaseRoot(root)
+    setHost(root?.querySelector<HTMLElement>('[data-conversation-scroll]') ?? null)
   }, [sessionId])
 
   // 只在 Chat 视图挂载时显示。
@@ -252,8 +260,11 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
   }
 
   const relativeTop = (current: Element): number => {
-    if (host === null) return 0
-    return current.getBoundingClientRect().top - host.getBoundingClientRect().top
+    // pill 定位上下文是 [data-phase] 根（rail/pill absolute 相对它），
+    // 因此偏移也按根计算（相对 scrollBody 会差根与卡片的顶部差）。
+    const base = phaseRoot ?? host
+    if (base === null) return 0
+    return current.getBoundingClientRect().top - base.getBoundingClientRect().top
   }
 
   const tickCenterTop = (tick: Element): number => relativeTop(tick) + tick.getBoundingClientRect().height / 2
@@ -265,7 +276,8 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
   // 滚动时跟随视口中心最近的对话轮次（无 hover/选中时）。
   useEffect(() => {
     if (host === null || turnItems.length === 0) return
-    const scrollport = host.querySelector<HTMLElement>('[data-conversation-scroll]')
+    // host 即正文卡片（[data-conversation-scroll]），自身就是滚动容器。
+    const scrollport = host
     if (scrollport === null) return
     const update = (): void => {
       // hover 胶囊时跟随暂停（胶囊展示 hover 轮）；选中轮后滚动仍要
