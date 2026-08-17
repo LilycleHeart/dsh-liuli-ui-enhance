@@ -18,7 +18,11 @@ const FIELD_RE = /^(selector|attributes|text|rect|color|background|font):\s*(.*)
 
 /**
  * 解析 formatSelection 生成的元素文本。
- * @param text - 用户消息中的元素引用纯文本。
+ *
+ * 严格单行解析：每个字段占一行，不做多行续行。formatSelection 输出的
+ * text 字段已是 trim+slice 的单行字符串，无需续行；旧的“text 字段允许跨行”
+ * 逻辑会把元素块之后紧跟的用户消息文本吞进卡片，已移除。
+ * @param text - 元素块文本（header + 字段行）。
  * @returns 结构化元素信息；无法识别时返回 null。
  */
 export function parseSelectionText(text: string): PickedElement | null {
@@ -37,27 +41,20 @@ export function parseSelectionText(text: string): PickedElement | null {
     font: '',
   }
 
-  type FieldKey = 'selector' | 'attributes' | 'text' | 'rect' | 'color' | 'background' | 'font'
-  let current: Exclude<FieldKey, 'rect'> | null = null
   for (const rawLine of lines.slice(1)) {
     const m = FIELD_RE.exec(rawLine)
-    if (m !== null) {
-      const key = m[1] as FieldKey
-      const value = m[2] ?? ''
-      if (key !== 'rect') current = key
-      if (key === 'selector') info.selector = value
-      else if (key === 'attributes') info.attributes = value
-      else if (key === 'text') info.text = value
-      else if (key === 'color') info.color = value
-      else if (key === 'background') info.background = value
-      else if (key === 'font') info.font = value
-      continue
-    }
-    // text 字段允许跨行（页面元素文本可能自带换行）。
-    if (current === 'text') info.text += '\n' + rawLine
+    if (m === null) continue
+    const key = m[1] as 'selector' | 'attributes' | 'text' | 'rect' | 'color' | 'background' | 'font'
+    const value = m[2] ?? ''
+    if (key === 'selector') info.selector = value
+    else if (key === 'attributes') info.attributes = value
+    else if (key === 'text') info.text = value
+    else if (key === 'color') info.color = value
+    else if (key === 'background') info.background = value
+    else if (key === 'font') info.font = value
   }
 
-  // rect 单独解析：formatSelection 里 rect 是字段行，上面没有进入 switch。
+  // rect 单独解析（格式与其它字段不同）。
   for (const rawLine of lines.slice(1)) {
     const m = /^rect:\s*x=(-?\d+) y=(-?\d+) (\d+)x(\d+)$/.exec(rawLine)
     if (m !== null) {
@@ -155,43 +152,60 @@ export function buildElementCard(info: PickedElement): HTMLElement {
 }
 
 /**
- * 把一段可能包含元素块的文本渲染为节点列表：只有 [selected element] 块
- * 变成卡片，其余文字保持为原始 Text 节点（不包 div、不加 class），让
- * 用户消息文本完全沿用气泡本身的渲染，不被元素卡片"吞掉"或改样。
+ * 在文本中搜索 [selected element] 标记，把元素块渲染成卡片，其余文字保持
+ * 为原始 Text 节点（不包 div、不加 class），让用户消息文本完全沿用气泡
+ * 本身的渲染。
+ *
+ * 标记可能出现在行首（serialize 已用换行包裹），也可能粘在用户文字后面
+ * （旧消息或 chip 紧跟文字）。找到标记后：标记之前的文本 → 用户消息；
+ * 从标记开始提取 header 行 + 后续 FIELD_RE 行（严格单行）→ 元素卡片；
+ * 遇到非 FIELD_RE 行即结束元素块，该行及之后回到用户消息。
  * @param text - 原始文本。
  * @returns 渲染节点。
  */
 export function renderTextWithElementCards(text: string): Node[] {
-  const lines = text.split('\n')
   const parts: Node[] = []
-  let i = 0
-  while (i < lines.length) {
-    if (HEADER_RE.test(lines[i]?.trim() ?? '')) {
-      const blockLines: string[] = [lines[i] ?? '']
-      i += 1
-      while (i < lines.length && FIELD_RE.test(lines[i]?.trim() ?? '')) {
-        blockLines.push(lines[i] ?? '')
-        i += 1
+  let pos = 0
+  while (pos < text.length) {
+    const markerIdx = text.indexOf(ELEMENT_MARKER, pos)
+    if (markerIdx === -1) {
+      const rest = text.slice(pos)
+      if (rest !== '') parts.push(document.createTextNode(rest))
+      break
+    }
+
+    // 标记之前的文本 → 用户消息（保留原样，不包 div）
+    if (markerIdx > pos) {
+      const before = text.slice(pos, markerIdx)
+      if (before !== '') parts.push(document.createTextNode(before))
+    }
+
+    // 从标记位置提取 header 行（标记到行尾）
+    const lineEnd = text.indexOf('\n', markerIdx)
+    const headerLine = lineEnd === -1 ? text.slice(markerIdx) : text.slice(markerIdx, lineEnd)
+
+    if (HEADER_RE.test(headerLine.trim())) {
+      // 收集后续 FIELD_RE 行（严格单行，不做多行续行，避免吞用户文字）
+      const blockLines: string[] = [headerLine]
+      let scanPos = lineEnd === -1 ? text.length : lineEnd + 1
+      while (scanPos < text.length) {
+        const nextEnd = text.indexOf('\n', scanPos)
+        const line = nextEnd === -1 ? text.slice(scanPos) : text.slice(scanPos, nextEnd)
+        if (!FIELD_RE.test(line.trim())) break
+        blockLines.push(line)
+        scanPos = nextEnd === -1 ? text.length : nextEnd + 1
       }
       const info = parseSelectionText(blockLines.join('\n'))
       if (info !== null) {
         parts.push(buildElementCard(info))
       } else {
-        const textNode = document.createTextNode(blockLines.join('\n'))
-        parts.push(textNode)
+        parts.push(document.createTextNode(blockLines.join('\n')))
       }
-      continue
-    }
-
-    const buf: string[] = [lines[i] ?? '']
-    i += 1
-    while (i < lines.length && !HEADER_RE.test(lines[i]?.trim() ?? '')) {
-      buf.push(lines[i] ?? '')
-      i += 1
-    }
-    const plain = buf.join('\n')
-    if (plain !== '') {
-      parts.push(document.createTextNode(plain))
+      pos = scanPos
+    } else {
+      // 标记存在但 header 不合法：把标记文本当普通文字，从标记之后继续扫描
+      parts.push(document.createTextNode(headerLine))
+      pos = lineEnd === -1 ? text.length : lineEnd + 1
     }
   }
   return parts

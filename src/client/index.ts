@@ -137,7 +137,11 @@ export function apply(ctx: ClientContext): void {
   // ── 元素选择器：选中元素作为引用 chip 插入当前会话输入框 ──
   const codec: ReferenceCodec = {
     clipboardText: ref => parseLiuliRef(ref).selector,
-    serialize: ref => Promise.resolve(formatSelection(parseLiuliRef(ref))),
+    // 用换行包裹元素块，使其在序列化后的消息文本中独占行——否则用户在
+    // chip 前后输入的文字会和 [selected element] 头行或末尾字段行粘在
+    // 同一行，导致渲染时 header 匹配失败（不包卡片）或用户文字被字段
+    // 正则吞进卡片。
+    serialize: ref => Promise.resolve('\n' + formatSelection(parseLiuliRef(ref)) + '\n'),
   }
   const source: InputTriggerSource = {
     trigger: '@',
