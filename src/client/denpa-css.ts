@@ -436,11 +436,20 @@ div[data-phase]:not([data-phase='active'])::before {
 body > [class*="_card"],
 div[aria-label][class*="_card"],
 [role="dialog"][class*="_dialog"],
-[role="dialog"][class*="_panel"],
+[role="dialog"][class*="_panel"] {
+  background-color: var(--dsw-specific-input-major);
+  background-image: var(--denpa-noise);
+  -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+  backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+}
+
+/* 菜单/树菜单需要更强背景对比度：浮动卡片统一的 22% 透明（input-major）
+   在亮壁纸上会让浅色菜单文字不可读（右键/下拉菜单看起来像"消失"）。
+   菜单单独提高到 70% 不透明，仍保留磨砂亚克力质感与噪声。 */
 div[role="menu"],
 div[class*="_menu"],
 ul[class*="_menu"] {
-  background-color: var(--dsw-specific-input-major);
+  background-color: rgba(var(--denpa-acrylic-rgb), 0.7);
   background-image: var(--denpa-noise);
   -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
   backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
@@ -453,7 +462,7 @@ ul[class*="_menu"] {
 [class*="_menu"] [class*="_groupTitle"],
 div[role="menu"] [class*="_groupTitle"] {
   border-radius: 8px;
-  background-color: var(--dsw-specific-input-major);
+  background-color: rgba(var(--denpa-acrylic-rgb), 0.7);
   background-image: var(--denpa-noise);
 }
 
