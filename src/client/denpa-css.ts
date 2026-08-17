@@ -516,10 +516,14 @@ div[class*="addCard"] {
   backdrop-filter: var(--denpa-material-blur) !important;
 }
 
-li[class*="rowCard"] div[class*="_editor"],
-div[class*="addCard"] div[class*="_editor"],
-li[class*="setupCard"] div[class*="_editor"] {
-  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity)) !important;
+/* 内嵌编辑器（editor）：子容器比父卡更实（+0.15），层次分得开。
+   [class$="_editor"] 精确命中 editor 本身 —— [class*="_editor"] 是子串
+   匹配，会误伤 editorHeader / editorActions（名称行/操作行被错误
+   亚克力化，名称行的背景应保持透明）。 */
+li[class*="rowCard"] div[class$="_editor"],
+div[class*="addCard"] div[class$="_editor"],
+li[class*="setupCard"] div[class$="_editor"] {
+  background-color: rgba(var(--denpa-acrylic-rgb), calc(var(--denpa-material-opacity) + 0.15)) !important;
   background-image: var(--denpa-noise) !important;
   -webkit-backdrop-filter: var(--denpa-material-blur) !important;
   backdrop-filter: var(--denpa-material-blur) !important;
