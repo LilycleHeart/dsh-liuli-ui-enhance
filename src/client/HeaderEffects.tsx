@@ -491,10 +491,12 @@ export function DenpaHeaderVoiceprint() {
       const lines = 22
       const mix = vpState.audioMix
 
-      // 振幅随 header 高度自适应：denpa_echo 的固定像素振幅（外层线 14~20、
-      // 主波 46）以 96px 为舒适全幅基准；header 拉到最小（52px）时线性压缩，
-      // 避免波形被 clamp 到顶/底堆成色块。h 比例项已自适应，不受此缩放。
-      const ampScale = Math.min(1, Math.max(0.45, h / 96))
+      // 振幅随 header 高度整体线性缩放：外层线与主波共用同一系数，比例不变。
+      // 基准 134 = 2 × 主波基准 46 × 主波 n 峰值 1.45 —— 保证 idle 态主波峰值
+      // （46 × ampScale × 1.45）恰不超 cy（h/2），最小 header（52px→0.39）也不
+      // 被 clamp 到顶部堆成色块。h ≥ 134 时 ampScale=1，保持原满幅效果。
+      // h 比例项已自适应，不受此缩放。
+      const ampScale = Math.min(1, h / 134)
 
       // 频段驱动（与连续响应同款：参考响度 + 静音门限）
       const bandDrive = (b: number): number => {
