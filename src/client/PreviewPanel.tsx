@@ -1,10 +1,31 @@
-/** 预览面板：宿主右侧 details 列 + 同源 iframe（/preview/<sessionId>/）+ 浏览器模式 + 元素选择器。 */
+/**
+ * 右侧边栏（ZCode 侧边面板 1:1 复刻）：宿主右侧 details 列上的标签式面板切换器。
+ *
+ * 对照 ZCode app.asar（out/renderer）实测结构：
+ * - 48px 标签条：左侧「搜索标签页」概览触发（chevrons-down），中部标签（icon + 标题 + 渐隐关闭钮，
+ *   可拖拽排序、右键关闭菜单），右侧「新增标签」(+) 与「扩大面板 / 恢复面板宽度」按钮；
+ * - 标签类型：Treemapping(map) / 仓库 Wiki(自绘 32x32) / 审查(file-diff) / 浏览器(globe) /
+ *   代码查看(file-code-corner)，图标路径数据取自 ZCode bundle 的 lucide 定义；
+ * - 概览弹层（w-72）：搜索框 + 「打开的标签页」（相对打开时间 + 关闭钮）/「最近关闭的标签页」（点击重开）；
+ * - 空状态「打开标签页」卡片：可用面板类型按钮（h-12 rounded-xl）；
+ * - 快捷键 Ctrl/Cmd+Alt+B 切换面板（ZCode：切换右侧面板），Ctrl/Cmd+K 命令中心；
+ * - 面板内容常驻挂载（inactive 隐藏），保留 iframe 状态；
+ * - 宽度：左缘手柄拖拽 + 扩大/恢复，localStorage 持久化（宿主 details 列无持久化）。
+ */
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { attachElementPicker, describeElement, type PickedElement } from './element-picker.ts'
+import {
+  CommandPalette, FileTreePanel, GitPanel, WikiPanel, type CommandPaletteCommand,
+} from './RightSidebarPanels.tsx'
+import { fetchSidebarTree } from './right-sidebar-api.ts'
+import {
+  ChevronsDownIcon, FileCodeCornerIcon, FileDiffIcon, GlobeIcon, MapIcon, PanelRightCloseIcon,
+  PanelRightOpenIcon, PlusIcon, RepoWikiIcon, SearchIcon as SearchGlyph,
+} from './SidePaneIcons.tsx'
 import css from './PreviewPanel.module.css'
 
-/** 打开/关闭事件名（保留给外部触发，按钮现在直接走 ctx.layout）。 */
+/** 打开/关闭事件名（header 按钮翻转模块状态后广播，面板同步）。 */
 export const PREVIEW_TOGGLE_EVENT = 'liuli:preview-toggle'
 
 /** 导航事件名：会话内点击前端产物时由全局点击拦截器广播。 */
@@ -12,6 +33,25 @@ export const PREVIEW_NAVIGATE_EVENT = 'liuli:preview-navigate'
 
 /** 预览列开关的模块级状态（header 按钮与 details 面板共享）。 */
 let previewOpen = false
+
+/**
+ * 关闭动画保护：宿主 details 轨道带 CSS 过渡，主动关闭后列宽在约 200ms 内
+ * 逐渐归零；期间 ResizeObserver 仍会看到宽度 >1，若不抑制会把 open 翻回 true
+ * 导致宽度覆盖把列重新拉开（与关闭意图打架）。主动关闭时置位，观察到
+ * 宽度归零或超时后自动解除。
+ */
+let paneSyncSuppressed = false
+let paneSyncTimer: number | undefined
+
+/** 主动关闭路径调用：暂时屏蔽 RO 的「宽度>1 ⇒ 打开」同步。 */
+export function setPaneSyncSuppressed(v: boolean): void {
+  paneSyncSuppressed = v
+  if (paneSyncTimer !== undefined) {
+    window.clearTimeout(paneSyncTimer)
+    paneSyncTimer = undefined
+  }
+  if (v) paneSyncTimer = window.setTimeout(() => { paneSyncSuppressed = false }, 800)
+}
 
 /** 翻转预览列开关状态，返回翻转后的值。 */
 export function togglePreviewOpen(): boolean {
@@ -22,24 +62,6 @@ export function togglePreviewOpen(): boolean {
 /** 设置预览列开关状态（关闭按钮/会话切换时同步）。 */
 export function setPreviewOpen(open: boolean): void {
   previewOpen = open
-}
-
-/** Material Icons：产物（folder）。 */
-function ArtifactsIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-      <path fill="currentColor" d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
-    </svg>
-  )
-}
-
-/** Material Icons：浏览器（language）。 */
-function BrowserIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-      <path fill="currentColor" d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm6.93 6h-2.95c-.32-1.25-.78-2.45-1.38-3.56 1.84.63 3.37 1.91 4.33 3.56zM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96zM4.26 14C4.1 13.36 4 12.69 4 12s.1-1.36.26-2h3.38c-.08.66-.14 1.32-.14 2s.06 1.34.14 2H4.26zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56-1.84-.63-3.37-1.9-4.33-3.56zm2.95-8H5.08c.96-1.66 2.49-2.93 4.33-3.56C8.81 5.55 8.35 6.75 8.03 8zM12 19.96c-.83-1.2-1.48-2.53-1.91-3.96h3.82c-.43 1.43-1.08 2.76-1.91 3.96zM14.34 14H9.66c-.09-.66-.16-1.32-.16-2s.07-1.35.16-2h4.68c.09.65.16 1.32.16 2s-.07 1.34-.16 2zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95c-.96 1.65-2.49 2.93-4.33 3.56zM16.36 14c.08-.66.14-1.32.14-2s-.06-1.34-.14-2h3.38c.16.64.26 1.31.26 2s-.1 1.36-.26 2h-3.38z" />
-    </svg>
-  )
 }
 
 /** 判断是否为本地回环地址（前端产物 dev server 常见目标）。 */
@@ -69,13 +91,11 @@ export function resolvePreviewUrl(raw: string, sessionId: string | undefined): s
   const trimmed = raw.trim()
   if (trimmed === '') return undefined
 
-  // 无 scheme 的 localhost:port 补成 http://，方便用户直接点“localhost:3000”。
   let candidate = trimmed
   if (/^(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0):\d/i.test(candidate)) {
     candidate = `http://${candidate}`
   }
 
-  // 绝对 URL：只劫持本地回环；外部链接保持原浏览器行为。
   if (/^https?:\/\//i.test(candidate) || /^\/\//.test(candidate)) {
     try {
       const url = new URL(candidate, window.location.href)
@@ -95,68 +115,268 @@ export function resolvePreviewUrl(raw: string, sessionId: string | undefined): s
   return `/preview/${encodeURIComponent(sessionId)}/${encoded}`
 }
 
-/** 预览列组件（宿主 details 列占用者）。 */
+/* ── 标签模型（ZCode sidePaneState 对应） ── */
+
+/** 面板类型：ZCode 侧边面板在 DSH 内的可复刻集合。 */
+export type SidePaneTabType = 'treemapping' | 'repo-wiki' | 'git' | 'browser' | 'code-viewer'
+
+/** 一个侧边面板标签。code-viewer 以 rel 为键（一会话一文件一标签）。 */
+export interface SidePaneTab {
+  id: string
+  type: SidePaneTabType
+  openedAt: number
+  /** code-viewer：工作区相对路径。 */
+  rel?: string
+  /** code-viewer：绝对路径（供默认编辑器打开/复制）。 */
+  path?: string
+  /** browser：当前 URL。 */
+  url?: string
+}
+
+/** 最近关闭的标签（概览里可重开）。 */
+interface ClosedTabEntry {
+  tab: SidePaneTab
+  closedAt: number
+}
+
+/** 持久化结构。 */
+interface PanePersist {
+  v: 1
+  tabs: SidePaneTab[]
+  activeTabId: string
+  recentClosed: ClosedTabEntry[]
+  width: number
+  maximized: boolean
+}
+
+const LS_KEY = 'liuli:side-pane'
+const RECENT_CLOSED_MAX = 15
+const WIDTH_MIN = 300
+const WIDTH_DEFAULT = 360
+
+function loadPersist(): PanePersist {
+  const fallback: PanePersist = { v: 1, tabs: [], activeTabId: '', recentClosed: [], width: WIDTH_DEFAULT, maximized: false }
+  try {
+    const raw = localStorage.getItem(LS_KEY)
+    if (raw === null || raw === '') return fallback
+    const parsed = JSON.parse(raw) as Partial<PanePersist>
+    if (parsed === null || typeof parsed !== 'object') return fallback
+    return {
+      v: 1,
+      tabs: Array.isArray(parsed.tabs) ? parsed.tabs.filter((t): t is SidePaneTab => t !== null && typeof t === 'object' && typeof t.id === 'string' && typeof t.type === 'string') : [],
+      activeTabId: typeof parsed.activeTabId === 'string' ? parsed.activeTabId : '',
+      recentClosed: Array.isArray(parsed.recentClosed) ? parsed.recentClosed.filter((c): c is ClosedTabEntry => c !== null && typeof c === 'object' && typeof (c as ClosedTabEntry).closedAt === 'number') : [],
+      width: typeof parsed.width === 'number' && Number.isFinite(parsed.width) ? parsed.width : WIDTH_DEFAULT,
+      maximized: parsed.maximized === true,
+    }
+  } catch {
+    return fallback
+  }
+}
+
+function savePersist(state: PanePersist): void {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(state)) } catch { /* 配额满则放弃 */ }
+}
+
+/** 相对时间（ZCode：刚刚 / x分钟前 / x小时前 / x天前）。 */
+function relativeTime(ts: number, now: number): string {
+  const diff = Math.max(0, now - ts)
+  const minutes = Math.floor(diff / 60000)
+  if (minutes < 1) return '刚刚'
+  if (minutes < 60) return `${minutes} 分钟前`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} 小时前`
+  return `${Math.floor(hours / 24)} 天前`
+}
+
+/** 标签标题（ZCode WKt 对应）。 */
+function tabTitle(tab: SidePaneTab): string {
+  switch (tab.type) {
+    case 'treemapping': return 'Treemapping'
+    case 'repo-wiki': return '仓库 Wiki'
+    case 'git': return '审查'
+    case 'browser': return '浏览器'
+    case 'code-viewer': {
+      const rel = tab.rel ?? ''
+      const name = rel.split('/').filter(p => p !== '').pop()
+      return name ?? '代码查看'
+    }
+  }
+}
+
+/** 标签提示（概览行副标题：URL / 路径）。 */
+function tabHint(tab: SidePaneTab): string {
+  if (tab.type === 'browser') return tab.url ?? ''
+  if (tab.type === 'code-viewer') return tab.rel ?? ''
+  return ''
+}
+
+/** 标签图标（ZCode R5 对应的 DSH 子集）。 */
+function TabIcon({ tab, size = 14 }: { tab: SidePaneTab; size?: number }) {
+  switch (tab.type) {
+    case 'treemapping': return <MapIcon size={size} />
+    case 'repo-wiki': return <RepoWikiIcon size={size} />
+    case 'git': return <FileDiffIcon size={size} />
+    case 'browser': return <GlobeIcon size={size} />
+    case 'code-viewer': return <FileCodeCornerIcon size={size} />
+  }
+}
+
+function makeTab(type: SidePaneTabType, extra?: Partial<SidePaneTab>): SidePaneTab {
+  const base: SidePaneTab = { id: type, type, openedAt: Date.now(), ...extra }
+  if (type === 'code-viewer') base.id = `code-viewer:${extra?.rel ?? ''}`
+  return base
+}
+
+/* ── 面板工具条小按钮 ── */
+
+function StripButton(props: {
+  label: string
+  active?: boolean
+  onClick: () => void
+  children: ReactNode
+  buttonRef?: (el: HTMLButtonElement | null) => void
+}) {
+  return (
+    <button
+      type="button"
+      ref={props.buttonRef}
+      className={css.stripBtn + (props.active === true ? ' ' + css.stripBtnActive : '')}
+      title={props.label}
+      aria-label={props.label}
+      onClick={props.onClick}
+    >
+      {props.children}
+    </button>
+  )
+}
+
+/* ── 关闭图标（lucide x，ZCode 概览/标签关闭钮同形） ── */
+
+function XIcon({ size = 12 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </svg>
+  )
+}
+
+/* ── 左/右方向图标（浏览器工具条） ── */
+
+function ArrowIcon({ dir, size = 14 }: { dir: 'left' | 'right'; size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={dir === 'right' ? { transform: 'scaleX(-1)' } : undefined}>
+      <path d="m12 19-7-7 7-7" />
+      <path d="M19 12H5" />
+    </svg>
+  )
+}
+
+function ReloadIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+      <path d="M21 3v5h-5" />
+    </svg>
+  )
+}
+
+function ExternalIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M15 3h6v6" />
+      <path d="M10 14 21 3" />
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    </svg>
+  )
+}
+
+/* ── 主组件 props ── */
+
+/** 侧边面板组件（宿主 details 列占用者）。 */
 export interface PreviewDetailsPanelProps {
   /** 当前会话 id（由 details slot 注入）。 */
   sessionId?: string
-  /** 打开 details 列（由 layout 注入，供导航事件把列展开）。 */
+  /** 打开 details 列（由 layout 注入）。 */
   openDetails?: () => void
   /** 关闭 details 列（由 layout 注入）。 */
   closeDetails?: () => void
   /** 把拾取的元素作为引用 chip 插入当前会话输入框。 */
   insertElement: (info: PickedElement) => void
+  /** 把文件路径作为引用插入当前会话输入框。 */
+  addFileToChat?: (path: string) => void
+  /** 用宿主默认应用打开路径。 */
+  openPath?: (path: string) => void
+  /** 新建会话。 */
+  startSession?: () => void
+  /** 打开文件夹（注册工作区）。 */
+  pickDirectory?: () => void
+  /** 切换日/夜主题。 */
+  toggleTheme?: () => void
+  /** 上一个会话。 */
+  prevSession?: () => void
+  /** 下一个会话。 */
+  nextSession?: () => void
 }
 
 /**
- * Render the preview details column.
- * @param props - session id, layout open/close callbacks, and element-insert callback.
- * @returns the column tree.
+ * Render the ZCode-style side pane in the host details column.
+ * @param props - session id, layout callbacks, element/file insertion callbacks.
+ * @returns the pane tree.
  */
-export function PreviewDetailsPanel({ sessionId, openDetails, closeDetails, insertElement }: PreviewDetailsPanelProps) {
+export function PreviewDetailsPanel({
+  sessionId, openDetails, closeDetails, insertElement,
+  addFileToChat, openPath, startSession, pickDirectory, toggleTheme,
+  prevSession, nextSession,
+}: PreviewDetailsPanelProps) {
   const [open, setOpen] = useState(previewOpen)
-  const [mode, setMode] = useState<'artifacts' | 'browser'>('artifacts')
-  const [browserUrl, setBrowserUrl] = useState('about:blank')
-  const [draftUrl, setDraftUrl] = useState('')
+  const [persist, setPersist] = useState<PanePersist>(loadPersist)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const [overviewOpen, setOverviewOpen] = useState(false)
+  const [addMenuOpen, setAddMenuOpen] = useState(false)
+  const [fileDialogOpen, setFileDialogOpen] = useState(false)
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; tabId: string } | null>(null)
+  const [now, setNow] = useState(() => Date.now())
   const [frameTick, setFrameTick] = useState(0)
-  const frameRef = useRef<HTMLIFrameElement | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
+  const overviewBtnRef = useRef<HTMLButtonElement | null>(null)
+  const addBtnRef = useRef<HTMLButtonElement | null>(null)
   const lastSession = useRef(sessionId)
+  const dragTab = useRef<string | null>(null)
+  const resizing = useRef(false)
 
-  // header 按钮翻转模块状态后广播事件，面板同步为最新的开关状态。
+  const { tabs, activeTabId, recentClosed, width, maximized } = persist
+  const activeTab = tabs.find(t => t.id === activeTabId) ?? tabs[0]
+
+  const patch = useCallback((p: Partial<PanePersist>) => {
+    setPersist(prev => {
+      const next = { ...prev, ...p }
+      savePersist(next)
+      return next
+    })
+  }, [])
+
+  /* ── 开合同步 ── */
+
   useEffect(() => {
     const onToggle = (): void => { setOpen(previewOpen) }
     window.addEventListener(PREVIEW_TOGGLE_EVENT, onToggle)
     return () => { window.removeEventListener(PREVIEW_TOGGLE_EVENT, onToggle) }
   }, [])
 
-  // 会话内点击前端产物：切到浏览器模式并展开右侧列。
-  useEffect(() => {
-    const onNavigate = (e: Event): void => {
-      const detail = (e as CustomEvent<{ url?: string }>).detail
-      const url = detail?.url
-      if (url === undefined || url === '') return
-      setMode('browser')
-      setBrowserUrl(url)
-      setDraftUrl(url)
-      setOpen(true)
-      setPreviewOpen(true)
-      openDetails?.()
-    }
-    window.addEventListener(PREVIEW_NAVIGATE_EVENT, onNavigate)
-    return () => { window.removeEventListener(PREVIEW_NAVIGATE_EVENT, onNavigate) }
-  }, [openDetails])
-
-  // details 列始终挂载（宽度 0 时不可见）：用 ResizeObserver 跟随真实列宽，
-  // 外部打开 details 时也能自动切到预览内容，并在列收起时复位开关。
+  // details 列始终挂载：用 ResizeObserver 跟随真实列宽同步开关状态。
   useLayoutEffect(() => {
     const el = panelRef.current
     if (el === null) return
     const ro = new ResizeObserver((entries) => {
-      const width = entries[0]?.contentRect.width ?? 0
-      if (width > 1) {
+      const w = entries[0]?.contentRect.width ?? 0
+      if (w > 1) {
+        if (paneSyncSuppressed) return
         setPreviewOpen(true)
         setOpen(true)
       } else {
+        setPaneSyncSuppressed(false)
         setPreviewOpen(false)
         setOpen(false)
       }
@@ -165,7 +385,7 @@ export function PreviewDetailsPanel({ sessionId, openDetails, closeDetails, inse
     return () => { ro.disconnect() }
   }, [])
 
-  // 切换会话时宿主会自动收起 details 列，这里同步预览开关状态。
+  // 切换会话时宿主自动收起 details 列：同步开关（标签集合保留）。
   useEffect(() => {
     if (lastSession.current !== undefined && lastSession.current !== sessionId) {
       setPreviewOpen(false)
@@ -174,126 +394,1080 @@ export function PreviewDetailsPanel({ sessionId, openDetails, closeDetails, inse
     lastSession.current = sessionId
   }, [sessionId])
 
-  // 打开且 iframe 就绪时，对 iframe 文档挂元素选择器（同源）：悬停高亮，
-  // 点击把元素作为引用 chip 插入输入框。面板自身 chrome 保持可交互。
+  /* ── 标签操作 ── */
+
+  const activateTab = useCallback((id: string) => { patch({ activeTabId: id }) }, [patch])
+
+  const openTab = useCallback((tab: SidePaneTab) => {
+    setPersist(prev => {
+      const existing = prev.tabs.find(t => t.id === tab.id)
+      const nextTabs = existing === undefined ? [...prev.tabs, tab] : prev.tabs.map(t => t.id === tab.id ? { ...t, ...tab, openedAt: t.openedAt } : t)
+      const next: PanePersist = { ...prev, tabs: nextTabs, activeTabId: tab.id }
+      savePersist(next)
+      return next
+    })
+  }, [])
+
+  const closeTab = useCallback((id: string) => {
+    setPersist(prev => {
+      const target = prev.tabs.find(t => t.id === id)
+      if (target === undefined) return prev
+      const rest = prev.tabs.filter(t => t.id !== id)
+      const closed: ClosedTabEntry[] = [{ tab: target, closedAt: Date.now() }, ...prev.recentClosed].slice(0, RECENT_CLOSED_MAX)
+      const activeTabStill = rest.some(t => t.id === prev.activeTabId)
+      const next: PanePersist = {
+        ...prev,
+        tabs: rest,
+        recentClosed: closed,
+        activeTabId: activeTabStill ? prev.activeTabId : (rest.at(-1)?.id ?? ''),
+      }
+      savePersist(next)
+      return next
+    })
+  }, [])
+
+  const closeOtherTabs = useCallback((id: string) => {
+    setPersist(prev => {
+      const nowTs = Date.now()
+      const closedOthers: ClosedTabEntry[] = prev.tabs.filter(t => t.id !== id).map(t => ({ tab: t, closedAt: nowTs }))
+      const next: PanePersist = {
+        ...prev,
+        tabs: prev.tabs.filter(t => t.id === id),
+        recentClosed: [...closedOthers.reverse(), ...prev.recentClosed].slice(0, RECENT_CLOSED_MAX),
+        activeTabId: id,
+      }
+      savePersist(next)
+      return next
+    })
+  }, [])
+
+  const closeAllTabs = useCallback(() => {
+    setPersist(prev => {
+      const nowTs = Date.now()
+      const closedAll: ClosedTabEntry[] = prev.tabs.map(t => ({ tab: t, closedAt: nowTs }))
+      const next: PanePersist = {
+        ...prev,
+        tabs: [],
+        activeTabId: '',
+        recentClosed: [...closedAll.reverse(), ...prev.recentClosed].slice(0, RECENT_CLOSED_MAX),
+      }
+      savePersist(next)
+      return next
+    })
+  }, [])
+
+  const reopenTab = useCallback((id: string) => {
+    setPersist(prev => {
+      const entry = prev.recentClosed.find(c => c.tab.id === id)
+      if (entry === undefined) return prev
+      const next: PanePersist = {
+        ...prev,
+        tabs: [...prev.tabs, { ...entry.tab, openedAt: Date.now() }],
+        activeTabId: id,
+        recentClosed: prev.recentClosed.filter(c => c.tab.id !== id),
+      }
+      savePersist(next)
+      return next
+    })
+  }, [])
+
+  const reorderTab = useCallback((fromId: string, toId: string) => {
+    setPersist(prev => {
+      const from = prev.tabs.findIndex(t => t.id === fromId)
+      const to = prev.tabs.findIndex(t => t.id === toId)
+      if (from < 0 || to < 0 || from === to) return prev
+      const nextTabs = [...prev.tabs]
+      const [moved] = nextTabs.splice(from, 1)
+      if (moved === undefined) return prev
+      nextTabs.splice(to, 0, moved)
+      const next = { ...prev, tabs: nextTabs }
+      savePersist(next)
+      return next
+    })
+  }, [])
+
+  /** 打开/激活单例型面板标签。 */
+  const openSingleton = useCallback((type: SidePaneTabType) => {
+    openTab(makeTab(type))
+    setAddMenuOpen(false)
+  }, [openTab])
+
+  /** 打开浏览器标签（已存在则导航）。 */
+  const openBrowser = useCallback((url: string) => {
+    openTab(makeTab('browser', { url }))
+  }, [openTab])
+
+  /** 打开代码查看标签（一会话一文件一标签）。 */
+  const openCodeViewer = useCallback((path: string, rel: string) => {
+    openTab(makeTab('code-viewer', { path, rel }))
+  }, [openTab])
+
+  const previewFile = useCallback((path: string, rel: string): void => {
+    openCodeViewer(path, rel)
+  }, [openCodeViewer])
+
+  /* ── 快捷键：Ctrl/Cmd+K 命令中心，Ctrl/Cmd+Alt+B 切换面板（ZCode 切换右侧面板） ── */
+
   useEffect(() => {
-    if (!open || sessionId === undefined || sessionId === null || mode !== 'artifacts') return
-    const frame = frameRef.current
+    const onKey = (e: KeyboardEvent): void => {
+      const mod = e.metaKey || e.ctrlKey
+      const key = e.key.toLowerCase()
+      if (mod && key === 'k') {
+        e.preventDefault()
+        setPaletteOpen(v => !v)
+        return
+      }
+      if (mod && e.altKey && key === 'b') {
+        e.preventDefault()
+        togglePane()
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => { window.removeEventListener('keydown', onKey, true) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const togglePane = (): void => {
+    const next = togglePreviewOpen()
+    setPaneSyncSuppressed(!next)
+    if (next) openDetails?.()
+    else closeDetails?.()
+    window.dispatchEvent(new CustomEvent(PREVIEW_TOGGLE_EVENT))
+  }
+
+  /* ── 会话内点击前端产物：开浏览器标签并展开 ── */
+
+  useEffect(() => {
+    const onNavigate = (e: Event): void => {
+      const detail = (e as CustomEvent<{ url?: string }>).detail
+      const url = detail?.url
+      if (url === undefined || url === '') return
+      openBrowser(url)
+      setPreviewOpen(true)
+      openDetails?.()
+    }
+    window.addEventListener(PREVIEW_NAVIGATE_EVENT, onNavigate)
+    return () => { window.removeEventListener(PREVIEW_NAVIGATE_EVENT, onNavigate) }
+  }, [openDetails, openBrowser])
+
+  /* ── 概览打开时刷新相对时间 ── */
+
+  useEffect(() => {
+    if (!overviewOpen) return
+    setNow(Date.now())
+    const timer = window.setInterval(() => { setNow(Date.now()) }, 60000)
+    return () => { window.clearInterval(timer) }
+  }, [overviewOpen])
+
+  /* ── 弹层外点击关闭 ── */
+
+  useEffect(() => {
+    if (!overviewOpen && !addMenuOpen && ctxMenu === null) return
+    const onMouse = (e: MouseEvent): void => {
+      const target = e.target as Element | null
+      if (target === null) return
+      if (target.closest('[data-liuli-pane-popover]') !== null) return
+      if (overviewOpen && overviewBtnRef.current?.contains(target) === true) return
+      if (addMenuOpen && addBtnRef.current?.contains(target) === true) return
+      setOverviewOpen(false)
+      setAddMenuOpen(false)
+      setCtxMenu(null)
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        setOverviewOpen(false)
+        setAddMenuOpen(false)
+        setCtxMenu(null)
+      }
+    }
+    document.addEventListener('mousedown', onMouse, true)
+    document.addEventListener('keydown', onKey, true)
+    return () => {
+      document.removeEventListener('mousedown', onMouse, true)
+      document.removeEventListener('keydown', onKey, true)
+    }
+  }, [overviewOpen, addMenuOpen, ctxMenu])
+
+  /* ── 宽度控制：grid 覆盖 + 左缘手柄 + 扩大/恢复 ── */
+
+  const frameEl = useCallback((): HTMLElement | null => {
+    let el: HTMLElement | null = panelRef.current
+    while (el !== null) {
+      if (el.style.gridTemplateColumns !== '') return el
+      el = el.parentElement
+    }
+    return null
+  }, [])
+
+  const applyWidthOverride = useCallback((px: number) => {
+    const frame = frameEl()
+    if (frame === null) return
+    const tracks = frame.style.gridTemplateColumns.split(/\s+/)
+    if (tracks.length < 3) return
+    tracks[tracks.length - 1] = `${Math.round(px)}px`
+    frame.style.gridTemplateColumns = tracks.join(' ')
+  }, [frameEl])
+
+  // 打开时始终把 details 轨道覆盖为目标宽度（宿主 layout store 不持久化宽度，
+  // 且 maximize 后必须能回到普通宽度）；宿主重渲染后由 MutationObserver 补回。
+  useEffect(() => {
+    if (!open) return
+    const target = maximized ? maximizeWidth() : width
+    applyWidthOverride(target)
+    const frame = frameEl()
+    if (frame === null) return
+    const mo = new MutationObserver(() => {
+      if (resizing.current) return
+      const tracks = frame.style.gridTemplateColumns.split(/\s+/)
+      const last = Number.parseFloat(tracks[tracks.length - 1] ?? '')
+      if (!Number.isFinite(last)) return
+      // 宿主/用户把轨道归零（关闭列）时尊重关闭，不能强行拉回。
+      if (last < 1) return
+      const want = maximized ? maximizeWidth() : width
+      if (Math.abs(last - want) >= 2) applyWidthOverride(want)
+    })
+    mo.observe(frame, { attributes: true, attributeFilter: ['style'] })
+    return () => { mo.disconnect() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, width, maximized, applyWidthOverride])
+
+  const maximizeWidth = (): number => {
+    const frame = frameEl()
+    const viewport = frame?.getBoundingClientRect().width ?? window.innerWidth
+    return Math.max(480, Math.round(viewport * 0.72))
+  }
+
+  const toggleMaximize = (): void => {
+    patch({ maximized: !maximized })
+  }
+
+  const onResizeStart = (e: ReactPointerEvent<HTMLDivElement>): void => {
+    e.preventDefault()
+    const handle = e.currentTarget
+    handle.setPointerCapture(e.pointerId)
+    handle.setAttribute('data-dragging', '')
+    resizing.current = true
+    const startWidth = panelRef.current?.getBoundingClientRect().width ?? width
+    const startX = e.clientX
+    let last = startWidth
+    const onMove = (ev: PointerEvent): void => {
+      last = Math.min(Math.max(WIDTH_MIN, startWidth + (startX - ev.clientX)), Math.round(window.innerWidth * 0.85))
+      applyWidthOverride(last)
+    }
+    const onUp = (ev: PointerEvent): void => {
+      handle.releasePointerCapture(ev.pointerId)
+      handle.removeAttribute('data-dragging')
+      resizing.current = false
+      patch({ width: last, maximized: false })
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
+  /* ── iframe 元素选择器（产物模式同源） ── */
+
+  useEffect(() => {
+    if (!open || sessionId === undefined || sessionId === null) return
+    if (activeTab === undefined) return
+    const frame = document.querySelector<HTMLIFrameElement>('[data-liuli-picker-frame][data-active-frame="1"]')
     const doc = frame?.contentDocument
     if (doc === null || doc === undefined) return
     return attachElementPicker(doc, {
       onPick: (el) => { insertElement(describeElement(el)) },
     }, panelRef.current)
-  }, [open, sessionId, mode, frameTick, insertElement])
+  }, [open, sessionId, activeTab?.id, frameTick, insertElement, activeTab])
 
-  const close = (): void => {
-    setPreviewOpen(false)
-    setOpen(false)
-    closeDetails?.()
+  /* ── 命令中心（保留原有命令 + ZCode quickPick 的 切换面板 / 打开文件） ── */
+
+  const commands: CommandPaletteCommand[] = [
+    {
+      id: 'toggle-pane',
+      label: '切换面板',
+      hint: '展开 / 收起右侧面板',
+      shortcut: 'Ctrl Alt B',
+      run: () => { togglePane() },
+    },
+    {
+      id: 'open-file',
+      label: '打开文件…',
+      hint: '从当前工作区选择文件并在侧边面板打开',
+      run: () => { setFileDialogOpen(true) },
+    },
+    {
+      id: 'search-files',
+      label: '搜索文件',
+      hint: '切到 Treemapping 并按文件名 / 路径实时筛选',
+      shortcut: 'Ctrl F',
+      run: () => {
+        openSingleton('treemapping')
+        window.setTimeout(() => {
+          document.querySelector<HTMLInputElement>('[data-liuli-file-search]')?.focus()
+        }, 0)
+      },
+    },
+    {
+      id: 'treemapping',
+      label: 'Treemapping',
+      hint: '工作区文件树与变更地图',
+      run: () => { openSingleton('treemapping') },
+    },
+    {
+      id: 'wiki',
+      label: '仓库 Wiki',
+      hint: '生成式架构导读',
+      run: () => { openSingleton('repo-wiki') },
+    },
+    {
+      id: 'git',
+      label: '审查',
+      hint: 'Git 状态与只读提交历史图',
+      run: () => { openSingleton('git') },
+    },
+    {
+      id: 'browser',
+      label: '浏览器',
+      hint: '预览产物与 localhost 页面',
+      run: () => { openBrowser('about:blank') },
+    },
+    {
+      id: 'new-session',
+      label: '新对话',
+      hint: '打开一个新的会话',
+      shortcut: 'Ctrl N',
+      run: () => { startSession?.() },
+    },
+    {
+      id: 'open-folder',
+      label: '打开文件夹',
+      hint: '注册一个新的工作区',
+      run: () => { pickDirectory?.() },
+    },
+    {
+      id: 'toggle-theme',
+      label: '切换主题',
+      hint: '在日间 / 夜间模式间切换',
+      run: () => { toggleTheme?.() },
+    },
+    {
+      id: 'prev-session',
+      label: '上一个对话',
+      hint: '切换到左侧列表中的上一个会话',
+      shortcut: 'Ctrl Shift [',
+      run: () => { prevSession?.() },
+    },
+    {
+      id: 'next-session',
+      label: '下一个对话',
+      hint: '切换到左侧列表中的下一个会话',
+      shortcut: 'Ctrl Shift ]',
+      run: () => { nextSession?.() },
+    },
+    {
+      id: 'find',
+      label: '查找',
+      hint: '聚焦左侧会话搜索框',
+      shortcut: 'Ctrl F',
+      run: () => {
+        document.querySelector<HTMLButtonElement>('button[aria-label="Search sessions"]')?.click()
+      },
+    },
+    {
+      id: 'settings',
+      label: '设置',
+      hint: '打开设置面板',
+      run: () => {
+        document.querySelector<HTMLButtonElement>('button[aria-label="Settings"]')?.click()
+      },
+    },
+    {
+      id: 'personalization',
+      label: '个性化',
+      hint: '打开设置中的外观 / 界面选项',
+      run: () => {
+        document.querySelector<HTMLButtonElement>('button[aria-label="Settings"]')?.click()
+      },
+    },
+    {
+      id: 'mcp',
+      label: 'MCP 服务器',
+      hint: '打开设置中的 MCP 管理',
+      run: () => {
+        document.querySelector<HTMLButtonElement>('button[aria-label="Settings"]')?.click()
+      },
+    },
+  ]
+
+  /* ── 新增标签菜单项（ZCode：条件过滤后的可用面板类型） ── */
+
+  const addMenuItems = useMemo(() => {
+    const has = (type: SidePaneTabType): boolean => tabs.some(t => t.type === type)
+    const items: Array<{ id: string; label: string; icon: ReactNode; run: () => void }> = []
+    if (!has('git')) items.push({ id: 'git', label: '审查', icon: <FileDiffIcon size={16} />, run: () => { openSingleton('git') } })
+    items.push({ id: 'browser', label: '浏览器', icon: <GlobeIcon size={16} />, run: () => { openBrowser('about:blank'); setAddMenuOpen(false) } })
+    if (!has('treemapping')) items.push({ id: 'treemapping', label: 'Treemapping', icon: <MapIcon size={16} />, run: () => { openSingleton('treemapping') } })
+    if (!has('repo-wiki')) items.push({ id: 'repo-wiki', label: '仓库 Wiki', icon: <RepoWikiIcon size={16} />, run: () => { openSingleton('repo-wiki') } })
+    items.push({ id: 'open-file', label: '打开文件…', icon: <FileCodeCornerIcon size={16} />, run: () => { setAddMenuOpen(false); setFileDialogOpen(true) } })
+    return items
+  }, [tabs, openSingleton, openBrowser])
+
+  /* ── 渲染 ── */
+
+  const renderTabChip = (tab: SidePaneTab): ReactNode => {
+    const active = activeTab?.id === tab.id
+    return (
+      <div
+        key={tab.id}
+        data-side-pane-tab-id={tab.id}
+        data-active={active ? '' : undefined}
+        className={css.tab + (active ? ' ' + css.tabActive : '')}
+        draggable
+        title={tabTitle(tab) + (tabHint(tab) !== '' ? ' · ' + tabHint(tab) : '')}
+        onClick={() => { activateTab(tab.id) }}
+        onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); closeTab(tab.id) } }}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          setCtxMenu({ x: e.clientX, y: e.clientY, tabId: tab.id })
+        }}
+        onDragStart={(e) => {
+          dragTab.current = tab.id
+          e.dataTransfer.setData('application/x-liuli-pane-tab', tab.id)
+          e.dataTransfer.effectAllowed = 'move'
+        }}
+        onDragOver={(e) => {
+          if (dragTab.current !== null && dragTab.current !== tab.id) {
+            e.preventDefault()
+            e.dataTransfer.dropEffect = 'move'
+          }
+        }}
+        onDrop={(e) => {
+          const from = e.dataTransfer.getData('application/x-liuli-pane-tab')
+          if (from !== '' && from !== tab.id) {
+            e.preventDefault()
+            reorderTab(from, tab.id)
+          }
+          dragTab.current = null
+        }}
+        onDragEnd={() => { dragTab.current = null }}
+      >
+        <span className={css.tabIcon}><TabIcon tab={tab} /></span>
+        <span className={css.tabTitle}>{tabTitle(tab)}</span>
+        <span className={css.tabCloseZone}>
+          <button
+            type="button"
+            className={css.tabClose}
+            aria-label={`关闭 ${tabTitle(tab)}`}
+            onPointerDown={(e) => { e.stopPropagation() }}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeTab(tab.id) }}
+          >
+            <XIcon />
+          </button>
+        </span>
+      </div>
+    )
   }
 
-  const navigate = (raw: string): void => {
-    const url = resolvePreviewUrl(raw, sessionId)
-    if (url === undefined) return
-    setMode('browser')
-    setBrowserUrl(url)
-    setDraftUrl(url)
-  }
-
-  const artifactsSrc = sessionId === undefined || sessionId === null
-    ? 'about:blank'
-    : `/preview/${encodeURIComponent(sessionId)}/?artifacts=1`
+  const ctxTab = ctxMenu === null ? undefined : tabs.find(t => t.id === ctxMenu.tabId)
 
   return (
-    <div ref={panelRef} className={css.panel} data-preview-panel="">
-      <div className={css.bar}>
-        <span className={css.title}>工作区预览</span>
-        <div className={css.modeSwitch} role="group" aria-label="预览模式">
-          <button
-            type="button"
-            className={css.modeBtn + (mode === 'artifacts' ? ' ' + css.modeActive : '')}
-            aria-pressed={mode === 'artifacts'}
-            onClick={() => { setMode('artifacts') }}
-          >
-            <ArtifactsIcon />
-            <span>产物</span>
-          </button>
-          <button
-            type="button"
-            className={css.modeBtn + (mode === 'browser' ? ' ' + css.modeActive : '')}
-            aria-pressed={mode === 'browser'}
-            onClick={() => { setMode('browser') }}
-          >
-            <BrowserIcon />
-            <span>浏览器</span>
-          </button>
+    <div ref={panelRef} className={css.panel} data-preview-panel="" data-liuli-side-pane="">
+      {/* 左缘宽度手柄（ZCode 分割线拖拽对应物） */}
+      <div className={css.resizeHandle} onPointerDown={onResizeStart} role="separator" aria-label="调整面板宽度" aria-orientation="vertical" />
+
+      {/* 标签条 */}
+      <div className={css.tabStrip} role="tablist" aria-label="右侧面板标签">
+        <div className={css.stripLeft}>
+          <div className={css.overviewSlot}>
+            <StripButton
+              label="搜索标签页"
+              active={overviewOpen}
+              onClick={() => { setOverviewOpen(v => !v); setAddMenuOpen(false) }}
+              buttonRef={(el) => { overviewBtnRef.current = el }}
+            >
+              <ChevronsDownIcon size={16} />
+            </StripButton>
+          </div>
+          <div className={css.tabsViewport}>
+            <div className={css.tabsContent} data-side-pane-tabs-content="">
+              {tabs.map(renderTabChip)}
+            </div>
+          </div>
         </div>
-        <button
-          type="button" className={css.close} aria-label="关闭预览"
-          onClick={close}
-        >
-          ✕
-        </button>
+        <div className={css.stripRight}>
+          <StripButton
+            label="新增标签"
+            active={addMenuOpen}
+            onClick={() => { setAddMenuOpen(v => !v); setOverviewOpen(false) }}
+            buttonRef={(el) => { addBtnRef.current = el }}
+          >
+            <PlusIcon size={16} />
+          </StripButton>
+          <StripButton
+            label={maximized ? '恢复面板宽度' : '扩大面板'}
+            onClick={toggleMaximize}
+          >
+            {maximized
+              ? (
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="m14 10 7-7" />
+                  <path d="M20 10h-6V4" />
+                  <path d="m3 21 7-7" />
+                  <path d="M4 14h6v6" />
+                </svg>
+              )
+              : (
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+                  <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+                  <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+                  <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+                </svg>
+              )}
+          </StripButton>
+        </div>
       </div>
 
-      {mode === 'browser' && (
-        <form
-          className={css.browserBar}
-          onSubmit={(e) => { e.preventDefault(); navigate(draftUrl) }}
-        >
-          <input
-            className={css.browserInput}
-            value={draftUrl}
-            onChange={(e) => { setDraftUrl(e.target.value) }}
-            placeholder="输入 localhost 或 /preview/... 地址"
-            spellCheck={false}
-          />
-          <button type="submit" className={css.browserGo}>前往</button>
-        </form>
+      {/* 内容区：所有标签面板常驻挂载，inactive 隐藏（保留 iframe 状态） */}
+      <div className={css.content}>
+        {tabs.length === 0 && (
+          <div className={css.emptyShell}>
+            <div className={css.emptyContent}>
+              <div className={css.emptyHead}>
+                <h2 className={css.emptyTitle}>打开标签页</h2>
+                <p className={css.emptyDesc}>选择要在侧边面板中打开的标签。</p>
+              </div>
+              <div className={css.emptyList}>
+                {addMenuItems.map((item) => (
+                  <button key={item.id} type="button" className={css.emptyItem} onClick={item.run} data-side-pane-open-tab-item={item.id}>
+                    <span className={css.emptyItemIcon}>{item.icon}</span>
+                    <span className={css.emptyItemLabel}>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+        {tabs.map((tab) => {
+          const active = activeTab?.id === tab.id
+          return (
+            <div
+              key={tab.id}
+              role="tabpanel"
+              data-state={active ? 'active' : 'inactive'}
+              className={css.tabPane + (active ? '' : ' ' + css.tabPaneInactive)}
+              aria-hidden={active ? undefined : true}
+            >
+              {tab.type === 'treemapping' && (
+                <FileTreePanel
+                  sessionId={sessionId}
+                  onOpenFile={previewFile}
+                  onAddFileToChat={addFileToChat}
+                  onOpenPath={openPath}
+                />
+              )}
+              {tab.type === 'repo-wiki' && <WikiPanel sessionId={sessionId} onOpenFile={previewFile} />}
+              {tab.type === 'git' && <GitPanel sessionId={sessionId} />}
+              {tab.type === 'browser' && (
+                <BrowserPanel
+                  sessionId={sessionId}
+                  url={tab.url ?? 'about:blank'}
+                  onNavigate={(url) => { openTab({ ...tab, url }) }}
+                  onFrameLoad={() => { setFrameTick(t => t + 1) }}
+                  pickerActive={active}
+                />
+              )}
+              {tab.type === 'code-viewer' && (
+                <CodeViewerPanel
+                  sessionId={sessionId}
+                  rel={tab.rel ?? ''}
+                  path={tab.path ?? ''}
+                  onOpenPath={openPath}
+                  onFrameLoad={() => { setFrameTick(t => t + 1) }}
+                  pickerActive={active}
+                />
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* 概览弹层 */}
+      {overviewOpen && overviewBtnRef.current !== null && (
+        <OverviewPopover
+          anchor={overviewBtnRef.current}
+          tabs={tabs}
+          closed={recentClosed}
+          activeTabId={activeTab?.id ?? ''}
+          now={now}
+          onActivate={(id) => { activateTab(id); setOverviewOpen(false) }}
+          onCloseTab={closeTab}
+          onReopen={(id) => { reopenTab(id); setOverviewOpen(false) }}
+        />
       )}
 
-      {!open || sessionId === undefined || sessionId === null ? (
-        <div className={css.empty}>打开一个会话后，这里显示会话产物</div>
-      ) : mode === 'browser' ? (
-        <iframe
-          ref={frameRef}
-          className={css.frame}
-          title="浏览器预览"
-          src={browserUrl}
-          onLoad={() => { setFrameTick(t => t + 1) }}
-        />
-      ) : (
-        <iframe
-          ref={frameRef}
-          className={css.frame}
-          title="会话产物"
-          src={artifactsSrc}
-          onLoad={() => { setFrameTick(t => t + 1) }}
+      {/* 新增标签下拉 */}
+      {addMenuOpen && addBtnRef.current !== null && (
+        <div
+          data-liuli-pane-popover=""
+          className={css.popoverCard + ' ' + css.addMenu}
+          style={anchorStyle(addBtnRef.current, 'right')}
+          role="menu"
+        >
+          {addMenuItems.map((item) => (
+            <button key={item.id} type="button" role="menuitem" className={css.menuItem} onClick={item.run} data-side-pane-add-item={item.id}>
+              <span className={css.menuItemIcon}>{item.icon}</span>
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* 标签右键菜单 */}
+      {ctxMenu !== null && ctxTab !== undefined && (
+        <div
+          data-liuli-pane-popover=""
+          className={css.popoverCard + ' ' + css.addMenu}
+          style={{ left: Math.min(ctxMenu.x, window.innerWidth - 200), top: Math.min(ctxMenu.y, window.innerHeight - 140) }}
+          role="menu"
+        >
+          <button type="button" role="menuitem" className={css.menuItem} onClick={() => { closeTab(ctxTab.id); setCtxMenu(null) }}>关闭标签</button>
+          <button type="button" role="menuitem" className={css.menuItem} disabled={tabs.length <= 1} onClick={() => { closeOtherTabs(ctxTab.id); setCtxMenu(null) }}>关闭其他标签</button>
+          <button type="button" role="menuitem" className={css.menuItem} onClick={() => { closeAllTabs(); setCtxMenu(null) }}>关闭所有标签</button>
+        </div>
+      )}
+
+      {/* 打开文件对话框 */}
+      {fileDialogOpen && sessionId !== undefined && (
+        <OpenFileDialog
+          sessionId={sessionId}
+          onClose={() => { setFileDialogOpen(false) }}
+          onOpenFile={(path, rel) => { setFileDialogOpen(false); openCodeViewer(path, rel) }}
         />
       )}
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => { setPaletteOpen(false) }}
+        commands={commands}
+      />
     </div>
   )
 }
 
-/** Header utilities 里的开关按钮：点击展开/收起右侧预览列。 */
-export function PreviewButton({ onToggle }: { onToggle?: () => void }) {
+/** 弹层定位：锚点元素下方（右对齐 / 左对齐）。 */
+function anchorStyle(anchor: HTMLElement, align: 'left' | 'right'): CSSProperties {
+  const rect = anchor.getBoundingClientRect()
+  const style: CSSProperties = { top: rect.bottom + 6 }
+  if (align === 'right') {
+    style.right = Math.max(8, window.innerWidth - rect.right)
+  } else {
+    style.left = rect.left
+  }
+  return style
+}
+
+/* ── 概览弹层（搜索标签页 + 打开的 / 最近关闭的） ── */
+
+interface OverviewPopoverProps {
+  anchor: HTMLElement
+  tabs: SidePaneTab[]
+  closed: ClosedTabEntry[]
+  activeTabId: string
+  now: number
+  onActivate: (id: string) => void
+  onCloseTab: (id: string) => void
+  onReopen: (id: string) => void
+}
+
+function OverviewPopover({ anchor, tabs, closed, activeTabId, now, onActivate, onCloseTab, onReopen }: OverviewPopoverProps) {
+  const [query, setQuery] = useState('')
+  const inputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    const t = window.setTimeout(() => { inputRef.current?.focus() }, 0)
+    return () => { window.clearTimeout(t) }
+  }, [])
+
+  const match = (tab: SidePaneTab): boolean => {
+    const q = query.trim().toLowerCase()
+    if (q === '') return true
+    return (tabTitle(tab) + ' ' + tabHint(tab) + ' ' + tab.type).toLowerCase().includes(q)
+  }
+
+  const openRows = tabs.filter(match)
+  const closedRows = closed.filter(c => match(c.tab))
+
+  return (
+    <div data-liuli-pane-popover="" className={css.popoverCard + ' ' + css.overviewCard} style={anchorStyle(anchor, 'left')} role="dialog" aria-label="搜索标签页">
+      <div className={css.overviewInputRow}>
+        <SearchGlyph size={14} />
+        <input
+          ref={inputRef}
+          className={css.overviewInput}
+          value={query}
+          onChange={(e) => { setQuery(e.target.value) }}
+          placeholder="搜索标签页..."
+          spellCheck={false}
+        />
+      </div>
+      <div className={css.overviewBody}>
+        {openRows.length === 0 && closedRows.length === 0 && (
+          <div className={css.overviewEmpty}>没有找到标签页。</div>
+        )}
+        {openRows.length > 0 && (
+          <>
+            <div className={css.overviewGroup}>打开的标签页</div>
+            {openRows.map((tab) => (
+              <div
+                key={tab.id}
+                className={css.overviewRow + (tab.id === activeTabId ? ' ' + css.overviewRowActive : '')}
+                role="button"
+                tabIndex={0}
+                onClick={() => { onActivate(tab.id) }}
+                onKeyDown={(e) => { if (e.key === 'Enter') onActivate(tab.id) }}
+              >
+                <span className={css.overviewRowIcon}><TabIcon tab={tab} /></span>
+                <span className={css.overviewRowTitle}>{tabTitle(tab)}</span>
+                <span className={css.overviewRowTime}>{relativeTime(tab.openedAt, now)}</span>
+                <button
+                  type="button"
+                  className={css.tabClose}
+                  aria-label={`关闭 ${tabTitle(tab)}`}
+                  onPointerDown={(e) => { e.preventDefault(); e.stopPropagation() }}
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onCloseTab(tab.id) }}
+                >
+                  <XIcon />
+                </button>
+              </div>
+            ))}
+          </>
+        )}
+        {closedRows.length > 0 && (
+          <>
+            <div className={css.overviewGroup}>最近关闭的标签页</div>
+            {closedRows.map((entry) => (
+              <div
+                key={entry.tab.id}
+                className={css.overviewRow}
+                role="button"
+                tabIndex={0}
+                onClick={() => { onReopen(entry.tab.id) }}
+                onKeyDown={(e) => { if (e.key === 'Enter') onReopen(entry.tab.id) }}
+              >
+                <span className={css.overviewRowIcon}><TabIcon tab={entry.tab} /></span>
+                <span className={css.overviewRowTitle}>{tabTitle(entry.tab)}</span>
+                <span className={css.overviewRowTime}>{relativeTime(entry.closedAt, now)}</span>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ── 打开文件对话框（sidePane.openFile：从当前 workspace 中选择文件并在侧边面板打开） ── */
+
+const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.next', '.cache', '__pycache__', '.venv', 'venv'])
+const FILE_SCAN_MAX = 6000
+
+interface OpenFileDialogProps {
+  sessionId: string
+  onClose: () => void
+  onOpenFile: (path: string, rel: string) => void
+}
+
+interface FileHit {
+  name: string
+  path: string
+  rel: string
+}
+
+function OpenFileDialog({ sessionId, onClose, onOpenFile }: OpenFileDialogProps) {
+  const [query, setQuery] = useState('')
+  const [files, setFiles] = useState<FileHit[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [index, setIndex] = useState(0)
+  const inputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    const t = window.setTimeout(() => { inputRef.current?.focus() }, 0)
+    return () => { window.clearTimeout(t) }
+  }, [])
+
+  // 递归扫描工作区文件（BFS，限制总量），只跑一次。
+  useEffect(() => {
+    const controller = new AbortController()
+    const collected: FileHit[] = []
+    let root = ''
+    const relOf = (path: string): string => root === '' ? path : path.slice(root.length).replace(/^[\/]+/, '')
+    const walk = async (): Promise<void> => {
+      let queue: string[] = ['']
+      let dirsVisited = 0
+      while (queue.length > 0 && collected.length < FILE_SCAN_MAX && dirsVisited < 800) {
+        const nextQueue: string[] = []
+        const batch = queue.slice(0, 8)
+        queue = queue.slice(8)
+        const results = await Promise.all(batch.map(rel =>
+          fetchSidebarTree(sessionId, rel, controller.signal).catch(() => null),
+        ))
+        for (let i = 0; i < results.length; i++) {
+          const payload = results[i]
+          if (payload === null || payload === undefined || payload.ok !== true) continue
+          root = payload.root ?? root
+          for (const entry of payload.entries ?? []) {
+            if (entry.kind === 'dir') {
+              if (SKIP_DIRS.has(entry.name) || entry.hidden) continue
+              dirsVisited += 1
+              nextQueue.push(relOf(entry.path))
+            } else {
+              collected.push({ name: entry.name, path: entry.path, rel: relOf(entry.path) })
+              if (collected.length >= FILE_SCAN_MAX) break
+            }
+          }
+        }
+        queue = [...queue, ...nextQueue]
+      }
+    }
+    walk()
+      .then(() => { if (!controller.signal.aborted) setFiles(collected) })
+      .catch((reason: unknown) => {
+        if (controller.signal.aborted) return
+        setError(reason instanceof Error ? reason.message : String(reason))
+      })
+    return () => { controller.abort() }
+  }, [sessionId])
+
+  const filtered = useMemo(() => {
+    if (files === null) return []
+    const q = query.trim().toLowerCase()
+    if (q === '') return []
+    const tokens = q.split(/\s+/).filter(t => t !== '')
+    return files
+      .filter((f) => {
+        const hay = f.name.toLowerCase() + ' ' + f.rel.toLowerCase()
+        return tokens.every(t => hay.includes(t))
+      })
+      .slice(0, 200)
+  }, [files, query])
+
+  useEffect(() => { setIndex(0) }, [query, files])
+
+  const pick = (hit: FileHit | undefined): void => {
+    if (hit === undefined) return
+    onOpenFile(hit.path, hit.rel)
+  }
+
+  return (
+    <div className={css.fileDialogOverlay} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div className={css.fileDialogCard} role="dialog" aria-label="打开文件">
+        <div className={css.fileDialogInputRow}>
+          <SearchGlyph size={14} />
+          <input
+            ref={inputRef}
+            className={css.fileDialogInput}
+            value={query}
+            onChange={(e) => { setQuery(e.target.value) }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') { e.preventDefault(); onClose() }
+              else if (e.key === 'ArrowDown') { e.preventDefault(); setIndex(i => Math.min(i + 1, filtered.length - 1)) }
+              else if (e.key === 'ArrowUp') { e.preventDefault(); setIndex(i => Math.max(i - 1, 0)) }
+              else if (e.key === 'Enter') { e.preventDefault(); pick(filtered[index]) }
+            }}
+            placeholder={files === null ? '正在加载文件...' : '搜索当前 workspace 文件...'}
+            spellCheck={false}
+          />
+        </div>
+        <div className={css.fileDialogList}>
+          {error !== null && <div className={css.overviewEmpty}>{error}</div>}
+          {error === null && files === null && <div className={css.overviewEmpty}>正在加载文件...</div>}
+          {error === null && files !== null && query.trim() === '' && (
+            <div className={css.overviewEmpty}>输入内容搜索文件</div>
+          )}
+          {error === null && files !== null && query.trim() !== '' && filtered.length === 0 && (
+            <div className={css.overviewEmpty}>没有找到文件。</div>
+          )}
+          {filtered.map((entry, i) => (
+            <button
+              key={entry.path}
+              type="button"
+              className={css.fileDialogRow + (i === index ? ' ' + css.fileDialogRowActive : '')}
+              onMouseEnter={() => { setIndex(i) }}
+              onClick={() => { pick(entry) }}
+            >
+              <span className={css.fileDialogName}>{entry.name}</span>
+              <span className={css.fileDialogPath}>{entry.rel}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── 浏览器标签面板 ── */
+
+interface BrowserPanelProps {
+  sessionId?: string | undefined
+  url: string
+  onNavigate: (url: string) => void
+  onFrameLoad: () => void
+  pickerActive: boolean
+}
+
+function BrowserPanel({ sessionId, url, onNavigate, onFrameLoad, pickerActive }: BrowserPanelProps) {
+  const [draft, setDraft] = useState(url)
+  const frameRef = useRef<HTMLIFrameElement | null>(null)
+
+  useEffect(() => { setDraft(url) }, [url])
+
+  const navigate = (raw: string): void => {
+    const resolved = resolvePreviewUrl(raw, sessionId)
+    if (resolved === undefined) return
+    onNavigate(resolved)
+  }
+
+  const tryHistory = (dir: 'back' | 'forward'): void => {
+    try {
+      const win = frameRef.current?.contentWindow
+      if (win === null || win === undefined) return
+      if (dir === 'back') win.history.back()
+      else win.history.forward()
+    } catch { /* 跨域 iframe 无法操作，忽略 */ }
+  }
+
+  const reload = (): void => {
+    const frame = frameRef.current
+    if (frame === null) return
+    try {
+      frame.contentWindow?.location.reload()
+    } catch {
+      // 跨域时退回重设 src。
+      frame.src = url
+    }
+  }
+
+  const openExternal = (): void => {
+    if (url !== '' && url !== 'about:blank') window.open(url, '_blank', 'noopener')
+  }
+
+  return (
+    <>
+      <form
+        className={css.browserBar}
+        onSubmit={(e) => { e.preventDefault(); navigate(draft) }}
+      >
+        <button type="button" className={css.navBtn} title="后退" aria-label="后退" onClick={() => { tryHistory('back') }}>
+          <ArrowIcon dir="left" />
+        </button>
+        <button type="button" className={css.navBtn} title="前进" aria-label="前进" onClick={() => { tryHistory('forward') }}>
+          <ArrowIcon dir="right" />
+        </button>
+        <button type="button" className={css.navBtn} title="刷新" aria-label="刷新" onClick={reload}>
+          <ReloadIcon />
+        </button>
+        <input
+          className={css.browserInput}
+          value={draft}
+          onChange={(e) => { setDraft(e.target.value) }}
+          placeholder="输入网址后回车"
+          spellCheck={false}
+        />
+        <button type="button" className={css.navBtn} title="在默认浏览器中打开" aria-label="在默认浏览器中打开" onClick={openExternal}>
+          <ExternalIcon />
+        </button>
+      </form>
+      {url === 'about:blank' || url === '' ? (
+        <div className={css.empty}>粘贴或输入 URL 以打开网页。</div>
+      ) : (
+        <iframe
+          ref={frameRef}
+          className={css.frame}
+          title="浏览器"
+          src={url}
+          data-liuli-picker-frame=""
+          data-active-frame={pickerActive ? '1' : undefined}
+          onLoad={onFrameLoad}
+        />
+      )}
+    </>
+  )
+}
+
+/* ── 代码查看标签面板 ── */
+
+interface CodeViewerPanelProps {
+  sessionId?: string | undefined
+  rel: string
+  path: string
+  onOpenPath?: ((path: string) => void) | undefined
+  onFrameLoad: () => void
+  pickerActive: boolean
+}
+
+function CodeViewerPanel({ sessionId, rel, path, onOpenPath, onFrameLoad, pickerActive }: CodeViewerPanelProps) {
+  const src = sessionId === undefined || sessionId === null || rel === ''
+    ? 'about:blank'
+    : `/preview/${encodeURIComponent(sessionId)}/${rel.split('/').map(s => encodeURIComponent(s)).join('/')}`
+
+  return (
+    <>
+      <div className={css.codeBar}>
+        <span className={css.codePath} title={path !== '' ? path : rel}>{rel}</span>
+        {path !== '' && (
+          <button
+            type="button"
+            className={css.navBtn}
+            title="用默认编辑器打开"
+            aria-label="用默认编辑器打开"
+            onClick={() => { onOpenPath?.(path) }}
+          >
+            <ExternalIcon />
+          </button>
+        )}
+      </div>
+      <iframe
+        className={css.frame}
+        title={rel !== '' ? rel : '代码查看'}
+        src={src}
+        data-liuli-picker-frame=""
+        data-active-frame={pickerActive ? '1' : undefined}
+        onLoad={onFrameLoad}
+      />
+    </>
+  )
+}
+
+/* ── header utilities 里的开关按钮（ZCode：panel-right-open/close + 切换面板） ── */
+
+export interface PreviewButtonProps {
+  onToggle?: () => void
+}
+
+/** Header utilities 里的开关按钮：点击展开/收起右侧面板（ZCode 切换面板按钮对应物）。 */
+export function PreviewButton({ onToggle }: PreviewButtonProps) {
+  const [opened, setOpened] = useState(previewOpen)
+
+  useEffect(() => {
+    const onToggleEvent = (): void => { setOpened(previewOpen) }
+    window.addEventListener(PREVIEW_TOGGLE_EVENT, onToggleEvent)
+    return () => { window.removeEventListener(PREVIEW_TOGGLE_EVENT, onToggleEvent) }
+  }, [])
+
   return (
     <button
       type="button"
-      className={css.openBtn}
-      title="预览工作区"
-      aria-label="预览工作区"
+      className={css.openBtn + (opened ? ' ' + css.openBtnActive : '')}
+      title="切换面板 (Ctrl+Alt+B)"
+      aria-label={opened ? '收起侧边面板' : '展开侧边面板'}
       onClick={() => {
         if (onToggle !== undefined) onToggle()
         else window.dispatchEvent(new CustomEvent(PREVIEW_TOGGLE_EVENT))
       }}
     >
-      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-        <path
-          fill="currentColor"
-          d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zm0 12.5a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"
-        />
-      </svg>
+      {opened ? <PanelRightCloseIcon size={16} /> : <PanelRightOpenIcon size={16} />}
     </button>
   )
 }

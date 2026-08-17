@@ -1131,6 +1131,23 @@ div[data-phase='active'] {
   box-shadow: var(--denpa-glow-brand), var(--denpa-shadow) !important;
 }
 
+/* 外层 dock 容器自身：清掉官方/漏到 wrapper 上的辉光、阴影与磨砂模糊。
+   精确锚定 composerStack 第一个 div 子级下的 _dock（QueueDock 布局
+   wrapper），避免误伤内部面板和其它 _dock 容器。 */
+[class*="_composerStack"] > div:nth-of-type(1) > [class*="_dock"] {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  filter: none !important;
+  box-shadow: none !important;
+}
+
+/* dock 内 bar：补品牌辉光 + 阴影 + 磨砂模糊，与面板/输入卡一致。 */
+[class*="_composerStack"] > div:nth-of-type(1) > [class*="_dock"] > [class*="_bar"] {
+  -webkit-backdrop-filter: var(--denpa-material-blur) !important;
+  backdrop-filter: var(--denpa-material-blur) !important;
+  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow) !important;
+}
+
 /* 详情列：去左侧分割线（DenpaPush 复刻）。列内 _root 唯一（面板根），
    与侧栏不同没有树/列表子 root，宽匹配安全。 */
 [class*="_detailsCol"] [class*="_root"] {
