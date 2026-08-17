@@ -345,13 +345,13 @@ export function FloatBall({ insertElement }: { insertElement: InsertElementFn })
 
       {/* 拾取悬停信息卡（body 级，跟随鼠标；root 半隐藏 transform 不影响） */}
       {picking && createPortal(
-        <div ref={hoverRef} className={css.hoverCard} style={{ display: 'none' }} aria-hidden="true" />,
+        <div ref={hoverRef} className={css.hoverCard} data-liuli-picker-ignore="" style={{ display: 'none' }} aria-hidden="true" />,
         document.body,
       )}
 
       {/* 拾取结果信息卡 */}
       {picked !== null && createPortal(
-        <div className={css.infoCard} role="dialog" aria-label="元素信息">
+        <div className={css.infoCard} role="dialog" aria-label="元素信息" data-liuli-picker-ignore="">
           <div className={css.infoHead}>
             <CrosshairIcon size={13} />
             <span className={css.infoTag}>&lt;{picked.tag}&gt;</span>

@@ -53,9 +53,9 @@ DeepSeek Harness 的 **Material Design 3 × Fluent 2 融合主题**插件:取 Ma
 | 📐 对话轮次刻度侧边栏 | DenpaPush 时间线风格:左侧竖线刻度,胶囊沿竖线滑动,显示该轮时间/commit号/摘要,点击刻度跳转对应轮次(仅 Chat 视图显示) |
 | 💳 供应商额度显示 | header 标题区普通文本,跟在 agent preset 标签右侧:套餐供应商显示本月/本周/5小时三项额度,非套餐供应商显示余额;已内置 DeepSeek 余额(`/user/balance`)与 OpenCode Go 套餐(`/zen/go/v1/usage`),密钥经 Host `/liuli-quota` 路由从 credentials/env 读取,不进浏览器 |
 | ⚪ 悬浮工具球 | 常驻悬浮圆点:贴边吸附半隐藏(JS 热区防抖动)、拖拽随行、打开后自动夹进视口;快捷键 `Alt+Shift+E` 唤起 |
-| 🎯 元素选择器 | 悬浮球进入拾取模式后点击任意页面元素,生成引用 chip 插入当前会话输入框(`@` 触发源 + ReferenceCodec) |
+| 🎯 元素选择器 | 悬浮球进入拾取模式后点击任意页面元素,生成引用 chip 插入当前会话输入框(`@` 触发源 + ReferenceCodec);发送后用户气泡中以简洁卡片展示,悬停展开详情 |
 | 🎞️ 会话切换动画 | 切换会话/新消息入场效果(10 选 1):淡入/上浮/下沉/右滑/缩放/模糊/弹性/级联×2/关闭;插件内 MutationObserver 挂类,动画独立于宿主组件实现 |
-| 🖥️ 工作区预览 | header「预览工作区」按钮打开右侧浮层面板,同源 iframe 渲染当前会话 cwd 的静态站点(插件 node 半 `/preview` 路由),元素选择器可直接在 iframe 内拾取元素插入引用 chip |
+| 🖥️ 工作区预览 | header「预览工作区」按钮展开宿主右侧 details 布局列;「产物」模式显示当前会话 cwd 里生成的产物目录列表(插件 node 半 `/preview` 路由,`?artifacts=1` 强制列表);「浏览器」模式加载 localhost/dev server 或前端产物,点击会话里的 localhost/前端文件链接自动切换到浏览器模式;元素选择器可直接在 iframe 内拾取元素插入引用 chip |
 | 🔤 主题字体 | CSS `@import` 加载 MiSans / Inter / Space Grotesk / JetBrains Mono(字体族令牌早已引用,官方 harness 不注入 link,由插件自行加载) |
 | ⚙️ 设置「界面」分区 | 20 项设置(取色/背景/材质/字体/圆角/泛光/阴影/宽边模式/壁纸适应与选区/会话动画),即时生效、自动保存 |
 
@@ -105,7 +105,7 @@ packages/client/liuli-theme/
 │   ├── invariant.ts          # 包级 invariant 伴生(无运行时检查)
 │   ├── denpa-settings.ts     # 20 项设置 schema 与默认值(类型 + schemastery + 防御合并)
 │   └── client/
-│       ├── index.ts          # 浏览器入口:CSS 注入 + 设置分区 + 事件桥 + header slots + 悬浮球 + 预览面板
+│       ├── index.ts          # 浏览器入口:CSS 注入 + 设置分区 + 事件桥 + header slots + 悬浮球 + 预览列
 │       ├── denpa.css         # 主题令牌源(亮/暗双主题 + 铬色样式 + 圆形遮罩 + 入场动画)
 │       ├── denpa-css.ts      # denpa.css 的字符串化拷贝(运行时注入 <style>,幂等;含字体 @import)
 │       ├── denpa-store.ts    # 设置表单 store(ui-slots EngineStore)
@@ -118,8 +118,9 @@ packages/client/liuli-theme/
 │       ├── SupplierQuota.tsx / .module.css      # header 标题区额度/余额普通文本
 │       ├── TurnRail.tsx / .module.css           # DenpaPush 时间线风格轮次刻度侧边栏
 │       ├── FloatBall.tsx / .module.css / .types.ts  # 悬浮工具球 + 拾取模式
-│       ├── PreviewPanel.tsx / .module.css       # 工作区预览面板(overlay iframe + 元素拾取)与 header 开关按钮
+│       ├── PreviewPanel.tsx / .module.css       # 工作区预览列(产物/浏览器模式 + 元素拾取)与 header 开关按钮
 │       ├── element-picker.ts # 元素选择器:selector/文本/矩形/颜色信息提取与序列化(支持 iframe 文档)
+│       ├── element-card.ts   # 用户消息中的元素引用纯文本 → 卡片 DOM(MutationObserver 装饰)
 │       ├── locales.ts        # denpa-appearance 文案(zh/en,键集完整性互检)
 │       └── vendor/material-color-utilities.{js,d.ts}  # Material 3 取色库(vendored)
 └── README.md
@@ -130,7 +131,7 @@ packages/client/liuli-theme/
 主题完全自包含,只在官方 harness 已有的扩展点上挂载,不依赖任何未发布的自定义 slot 或组件改动:
 
 - `dsh-client-ui-conversation`:header 的 `actions` / `utilities` 两个官方 slot 是全部 header 组件的挂点(声纹、主题切换、额度、拉伸手柄、回合导轨、预览按钮——组件把内容 portal 到自己的锚点,挂载点仅作生命周期)。会话切换动画不依赖宿主挂类逻辑:插件用 `MutationObserver` 直接在消息列(`[data-chat-flow]`)的新增节点上挂入场类。
-- `dsh-client-ui-layout`:悬浮球、预览面板都是插件自有 overlay(独立 React root + fixed 定位),不占用宿主布局列。
+- `dsh-client-ui-layout`:悬浮球是插件自有 overlay(独立 React root + fixed 定位);工作区预览面板占用宿主 `details` 布局列(`priority: -1` 替换官方工具详情列),随布局动画从右侧展开/收起。
 - `dsh-client-ui-theme`:Appearance 外观行点击时 dispatch `denpa:set-theme`(带坐标),由本插件的事件桥接 `startViewTransition` 圆形遮罩;桥未就绪时降级直连切换。
 - `dsh-host-webserver`:node 半注册 `/liuli-quota` 与 `/preview` 两条前缀路由。
 - 主题观感(令牌、材质、圆角、侧栏/设置浮层样式)全部在插件的 `denpa.css` 内以 CSS 变量与选择器覆盖实现,不改任一宿主组件源码。
@@ -162,5 +163,5 @@ chip 内容随用户消息成为对话前缀的一部分,与普通用户消息�
 - 声纹监听只捕获系统音频:依赖 `getDisplayMedia` 用户授权(共享「整个屏幕」并勾选「分享系统音频」),不降级麦克风,也不会绕过授权。
 - 壁纸以压缩 JPEG dataURL 持久化,受 `localStorage` 配额限制;超大原图会先压缩再保存。
 - 会话切换动画是 DOM 观察层实现(消息节点挂类),并非宿主组件级动画:流式更新触发的部分节点重挂载也会再次入场,与宿主组件的缓存策略无关。
-- 工作区预览面板是插件 overlay(浮层),不是宿主布局列;`/preview` 路由只接受 loopback/同源 Host(局域网部署需额外配置信任域名,当前未开放该选项)。面板内的元素拾取要求 `/preview` 与页面同源(默认满足)。
+- 工作区预览面板占用宿主 `details` 布局列,会替换官方工具详情列(工具调用详情不再显示在右侧列);`/preview` 路由只接受 loopback/同源 Host(局域网部署需额外配置信任域名,当前未开放该选项)。浏览器模式直接 iframe 加载 `localhost`/`127.0.0.1` 地址,若目标 dev server 未允许被 iframe 嵌入则可能显示空白;面板内的元素拾取要求 `/preview` 与页面同源(默认满足)。
 - 会话侧栏行标记(官方 WIP 里有但未发布):官方树行不在 DOM 暴露会话 id,插件无法可靠对应具体会话,故本插件不提供该功能。

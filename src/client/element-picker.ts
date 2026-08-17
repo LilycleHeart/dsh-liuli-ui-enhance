@@ -175,7 +175,9 @@ function asElement(target: EventTarget | null): HTMLElement | null {
  * appear, while `mouseout`/`mouseleave` are swallowed so that hover menus and
  * popups stay open even after the pointer leaves them. Clicks, pointer
  * presses, wheel, and touch scrolling are also intercepted so the page cannot
- * react to the picker's cursor.
+ * react to the picker's cursor. It also temporarily forces `pointer-events:
+ * auto` on page elements so disabled, click-through (`pointer-events: none`),
+ * and input elements can be highlighted and picked.
  *
  * Returns the detach function that restores the outline and cursor.
  * @param doc - the document to instrument (preview iframe or host page).
@@ -221,34 +223,57 @@ export function attachElementPicker(
   const skipped = (el: HTMLElement): boolean =>
     ignoreWithin !== undefined && ignoreWithin !== null && ignoreWithin.contains(el)
 
-  // While picking, make `role="tooltip"` elements (e.g. the turn-rail capsule)
-  // hit-testable so the user can actually pick them even though their normal
-  // CSS sets pointer-events: none.
-  const tooltipPointerEvents = new Map<HTMLElement, string>()
-  const enableTooltip = (el: HTMLElement): void => {
-    if (tooltipPointerEvents.has(el)) return
-    tooltipPointerEvents.set(el, el.style.pointerEvents)
-    el.style.pointerEvents = 'auto'
-  }
-  const tooltipHost = doc.body ?? doc.documentElement
-  if (tooltipHost !== null) {
-    for (const el of Array.from(tooltipHost.querySelectorAll<HTMLElement>('[role="tooltip"]'))) {
-      enableTooltip(el)
-    }
-  }
-  const tooltipObserver = tooltipHost === null ? null : new MutationObserver((mutations) => {
-    for (const mutation of mutations) {
-      for (const node of mutation.addedNodes) {
-        if (node.nodeType !== 1) continue
-        const el = node as HTMLElement
-        if (el.matches?.('[role="tooltip"]') === true) enableTooltip(el)
-        for (const child of Array.from(el.querySelectorAll<HTMLElement>('[role="tooltip"]'))) {
-          enableTooltip(child)
-        }
+  const isPickerUI = (el: HTMLElement): boolean =>
+    el.hasAttribute?.('data-liuli-picker-ignore') === true
+
+  // Full-viewport layers that are normally click-through would, once forced to
+  // pointer-events:auto, sit above everything and make the picker stick to one
+  // class. Remember them so targetAt can skip them and keep selecting the real
+  // content underneath.
+  const skipOverlays = new Set<HTMLElement>()
+  const view = doc.defaultView
+  if (view !== null) {
+    const vw = view.innerWidth
+    const vh = view.innerHeight
+    const overlayHost = doc.body ?? doc.documentElement
+    if (overlayHost !== null && vw > 0 && vh > 0) {
+      for (const el of Array.from(overlayHost.querySelectorAll<HTMLElement>('*'))) {
+        if (getComputedStyle(el).pointerEvents !== 'none') continue
+        const rect = el.getBoundingClientRect()
+        if (rect.width >= vw - 1 && rect.height >= vh - 1) skipOverlays.add(el)
       }
     }
-  })
-  tooltipObserver?.observe(tooltipHost, { childList: true, subtree: true })
+  }
+
+  // While picking, force every page element to be pointer-events: auto so the
+  // picker can hit-test elements that are normally click-through
+  // (pointer-events: none), disabled, or otherwise not interactive. The picker's
+  // own UI is excluded via [data-liuli-picker-ignore].
+  const pickerStyle = doc.createElement('style')
+  pickerStyle.setAttribute('data-liuli-picker-style', '')
+  pickerStyle.textContent = '*:not([data-liuli-picker-ignore]) { pointer-events: auto !important; }'
+  const styleHost = doc.head ?? doc.documentElement
+  if (styleHost !== null) styleHost.appendChild(pickerStyle)
+
+  // Resolve the topmost pickable element at a viewport point. `elementsFromPoint`
+  // is used when available because it returns the full paint-order stack; this
+  // lets us skip picker UI and still select elements that do not receive native
+  // pointer events (disabled inputs, pointer-events:none layers, etc.).
+  const targetAt = (x: number, y: number): HTMLElement | null => {
+    const stack = typeof doc.elementsFromPoint === 'function'
+      ? doc.elementsFromPoint(x, y)
+      : (() => {
+          const el = doc.elementFromPoint(x, y)
+          return el === null ? [] : [el]
+        })()
+    for (const el of stack) {
+      if (el === null || el.nodeType !== 1) continue
+      const h = el as HTMLElement
+      if (isPickerUI(h) || skipped(h) || skipOverlays.has(h)) continue
+      return h
+    }
+    return null
+  }
 
   // Freeze the page at the event level instead of covering it with an opaque
   // layer: `mouseover`/`mouseenter` are allowed through so hover UI can still
@@ -258,10 +283,15 @@ export function attachElementPicker(
   // page cannot react to the picker's cursor.
   const onPointerEvent = (e: Event): void => {
     const mouse = e as MouseEvent
-    const el = asElement(e.target)
+    // For leave events keep the original target (the element being left);
+    // for hover/pick use the real topmost element at the cursor so disabled
+    // and click-through elements can still be selected.
+    const el = e.type === 'mouseout' || e.type === 'mouseleave'
+      ? asElement(e.target)
+      : targetAt(mouse.clientX, mouse.clientY)
     if (el === null) return
 
-    if (skipped(el)) {
+    if (skipped(el) || isPickerUI(el)) {
       // Over the panel chrome: clear the highlight and hide the card, but
       // leave the pointer events alone so the chrome stays interactive.
       if (e.type === 'mouseover' || e.type === 'mousemove') {
@@ -338,10 +368,7 @@ export function attachElementPicker(
     for (const type of eventTypes) {
       doc.removeEventListener(type, onPointerEvent, true)
     }
-    tooltipObserver?.disconnect()
-    for (const [el, value] of tooltipPointerEvents) {
-      if (el.isConnected) el.style.pointerEvents = value
-    }
+    if (pickerStyle.isConnected) pickerStyle.remove()
     // Let hover UI know the picker is gone; while picking we swallowed
     // mouseout/mouseleave, so replay a leave on the last hovered element to
     // avoid leaving a frozen capsule/tooltip visible after detach. If the

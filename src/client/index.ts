@@ -25,6 +25,8 @@ import type { ThemePreference } from '@deepseek-ai/dsh-client-ui-theme/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls ui-conversation's header slots + ui-settings' section slot names.
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+// Type-only: pulls the layout service face (ctx.layout.openDetails/closeDetails + details slot).
+import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 // Type-only: the input-trigger source roster (element picker reference chip codec).
 import type { InputTriggerSource, ReferenceCodec } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
@@ -53,7 +55,11 @@ import { createElement } from 'react'
 import { FloatBall } from './FloatBall.tsx'
 import { createRoot } from 'react-dom/client'
 import { formatSelection, type PickedElement } from './element-picker.ts'
-import { PreviewPanel, PreviewButton } from './PreviewPanel.tsx'
+import { startElementCardDecoration } from './element-card.ts'
+import {
+  PreviewDetailsPanel, PreviewButton, PREVIEW_TOGGLE_EVENT, PREVIEW_NAVIGATE_EVENT,
+  resolvePreviewUrl, setPreviewOpen, togglePreviewOpen,
+} from './PreviewPanel.tsx'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -70,7 +76,7 @@ const STYLE_ID = 'liuli-theme-css'
 // 设置持久化键在 denpa-settings.ts 中定义（HeaderEffects 运行时读取同一键）。
 
 /** Required services: slots/locale for the settings section, theme for the toggle bridge, connection/remote for supplier quota. */
-export const inject = ['slots', 'locale', 'theme', 'sessions', 'conversation', 'inputTriggers', 'connection', 'remote']
+export const inject = ['slots', 'locale', 'theme', 'layout', 'sessions', 'conversation', 'inputTriggers', 'connection', 'remote']
 
 /** 宽边模式样式：对话信息区在宽屏下撑满可用宽度（提高左右空间利用率）。 */
 const WIDE_MODE_CSS = [
@@ -109,6 +115,9 @@ export function apply(ctx: ClientContext): void {
 
   // ── 会话切换/新消息入场动画：MutationObserver 挂类（动画定义在 denpa.css）──
   ctx.effect(() => startDenpaTransition(), 'liuli-theme: message transition observer')
+
+  // ── 用户发送的网页元素：在聊天气泡里也渲染成卡片（官方只装饰 /@ chip）──
+  ctx.effect(() => startElementCardDecoration(), 'liuli-theme: element card decoration')
 
   // ── 供应商额度：注入 connection/remote，供 header 工具区显示当前供应商额度 ──
   initSupplierQuota(ctx.get('connection') as ConnectionHandle, ctx.get('modelDirectories'))
@@ -197,23 +206,50 @@ export function apply(ctx: ClientContext): void {
     }
   }, 'liuli-theme: float ball mount')
 
-  // ── 工作区预览面板：右侧 overlay + /preview iframe + 元素选择器 ──
-  ctx.effect(() => {
-    const host = document.createElement('div')
-    host.id = 'liuli-preview-host'
-    document.body.appendChild(host)
-    const root = createRoot(host)
-    root.render(createElement(PreviewPanel, {
-      subscribeSession: fn => ctx.sessions.list.subscribe(() => {
-        fn(ctx.sessions.list.getSnapshot().current ?? null)
-      }),
+  // ── 工作区预览列：header 按钮开合宿主右侧 details 列，面板占用 details slot ──
+  const togglePreview = (): void => {
+    const open = togglePreviewOpen()
+    if (open) ctx.layout.openDetails()
+    else ctx.layout.closeDetails()
+    window.dispatchEvent(new CustomEvent(PREVIEW_TOGGLE_EVENT))
+  }
+  ctx.slots.inject('details', () => ctx.slots.register({
+    name: 'details',
+    priority: -1,
+    inject: () => ({
+      openDetails: () => { ctx.layout.openDetails() },
+      closeDetails: () => {
+        setPreviewOpen(false)
+        ctx.layout.closeDetails()
+      },
       insertElement,
-    }))
-    return () => {
-      root.unmount()
-      host.remove()
+    }),
+  }, PreviewDetailsPanel))
+
+  // 切换会话时宿主会自动收起 details 列；这里同步重置预览开关，避免下次按钮反向。
+  ctx.effect(() => ctx.sessions.list.subscribe(() => {
+    setPreviewOpen(false)
+  }), 'liuli-theme: preview open reset on session switch')
+
+  // ── 会话内前端产物点击：拦截本地回环/前端文件链接，切换到预览浏览器模式 ──
+  ctx.effect(() => {
+    const onDocClick = (e: MouseEvent): void => {
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+      const target = e.target as Element | null
+      const anchor = target?.closest?.('a[href]') as HTMLAnchorElement | null
+      if (anchor === null || anchor === undefined) return
+      // 只劫持会话正文里的链接，避免影响侧栏/设置等其他区域。
+      if (anchor.closest('[data-phase]') === null) return
+      const href = anchor.getAttribute('href') ?? ''
+      const sessionId = ctx.sessions.list.getSnapshot().current ?? undefined
+      const url = resolvePreviewUrl(href, sessionId)
+      if (url === undefined) return
+      e.preventDefault()
+      window.dispatchEvent(new CustomEvent(PREVIEW_NAVIGATE_EVENT, { detail: { url } }))
     }
-  }, 'liuli-theme: preview panel mount')
+    document.addEventListener('click', onDocClick, true)
+    return () => { document.removeEventListener('click', onDocClick, true) }
+  }, 'liuli-theme: frontend artifact preview click')
 
   ctx.effect(() => ctx.locale.register(DENPA_LOCALE_NS, { zh, en }), 'liuli-theme: denpa dictionaries')
 
@@ -485,10 +521,10 @@ export function apply(ctx: ClientContext): void {
     id: 'liuli-turn-rail',
     order: 20,
   }, TurnRail))
-  // 工作区预览开关（官方 harness 无 preview 列/面板，插件自带 overlay）
+  // 工作区预览开关：点击开合宿主右侧 details 列（不再是 overlay）
   ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
     name: 'conversation.session.header.utilities',
     id: 'liuli-preview-button',
     order: 25,
-  }, PreviewButton))
+  }, () => createElement(PreviewButton, { onToggle: togglePreview })))
 }

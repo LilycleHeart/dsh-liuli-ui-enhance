@@ -47,29 +47,24 @@
 }
 
 .tick:hover,
-.tick:focus-visible,
-.tickFollow {
+.tick:focus-visible {
   color: var(--denpa-mcu-secondary, var(--dsw-alias-state-business-primary)) !important;
   filter: drop-shadow(0 0 4px color-mix(in srgb, var(--denpa-mcu-secondary, var(--dsw-alias-state-business-primary)) 45%, transparent));
 }
 
-/* 当前所在轮：同样放大，但颜色保持跟随态 */
+/* 当前所在轮：放大并使用主题色 */
 .tickFollow {
   width: 28px;
   height: 28px;
-}
-
-/* 最新一轮：常亮弱高亮 */
-.tickActive {
-  color: var(--dsw-alias-label-primary);
-}
-
-/* 当前选中：主题色实底高亮（SVG 填充 currentColor），并放大 */
-.tickSelected {
-  width: 28px;
-  height: 28px;
   color: var(--denpa-mcu-primary, var(--dsw-alias-brand-primary)) !important;
-  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--denpa-mcu-primary, var(--dsw-alias-brand-primary)) 55%, transparent));
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--denpa-mcu-primary, var(--dsw-alias-brand-primary)) 45%, transparent));
+}
+
+/* 最新一轮：常亮弱高亮（仅当它不是当前跟随轮时；跟随轮保持主题色并放大） */
+.tickActive:not(.tickFollow) {
+  width: 18px;
+  height: 18px;
+  color: var(--dsw-alias-label-primary);
 }
 
 .tickHover {
