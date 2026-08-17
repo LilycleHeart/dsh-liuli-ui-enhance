@@ -10,8 +10,15 @@
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import { resolveSessionId, readRowTitle, locateTitleSpan, mountEditor } from './session-rename.ts'
 import { getSessionMarker, setSessionMarker, MARKER_LABEL, type SessionMarker } from './session-markers.ts'
+import { ICONS } from './menu-icons.ts'
 
 const MARKERS: readonly SessionMarker[] = ['in-progress', 'todo', 'done']
+
+const MARKER_ICON: Record<SessionMarker, string> = {
+  'in-progress': ICONS.loading,
+  'todo': ICONS.checklist,
+  'done': ICONS.check,
+}
 
 type Ctx = Pick<ClientContext, 'sessions' | 'workspaces'>
 
@@ -29,7 +36,6 @@ function renderMenu(ctx: Ctx, row: HTMLElement, id: string, title: string, x: nu
     top: '0',
     visibility: 'hidden',
     zIndex: '1200',
-    minWidth: '200px',
   } as Partial<CSSStyleDeclaration>)
   document.body.appendChild(menu)
 
@@ -66,14 +72,21 @@ function renderMenu(ctx: Ctx, row: HTMLElement, id: string, title: string, x: nu
 
   const currentMarker = getSessionMarker(id)
 
-  const appendItem = (label: string, action: string, opts: { danger?: boolean; active?: boolean } = {}): void => {
+  const appendItem = (label: string, action: string, icon: string, opts: { danger?: boolean; active?: boolean } = {}): void => {
     const btn = document.createElement('button')
     btn.type = 'button'
     btn.setAttribute('role', 'menuitem')
     btn.className = 'liuli-menu-item'
     if (opts.danger === true) btn.classList.add('liuli-menu-danger')
-    if (opts.active === true) { btn.classList.add('liuli-menu-active'); btn.textContent = '✓ ' + label }
-    else btn.textContent = label
+    if (opts.active === true) btn.classList.add('liuli-menu-active')
+    const iconEl = document.createElement('span')
+    iconEl.className = 'liuli-menu-icon'
+    iconEl.innerHTML = icon
+    btn.appendChild(iconEl)
+    const labelEl = document.createElement('span')
+    labelEl.className = 'liuli-menu-label'
+    labelEl.textContent = (opts.active === true ? '✓ ' : '') + label
+    btn.appendChild(labelEl)
     btn.addEventListener('click', (e) => { e.stopPropagation(); close(); runAction(action) })
     menu.appendChild(btn)
   }
@@ -82,15 +95,15 @@ function renderMenu(ctx: Ctx, row: HTMLElement, id: string, title: string, x: nu
   group.className = 'liuli-menu-group'
   group.textContent = '添加标记'
   menu.appendChild(group)
-  for (const m of MARKERS) appendItem(MARKER_LABEL[m], 'marker:' + m, { active: currentMarker === m })
+  for (const m of MARKERS) appendItem(MARKER_LABEL[m], 'marker:' + m, MARKER_ICON[m], { active: currentMarker === m })
 
   const sep = document.createElement('div')
   sep.className = 'liuli-menu-sep'
   menu.appendChild(sep)
 
-  appendItem('重命名', 'rename')
-  appendItem('分叉会话', 'fork')
-  appendItem('归档会话', 'archive', { danger: true })
+  appendItem('重命名', 'rename', ICONS.edit)
+  appendItem('分叉会话', 'fork', ICONS.branch)
+  appendItem('归档会话', 'archive', ICONS.archive, { danger: true })
 
   // 定位：夹紧视口（先 visibility:hidden 测量真实尺寸）
   const r = menu.getBoundingClientRect()
