@@ -915,6 +915,36 @@ div[data-phase='active'] {
 }
 
 /* ════════════════════════════════════════════════════════════
+ * 统计行（StatsLine）上方的向上渐变模糊遮罩（用户要求）：
+ * 消息流/内容在滚入统计行前向上渐隐模糊 —— 底部较实、向上渐隐，
+ * 类似 iOS 底部渐晕。锚定 composerStack > div > InputBar_root >
+ * div > StatsLine_root（两层 div 嵌套；composer 卡内 toolbar 的
+ * root 是 card > row > ... 路径，结构不同，不会误伤）。
+ * ::before 绝对定位在统计行正上方（bottom:100%），backdrop-filter 模糊。
+ * ════════════════════════════════════════════════════════════ */
+[class*="_composerStack"] > div > [class*="_root"] > div > [class*="_root"] {
+  position: relative !important;
+}
+
+[class*="_composerStack"] > div > [class*="_root"] > div > [class*="_root"]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: 48px;
+  background: linear-gradient(
+    to top,
+    rgba(var(--denpa-acrylic-rgb), 0.6),
+    rgba(var(--denpa-acrylic-rgb), 0.25) 40%,
+    transparent
+  );
+  -webkit-backdrop-filter: blur(5px);
+  backdrop-filter: blur(5px);
+  pointer-events: none;
+}
+
+/* ════════════════════════════════════════════════════════════
  * 剩余小件观感（原宿主 module.css 差异，全部为 DenpaPush 配方）：
  * dock 卡磨砂/辉光、状态点动态取色、详情列去分割线、底部淡出层移除、
  * 设置对话框辉光。
