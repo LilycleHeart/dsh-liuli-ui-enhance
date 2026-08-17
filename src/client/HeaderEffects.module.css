@@ -40,7 +40,7 @@
   padding: 7px;
   border: none;
   background: transparent;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsw-alias-label-secondary);
   cursor: pointer;
   transition: color 140ms var(--ds-ease-in-out), filter 140ms var(--ds-ease-in-out);
 }
