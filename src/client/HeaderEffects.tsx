@@ -737,10 +737,14 @@ export function DenpaHeaderResizer() {
     const sync = (): void => {
       if (root === null) return
       const headerRect = header.getBoundingClientRect()
+      // 先把 header 高度变量写入 —— TurnRail 的 top 依赖它跟随拉伸。
+      // 必须放在 blur 层检查之前：官方 aria-hidden 模糊层已由本插件的
+      // [data-phase]::before 伪元素替代，querySelector 会落空提前 return，
+      // 导致变量从未写入、rail 拉伸不跟随（见此前 bug）。
+      root.style.setProperty('--dsh-header-height', `${headerRect.height}px`)
       const blur = root.querySelector<HTMLElement>(':scope > [aria-hidden="true"]:first-child')
       const blurRect = blur?.getBoundingClientRect()
       if (blurRect === undefined || blurRect.height <= 0) return
-      root.style.setProperty('--dsh-header-height', `${headerRect.height}px`)
       const body = root.querySelector<HTMLElement>('[data-conversation-scroll]')
       const bodyRect = body?.getBoundingClientRect()
       // 非 active 阶段（主页 hero / settling 等）不是 header + scrollBody 双卡，
