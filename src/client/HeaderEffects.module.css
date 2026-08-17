@@ -8,6 +8,8 @@
   position: absolute;
   inset: 0;
   overflow: hidden;
+  /* 与 header 卡片同圆角，让 canvas 的直角边缘被裁掉 */
+  border-radius: var(--denpa-radius, 14px);
   pointer-events: none;
   /* 显式低于标题行/标签行（shell 的 .titleRow/.tabs 均 z-index:1） */
   z-index: 0;

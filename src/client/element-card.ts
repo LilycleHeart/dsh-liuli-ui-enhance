@@ -155,8 +155,9 @@ export function buildElementCard(info: PickedElement): HTMLElement {
 }
 
 /**
- * 把一段可能包含元素块的文本渲染为节点列表：元素块变成卡片，其余文字
- * 保留为普通文本节点（使用 .liuli-element-text 维持 pre-wrap）。
+ * 把一段可能包含元素块的文本渲染为节点列表：只有 [selected element] 块
+ * 变成卡片，其余文字保持为原始 Text 节点（不包 div、不加 class），让
+ * 用户消息文本完全沿用气泡本身的渲染，不被元素卡片"吞掉"或改样。
  * @param text - 原始文本。
  * @returns 渲染节点。
  */
@@ -190,10 +191,7 @@ export function renderTextWithElementCards(text: string): Node[] {
     }
     const plain = buf.join('\n')
     if (plain !== '') {
-      const div = document.createElement('div')
-      div.className = 'liuli-element-text'
-      div.textContent = plain
-      parts.push(div)
+      parts.push(document.createTextNode(plain))
     }
   }
   return parts
