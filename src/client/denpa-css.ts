@@ -1350,4 +1350,63 @@ div[data-phase='active'] {
   }
 }
 
+/* ════════════════════════════════════════════════════════════
+ * 自绘会话右键菜单（liuli session context menu）：
+ * 容器复用 div[role="menu"] 的 70% 亚克力背景/磨砂/边框/圆角，
+ * 这里补菜单项的布局、字号、悬停、分组标题、分隔线与危险项。
+ * ════════════════════════════════════════════════════════════ */
+[data-liuli-context-menu] {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 200px;
+  padding: 4px;
+}
+
+.liuli-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.liuli-menu-item:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.liuli-menu-danger {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.liuli-menu-danger:hover {
+  background: var(--dsw-alias-interactive-bg-hover-danger);
+}
+
+.liuli-menu-active {
+  color: var(--dsw-alias-brand-primary);
+}
+
+.liuli-menu-group {
+  padding: 6px 10px 4px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.liuli-menu-sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--dsw-alias-border-l1);
+}
+
 `
