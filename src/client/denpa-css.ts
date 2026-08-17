@@ -1064,6 +1064,12 @@ div[data-phase='active'] {
   background-color: rgba(var(--denpa-acrylic-rgb), calc(var(--denpa-material-opacity) + 0.15)) !important;
 }
 
+/* preset 卡 ID（<code>）：官方用 label-dimmed（中性灰，不随品牌色变），
+   用户要求动态取色 —— 改为主题品牌色（随壁纸 M3 取色变化）。 */
+[role="dialog"] [class*="_cardId"] {
+  color: var(--dsw-alias-brand-primary) !important;
+}
+
 /* ════════════════════════════════════════════════════════════
  * 会话切换/新消息入场动画（denpa-transition.ts 挂类）
  * 长属性写法：animation 简写里嵌 var()（级联延迟）在个别引擎上有解析
