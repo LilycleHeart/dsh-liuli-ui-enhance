@@ -8,6 +8,7 @@
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import { readRowTitle, locateTitleSpan, mountEditor } from './session-rename.ts'
+import { ICONS } from './menu-icons.ts'
 
 type Ctx = Pick<ClientContext, 'workspaces'>
 
@@ -27,7 +28,7 @@ function renderMenu(ctx: Ctx, row: HTMLElement, id: string, title: string, x: nu
   menu.setAttribute('role', 'menu')
   menu.setAttribute('data-liuli-context-menu', '')
   Object.assign(menu.style, {
-    position: 'fixed', left: '0', top: '0', visibility: 'hidden', zIndex: '1200', minWidth: '200px',
+    position: 'fixed', left: '0', top: '0', visibility: 'hidden', zIndex: '1200',
   } as Partial<CSSStyleDeclaration>)
   document.body.appendChild(menu)
 
@@ -54,19 +55,26 @@ function renderMenu(ctx: Ctx, row: HTMLElement, id: string, title: string, x: nu
     }
   }
 
-  const appendItem = (label: string, action: string, opts: { danger?: boolean } = {}): void => {
+  const appendItem = (label: string, action: string, icon: string, opts: { danger?: boolean } = {}): void => {
     const btn = document.createElement('button')
     btn.type = 'button'
     btn.setAttribute('role', 'menuitem')
     btn.className = 'liuli-menu-item'
     if (opts.danger === true) btn.classList.add('liuli-menu-danger')
-    btn.textContent = label
+    const iconEl = document.createElement('span')
+    iconEl.className = 'liuli-menu-icon'
+    iconEl.innerHTML = icon
+    btn.appendChild(iconEl)
+    const labelEl = document.createElement('span')
+    labelEl.className = 'liuli-menu-label'
+    labelEl.textContent = label
+    btn.appendChild(labelEl)
     btn.addEventListener('click', (e) => { e.stopPropagation(); close(); runAction(action) })
     menu.appendChild(btn)
   }
 
-  appendItem('重命名工作区', 'rename')
-  appendItem('删除工作区', 'delete', { danger: true })
+  appendItem('重命名工作区', 'rename', ICONS.edit)
+  appendItem('删除工作区', 'delete', ICONS.trash, { danger: true })
 
   const r = menu.getBoundingClientRect()
   const left = Math.min(Math.max(x, 8), window.innerWidth - r.width - 8)

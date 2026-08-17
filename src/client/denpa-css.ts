@@ -1356,11 +1356,16 @@ div[data-phase='active'] {
  * 这里补菜单项的布局、字号、悬停、分组标题、分隔线与危险项。
  * ════════════════════════════════════════════════════════════ */
 [data-liuli-context-menu] {
+  box-sizing: border-box;
+  padding: 4px;
   display: flex;
   flex-direction: column;
   gap: 0;
-  min-width: 200px;
-  padding: 4px;
+  border: 1px solid var(--dsw-alias-border-inverted);
+  border-radius: 12px;
+  box-shadow: var(--dsw-shadow-lv3);
+  min-width: 218px;
+  max-width: 360px;
 }
 
 .liuli-menu-item {
@@ -1368,14 +1373,14 @@ div[data-phase='active'] {
   align-items: center;
   gap: 8px;
   width: 100%;
-  min-height: 34px;
-  padding: 5px 10px;
+  min-height: 40px;
+  padding: 8px 10px;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   background: transparent;
   color: var(--dsw-alias-label-primary);
-  font-size: 13px;
-  line-height: 20px;
+  font-size: 14px;
+  line-height: 22px;
   text-align: left;
   cursor: pointer;
 }
@@ -1396,9 +1401,31 @@ div[data-phase='active'] {
   color: var(--dsw-alias-brand-primary);
 }
 
+.liuli-menu-icon {
+  display: inline-flex;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.liuli-menu-danger .liuli-menu-icon {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.liuli-menu-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .liuli-menu-group {
-  padding: 6px 10px 4px;
-  font-size: 11px;
+  padding: 8px 10px;
+  font-size: 12px;
   line-height: 16px;
   color: var(--dsw-alias-label-tertiary);
 }
