@@ -1030,16 +1030,36 @@ div[data-phase='active'] {
    官方实底换亚克力配方（border-radius 18px 控件）。
    :not([class*="_toggle"]) 排除开关：toggle 有独立轨道设计
    （关=border-l3 灰、开=品牌色），亚克力覆盖会让开态失去品牌色。
-   :not([class*="Primary"]) 排除品牌主按钮（保存/添加等）：
-   官方 button-primary-fill 品牌色底 + onBrand 前景，亚克力覆盖会
-   让主按钮失去品牌色（模型分区 rowCard 内的保存按钮曾被误伤）。 */
-[role="dialog"] [class*="_row"] button:not([class*="_toggle"]):not([class*="Primary"]),
+   :not([class*="Button"]) 排除命名按钮（primary/secondary/add 等，
+   类名如 -ccrBG_primaryButton 小写 p —— 之前用 [class*="Primary"]
+   大小写不匹配，保存按钮被误伤成亚克力+白字不可读）。 */
+[role="dialog"] [class*="_row"] button:not([class*="_toggle"]):not([class*="Button"]),
 [role="dialog"] [class*="_row"] select,
 [role="dialog"] [class*="_row"] input {
   background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity)) !important;
   background-image: var(--denpa-noise) !important;
   -webkit-backdrop-filter: var(--denpa-material-blur) !important;
   backdrop-filter: var(--denpa-material-blur) !important;
+}
+
+/* 设置对话框输入框（插件配置 fields 等）：官方 bg-layer-3 实色浅灰，
+   视觉像硬编码 —— 统一亚克力配方，与设置其他控件一致。 */
+[role="dialog"] input {
+  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity)) !important;
+  background-image: var(--denpa-noise) !important;
+  -webkit-backdrop-filter: var(--denpa-material-blur) !important;
+  backdrop-filter: var(--denpa-material-blur) !important;
+}
+
+/* 插件卡保存按钮：官方用 label-primary 反转（深底浅字，视觉像硬编码），
+   改为品牌主按钮（与模型分区保存一致）。 */
+[role="dialog"] [class*="_save"] {
+  background: var(--dsw-alias-button-primary-fill) !important;
+  color: var(--dsw-alias-label-primary-foreground) !important;
+}
+
+[role="dialog"] [class*="_save"]:hover:not(:disabled) {
+  background: var(--dsw-alias-button-primary-hover) !important;
 }
 
 /* 设置分区卡片（插件配置卡 / 插件目录卡 / Agent preset 卡）：
