@@ -434,14 +434,6 @@ body:not([data-ds-dark-theme]) .previewEffect::after {
   flex-wrap: wrap;
 }
 
-.previewHint {
-  flex: 1;
-  min-width: 0;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
-}
-
 .previewNote {
   font-size: 12px;
   line-height: 18px;

@@ -622,10 +622,12 @@ div[class*="hoverCard"] {
   transition: padding 300ms var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1)) !important;
 }
 
-/* 收起态（rail）：官方 56px 轨道贴边、无侧栏留白 —— 展开态的 16px
-   左侧 padding 会把 rail 列挤窄（56-16=40），控件溢出错位。 */
+/* 收起态（rail）：官方 56px 轨道贴边、无左右留白 —— 展开态的 16px
+   左侧 padding 会把 rail 列挤窄（56-16=40），控件溢出错位。
+   垂直保留 16px：与展开态一致，root/面板高度不因收起而变（用户要求
+   "收起高度与展开一致"）。 */
 [class*="_sidebarCol"]:has([class*="_collapsed"]) {
-  padding: 0 !important;
+  padding: 16px 0 !important;
 }
 
 /* 收起态统一高度到展开态（用户要求）：logoRow 保持展开态 60px
