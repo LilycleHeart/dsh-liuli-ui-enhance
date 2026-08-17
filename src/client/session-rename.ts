@@ -59,8 +59,8 @@ export function locateTitleSpan(row: HTMLElement, title: string): HTMLElement | 
   return hit ?? null
 }
 
-/** 把一个 fixed <input> 覆盖到标题 span 上，进入内联编辑。 */
-export function mountEditor(ctx: Pick<ClientContext, 'sessions'>, id: string, title: string, span: HTMLElement): void {
+/** 把一个 fixed <input> 覆盖到标题 span 上，进入内联编辑；提交经 commit 回调。 */
+export function mountEditor(span: HTMLElement, title: string, commit: (title: string) => Promise<unknown>): void {
   const rect = span.getBoundingClientRect()
   const input = document.createElement('input')
   input.type = 'text'
@@ -102,27 +102,25 @@ export function mountEditor(ctx: Pick<ClientContext, 'sessions'>, id: string, ti
     input.removeEventListener('blur', onBlur)
     input.remove()
   }
-  const commit = (): void => {
+  const doCommit = (): void => {
     if (done) return
     const trimmed = input.value.trim()
     if (trimmed === '' || trimmed === title.trim()) { finish(); return }
-    const session = ctx.sessions.binding(id)?.session
-    if (session === undefined) { finish(); return }
     input.disabled = true
-    session.rename(trimmed).then(() => {
+    commit(trimmed).then(() => {
       // 成功：宿主 list 更新触发 React 重渲染，标题 span 文本自动更新
       finish()
     }).catch((reason: unknown) => {
-      console.warn('liuli session rename failed:', reason)
+      console.warn('liuli rename failed:', reason)
       finish()
     })
   }
   const cancel = (): void => { finish() }
   const onKey = (e: KeyboardEvent): void => {
-    if (e.key === 'Enter') { e.preventDefault(); commit() }
+    if (e.key === 'Enter') { e.preventDefault(); doCommit() }
     else if (e.key === 'Escape') { e.preventDefault(); cancel() }
   }
-  const onBlur = (): void => { commit() }
+  const onBlur = (): void => { doCommit() }
   input.addEventListener('keydown', onKey)
   input.addEventListener('blur', onBlur)
 }
@@ -152,7 +150,9 @@ export function startSessionRename(ctx: Pick<ClientContext, 'sessions'>): () => 
     if (summary === undefined) return
     const span = locateTitleSpan(row, summary.displayTitle)
     if (span === null) return
-    mountEditor(ctx, id, summary.displayTitle, span)
+    const session = ctx.sessions.binding(id)?.session
+    if (session === undefined) return
+    mountEditor(span, summary.displayTitle, (t) => session.rename(t))
   }
   document.addEventListener('dblclick', onDblClick, true)
   return () => {
