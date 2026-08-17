@@ -504,23 +504,25 @@ div[role="menu"] [class*="_groupTitle"] {
 
 /* ════════════════════════════════════════════════════════════
  * 模型/提供商设置卡片：rowCard / addCard / setupCard 及内嵌 editor。
+ * 用卡片级亚克力配方（0.45 + 噪声 + 磨砂），与其他设置分区卡片一致
+ * —— 之前用 input-major（0.22）过透，观感差异明显。
  * ════════════════════════════════════════════════════════════ */
 li[class*="rowCard"],
 li[class*="setupCard"],
 div[class*="addCard"] {
-  background-color: var(--dsw-specific-input-major);
-  background-image: var(--denpa-noise);
-  -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
-  backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity)) !important;
+  background-image: var(--denpa-noise) !important;
+  -webkit-backdrop-filter: var(--denpa-material-blur) !important;
+  backdrop-filter: var(--denpa-material-blur) !important;
 }
 
 li[class*="rowCard"] div[class*="_editor"],
 div[class*="addCard"] div[class*="_editor"],
 li[class*="setupCard"] div[class*="_editor"] {
-  background-color: var(--dsw-specific-input-major);
-  background-image: var(--denpa-noise);
-  -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
-  backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity)) !important;
+  background-image: var(--denpa-noise) !important;
+  -webkit-backdrop-filter: var(--denpa-material-blur) !important;
+  backdrop-filter: var(--denpa-material-blur) !important;
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -1025,8 +1027,11 @@ div[data-phase='active'] {
 /* 设置行药丸控件（语言/Agent preset/Enter 行为/权限选择器）：
    官方实底换亚克力配方（border-radius 18px 控件）。
    :not([class*="_toggle"]) 排除开关：toggle 有独立轨道设计
-   （关=border-l3 灰、开=品牌色），亚克力覆盖会让开态失去品牌色。 */
-[role="dialog"] [class*="_row"] button:not([class*="_toggle"]),
+   （关=border-l3 灰、开=品牌色），亚克力覆盖会让开态失去品牌色。
+   :not([class*="Primary"]) 排除品牌主按钮（保存/添加等）：
+   官方 button-primary-fill 品牌色底 + onBrand 前景，亚克力覆盖会
+   让主按钮失去品牌色（模型分区 rowCard 内的保存按钮曾被误伤）。 */
+[role="dialog"] [class*="_row"] button:not([class*="_toggle"]):not([class*="Primary"]),
 [role="dialog"] [class*="_row"] select,
 [role="dialog"] [class*="_row"] input {
   background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity)) !important;
