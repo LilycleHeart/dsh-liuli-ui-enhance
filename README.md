@@ -55,7 +55,7 @@ DeepSeek Harness 的 **Material Design 3 × Fluent 2 融合主题**插件:取 Ma
 | ⚪ 悬浮工具球 | 常驻悬浮圆点:贴边吸附半隐藏(JS 热区防抖动)、拖拽随行、打开后自动夹进视口;快捷键 `Alt+Shift+E` 唤起 |
 | 🎯 元素选择器 | 悬浮球进入拾取模式后点击任意页面元素,生成引用 chip 插入当前会话输入框(`@` 触发源 + ReferenceCodec);发送后用户气泡中以简洁卡片展示,悬停展开详情 |
 | 🎞️ 会话切换动画 | 切换会话/新消息入场效果(10 选 1):淡入/上浮/下沉/右滑/缩放/模糊/弹性/级联×2/关闭;插件内 MutationObserver 挂类,动画独立于宿主组件实现 |
-| 🖥️ 工作区预览 | header「预览工作区」按钮展开宿主右侧 details 布局列;「产物」模式显示当前会话 cwd 里生成的产物目录列表(插件 node 半 `/preview` 路由,`?artifacts=1` 强制列表);「浏览器」模式加载 localhost/dev server 或前端产物,点击会话里的 localhost/前端文件链接自动切换到浏览器模式;元素选择器可直接在 iframe 内拾取元素插入引用 chip |
+| 🖥️ 右侧边栏(ZCode 侧边面板 1:1) | 按 ZCode app.asar 实测复刻的标签式侧边面板:48px 标签条(搜索标签页概览 + 可拖拽排序标签 + 新增标签下拉 + 扩大/恢复面板宽度),标签类型 Treemapping(文件树)/仓库 Wiki/审查(Git 图谱)/浏览器/代码查看(图标路径取自 ZCode lucide 定义);标签右键关闭/关闭其他/关闭所有,概览弹层含最近关闭重开、相对时间;空状态「打开标签页」;`Ctrl/Cmd+Alt+B` 切换面板(header panel-right 按钮),左缘拖宽 + 宽度/标签集合持久化;文件树走插件 node 半 `/liuli-sidebar/*` 路由(筛选/仅变更/Git 状态/右键/拖拽进聊天),浏览器面板后退/前进/刷新/元素拾取,代码查看经「打开文件…」检索后走 `/preview` iframe;命令中心 `Ctrl/Cmd+K` 含 切换面板/打开文件 等 16 条命令 |
 | 🔤 主题字体 | CSS `@import` 加载 MiSans / Inter / Space Grotesk / JetBrains Mono(字体族令牌早已引用,官方 harness 不注入 link,由插件自行加载) |
 | ⚙️ 设置「界面」分区 | 20 项设置(取色/背景/材质/字体/圆角/泛光/阴影/宽边模式/壁纸适应与选区/会话动画),即时生效、自动保存 |
 
@@ -118,7 +118,10 @@ packages/client/liuli-theme/
 │       ├── SupplierQuota.tsx / .module.css      # header 标题区额度/余额普通文本
 │       ├── TurnRail.tsx / .module.css           # DenpaPush 时间线风格轮次刻度侧边栏
 │       ├── FloatBall.tsx / .module.css / .types.ts  # 悬浮工具球 + 拾取模式
-│       ├── PreviewPanel.tsx / .module.css       # 工作区预览列(产物/浏览器模式 + 元素拾取)与 header 开关按钮
+│       ├── PreviewPanel.tsx / .module.css       # ZCode 侧边面板壳:标签条/概览/新增/右键菜单/空状态 + 宽度覆盖 + header 切换按钮
+│       ├── RightSidebarPanels.tsx / .module.css  # 侧边面板标签内容:命令中心/文件树/Wiki/Git
+│       ├── SidePaneIcons.tsx                     # 侧边面板图标(lucide 路径取自 ZCode bundle,1:1)
+│       ├── right-sidebar-api.ts                  # /liuli-sidebar/* Host 数据 API
 │       ├── element-picker.ts # 元素选择器:selector/文本/矩形/颜色信息提取与序列化(支持 iframe 文档)
 │       ├── element-card.ts   # 用户消息中的元素引用纯文本 → 卡片 DOM(MutationObserver 装饰)
 │       ├── locales.ts        # denpa-appearance 文案(zh/en,键集完整性互检)
@@ -131,7 +134,7 @@ packages/client/liuli-theme/
 主题完全自包含,只在官方 harness 已有的扩展点上挂载,不依赖任何未发布的自定义 slot 或组件改动:
 
 - `dsh-client-ui-conversation`:header 的 `actions` / `utilities` 两个官方 slot 是全部 header 组件的挂点(声纹、主题切换、额度、拉伸手柄、回合导轨、预览按钮——组件把内容 portal 到自己的锚点,挂载点仅作生命周期)。会话切换动画不依赖宿主挂类逻辑:插件用 `MutationObserver` 直接在消息列(`[data-chat-flow]`)的新增节点上挂入场类。
-- `dsh-client-ui-layout`:悬浮球是插件自有 overlay(独立 React root + fixed 定位);工作区预览面板占用宿主 `details` 布局列(`priority: -1` 替换官方工具详情列),随布局动画从右侧展开/收起。
+- `dsh-client-ui-layout`:悬浮球是插件自有 overlay(独立 React root + fixed 定位);右侧边栏面板占用宿主 `details` 布局列(`priority: -1` 替换官方工具详情列),随布局动画从右侧展开/收起。
 - `dsh-client-ui-theme`:Appearance 外观行点击时 dispatch `denpa:set-theme`(带坐标),由本插件的事件桥接 `startViewTransition` 圆形遮罩;桥未就绪时降级直连切换。
 - `dsh-host-webserver`:node 半注册 `/liuli-quota` 与 `/preview` 两条前缀路由。
 - 主题观感(令牌、材质、圆角、侧栏/设置浮层样式)全部在插件的 `denpa.css` 内以 CSS 变量与选择器覆盖实现,不改任一宿主组件源码。
@@ -163,5 +166,5 @@ chip 内容随用户消息成为对话前缀的一部分,与普通用户消息�
 - 声纹监听只捕获系统音频:依赖 `getDisplayMedia` 用户授权(共享「整个屏幕」并勾选「分享系统音频」),不降级麦克风,也不会绕过授权。
 - 壁纸以压缩 JPEG dataURL 持久化,受 `localStorage` 配额限制;超大原图会先压缩再保存。
 - 会话切换动画是 DOM 观察层实现(消息节点挂类),并非宿主组件级动画:流式更新触发的部分节点重挂载也会再次入场,与宿主组件的缓存策略无关。
-- 工作区预览面板占用宿主 `details` 布局列,会替换官方工具详情列(工具调用详情不再显示在右侧列);`/preview` 路由只接受 loopback/同源 Host(局域网部署需额外配置信任域名,当前未开放该选项)。浏览器模式直接 iframe 加载 `localhost`/`127.0.0.1` 地址,若目标 dev server 未允许被 iframe 嵌入则可能显示空白;面板内的元素拾取要求 `/preview` 与页面同源(默认满足)。
+- 右侧边栏面板占用宿主 `details` 布局列,会替换官方工具详情列(工具调用详情不再显示在右侧列);`/preview` 与 `/liuli-sidebar` 路由只接受 loopback/同源 Host(局域网部署需额外配置信任域名,当前未开放该选项)。浏览器模式直接 iframe 加载 `localhost`/`127.0.0.1` 地址,若目标 dev server 未允许被 iframe 嵌入则可能显示空白;面板内的元素拾取要求 `/preview` 与页面同源(默认满足)。
 - 会话侧栏行标记(官方 WIP 里有但未发布):官方树行不在 DOM 暴露会话 id,插件无法可靠对应具体会话,故本插件不提供该功能。

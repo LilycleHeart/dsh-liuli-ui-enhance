@@ -6,14 +6,14 @@
  * 目录行弹出自绘菜单，动作经 ctx.workspaces.rename / ctx.workspaces.delete。
  * 未分组桶（ungrouped，无 workspaceId）在列表里匹配不到，自然不弹菜单。
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, WorkspaceId } from '@deepseek-ai/dsh-client-runtime/client'
 import { readRowTitle, locateTitleSpan, mountEditor } from './session-rename.ts'
 import { ICONS } from './menu-icons.ts'
 
 type Ctx = Pick<ClientContext, 'workspaces'>
 
 /** 从目录行 DOM 反查工作区（标题匹配 items；未分组桶匹配不到 → undefined）。 */
-function resolveWorkspace(ctx: Ctx, row: HTMLElement): { id: string; title: string } | undefined {
+function resolveWorkspace(ctx: Ctx, row: HTMLElement): { id: WorkspaceId; title: string } | undefined {
   const title = readRowTitle(row)
   if (title === undefined) return undefined
   const items = ctx.workspaces.list.getSnapshot().items
@@ -22,7 +22,7 @@ function resolveWorkspace(ctx: Ctx, row: HTMLElement): { id: string; title: stri
   return { id: ws.workspaceId, title: ws.title }
 }
 
-function renderMenu(ctx: Ctx, row: HTMLElement, id: string, title: string, x: number, y: number): void {
+function renderMenu(ctx: Ctx, row: HTMLElement, id: WorkspaceId, title: string, x: number, y: number): void {
   document.querySelectorAll('[data-liuli-context-menu]').forEach(el => el.remove())
   const menu = document.createElement('div')
   menu.setAttribute('role', 'menu')

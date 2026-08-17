@@ -7,7 +7,7 @@
  * localStorage store，重命名复用 session-rename.ts 的内联输入框，分叉/归档
  * 经 ctx.sessions.fork / ctx.workspaces.archiveSession。
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import { resolveSessionId, readRowTitle, locateTitleSpan, mountEditor } from './session-rename.ts'
 import { getSessionMarker, setSessionMarker, MARKER_LABEL, type SessionMarker } from './session-markers.ts'
 import { ICONS } from './menu-icons.ts'
@@ -23,7 +23,7 @@ const MARKER_ICON: Record<SessionMarker, string> = {
 type Ctx = Pick<ClientContext, 'sessions' | 'workspaces'>
 
 /** 弹出一个固定定位的自绘菜单；返回 close 用于外部清理。 */
-function renderMenu(ctx: Ctx, row: HTMLElement, id: string, title: string, x: number, y: number): void {
+function renderMenu(ctx: Ctx, row: HTMLElement, id: SessionId, title: string, x: number, y: number): void {
   // 先清掉可能残留的旧菜单
   document.querySelectorAll('[data-liuli-context-menu]').forEach(el => el.remove())
 

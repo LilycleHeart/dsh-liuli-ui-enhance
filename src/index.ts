@@ -8,8 +8,10 @@
  *   只服务会话目录内的文件，Host fence 防 DNS rebinding。
  */
 import { createReadStream } from 'node:fs'
-import { readdir, stat } from 'node:fs/promises'
-import { extname, resolve as resolvePath, sep } from 'node:path'
+import { readFile, readdir, stat } from 'node:fs/promises'
+import { execFile as execFileCb } from 'node:child_process'
+import { promisify } from 'node:util'
+import { extname, join as joinPath, resolve as resolvePath, sep } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
@@ -30,6 +32,159 @@ interface HostSessionCwd {
 
 function hostSessions(ctx: Context): { get(id: string): HostSessionCwd | undefined } {
   return (ctx as unknown as { sessions: { get(id: string): HostSessionCwd | undefined } }).sessions
+}
+
+const execFile = promisify(execFileCb)
+
+/* ── /liuli-sidebar：右侧边栏（文件树 / Git / Wiki）Host 数据路由 ───────── */
+
+interface SidebarTreeEntry {
+  name: string
+  path: string
+  kind: 'file' | 'dir'
+  hidden: boolean
+}
+
+interface SidebarGitStatusRow {
+  x: string
+  y: string
+  path: string
+  /** 重命名时旧路径（porcelain 行内的 old -> new）。 */
+  oldPath?: string
+}
+
+/** 会话 cwd 解析；与 /preview 共用同一 Host fence。 */
+function sidebarSessionRoot(ctx: Context, sessionId: string): string | undefined {
+  return hostSessions(ctx).get(sessionId)?.header.cwd
+}
+
+/** 读取一层目录树（目录优先，名称排序，隐藏文件保留但标记）。 */
+async function sidebarReadTree(root: string, rel: string): Promise<SidebarTreeEntry[]> {
+  const target = resolveWithin(root, rel)
+  if (target === undefined) throw new Error('forbidden')
+  const info = await stat(target)
+  if (!info.isDirectory()) throw new Error('not a directory')
+  const entries = await readdir(target, { withFileTypes: true })
+  const rows: SidebarTreeEntry[] = entries.map(entry => ({
+    name: entry.name,
+    path: joinPath(target, entry.name),
+    kind: entry.isDirectory() ? 'dir' as const : 'file' as const,
+    hidden: entry.name.startsWith('.'),
+  }))
+  rows.sort((a, b) => {
+    if (a.kind !== b.kind) return a.kind === 'dir' ? -1 : 1
+    return a.name.localeCompare(b.name)
+  })
+  return rows
+}
+
+/** Git status（porcelain v1）；非仓库时返回 undefined。 */
+async function sidebarGitStatus(root: string): Promise<SidebarGitStatusRow[] | undefined> {
+  try {
+    const { stdout } = await execFile('git', ['-C', root, 'status', '--porcelain=v1'], {
+      timeout: 8000,
+      maxBuffer: 1024 * 1024,
+      windowsHide: true,
+    })
+    return stdout.split(/\r?\n/).filter(Boolean).map(line => {
+      const x = line[0] ?? ' '
+      const y = line[1] ?? ' '
+      const rest = line.slice(3)
+      const arrow = rest.indexOf(' -> ')
+      if (arrow >= 0) {
+        return { x, y, path: rest.slice(arrow + 4), oldPath: rest.slice(0, arrow) }
+      }
+      return { x, y, path: rest }
+    })
+  } catch {
+    return undefined
+  }
+}
+
+/** Git 提交（结构化字段，供前端点击查看详情）。 */
+interface SidebarGitCommit {
+  hash: string
+  short: string
+  subject: string
+  author: string
+  date: string
+  parents: string[]
+}
+
+/** Git log graph（文本图 + 结构化提交）。 */
+async function sidebarGitLog(root: string, skip = 0): Promise<{ branch: string; log: string; commits: SidebarGitCommit[]; hasMore: boolean } | undefined> {
+  try {
+    const [branch, log, detailed] = await Promise.all([
+      execFile('git', ['-C', root, 'rev-parse', '--abbrev-ref', 'HEAD'], {
+        timeout: 8000, maxBuffer: 1024 * 1024, windowsHide: true,
+      }),
+      execFile('git', ['-C', root, 'log', '--oneline', '--graph', '--decorate', '--skip', String(skip), '-n', '80'], {
+        timeout: 8000, maxBuffer: 1024 * 1024, windowsHide: true,
+      }),
+      execFile('git', ['-C', root, 'log', '--skip', String(skip), '-n', '80', '--date=short', '--pretty=format:%H%x1f%h%x1f%s%x1f%an%x1f%ad%x1f%P'], {
+        timeout: 8000, maxBuffer: 1024 * 1024, windowsHide: true,
+      }),
+    ])
+    const commits: SidebarGitCommit[] = detailed.stdout.split(/\r?\n/).filter(Boolean).map(line => {
+      const [hash = '', short = '', subject = '', author = '', date = '', parentsRaw = ''] = line.split('\x1f')
+      return {
+        hash,
+        short,
+        subject,
+        author,
+        date,
+        parents: parentsRaw.split(/\s+/).filter(Boolean),
+      }
+    })
+    return {
+      branch: branch.stdout.trim().split(/\r?\n/)[0] ?? 'HEAD',
+      log: log.stdout.trim(),
+      commits,
+      hasMore: commits.length === 80,
+    }
+  } catch {
+    return undefined
+  }
+}
+
+/** Wiki：README 摘录 + 顶层模块地图（生成式架构导读的朴素实现）。 */
+async function sidebarReadWiki(root: string): Promise<{
+  title: string
+  readme: string[]
+  readmePath?: string
+  modules: Array<{ name: string; files: Array<{ name: string; path: string }> }>
+}> {
+  const title = root.split(sep).pop() ?? 'workspace'
+  const readme: string[] = []
+  let readmePath: string | undefined
+  for (const candidate of ['README.md', 'README.zh.md', 'readme.md', 'README']) {
+    try {
+      const text = await readFile(joinPath(root, candidate), 'utf8')
+      readme.push(...text.split(/\r?\n/).filter(line => line.trim() !== '').slice(0, 40).map(line => line.replace(/^#{1,6}\s*/, '').trim()).filter(Boolean))
+      readmePath = joinPath(root, candidate)
+      break
+    } catch {
+      // try next candidate
+    }
+  }
+  const entries = await readdir(root, { withFileTypes: true })
+  const modules: Array<{ name: string; files: Array<{ name: string; path: string }> }> = []
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith('.') || entry.name === 'node_modules') continue
+    const dirPath = joinPath(root, entry.name)
+    let files: Array<{ name: string; path: string }> = []
+    try {
+      files = (await readdir(dirPath, { withFileTypes: true }))
+        .filter(f => f.isFile() && !f.name.startsWith('.'))
+        .slice(0, 8)
+        .map(f => ({ name: f.name, path: joinPath(dirPath, f.name) }))
+    } catch {
+      // unreadable directory
+    }
+    modules.push({ name: entry.name, files })
+  }
+  modules.sort((a, b) => a.name.localeCompare(b.name))
+  return readmePath === undefined ? { title, readme, modules } : { title, readme, readmePath, modules }
 }
 
 const DEEPSEEK_KEY_REFS = ['DEEPSEEK_API_KEY', 'DEEPSEEK_OFFICIAL_API_KEY']
@@ -178,6 +333,7 @@ export function apply(ctx: Context): void {
   }
   ctx.effect(() => ctx.webServer.register(route), 'liuli-theme: /liuli-quota route')
   ctx.effect(() => ctx.webServer.register(previewRoute(ctx)), 'liuli-theme: /preview route')
+  ctx.effect(() => ctx.webServer.register(sidebarRoute(ctx)), 'liuli-theme: /liuli-sidebar route')
 }
 
 /* ── /preview：会话 cwd 同源静态服务（预览面板 iframe）────────────── */
@@ -504,5 +660,75 @@ function previewRoute(ctx: Context): WebRoute {
     kind: 'prefix',
     path: '/preview',
     handler: (req, res) => { void servePreview(ctx, req, res) },
+  }
+}
+
+/* ── /liuli-sidebar：右侧边栏数据路由实现 ─────────────────────────────── */
+
+/** 解析 /liuli-sidebar 请求并返回 JSON。 */
+async function serveSidebar(ctx: Context, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    json(res, 405, { ok: false, error: 'method not allowed' })
+    return
+  }
+  const host = req.headers.host
+  if (host === undefined || !isLoopbackHostname(new URL(`http://${host}`).hostname)) {
+    json(res, 403, { ok: false, error: 'forbidden' })
+    return
+  }
+  const url = new URL(req.url ?? '/', 'http://x')
+  const pathname = url.pathname
+  const sessionId = url.searchParams.get('sessionId') ?? ''
+  if (sessionId === '') {
+    json(res, 400, { ok: false, error: 'missing sessionId' })
+    return
+  }
+  const root = sidebarSessionRoot(ctx, sessionId)
+  if (root === undefined) {
+    json(res, 404, { ok: false, error: 'not found' })
+    return
+  }
+
+  try {
+    if (pathname === '/liuli-sidebar/tree') {
+      const rel = url.searchParams.get('path') ?? ''
+      const entries = await sidebarReadTree(root, rel)
+      json(res, 200, { ok: true, root, rel, entries })
+      return
+    }
+    if (pathname === '/liuli-sidebar/git') {
+      const skip = Math.max(0, Math.trunc(Number(url.searchParams.get('skip') ?? '0')) || 0)
+      const [status, graph] = await Promise.all([sidebarGitStatus(root), sidebarGitLog(root, skip)])
+      json(res, 200, {
+        ok: true,
+        root,
+        git: status !== undefined || graph !== undefined,
+        status: status ?? [],
+        branch: graph?.branch ?? '',
+        log: graph?.log ?? '',
+        commits: graph?.commits ?? [],
+        hasMore: graph?.hasMore ?? false,
+      })
+      return
+    }
+    if (pathname === '/liuli-sidebar/wiki') {
+      const wiki = await sidebarReadWiki(root)
+      json(res, 200, { ok: true, root, ...wiki })
+      return
+    }
+    json(res, 404, { ok: false, error: 'not found' })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    const code = message === 'forbidden' ? 403 : message === 'not a directory' ? 400 : 500
+    json(res, code, { ok: false, error: message })
+  }
+}
+
+/** Build the /liuli-sidebar prefix route. */
+function sidebarRoute(ctx: Context): WebRoute {
+  return {
+    kind: 'prefix',
+    path: '/liuli-sidebar',
+    handler: (req, res) => { void serveSidebar(ctx, req, res) },
   }
 }

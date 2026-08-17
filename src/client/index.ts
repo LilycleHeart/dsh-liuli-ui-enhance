@@ -62,7 +62,7 @@ import { startSessionContextMenu } from './session-context-menu.ts'
 import { startWorkspaceContextMenu } from './workspace-context-menu.ts'
 import {
   PreviewDetailsPanel, PreviewButton, PREVIEW_TOGGLE_EVENT, PREVIEW_NAVIGATE_EVENT,
-  resolvePreviewUrl, setPreviewOpen, togglePreviewOpen,
+  resolvePreviewUrl, setPreviewOpen, togglePreviewOpen, setPaneSyncSuppressed,
 } from './PreviewPanel.tsx'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -196,6 +196,36 @@ export function apply(ctx: ClientContext): void {
     codec: commitCodec,
   }
   ctx.effect(() => ctx.inputTriggers.registerSource(commitSource), 'liuli-theme: commit reference source')
+
+  // ── 文件引用：右侧边栏文件树「添加到聊天」把路径作为引用卡片插入输入框 ──
+  const fileCodec: ReferenceCodec = {
+    clipboardText: ref => ref,
+    serialize: ref => Promise.resolve(ref),
+  }
+  const fileSource: InputTriggerSource = {
+    trigger: '@',
+    name: 'liuli-file',
+    candidates: () => Promise.resolve([]),
+    onPick: () => undefined,
+    codec: fileCodec,
+  }
+  ctx.effect(() => ctx.inputTriggers.registerSource(fileSource), 'liuli-theme: file reference source')
+  const insertFileReference = (path: string): void => {
+    const current = ctx.sessions.list.getSnapshot().current
+    if (current === undefined) return
+    const actx = ctx.sessions.scope(current)
+    if (actx === undefined) return
+    const input = ctx.conversation.input.for(actx)
+    const state = input.state.getSnapshot()
+    const span = { start: state.draft.length, end: state.draft.length, draftRev: state.draftRev }
+    input.insertReference({
+      source: 'liuli-file',
+      ref: path,
+      label: '文件: ' + path,
+      clipboardText: path,
+    }, span)
+  }
+
   const insertCommitReference = (commit: string): void => {
     const current = ctx.sessions.list.getSnapshot().current
     if (current === undefined) return
@@ -229,9 +259,22 @@ export function apply(ctx: ClientContext): void {
   // ── 工作区预览列：header 按钮开合宿主右侧 details 列，面板占用 details slot ──
   const togglePreview = (): void => {
     const open = togglePreviewOpen()
+    setPaneSyncSuppressed(!open)
     if (open) ctx.layout.openDetails()
     else ctx.layout.closeDetails()
     window.dispatchEvent(new CustomEvent(PREVIEW_TOGGLE_EVENT))
+  }
+  const stepSession = (dir: 1 | -1): void => {
+    const snap = ctx.sessions.list.getSnapshot()
+    const current = snap.current
+    if (current === undefined) {
+      const first = snap.ids[0]
+      if (first !== undefined) ctx.sessions.open(first)
+      return
+    }
+    const index = snap.ids.indexOf(current)
+    const next = snap.ids[index + dir]
+    if (next !== undefined) ctx.sessions.open(next)
   }
   ctx.slots.inject('details', () => ctx.slots.register({
     name: 'details',
@@ -239,15 +282,31 @@ export function apply(ctx: ClientContext): void {
     inject: () => ({
       openDetails: () => { ctx.layout.openDetails() },
       closeDetails: () => {
+        setPaneSyncSuppressed(true)
         setPreviewOpen(false)
         ctx.layout.closeDetails()
       },
       insertElement,
+      addFileToChat: insertFileReference,
+      openPath: (path: string) => { void ctx.workspaces.openPath(path) },
+      startSession: () => { ctx.workspaces.startSession() },
+      pickDirectory: async () => {
+        const path = await ctx.workspaces.pickDirectory()
+        if (path !== null && path !== '') await ctx.workspaces.create({ path })
+      },
+      toggleTheme: () => {
+        const dark = document.body.hasAttribute('data-ds-dark-theme')
+        ctx.theme.setTheme(dark ? 'light' : 'dark')
+      },
+      prevSession: () => { stepSession(-1) },
+      nextSession: () => { stepSession(1) },
     }),
   }, PreviewDetailsPanel))
 
   // 切换会话时宿主会自动收起 details 列；这里同步重置预览开关，避免下次按钮反向。
+  // 宿主收起同样走关闭动画：抑制 RO 同步，防止动画期间被翻回打开。
   ctx.effect(() => ctx.sessions.list.subscribe(() => {
+    setPaneSyncSuppressed(true)
     setPreviewOpen(false)
   }), 'liuli-theme: preview open reset on session switch')
 

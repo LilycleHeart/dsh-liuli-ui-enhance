@@ -9,7 +9,7 @@
  * 双击前首次 click 已同步触发 ctx.sessions.open(id)，故 dblclick 时
  * list 快照的 current 即为目标会话，无需反查行级 sessionId。
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 
 /** 行内标题文本：第一个非空、无子元素、不在按钮内的叶子 span（状态点/标记都是 SVG，无文本）。 */
 export function readRowTitle(row: HTMLElement): string | undefined {
@@ -23,7 +23,7 @@ export function readRowTitle(row: HTMLElement): string | undefined {
  * 优先用 current（行 aria-selected=true）；否则按 displayTitle 文本匹配
  * （标题唯一时可靠，插件覆盖方案的已知折中）。
  */
-export function resolveSessionId(ctx: Pick<ClientContext, 'sessions'>, row: HTMLElement): string | undefined {
+export function resolveSessionId(ctx: Pick<ClientContext, 'sessions'>, row: HTMLElement): SessionId | undefined {
   const snap = ctx.sessions.list.getSnapshot()
   if (row.getAttribute('aria-selected') === 'true') return snap.current
   // 收集行内所有非空叶子 span 文本（状态/标题/时间等），看哪个 displayTitle 命中。
