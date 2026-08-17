@@ -610,11 +610,14 @@ div[class*="hoverCard"] {
   background-repeat: no-repeat !important;
 }
 
-/* 列留白：卡片悬浮观感（侧栏与中间列各留边距） */
+/* 列留白：卡片悬浮观感（侧栏与中间列各留边距）。
+   padding 过渡：收起/展开时 sidebarCol 的 padding 16↔0 切换与
+   AppFrame 轨道滑动（300ms）同步，避免收起时容器宽度瞬时跳变。 */
 [class*="_sidebarCol"] {
   padding: 16px 16px 16px 0 !important;
   background: transparent !important;
   border-right: none !important;
+  transition: padding 300ms var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1)) !important;
 }
 
 /* 收起态（rail）：官方 56px 轨道贴边、无侧栏留白 —— 展开态的 16px
@@ -901,6 +904,17 @@ div[data-phase='active'] {
     var(--dsw-alias-brand-primary) 60%,
     var(--dsw-alias-brand-primary) 100%
   ) !important;
+}
+
+/* 计时 span（"38秒"）：父级 background-clip:text 的渐变会作用到所有
+   子文本，把时钟也染成品牌渐变 —— 强制恢复 caption 灰色文本、清除
+   渐变背景与 text-clip（官方 -webkit-text-fill-color 保持 caption）。 */
+[class*="_turnStatus"] [class*="_turnStatusClock"] {
+  background-image: none !important;
+  -webkit-background-clip: border-box !important;
+  background-clip: border-box !important;
+  color: var(--dsw-alias-label-caption) !important;
+  -webkit-text-fill-color: var(--dsw-alias-label-caption) !important;
 }
 
 /* 输入卡：官方已读 --dsw-specific-input-major（插件半透明变量），补辉光/
