@@ -57,6 +57,8 @@ import { createRoot } from 'react-dom/client'
 import { formatSelection, type PickedElement } from './element-picker.ts'
 import { startElementCardDecoration } from './element-card.ts'
 import { startSessionRename } from './session-rename.ts'
+import { startSessionMarkerDecoration } from './session-markers.ts'
+import { startSessionContextMenu } from './session-context-menu.ts'
 import {
   PreviewDetailsPanel, PreviewButton, PREVIEW_TOGGLE_EVENT, PREVIEW_NAVIGATE_EVENT,
   resolvePreviewUrl, setPreviewOpen, togglePreviewOpen,
@@ -77,7 +79,7 @@ const STYLE_ID = 'liuli-theme-css'
 // 设置持久化键在 denpa-settings.ts 中定义（HeaderEffects 运行时读取同一键）。
 
 /** Required services: slots/locale for the settings section, theme for the toggle bridge, connection/remote for supplier quota. */
-export const inject = ['slots', 'locale', 'theme', 'layout', 'sessions', 'conversation', 'inputTriggers', 'connection', 'remote']
+export const inject = ['slots', 'locale', 'theme', 'layout', 'sessions', 'workspaces', 'conversation', 'inputTriggers', 'connection', 'remote']
 
 /** 宽边模式样式：对话信息区在宽屏下撑满可用宽度（提高左右空间利用率）。 */
 const WIDE_MODE_CSS = [
@@ -122,6 +124,12 @@ export function apply(ctx: ClientContext): void {
 
   // ── 会话内联重命名：双击侧栏会话标题进入内联编辑（不弹菜单/对话框）──
   ctx.effect(() => startSessionRename(ctx), 'liuli-theme: session inline rename')
+
+  // ── 会话标记：localStorage store + 会话行图标装饰 ──
+  ctx.effect(() => startSessionMarkerDecoration(ctx), 'liuli-theme: session marker decoration')
+
+  // ── 会话栏右键菜单：右键会话行弹出标记/重命名/分叉/归档（不改官方代码）──
+  ctx.effect(() => startSessionContextMenu(ctx), 'liuli-theme: session context menu')
 
   // ── 供应商额度：注入 connection/remote，供 header 工具区显示当前供应商额度 ──
   initSupplierQuota(ctx.get('connection') as ConnectionHandle, ctx.get('modelDirectories'))

@@ -11,8 +11,38 @@
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 
+/** 行内标题文本：第一个非空、无子元素、不在按钮内的叶子 span（状态点/标记都是 SVG，无文本）。 */
+export function readRowTitle(row: HTMLElement): string | undefined {
+  const leaf = Array.from(row.querySelectorAll<HTMLElement>('span'))
+    .find(s => s.children.length === 0 && (s.textContent?.trim().length ?? 0) > 0 && s.closest('button') === null)
+  return leaf?.textContent?.trim()
+}
+
+/**
+ * 从会话行 DOM 反查 sessionId（官方行不暴露 data-session-id）。
+ * 优先用 current（行 aria-selected=true）；否则按 displayTitle 文本匹配
+ * （标题唯一时可靠，插件覆盖方案的已知折中）。
+ */
+export function resolveSessionId(ctx: Pick<ClientContext, 'sessions'>, row: HTMLElement): string | undefined {
+  const snap = ctx.sessions.list.getSnapshot()
+  if (row.getAttribute('aria-selected') === 'true') return snap.current
+  // 收集行内所有非空叶子 span 文本（状态/标题/时间等），看哪个 displayTitle 命中。
+  // 不能用"第一个非空叶子"——会话行第一个非空文本往往是状态标签（如"进行中"），
+  // 而非标题。
+  const texts = new Set(
+    Array.from(row.querySelectorAll<HTMLElement>('span'))
+      .filter(s => s.children.length === 0 && (s.textContent?.trim().length ?? 0) > 0 && s.closest('button') === null)
+      .map(s => (s.textContent ?? '').trim()),
+  )
+  for (const id of snap.ids) {
+    const s = snap.byId[id]
+    if (s !== undefined && texts.has(s.displayTitle.trim())) return id
+  }
+  return undefined
+}
+
 /** 行内标题 span 定位：文本等于 displayTitle 的叶子 span。 */
-function locateTitleSpan(row: HTMLElement, title: string): HTMLElement | null {
+export function locateTitleSpan(row: HTMLElement, title: string): HTMLElement | null {
   const wanted = title.trim()
   const spans = Array.from(row.querySelectorAll<HTMLElement>('span'))
   const leaf = spans.filter(s => s.children.length === 0)
@@ -30,7 +60,7 @@ function locateTitleSpan(row: HTMLElement, title: string): HTMLElement | null {
 }
 
 /** 把一个 fixed <input> 覆盖到标题 span 上，进入内联编辑。 */
-function mountEditor(ctx: Pick<ClientContext, 'sessions'>, id: string, title: string, span: HTMLElement): void {
+export function mountEditor(ctx: Pick<ClientContext, 'sessions'>, id: string, title: string, span: HTMLElement): void {
   const rect = span.getBoundingClientRect()
   const input = document.createElement('input')
   input.type = 'text'
