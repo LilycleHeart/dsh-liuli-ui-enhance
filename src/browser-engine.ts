@@ -192,10 +192,10 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
   }
 
   const findWindow = (): ElectronBrowserWindow | undefined => {
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) return win
-    }
-    return undefined
+    // 跳过 DevTools 窗口（detach 模式的 devtools 是独立 BrowserWindow）。
+    const wins = BrowserWindow.getAllWindows().filter(win => !win.isDestroyed())
+    const gui = wins.find(win => !(win as unknown as { webContents?: { isDevTools?(): boolean } }).webContents?.isDevTools?.())
+    return gui ?? wins[0]
   }
 
   const applyBounds = (tab: EngineTab): void => {
@@ -264,7 +264,8 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
       }
     })
     wc.on('did-fail-load', (...args: unknown[]) => {
-      const [errorCode, errorDescription, validatedURL, isMainFrame] = args as [number, string, string, boolean]
+      // 第一个参数是事件对象；errorCode 起才是载荷。
+      const [, errorCode, errorDescription, validatedURL, isMainFrame] = args as [unknown, number, string, string, boolean]
       if (isMainFrame === false) return
       if (errorCode === -3) return // ERR_ABORTED：被新导航打断，非错误（ZCode 同语义）
       tab.state.loading = false
