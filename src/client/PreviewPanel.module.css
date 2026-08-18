@@ -745,3 +745,48 @@
   background: color-mix(in srgb, var(--dsw-alias-brand-primary) 14%, transparent);
   color: var(--dsw-alias-brand-primary, #0079bf);
 }
+
+/* ── 浏览器面板：跨域/禁止嵌入提示条 与 错误态按钮 ── */
+
+.frameHint {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.15));
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 7%, transparent);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary, inherit);
+}
+
+.frameHintText {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.hintBtn {
+  flex: none;
+  padding: 3px 10px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.2));
+  border-radius: var(--denpa-radius-sm, 8px);
+  background: var(--dsw-specific-input-major, rgba(255, 255, 255, 0.5));
+  color: var(--dsw-alias-label-primary, inherit);
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.hintBtn:hover {
+  border-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 60%, transparent);
+  color: var(--dsw-alias-brand-primary, #0079bf);
+}
+
+.emptyActions {
+  display: inline-flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+

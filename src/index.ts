@@ -337,6 +337,7 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.webServer.register(previewRoute(ctx)), 'liuli-theme: /preview route')
   ctx.effect(() => ctx.webServer.register(sidebarRoute(ctx)), 'liuli-theme: /liuli-sidebar route')
   ctx.effect(() => ctx.webServer.registerUpgrade(terminalUpgradeRoute(ctx)), 'liuli-theme: /liuli-terminal upgrade route')
+  ctx.effect(() => ctx.webServer.register(proxyRoute()), 'liuli-theme: /liuli-proxy route')
 }
 
 /* ── /preview：会话 cwd 同源静态服务（预览面板 iframe）────────────── */
@@ -886,4 +887,101 @@ function terminalUpgradeRoute(ctx: Context): WebUpgradeRoute {
     },
   }
 }
+
+/* ── /liuli-proxy：浏览器标签的嵌入代理（剥除 X-Frame-Options/CSP）─────
+ * 纯网页里 iframe 是唯一嵌入原语，目标站点可用 X-Frame-Options/CSP 拒绝嵌入
+ * （ZCode 是 Electron webview 无此限制）。本路由由 Host 抓取目标页：
+ * - 非 HTML（图片/css/js 等）原样流式回传；
+ * - HTML 注入 <base href="最终 URL">，相对/根相对资源仍回原站解析；
+ * 仅接受回环调用方、http/https 目标；10MB 截断；15s 超时。
+ * 限制（物理上限）：站内 JS 的跨源 fetch、登录态 cookie、依赖
+ * location.hostname 的逻辑会降级；站内点击导航离开代理后若目标再次拒绝
+ * 嵌入则重新显示提示。
+ */
+
+const PROXY_MAX_BYTES = 10 * 1024 * 1024
+
+/** Build the /liuli-proxy prefix route. */
+function proxyRoute(): WebRoute {
+  return {
+    kind: 'prefix',
+    path: '/liuli-proxy',
+    handler: (req, res) => { void serveProxy(req, res) },
+  }
+}
+
+/** Resolve one /liuli-proxy request. */
+async function serveProxy(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    json(res, 405, { ok: false, error: 'method not allowed' })
+    return
+  }
+  const host = req.headers.host
+  if (host === undefined || !isLoopbackHostname(new URL(`http://${host}`).hostname)) {
+    json(res, 403, { ok: false, error: 'forbidden' })
+    return
+  }
+  const reqUrl = new URL(req.url ?? '/', 'http://x')
+  const target = reqUrl.searchParams.get('url') ?? ''
+  let parsed: URL
+  try {
+    parsed = new URL(target)
+  } catch {
+    json(res, 400, { ok: false, error: 'invalid url' })
+    return
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    json(res, 400, { ok: false, error: 'unsupported scheme' })
+    return
+  }
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => { controller.abort() }, 15000)
+  let upstream: Response
+  try {
+    upstream = await fetch(parsed, {
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: { 'user-agent': 'Mozilla/5.0 (compatible; liuli-theme-side-pane-proxy)', 'accept': '*/*' },
+    })
+  } catch (error) {
+    clearTimeout(timer)
+    json(res, 502, { ok: false, error: error instanceof Error ? error.message : String(error) })
+    return
+  }
+  clearTimeout(timer)
+
+  const contentType = upstream.headers.get('content-type') ?? 'application/octet-stream'
+  const isHtml = /^text\/html|^application\/xhtml\+xml/i.test(contentType)
+
+  try {
+    if (!isHtml) {
+      res.writeHead(upstream.status, { 'content-type': contentType, 'cache-control': 'no-store' })
+      const body = upstream.body
+      if (body === null || req.method === 'HEAD') { res.end(); return }
+      const reader = body.getReader()
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        res.write(value)
+      }
+      res.end()
+      return
+    }
+    let html = await upstream.text()
+    if (Buffer.byteLength(html) > PROXY_MAX_BYTES) html = Buffer.from(html).subarray(0, PROXY_MAX_BYTES).toString('utf-8')
+    const finalUrl = (upstream.url !== '' ? upstream.url : parsed.href).replace(/#.*$/, '')
+    const baseTag = `<base href="${finalUrl}">`
+    const headMatch = /<head[^>]*>/i.exec(html)
+    const injected = headMatch !== null
+      ? html.slice(0, headMatch.index + headMatch[0].length) + baseTag + html.slice(headMatch.index + headMatch[0].length)
+      : baseTag + html
+    res.writeHead(upstream.status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' })
+    res.end(req.method === 'HEAD' ? undefined : injected)
+  } catch {
+    if (!res.headersSent) json(res, 502, { ok: false, error: 'proxy stream failed' })
+    else res.end()
+  }
+}
+
 
