@@ -585,7 +585,11 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
         if (tab === undefined) { sendJson(res, 404, { ok: false, error: 'unknown tab' }); return }
         if (codeText === '') { sendJson(res, 400, { ok: false, error: 'missing code' }); return }
         try {
-          const value = await tab.view.webContents.executeJavaScript(codeText, true)
+          // 超时保护：未提交文档（如 about:blank）上 executeJavaScript 可能永不 resolve。
+          const timeout = new Promise<never>((_, reject) => {
+            setTimeout(() => { reject(new Error('execute timeout (25s)')) }, 25000)
+          })
+          const value = await Promise.race([tab.view.webContents.executeJavaScript(codeText, true), timeout])
           sendJson(res, 200, { ok: true, value: value === undefined ? null : value })
         } catch (cause) {
           sendJson(res, 200, { ok: false, error: cause instanceof Error ? cause.message : String(cause) })
