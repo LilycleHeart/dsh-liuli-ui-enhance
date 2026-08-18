@@ -1,0 +1,490 @@
+/* DockShellFrame（视觉零侵入 dockable 布局）样式。
+   区域表面/框架/标题栏/缩放手柄全部复用桌面插件 ADVANCED_STYLES 的
+   dshDesktop* 类；本文件只承载 dock 机制自身的结构与新出现的交互件
+   （合并标签条/抓握点/布局菜单/浮动窗口/拖拽视觉），默认布局观感与
+   原生 advanced shell 保持一致。 */
+
+/* ── 帧体：caption 行之下的 dock 画布（占满桌面 frame 网格剩余区域） ── */
+
+.dockBody {
+  position: relative;
+  grid-column: 1 / -1;
+  grid-row: 2 / -1;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ── 面板（dock pane）：最小结构容器，不附加观感 ── */
+
+.pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.splitBox {
+  position: relative;
+}
+
+.splitH {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+}
+
+.splitV {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.shard {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* sash：作为 split 的 flex 成员恰好落在相邻面板分界上（负外边距使其
+   不占净宽、像原生 dshDesktopResizeHandle 一样骑在边界上的隐形拖拽带）。 */
+.sashH {
+  position: relative;
+  flex: 0 0 8px;
+  margin: 0 -4px;
+  z-index: 30;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.sashV {
+  position: relative;
+  flex: 0 0 8px;
+  margin: -4px 0;
+  z-index: 30;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+/* ── 悬停抓握点：单区域面板的隐藏拖拽入口 ── */
+
+.grip {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 40;
+  width: 22px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--dsw-alias-label-tertiary, #999);
+  font-size: 11px;
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 140ms ease, background 140ms ease, color 140ms ease;
+  user-select: none;
+  touch-action: none;
+}
+
+.pane:hover .grip {
+  opacity: 0.65;
+}
+
+.grip:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--dsw-alias-label-primary, #333) 10%, transparent);
+  color: var(--dsw-alias-label-primary, inherit);
+}
+
+/* ── 合并标签条（仅 ≥2 面板的标签组出现） ── */
+
+.tabStrip {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px 6px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.14));
+}
+
+.tabFiller {
+  flex: 1;
+  min-width: 6px;
+}
+
+.tabChip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 180px;
+  padding: 4px 8px;
+  border-radius: 8px 8px 0 0;
+  color: var(--dsw-alias-label-secondary, #666);
+  font-size: 12px;
+  line-height: 18px;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  white-space: nowrap;
+}
+
+.tabChip:hover {
+  color: var(--dsw-alias-label-primary, inherit);
+  background: color-mix(in srgb, var(--dsw-alias-label-primary, #333) 7%, transparent);
+}
+
+.tabChipActive {
+  color: var(--dsw-alias-brand-primary, #0079bf);
+  box-shadow: inset 0 -2px 0 var(--dsw-alias-brand-primary, #0079bf);
+}
+
+.tabLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tabClose {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.55;
+}
+
+.tabClose:hover {
+  opacity: 1;
+  background: rgba(229, 72, 77, 0.16);
+  color: #e5484d;
+}
+
+.paneBody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.paneEmpty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dsw-alias-label-tertiary, #888);
+  font-size: 12px;
+}
+
+/* ── 拖拽视觉（仅拖拽期间出现） ── */
+
+.dropIndicator {
+  position: fixed;
+  z-index: 2147482500;
+  pointer-events: none;
+  border: 2px solid var(--dsw-alias-brand-primary, #0079bf);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary, #0079bf) 14%, transparent);
+}
+
+.dragShield {
+  position: fixed;
+  inset: 0;
+  z-index: 2147482600;
+  background: transparent;
+  cursor: grabbing;
+}
+
+.dragGhost {
+  position: fixed;
+  z-index: 2147482700;
+  pointer-events: none;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-2, rgba(255, 255, 255, 0.92));
+  border: 1px solid var(--dsw-alias-brand-primary, #0079bf);
+  color: var(--dsw-alias-brand-primary, #0079bf);
+  font-size: 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+  white-space: nowrap;
+}
+
+/* ── 布局工作台菜单（悬浮球/Ctrl+Alt+L 唤起的浮动卡片） ── */
+
+.menuCard {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 2147482450;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 300px;
+  padding: 12px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.22));
+  border-radius: 14px;
+  background: var(--dsw-alias-bg-layer-2, rgba(255, 255, 255, 0.95));
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.24);
+}
+
+.menuHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.menuTitle {
+  font: var(--dsw-font-s-strong-14, 600 13px/1.4 system-ui);
+  color: var(--dsw-alias-label-primary, inherit);
+}
+
+.menuSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.menuRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.menuBtn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.2));
+  border-radius: 9px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, inherit);
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.menuBtn:hover {
+  color: var(--dsw-alias-brand-primary, #0079bf);
+  border-color: color-mix(in srgb, var(--dsw-alias-brand-primary, #0079bf) 45%, transparent);
+}
+
+.addGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.addMenuItem {
+  padding: 6px 8px;
+  border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.14));
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary, inherit);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.addMenuItem:hover {
+  border-color: color-mix(in srgb, var(--dsw-alias-brand-primary, #0079bf) 45%, transparent);
+  color: var(--dsw-alias-brand-primary, #0079bf);
+}
+
+.slotInput {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.2));
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary, inherit);
+  font-size: 12px;
+  outline: none;
+}
+
+.slotInput:focus {
+  border-color: var(--dsw-alias-brand-primary, #0079bf);
+}
+
+.slotSelect {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.2));
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary, inherit);
+  font-size: 12px;
+  outline: none;
+}
+
+/* ── 浮动窗口 ── */
+
+.floatWindow {
+  position: fixed;
+  z-index: 2147482400;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.24));
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-2, rgba(255, 255, 255, 0.96));
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+}
+
+.floatTitle {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.14));
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.floatGrip {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary, #999);
+  font-size: 11px;
+}
+
+.floatTitleText {
+  flex: 1;
+  min-width: 0;
+  font: var(--dsw-font-s-strong-14, 600 13px/1.4 system-ui);
+  color: var(--dsw-alias-label-primary, inherit);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.floatBtn {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, inherit);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.floatBtn:hover {
+  background: color-mix(in srgb, var(--dsw-alias-label-primary, #333) 10%, transparent);
+  color: var(--dsw-alias-brand-primary, #0079bf);
+}
+
+.floatResize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  background:
+    linear-gradient(135deg, transparent 0 55%, var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.4)) 55% 62%, transparent 62% 72%, var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.4)) 72% 79%, transparent 79%);
+  touch-action: none;
+}
+
+/* ── 导出/导入弹层 / 提示 / 摘要 ── */
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147482800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.modalCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(680px, 90vw);
+  padding: 16px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.24));
+  border-radius: 14px;
+  background: var(--dsw-alias-bg-layer-2, rgba(255, 255, 255, 0.97));
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.3);
+}
+
+.modalTitle {
+  font: var(--dsw-font-s-strong-14, 600 14px/1.4 system-ui);
+  color: var(--dsw-alias-label-primary, inherit);
+}
+
+.modalText {
+  width: 100%;
+  height: 240px;
+  resize: none;
+  padding: 10px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.24));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--dsw-alias-label-primary, #333) 5%, transparent);
+  color: var(--dsw-alias-label-primary, inherit);
+  font: 12px/1.6 "JetBrains Mono", "SF Mono", Consolas, monospace;
+  outline: none;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 34px;
+  transform: translateX(-50%);
+  z-index: 2147482900;
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: var(--dsw-alias-label-primary, rgba(30, 34, 40, 0.9));
+  color: var(--dsw-alias-bg-base, #fff);
+  font-size: 12.5px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+}
+
+.summary {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0.01;
+  pointer-events: none;
+}

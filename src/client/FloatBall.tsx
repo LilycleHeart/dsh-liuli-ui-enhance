@@ -71,8 +71,9 @@ interface Tool {
 
 /** 悬浮圆点 + 工具栏 + 全局元素选择器。
  * @param props.insertElement - 把拾取的元素作为引用 chip 插入当前会话输入框。
- * @param props.openDock - 可选：打开 Dockable Workspace（琉璃工作台）。 */
-export function FloatBall({ insertElement, openDock }: { insertElement: InsertElementFn; openDock?: () => void }) {
+ * @param props.openDock - 可选：打开 Dockable Workspace（琉璃工作台）。
+ * @param props.openLayoutMenu - 可选：唤起布局工作台菜单（dockable shell）。 */
+export function FloatBall({ insertElement, openDock, openLayoutMenu }: { insertElement: InsertElementFn; openDock?: () => void; openLayoutMenu?: () => void }) {
   const rootRef = useRef<HTMLDivElement | null>(null)
   const hoverRef = useRef<HTMLDivElement | null>(null)
   const drag = useRef<{ sx: number; sy: number; px: number; py: number; moved: boolean } | null>(null)
@@ -309,6 +310,20 @@ export function FloatBall({ insertElement, openDock }: { insertElement: InsertEl
         </svg>
       ),
       onSelect: () => { openDock() },
+    })
+  }
+  if (openLayoutMenu !== undefined) {
+    tools.push({
+      id: 'dock-layout-menu',
+      label: '布局工作台',
+      hint: '自定义当前布局：面板拖拽/停靠/拆分/浮动/标签合并、布局保存与恢复（Ctrl+Alt+L）',
+      hotkey: 'Ctrl+Alt+L',
+      icon: (
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+          <path fill="currentColor" d="M2 3.2c0-.66.54-1.2 1.2-1.2h9.6c.66 0 1.2.54 1.2 1.2v9.6c0 .66-.54 1.2-1.2 1.2H3.2c-.66 0-1.2-.54-1.2-1.2V3.2zm1.2 0v9.6h9.6V3.2H3.2zm1.6 1.6h2.8v2.8H4.8V4.8zm4.8 0h1.6v1.6H9.6V4.8zm0 3.2h1.6v1.6H9.6V8zm-4.8 0h2.8v2.8H4.8V8z" />
+        </svg>
+      ),
+      onSelect: () => { openLayoutMenu() },
     })
   }
 

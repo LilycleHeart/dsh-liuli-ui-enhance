@@ -1,0 +1,62 @@
+/* 琉璃主题 · 页面内窗口控制按钮（DSH Desktop advanced 无边框模式） */
+
+.controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+}
+
+.btn {
+  appearance: none;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  transition: background 140ms var(--ds-ease-in-out), color 140ms var(--ds-ease-in-out);
+}
+
+.btn:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.btn:active {
+  background: var(--dsw-alias-interactive-bg-active, var(--dsw-alias-interactive-bg-hover));
+}
+
+/* 关闭：Windows 惯例红底白图 */
+.close:hover {
+  background: var(--dsw-alias-state-error-primary);
+  color: #ffffff;
+}
+
+/* 开始页兜底：固定在标题拖拽条右侧，独立磨砂小胶囊 */
+.caption {
+  position: fixed;
+  top: 3px;
+  right: 10px;
+  z-index: 60;
+  gap: 0;
+  padding: 1px 3px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 10px;
+  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity));
+  background-image: var(--denpa-noise);
+  -webkit-backdrop-filter: var(--denpa-material-blur);
+  backdrop-filter: var(--denpa-material-blur);
+  box-shadow: var(--denpa-shadow);
+}
+
+.caption .btn {
+  width: 34px;
+  height: 24px;
+}

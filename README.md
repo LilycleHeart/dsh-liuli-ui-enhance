@@ -58,10 +58,15 @@ DeepSeek Harness 的 **Material Design 3 × Fluent 2 融合主题**插件:取 Ma
 | 🖥️ 右侧边栏(ZCode 侧边面板复刻) | 按 zcode-reverse 逆向源码逐功能对照实现的标签式侧边面板:48px 标签条(搜索标签页概览 + 可拖拽排序标签 + 新增标签下拉),标签类型 Treemapping(文件树)/仓库 Wiki/审查(Git 图谱)/浏览器(多实例,任意 http/https 网址+自动补全 scheme)/代码查看(图标取自 ZCode lucide 定义);关闭激活标签激活右邻、关闭最后一个标签收起面板、最近关闭上限 8、浏览器标签重开换新 id 并取页面标题;概览弹层加权搜索 + 相对时间;宽度左缘拖拽(min 240px/max 65%/默认 45%,持久化);`Ctrl/Cmd+Alt+B` 切换面板;浏览器面板元素拾取为显式开关;会话切换仅在切换当前会话时收起面板;文件树走 `/liuli-sidebar/*`,代码查看走 `/preview` iframe;命令中心 `Ctrl/Cmd+K` 含 切换面板/打开文件 等 16 条命令 |
 | 🌐 内嵌浏览器(ZCode Desktop IAB 复刻) | Electron 宿主内用 WebContentsView 承载真实 webview(独立会话分区 `persist:liuli-embedded-browser`、任意站点可开、弹窗自动转新标签、崩溃原位重建、favicon 同步);工具条与 ZCode 逐项对齐(前进/后退/刷新/地址栏/响应式视口 320..3840×2160 + fit..200% + 拖拽手柄/元素拾取/更多:外部打开+开发者工具);纯 Web 部署自动回退 iframe + `/liuli-proxy`;agent 自动化 CLI `scripts/browser-client.mjs`(open/goto/snap/click/fill/shot…)对应 ZCode browser-use 插件,详见 `docs/browser-use.md` |
 | 🧩 Dockable Workspace(琉璃工作台) | 全屏 dockable 面板工作台,`Ctrl/Cmd+Alt+W` / header 按钮 / 悬浮球唤起;布局树(split 递归 + 标签组)纯函数模型 `dock-model.ts`(34 项单测 `demo/test-dock-model.ts` 全绿):面板**拖拽**(pointer 命中判定 + 拖拽幽灵 + 落点指示器)、四向**拆分**(拖到面板边缘带)、**停靠**(拖到工作区边缘条/浮动窗口一键回收)、**浮动**(拖到空白区成窗,标题栏移动 + 右下角缩放)、**标签页合并**(拖到面板中心并入标签组,同组拖拽重排);面板注册表复用插件既有组件:文件树/Git 图谱/仓库 Wiki/终端/白板/代码查看/产物预览/内嵌浏览/便签(面板 state 随布局持久化);**保存/恢复 Workspace**:自动落 localStorage(250ms 防抖,刷新/HMR 重载原样恢复)+ 命名槽位保存/恢复 + JSON 导出/导入;sash 拖拽调比例(最小 12%);GUI 自测 `demo/verify-dock-gui.mjs`(无头 Chrome + CDP,D1..D15 覆盖全部交互含热重载存活) |
+| 🪟 无边框模式兼容 | 兼容 DSH Desktop advanced（无边框/页面内标题栏）模式:桌面 shell 表面别名挂载上游结构类名(`liuli_frame`/`liuli_sidebarCol`/`liuli_centerCol`/`liuli_detailsCol`),浮动卡片/亚克力材质/壁纸/列留白等配方自动复用;另补表面透明、帧背景令牌迁移、macOS 红绿灯留白与侧栏内联宽度修正,观感与兼容模式对齐 |
+| 🧱 Dockable 布局(现有布局停靠化) | advanced 模式下把桌面 shell 的既有三列布局**本身**改造成 dockable 工作台:琉璃以更低渲染优先级接管 root slot(`dock-shell-frame.tsx`,桌面 shell 保留子 slot 声明与 layout 服务),**侧边栏/会话/详情三大区域成为可拖拽面板** —— 拖拽(pointer 命中 + 幽灵 + 落点指示器)、四向拆分、边缘/面板内停靠、浮动窗口(移动/缩放/一键回收)、标签页合并、sash 缩放;详情区域与宿主 layout 服务双向联动(`openDetails/closeDetails` ⟷ 面板加入/移出右缘);扩展面板(文件树/Git/Wiki/终端/白板/代码/预览/浏览/便签)可混排;**Workspace 保存/恢复**:dock 树自动落 localStorage + 命名槽位 + JSON 导出/导入,刷新/HMR 重载原样恢复;GUI 自测 `demo/verify-dock-shell-gui.mjs`(S1..S16 全交互含热重载存活) |
+| 🎛️ 页面内窗口按钮 | 无边框模式三按钮(最小化/最大化·还原/关闭)移入页面:会话 header 最右端常驻 + 开始页标题条右上磨砂胶囊兜底;经 Host `/liuli-window` 路由直驱 Electron 窗口(close=收进托盘,与原生同语义);Win+方向键贴边/双击拖拽条最大化等系统行为保留 |
 | 🔤 主题字体 | CSS `@import` 加载 MiSans / Inter / Space Grotesk / JetBrains Mono(字体族令牌早已引用,官方 harness 不注入 link,由插件自行加载) |
 | ⚙️ 设置「界面」分区 | 20 项设置(取色/背景/材质/字体/圆角/泛光/阴影/宽边模式/壁纸适应与选区/会话动画),即时生效、自动保存 |
 
 全部设置随浏览器持久化(`denpa:settings` / `denpa:wallpaper` / `denpa:header-height`),不依赖服务端。
+
+> **页面内窗口按钮(无边框模式)**:系统最小化/最大化/关闭三按钮移入页面——会话 header 最右端常驻、开始页兜底为标题拖拽条右上角的磨砂胶囊;动作经 Host `/liuli-window` 路由直驱 Electron 窗口(close 收进托盘,与原生同语义)。依赖对 DSH Desktop 的窗口参数补丁(`resources/app.asar.unpacked/lib/electron-runtime-*.js` 的 win32 advanced 分支:`titleBarStyle: "hidden" + titleBarOverlay` → `frame: false`),应用重启后生效;未打补丁时原生覆盖按钮仍在,页面内按钮与其并存。macOS 保持原生红绿灯不动。
 
 ### 供应商额度凭据
 
