@@ -669,13 +669,10 @@ export function DenpaAppearanceSection({
           onChange={(v) => { set({ font_mode: v as DenpaSettings['font_mode'] }) }}
         />
 
-        <Row label={t('radius')} hint={`${s.corner_radius}px`}>
-          <Input
-            type="number" min={0} max={40} value={s.corner_radius}
-            className={css.inputWrap ?? ''}
-            onChange={(e) => { set({ corner_radius: Number(e.target.value) || 0 }) }}
-          />
-        </Row>
+        <SliderRow
+          label={t('radius')} value={s.corner_radius} suffix="px" min={0} max={40}
+          onChange={(v) => { set({ corner_radius: v }) }}
+        />
 
         <ToggleRow
           label={t('glowOn')}
