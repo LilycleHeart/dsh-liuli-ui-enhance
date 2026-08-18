@@ -53,6 +53,7 @@ import { disposeSupplierQuota, initSupplierQuota, refreshSupplierQuota } from '.
 import { SupplierQuota } from './SupplierQuota.tsx'
 import { createElement } from 'react'
 import { FloatBall } from './FloatBall.tsx'
+import { WindowControls, isFramelessWin32 } from './WindowControls.tsx'
 import { createRoot } from 'react-dom/client'
 import { formatSelection, type PickedElement } from './element-picker.ts'
 import { startElementCardDecoration } from './element-card.ts'
@@ -65,8 +66,15 @@ import {
   resolvePreviewUrl, setPreviewOpen, togglePreviewOpen, setPaneSyncSuppressed,
 } from './PreviewPanel.tsx'
 import type { SidePaneHostAccess } from './SidePaneExtraPanels.tsx'
-import { DockButton, DockWorkspace, DOCK_TOGGLE_EVENT, isDockOpen, toggleDockOpen } from './DockWorkspace.tsx'
+import { DockWorkspace, DOCK_TOGGLE_EVENT, isDockOpen, toggleDockOpen } from './DockWorkspace.tsx'
 import { DockStore } from './dock-store.ts'
+import { addPanel as addDockPanel } from './dock-model.ts'
+import { DockShellFrame, DOCK_MENU_TOGGLE_EVENT, setDockHostBridge } from './dock-shell-frame.tsx'
+import {
+  createDockShellStore, defaultShellLayout, exportDockJSON, importDockJSON,
+  listShellSlotNames, loadShellSlotByName, saveShellDock, saveShellSlotByName,
+  type HostLayoutFace,
+} from './dock-shell.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -82,7 +90,11 @@ export const DENPA_LOCALE_NS = 'denpa-appearance'
 const STYLE_ID = 'liuli-theme-css'
 // 设置持久化键在 denpa-settings.ts 中定义（HeaderEffects 运行时读取同一键）。
 
-/** Required services: slots/locale for the settings section, theme for the toggle bridge, connection/remote for supplier quota. */
+/** Required services: slots/locale for the settings section, theme for the toggle bridge, connection/remote for supplier quota.
+ *  layout：advanced 模式由桌面 shell 提供、兼容模式由官方 ui-layout 提供，两种模式都保证在场；
+ *  conversation / workspaces：交互能力依赖（引用入输入框 / 打开路径），boot 期由上游插件提供。
+ *  注意：包级 boot 图依赖（package.json dsh.client.inject）不含 ui-layout / ui-conversation，
+ *  避免 advanced 模式下 ui-layout 条目缺席造成的启动图死锁。 */
 export const inject = ['slots', 'locale', 'theme', 'layout', 'sessions', 'workspaces', 'conversation', 'inputTriggers', 'connection', 'remote']
 
 /** 宽边模式样式：对话信息区在宽屏下撑满可用宽度（提高左右空间利用率）。 */
@@ -94,33 +106,44 @@ const WIDE_MODE_CSS = [
 ].join('\n')
 
 
-/** DSH Desktop 高级（无边框）模式样式：标题栏进入页面后的琉璃适配。
- *  宿主 shell 的表面默认不透明 bg-base，会盖住壁纸/帧背景；这里让表面透明，
- *  并把 --denpa-frame-bg*（壁纸透明/渐变/自定义）搬到桌面 frame 上，
- *  与兼容模式下 [class*="_frame"] 的消费行为对齐。 */
+/** DSH Desktop 高级（无边框）模式兼容样式。
+ *  advanced 模式下桌面 shell（.dshDesktopFrame 网格）替换了上游 AppFrame，
+ *  上游哈希结构类（*_frame / *_sidebarCol / *_centerCol / *_detailsCol）全部消失。
+ *  别名挂载 effect 会把 shell 元素打上 liuli_frame / liuli_sidebarCol /
+ *  liuli_centerCol / liuli_detailsCol 类名，让既有 [class*=] 配方直接命中；
+ *  这里只补 shell 层面的少量差异（表面透明、macOS 红绿灯留白等）。 */
 const DESKTOP_ADVANCED_CSS = [
   '/* ── DSH Desktop advanced（无边框）模式 ── */',
-  '/* 帧背景消费：advanced 模式没有上游 *_frame 哈希元素，',
-  '   --denpa-frame-bg*（denpa-runtime 写入）改挂桌面 frame */',
-  'body[data-dsh-desktop-mode="advanced"] .dshDesktopFrame {',
-  '  background-color: var(--denpa-frame-bg, var(--dsw-alias-bg-base)) !important;',
-  '  background-image: var(--denpa-frame-bg-image, none) !important;',
-  '  background-size: var(--denpa-frame-bg-size, auto) !important;',
-  '  background-position: center !important;',
-  '  background-repeat: no-repeat !important;',
-  '}',
-  '/* 桌面 shell 各表面默认不透明 bg-base，统一改透明，
-  '   让帧背景/壁纸层（[data-denpa-bg]）透出，与兼容模式观感一致 */',
+  '/* 表面透明：shell 各表面默认不透明 bg-base，会盖住帧背景/壁纸层',
+  '   （[data-denpa-bg]）；改透明后与兼容模式观感一致 */',
   'body[data-dsh-desktop-mode="advanced"] .dshDesktopConversationSurface,',
   'body[data-dsh-desktop-mode="advanced"] .dshDesktopDetailsSurface,',
   'body[data-dsh-desktop-mode="advanced"] .dshDesktopMacCaptionRow,',
-  'body[data-dsh-desktop-mode="advanced"] .dshDesktopWindowsCaptionRow {',
+  'body[data-dsh-desktop-mode="advanced"] .dshDesktopWindowsCaptionRow,',
+  'body[data-dsh-desktop-mode="advanced"] .dshDesktopSidebarSurface {',
   '  background: transparent !important;',
   '}',
-  '/* 侧栏表面被 shell 强制 --dsw-specific-sidebar-fill: transparent；',
-  '   恢复琉璃的半透明亚克力填充，保持与兼容模式一致的磨砂观感 */',
+  '/* 侧栏列去分割线：浮动卡片观感（对齐兼容模式 _sidebarCol 配方） */',
   'body[data-dsh-desktop-mode="advanced"] .dshDesktopSidebarSurface {',
-  '  --dsw-specific-sidebar-fill: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity));',
+  '  border-right: none !important;',
+  '}',
+  '/* 详情列去分割线（shell 给表面加了 border-left；对齐 _detailsCol 配方） */',
+  'body[data-dsh-desktop-mode="advanced"] .dshDesktopDetailsSurface {',
+  '  border-left: none !important;',
+  '}',
+  '/* macOS：红绿灯（x:16, y:16）上方留白，侧栏卡片不压系统按钮 */',
+  'body[data-dsh-desktop-mode="advanced"][data-dsh-desktop-platform="darwin"] .dshDesktopUpstreamSidebar {',
+  '  padding-top: 40px !important;',
+  '}',
+  '/* 详情列面板根：advanced 模式哈希类为 *_panel（兼容模式是 *_root），',
+  '   补上去左线规则（镜像 [class*="_detailsCol"] [class*="_root"]） */',
+  'body[data-dsh-desktop-mode="advanced"] [class*="_detailsCol"] [class*="_panel"] {',
+  '  border-left: none !important;',
+  '}',
+  '/* 侧栏根被 slot 注入内联宽度（280px 列宽），会顶掉右留白；',
+  '   100% !important 收回内容盒，恢复卡片间隙（收起态 padding 0 时不受影响） */',
+  'body[data-dsh-desktop-mode="advanced"] [class*="_sidebarCol"] > div > [class*="_root"] {',
+  '  width: 100% !important;',
   '}',
 ].join('\n')
 /** 解析元素选择器引用（ui-preview 同构：ref = JSON.stringify(PickedElement)）。 */
@@ -143,12 +166,179 @@ function injectThemeCss(): void {
 }
 
 /**
+ * 给本插件刚注册的 root entry 补齐 children 表（框架内部缝补，防御性实现）：
+ * 渲染器用 entry.children 判定 occupant 能否拿到 renderSlot 面，而子 slot 的
+ * 声明已被桌面 shell 抢占（重复声明会抛错）；声明台账是全局的，children 表
+ * 只需镜像四个子 slot 的规格即可让 renderSlot('sidebar' 等) 通过所有权检查。
+ * 任何形状不符都静默返回 false —— 占用者渲染时崩溃会被框架 abdicate，
+ * 自动回退到桌面原生 AdvancedFrame（安全降级）。
+ */
+function equipRootEntryChildren(ctx: ClientContext): boolean {
+  try {
+    const core = (ctx.slots as unknown as {
+      _core?: {
+        records?: Map<string, { entries: Array<{ options?: { priority?: number }; children?: Record<string, { kind: string; scope: string }> }> }>
+        spec?: (key: string) => { kind: string; scope: string } | undefined
+      }
+    })._core
+    if (core === undefined || core.records === undefined || typeof core.spec !== 'function') return false
+    const rec = core.records.get('root')
+    if (rec === undefined) return false
+    const mine = rec.entries.find(e => e.options?.priority === -1 && e.children !== undefined && Object.keys(e.children).length === 0)
+    if (mine === undefined) return false
+    const table: Record<string, { kind: string; scope: string }> = {}
+    for (const key of ['sidebar', 'conversation', 'details', 'shell.overlay']) {
+      const spec = core.spec(key)
+      if (spec === undefined) return false
+      table[key] = { kind: spec.kind, scope: spec.scope }
+    }
+    mine.children = table
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * equipRootEntryChildren 的逆操作（HMR 安全阀）：fiber 卸载时把 entry.children
+ * 清空回注册时的空表。框架按 entry.children 级联坍缩该 entry 声明过的子 slot
+ * （releaseEntry），而这四个子 slot 的声明者是桌面 shell —— 若带着补全的表被
+ * 释放，会把全局声明台账里的 sidebar/conversation/details/shell.overlay 一并
+ * 坍缩掉（且其他插件不会重新注册占用者）。子作用域先于父级 disposer 清理，
+ * 保证本清理跑在注册 disposer（releaseEntry）之前。
+ */
+function unequipRootEntryChildren(ctx: ClientContext): void {
+  try {
+    const core = (ctx.slots as unknown as {
+      _core?: { records?: Map<string, { entries: Array<{ options?: { priority?: number }; children?: Record<string, unknown> }> }> }
+    })._core
+    const rec = core?.records?.get('root')
+    if (rec === undefined) return
+    const mine = rec.entries.find(e => e.options?.priority === -1 && e.children !== undefined)
+    if (mine !== undefined) mine.children = {}
+  } catch { /* 形状不符则放弃（最坏回到现状：释放时误坍缩，等同修复前） */ }
+}
+
+/**
  * Client plugin body: mount the theme, the Denpa UI settings section,
  * the runtime + toggle bridge, and the session header effects.
  * @param ctx - client cordis context.
  */
 export function apply(ctx: ClientContext): void {
   injectThemeCss()
+
+  // ── advanced（无边框）模式别名挂载：桌面 shell 元素补上上游结构类名，──
+  // ── 让兼容模式配方（[class*="_frame"]/"_sidebarCol"/"_centerCol"/"_detailsCol"）直接命中 ──
+  // advanced 模式下宿主 shell（.dshDesktopFrame 网格）替换上游 AppFrame，
+  // 哈希结构类全部消失导致琉璃大部分样式失效；给 shell 表面挂同名别名类即可复用配方。
+  ctx.effect(() => {
+    const mode = new URLSearchParams(window.location.search).get('dsh-desktop-mode')
+    if (mode !== 'advanced') return () => {}
+    const ALIASES: Array<[string, string]> = [
+      ['.dshDesktopFrame', 'liuli_frame'],
+      ['.dshDesktopUpstreamSidebar', 'liuli_sidebarCol'],
+      ['.dshDesktopConversationSurface', 'liuli_centerCol'],
+      ['.dshDesktopDetailsSurface', 'liuli_detailsCol'],
+    ]
+    let raf = 0
+    const tag = (): void => {
+      raf = 0
+      for (const [sel, cls] of ALIASES) {
+        const el = document.querySelector(sel)
+        if (el !== null && !el.classList.contains(cls)) el.classList.add(cls)
+      }
+    }
+    tag()
+    // shell 挂载晚于本插件 apply 时首跑会落空；观察 DOM 变化补挂（rAF 节流）。
+    const mo = new MutationObserver(() => {
+      if (raf !== 0) return
+      raf = requestAnimationFrame(tag)
+    })
+    mo.observe(document.body, { childList: true, subtree: true })
+    return () => {
+      if (raf !== 0) cancelAnimationFrame(raf)
+      mo.disconnect()
+    }
+  }, 'liuli-theme: advanced shell alias classes')
+
+  // ── Dockable 布局 shell（advanced 模式）：把桌面 advanced shell 的既有布局改造成可停靠工作台 ──
+  // advanced 模式下官方 ui-layout 被禁用；桌面 shell（dsh-plugin-desktop）提供 layout 服务
+  // 并占用 root slot（AdvancedFrame）。琉璃以更低的渲染优先级（priority -1）接管 root slot，
+  // 并覆盖 layout 服务指向自己的 dock store —— 三大区域（侧边栏/会话/详情）成为可拖拽面板：
+  // 拖拽/四向拆分/边缘与面板内停靠/浮动窗口/标签页合并/sash 缩放 + Workspace 保存/恢复。
+  // 子 slot（sidebar/conversation/details/shell.overlay）的声明仍归桌面 shell，
+  // 本插件借 ctx.slots.inject('sidebar') 等到声明落地后再注册 root 占用者，避免重复声明。
+  if (new URLSearchParams(window.location.search).get('dsh-desktop-mode') === 'advanced') {
+    const shellHandle = createDockShellStore().create()
+    // 自测钩子：无头自测脚本经此驱动宿主 layout 服务与 dock 工作台
+    // （开合详情/收起侧栏/菜单开合/面板增删/布局保存恢复导出导入）。
+    ctx.effect(() => {
+      const hook = {
+        openDetails: () => { ctx.layout.openDetails() },
+        closeDetails: () => { ctx.layout.closeDetails() },
+        toggleSidebar: () => { ctx.layout.toggleSidebar() },
+        toggleMenu: () => { window.dispatchEvent(new CustomEvent(DOCK_MENU_TOGGLE_EVENT)) },
+        addPanel: (type: string) => {
+          const next = structuredClone(shellHandle.getSnapshot().dock)
+          const seq = next.seq
+          next.seq = seq + 1
+          shellHandle.actions.setDock(addDockPanel(next, { id: 'p' + String(seq), type }))
+        },
+        saveSlot: (name: string) => { saveShellSlotByName(name, shellHandle.getSnapshot().dock); saveShellDock(shellHandle.getSnapshot().dock) },
+        loadSlot: (name: string) => {
+          const loaded = loadShellSlotByName(name)
+          if (loaded === undefined) return false
+          shellHandle.actions.resetShell()
+          shellHandle.actions.setDock(loaded)
+          return true
+        },
+        listSlots: () => listShellSlotNames().map(s => s.name),
+        exportJSON: () => exportDockJSON(shellHandle.getSnapshot().dock),
+        importJSON: (text: string) => {
+          const imported = importDockJSON(text)
+          if (imported === undefined) return false
+          shellHandle.actions.resetShell()
+          shellHandle.actions.setDock(imported)
+          return true
+        },
+        reset: () => { shellHandle.actions.resetShell() },
+        defaultLayoutJSON: () => exportDockJSON(defaultShellLayout()),
+      }
+      ;(window as unknown as { __liuliDockShell__?: unknown }).__liuliDockShell__ = hook
+      return () => {
+        if ((window as unknown as { __liuliDockShell__?: unknown }).__liuliDockShell__ === hook) {
+          delete (window as unknown as { __liuliDockShell__?: unknown }).__liuliDockShell__
+        }
+      }
+    }, 'liuli-theme: dock shell self-test hook')
+    ctx.slots.inject('sidebar', () => {
+      // 子 slot 声明归桌面 shell（先到者声明，重复声明会抛错）：注册时传空 children
+      // 表躲开声明检查，注册完成后把四个子 slot 的规格补进本 entry 的 children 表——
+      // 渲染器按 entry.children 决定 occupant 是否拿到 renderSlot 面（规格读取走
+      // 全局声明台账，与声明者是谁无关）。形状不符时防御性放弃（回退桌面原生帧）。
+      type RootChildren = {
+        'sidebar': { kind: 'single'; scope: 'root' }
+        'conversation': { kind: 'single'; scope: 'session-maybe' }
+        'details': { kind: 'single'; scope: 'session' }
+        'shell.overlay': { kind: 'list'; scope: 'root' }
+      }
+      const rootOptions = {
+        name: 'root' as const,
+        priority: -1,
+        children: {},
+        // 宿主 layout 服务（桌面 DesktopLayoutState）经 inject 钩子递进帧层：
+        // 帧层订阅其宽度/narrow 状态，开合动作走它的 toggleSidebar/openDetails/closeDetails。
+        inject: () => ({ dockShell: shellHandle, hostLayout: ctx.layout as unknown as HostLayoutFace }),
+      }
+      const disposeRegistration = ctx.slots.register(
+        rootOptions as typeof rootOptions & { children: RootChildren },
+        DockShellFrame,
+      )
+      equipRootEntryChildren(ctx)
+      ctx.effect(() => () => { unequipRootEntryChildren(ctx) }, 'liuli-theme: dock shell children release guard')
+      return disposeRegistration
+    })
+  }
 
   // ── 会话切换/新消息入场动画：MutationObserver 挂类（动画定义在 denpa.css）──
   ctx.effect(() => startDenpaTransition(), 'liuli-theme: message transition observer')
@@ -259,6 +449,13 @@ export function apply(ctx: ClientContext): void {
     }, span)
   }
 
+  // dock shell 扩展面板的宿主能力桥（advanced 模式下 DockShellFrame 为纯组件，
+  // 不碰 cordis；文件入聊天 / 系统打开经此桥到达 conversation / workspaces 服务）。
+  setDockHostBridge({
+    addFileToChat: insertFileReference,
+    openPath: (path: string) => { void ctx.workspaces.openPath(path) },
+  })
+
   const insertCommitReference = (commit: string): void => {
     const current = ctx.sessions.list.getSnapshot().current
     if (current === undefined) return
@@ -282,12 +479,38 @@ export function apply(ctx: ClientContext): void {
     host.id = 'liuli-floatball-host'
     document.body.appendChild(host)
     const root = createRoot(host)
-    root.render(createElement(FloatBall, { insertElement, openDock: () => { toggleDockOpen() } }))
+    root.render(createElement(FloatBall, {
+      insertElement,
+      openDock: () => { toggleDockOpen() },
+      openLayoutMenu: () => { window.dispatchEvent(new CustomEvent(DOCK_MENU_TOGGLE_EVENT)) },
+    }))
     return () => {
       root.unmount()
       host.remove()
     }
   }, 'liuli-theme: float ball mount')
+
+  // ── 页面内窗口按钮（无边框模式）：开始页无会话 header 时兜底固定在标题拖拽条右侧 ──
+  ctx.effect(() => {
+    if (!isFramelessWin32()) return () => {}
+    const hostEl = document.createElement('div')
+    hostEl.id = 'liuli-window-controls-host'
+    document.body.appendChild(hostEl)
+    const root = createRoot(hostEl)
+    const render = (): void => {
+      const snap = ctx.sessions.list.getSnapshot()
+      const current = snap.current
+      const hasHeader = current !== undefined && snap.byId[current]?.blank === false
+      root.render(hasHeader ? null : createElement(WindowControls, { variant: 'caption' }))
+    }
+    render()
+    const off = ctx.sessions.list.subscribe(render)
+    return () => {
+      off()
+      root.unmount()
+      hostEl.remove()
+    }
+  }, 'liuli-theme: window controls caption fallback')
 
   // ── Dockable Workspace（琉璃工作台）：可拖拽/停靠/拆分/浮动/标签合并的面板工作台 ──
   // 布局自动落 localStorage（dock-store 防抖保存），刷新/HMR 重载后原样恢复；
@@ -692,10 +915,10 @@ export function apply(ctx: ClientContext): void {
     id: 'liuli-preview-button',
     order: 25,
   }, () => createElement(PreviewButton, { onToggle: togglePreview })))
-  // Dockable Workspace 入口：打开琉璃工作台（Ctrl+Alt+W）
+  // ── 页面内窗口按钮（无边框模式）：会话 header 最右端，替代原生标题栏三按钮 ──
   ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
     name: 'conversation.session.header.utilities',
-    id: 'liuli-dock-button',
-    order: 30,
-  }, () => createElement(DockButton, { onToggle: () => { toggleDockOpen() } })))
+    id: 'liuli-window-controls',
+    order: 99,
+  }, () => createElement(WindowControls, { variant: 'header' })))
 }
