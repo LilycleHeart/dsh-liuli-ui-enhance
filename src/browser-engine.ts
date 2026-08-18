@@ -49,7 +49,7 @@ interface ElectronWebContentsView {
 interface ElectronBrowserWindow {
   isDestroyed(): boolean
   contentView: {
-    addChildView(view: ElectronWebContentsView): void
+    addChildView(view: ElectronWebContentsView, index?: number): void
     removeChildView(view: ElectronWebContentsView): void
   }
 }
@@ -246,6 +246,16 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
 
   const pushState = (tab: EngineTab): void => {
     broadcast({ type: 'state', tabId: tab.id, state: { ...tab.state } })
+  }
+
+  /** 把视图提到最顶层（常规承载：盖住 GUI 的 carrier 区域）。 */
+  const raiseView = (tab: EngineTab): void => {
+    const win = findWindow()
+    if (win === undefined) return
+    try {
+      win.contentView.removeChildView(tab.view)
+      win.contentView.addChildView(tab.view)
+    } catch { /* 窗口已销毁等场景忽略 */ }
   }
 
   /** webContents 事件 → 状态镜像 + SSE（ZCode did-* 监听一一对应）。 */
@@ -528,8 +538,41 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
       if (path === '/liuli-browser/tabs/screenshot') {
         const tab = tabs.get(url.searchParams.get('id') ?? '')
         if (tab === undefined) { sendJson(res, 404, { ok: false, error: 'unknown tab' }); return }
-        const image = await tab.view.webContents.capturePage()
-        const png = image.toPNG()
+        // 隐藏/屏外视图不参与合成（capturePage 会返回空图）：临时移进窗口取帧。
+        // 优先垫到 GUI 之下（index 0）避免闪烁；若仍为空再抬到顶层重试一次。
+        const geo = tab.geometry
+        const hidden = !geo.visible || geo.width < 4 || geo.height < 4
+        const captureOnce = async (): Promise<Buffer> => {
+          const image = await tab.view.webContents.capturePage()
+          return image.toPNG()
+        }
+        let png: Buffer
+        if (!hidden) {
+          png = await captureOnce()
+        } else {
+          const win = findWindow()
+          const width = 1024
+          const height = 768
+          const prepare = (index?: number): void => {
+            if (win === undefined) return
+            try {
+              win.contentView.removeChildView(tab.view)
+              win.contentView.addChildView(tab.view, index)
+              tab.view.setVisible(true)
+              tab.view.setBounds({ x: 0, y: 0, width, height })
+            } catch { /* 忽略 */ }
+          }
+          prepare(0)
+          await new Promise(r => setTimeout(r, 280))
+          png = await captureOnce()
+          if (png.length === 0) {
+            prepare() // 顶层重试（短暂可见）
+            await new Promise(r => setTimeout(r, 280))
+            png = await captureOnce()
+          }
+          raiseView(tab)
+          applyBounds(tab)
+        }
         res.writeHead(200, { 'content-type': 'image/png', 'content-length': String(png.length), 'cache-control': 'no-store' })
         res.end(png)
         return

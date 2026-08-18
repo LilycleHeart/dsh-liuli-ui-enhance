@@ -109,4 +109,8 @@
 5. 浏览器承载:ZCode 用 Electron webview(可加载任意站点)。本插件已在 Electron 宿主内
    用 WebContentsView 复刻同款承载(browser-engine.ts,会话分区 persist:liuli-embedded-browser、
    任意站点、弹窗转标签、崩溃原位重建、favicon 同步、响应式视口+拖拽手柄、元素拾取、
-   外部打开/开发者工具),纯 Web 部署自动回退 iframe + /liuli-proxy。详见 docs/browser-use.md。
+   外部打开/开发者工具、JS 对话框垫片),纯 Web 部署自动回退 iframe + /liuli-proxy。
+   已实测(DSH Desktop 重启后):A 套件 16/16(能力/SSE/导航/历史/execute/弹窗转标签/
+   fail-load/几何/视口/截图/销毁)+ B 套件 13/13(GUI 面板/工具条/空态/响应式框/更多菜单/
+   favicon/截图/零页面错误)+ 元素拾取 E2E + 对话框垫片 SSE + browser-client CLI
+   (caps/open/snap/click/wait/text/fill/eval/shot/state/close)。详见 docs/browser-use.md。

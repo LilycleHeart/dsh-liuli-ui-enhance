@@ -101,7 +101,7 @@ const SNAP_SCRIPT = '(() => {'
   + '    if (interactive || heading) {'
   + '      const text = (child.textContent || "").trim().replace(/\\s+/g, " ").slice(0, 80);'
   + '      const attrs = interactive && child.id === "" ? " " + tag : "";'
-  + '      rows.push("  ".repeat(depth) + tag + (child.id !== "" ? "#" + child.id : "") + (text !== "" ? "  \"" + text + "\"" : ""));'
+  + '      rows.push("  ".repeat(depth) + tag + (child.id !== "" ? "#" + child.id : "") + (text !== "" ? "  " + String.fromCharCode(34) + text + String.fromCharCode(34) : ""));'
   + '    }'
   + '    walk(child, depth + 1);'
   + '  }'
@@ -212,7 +212,10 @@ async function run() {
       if (selector === undefined) fail('缺少 <selector>')
       const resp = await postJson('/liuli-browser/tabs/execute', {
         id: tab,
-        code: INTERACT(selector, 'const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;'
+        code: INTERACT(selector, 'const editable = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement || el.isContentEditable === true;'
+          + 'if (!editable) return { ok: false, error: "element is not fillable (" + el.tagName.toLowerCase() + ")" };'
+          + 'if (el.isContentEditable === true) { el.focus(); el.textContent = ' + JSON.stringify(text) + '; el.dispatchEvent(new InputEvent("input", { bubbles: true })); return { ok: true } }'
+          + 'const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : (el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype);'
           + 'Object.getOwnPropertyDescriptor(proto, "value").set.call(el, ' + JSON.stringify(text) + ');'
           + 'el.dispatchEvent(new Event("input", { bubbles: true }));'
           + 'el.dispatchEvent(new Event("change", { bubbles: true }));'
