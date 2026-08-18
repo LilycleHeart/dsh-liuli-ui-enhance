@@ -1932,6 +1932,7 @@ function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitle
   const [pickerOn, setPickerOn] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const [responsiveOn, setResponsiveOn] = useState(false)
+  const [dialogNotice, setDialogNotice] = useState<{ kind: string; message: string } | null>(null)
   const [responsive, setResponsive] = useState<ResponsiveConfig>(loadResponsiveConfig)
   const [zoomFitScale, setZoomFitScale] = useState(1)
   const [carrierSize, setCarrierSize] = useState({ width: 0, height: 0 })
@@ -1956,9 +1957,15 @@ function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitle
       }
     })
     const unsubscribe = subscribeWebviewTab(tabId, (event) => {
-      if (event.type !== 'state') return
-      lastRequestedUrl.current = event.state.url
-      setState(event.state)
+      if (event.type === 'state') {
+        lastRequestedUrl.current = event.state.url
+        setState(event.state)
+        return
+      }
+      if (event.type === 'dialog') {
+        // ZCode embeddedBrowserJavaScriptDialog 的可见性对应：垫片自动应答后提示用户。
+        setDialogNotice({ kind: event.kind, message: event.message })
+      }
     })
     return () => {
       alive = false
@@ -1966,6 +1973,14 @@ function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitle
       void webviewBrowser.destroyTab(tabId)
     }
   }, [tabId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── 对话框提示自动消失（6s） ── */
+
+  useEffect(() => {
+    if (dialogNotice === null) return
+    const timer = window.setTimeout(() => { setDialogNotice(null) }, 6000)
+    return () => { window.clearTimeout(timer) }
+  }, [dialogNotice])
 
   /* ── 外部 URL 变更（产物链接/持久化恢复）→ 客户机导航 ── */
 
@@ -2390,6 +2405,13 @@ function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitle
               onPointerDown={dragResizeFrame('corner')}
               onKeyDown={nudgeFrame}
             />
+          </div>
+        )}
+        {dialogNotice !== null && (
+          <div className={css.dialogToast} role="status">
+            <span className={css.dialogToastKind}>{dialogNotice.kind === 'alert' ? '弹窗' : dialogNotice.kind === 'confirm' ? '确认框' : '输入框'}</span>
+            <span className={css.dialogToastText}>{dialogNotice.message === '' ? '（无内容）' : dialogNotice.message}</span>
+            <span className={css.dialogToastHint}>已自动应答</span>
           </div>
         )}
         {isEmpty && (

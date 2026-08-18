@@ -30,6 +30,7 @@ export type WebviewEvent =
   | { type: 'hello'; tabs: Array<{ tabId: string; state: WebviewTabState }> }
   | { type: 'state'; tabId: string; state: WebviewTabState }
   | { type: 'new-tab'; sourceTabId: string; url: string; disposition: string }
+  | { type: 'dialog'; tabId: string; kind: 'alert' | 'confirm' | 'prompt'; message: string }
   | { type: 'closed'; tabId: string }
 
 /** 能力探测结果；null = 非 Electron 部署（回退 iframe）。 */
@@ -86,7 +87,7 @@ const bus = {
 
 function dispatch(event: WebviewEvent): void {
   if (event.type === 'hello') bus.lastHello = event
-  if (event.type === 'state') {
+  if (event.type === 'state' || event.type === 'dialog') {
     const set = bus.byTab.get(event.tabId)
     if (set !== undefined) for (const listener of set) listener(event)
   }
