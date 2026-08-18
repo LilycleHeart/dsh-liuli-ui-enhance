@@ -112,8 +112,8 @@
   overflow: hidden;
   border-radius: 8px;
   border: 1px solid transparent;
-  padding: 0 4px 0 6px;
-  font-size: 12px;
+  padding: 0 8px 0 6px;
+  font-size: 14px;
   font-weight: 500;
   line-height: 1.4;
   white-space: nowrap;
@@ -159,24 +159,17 @@
   text-overflow: ellipsis;
 }
 
-/* 关闭按钮：右侧渐隐底 + ghost x（ZCode: w-6 容器，size-3 x）。 */
+/* 关闭按钮：右侧渐隐底 + ghost x，常驻显示（ZCode: w-2 渐变 + w-6 容器，size-3 x）。 */
 .tabCloseZone {
-  pointer-events: none;
+  pointer-events: auto;
   display: flex;
   align-items: center;
   justify-content: center;
   flex: none;
   height: 100%;
   width: 22px;
-  opacity: 0;
-  transition: opacity 120ms ease;
+  margin-right: -6px;
   background: linear-gradient(to right, transparent, var(--dsw-specific-card-major, rgba(var(--denpa-acrylic-rgb), 0.9)) 55%);
-}
-
-.tab:hover .tabCloseZone,
-.tabActive .tabCloseZone {
-  pointer-events: auto;
-  opacity: 1;
 }
 
 .tabClose {
@@ -348,9 +341,18 @@
   overflow: hidden;
 }
 
-/* 新增标签下拉（ZCode: w-48，icon size-4 + 文案）。 */
+/* 新增标签下拉（ZCode: w-48 = 192px，icon size-4 + 文案）。 */
 .addMenu {
   width: 192px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 标签右键菜单（ZCode: w-44 = 176px）。 */
+.tabMenu {
+  width: 176px;
   padding: 4px;
   display: flex;
   flex-direction: column;
@@ -618,6 +620,12 @@
 .navBtn:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+.navBtnActive,
+.navBtnActive:hover {
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 14%, transparent);
+  color: var(--dsw-alias-brand-primary, #0079bf);
 }
 
 .browserInput {

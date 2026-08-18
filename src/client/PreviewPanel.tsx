@@ -1,16 +1,25 @@
 /**
- * 右侧边栏（ZCode 侧边面板 1:1 复刻）：宿主右侧 details 列上的标签式面板切换器。
+ * 右侧边栏（ZCode 侧边面板复刻）：宿主右侧 details 列上的标签式面板切换器。
  *
- * 对照 ZCode app.asar（out/renderer）实测结构：
- * - 48px 标签条：左侧「搜索标签页」概览触发（chevrons-down），中部标签（icon + 标题 + 渐隐关闭钮，
- *   可拖拽排序、右键关闭菜单），右侧「新增标签」(+) 与「扩大面板 / 恢复面板宽度」按钮；
- * - 标签类型：Treemapping(map) / 仓库 Wiki(自绘 32x32) / 审查(file-diff) / 浏览器(globe) /
- *   代码查看(file-code-corner)，图标路径数据取自 ZCode bundle 的 lucide 定义；
- * - 概览弹层（w-72）：搜索框 + 「打开的标签页」（相对打开时间 + 关闭钮）/「最近关闭的标签页」（点击重开）；
- * - 空状态「打开标签页」卡片：可用面板类型按钮（h-12 rounded-xl）；
- * - 快捷键 Ctrl/Cmd+Alt+B 切换面板（ZCode：切换右侧面板），Ctrl/Cmd+K 命令中心；
- * - 面板内容常驻挂载（inactive 隐藏），保留 iframe 状态；
- * - 宽度：左缘手柄拖拽 + 扩大/恢复，localStorage 持久化（宿主 details 列无持久化）。
+ * 依据 zcode-reverse 逆向源码（09-renderer-renamed/styles-OqUHW1P0/deobfuscated.js）
+ * 逐功能对照实现：
+ * - 标签模型/持久化：state model（fae/Qo/is/toe/rs/noe/roe/soe/ioe 等纯函数语义）；
+ * - 标签条：48px，概览触发（chevrons-down）+ 可拖拽标签（icon+标题+常驻渐隐关闭钮）
+ *   + 新增标签(+)；激活标签自动平滑滚入视野；溢出滚动隐藏滚动条；
+ * - 关闭语义：关闭激活标签 → 激活同位右邻；关闭最后一个标签 → 面板收起；
+ *   最近关闭上限 8（Roe）；浏览器标签重开时换新 id；
+ * - 浏览器标签多实例（browser:<uid>）：新增菜单复用已有浏览器标签，
+ *   会话产物链接导航新开标签；同源页面加载后取 document.title 作为标签标题；
+ * - 面板类型：Treemapping / 仓库 Wiki / 审查(git) / 浏览器 / 代码查看；
+ *   图标路径数据取自 ZCode bundle 的 lucide 定义；
+ * - 概览弹层（w-72）：搜索（ZCode 加权排序：title 前缀 120/词界 90/包含 70/hint 40/类型 20）
+ *   + 打开的标签页（相对时间+关闭钮）+ 最近关闭的标签页（点击重开）；
+ * - 空状态「打开标签页」卡片（h-12 rounded-xl 按钮列）；
+ * - 快捷键 Ctrl/Cmd+Alt+B 切换面板（ZCode：切换右侧面板）；Ctrl/Cmd+K 命令中心；
+ * - 宽度：左缘手柄拖拽，min 240px、max 65%、首次打开默认 45%（ZCode sqt/Eqt），
+ *   localStorage 持久化（ZCode 为内存态，此处为适配 DSH 热重载的扩展）；
+ *   ZCode 无 maximize/restore（i18n 死键），本实现同样不提供；
+ * - 元素拾取：浏览器面板工具条按钮显式开启（ZCode browser.elementPicker 语义）。
  */
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
@@ -34,6 +43,17 @@ export const PREVIEW_NAVIGATE_EVENT = 'liuli:preview-navigate'
 /** 预览列开关的模块级状态（header 按钮与 details 面板共享）。 */
 let previewOpen = false
 
+/** 翻转预览列开关状态，返回翻转后的值。 */
+export function togglePreviewOpen(): boolean {
+  previewOpen = !previewOpen
+  return previewOpen
+}
+
+/** 设置预览列开关状态（关闭按钮/会话切换时同步）。 */
+export function setPreviewOpen(open: boolean): void {
+  previewOpen = open
+}
+
 /**
  * 关闭动画保护：宿主 details 轨道带 CSS 过渡，主动关闭后列宽在约 200ms 内
  * 逐渐归零；期间 ResizeObserver 仍会看到宽度 >1，若不抑制会把 open 翻回 true
@@ -51,17 +71,6 @@ export function setPaneSyncSuppressed(v: boolean): void {
     paneSyncTimer = undefined
   }
   if (v) paneSyncTimer = window.setTimeout(() => { paneSyncSuppressed = false }, 800)
-}
-
-/** 翻转预览列开关状态，返回翻转后的值。 */
-export function togglePreviewOpen(): boolean {
-  previewOpen = !previewOpen
-  return previewOpen
-}
-
-/** 设置预览列开关状态（关闭按钮/会话切换时同步）。 */
-export function setPreviewOpen(open: boolean): void {
-  previewOpen = open
 }
 
 /** 判断是否为本地回环地址（前端产物 dev server 常见目标）。 */
@@ -120,7 +129,7 @@ export function resolvePreviewUrl(raw: string, sessionId: string | undefined): s
 /** 面板类型：ZCode 侧边面板在 DSH 内的可复刻集合。 */
 export type SidePaneTabType = 'treemapping' | 'repo-wiki' | 'git' | 'browser' | 'code-viewer'
 
-/** 一个侧边面板标签。code-viewer 以 rel 为键（一会话一文件一标签）。 */
+/** 一个侧边面板标签。 */
 export interface SidePaneTab {
   id: string
   type: SidePaneTabType
@@ -131,6 +140,8 @@ export interface SidePaneTab {
   path?: string
   /** browser：当前 URL。 */
   url?: string
+  /** browser：页面标题（同源时取 document.title）。 */
+  title?: string
 }
 
 /** 最近关闭的标签（概览里可重开）。 */
@@ -141,33 +152,39 @@ interface ClosedTabEntry {
 
 /** 持久化结构。 */
 interface PanePersist {
-  v: 1
+  v: 1 | 2
   tabs: SidePaneTab[]
   activeTabId: string
   recentClosed: ClosedTabEntry[]
   width: number
-  maximized: boolean
 }
 
 const LS_KEY = 'liuli:side-pane'
-const RECENT_CLOSED_MAX = 15
-const WIDTH_MIN = 300
-const WIDTH_DEFAULT = 360
+/** ZCode Roe = 8：最近关闭标签上限。 */
+const RECENT_CLOSED_MAX = 8
+/** ZCode Eqt：侧边面板 minSize 240px。 */
+const WIDTH_MIN = 240
+/** ZCode Eqt：侧边面板 maxSize = 65%。 */
+const WIDTH_MAX_RATIO = 0.65
+/** ZCode sqt = 0.45：首次打开默认宽度 = 父容器 45%。 */
+const WIDTH_DEFAULT_RATIO = 0.45
+
+/** 浏览器标签 uid（ZCode：browser:<random>）。 */
+let browserUid = 0
 
 function loadPersist(): PanePersist {
-  const fallback: PanePersist = { v: 1, tabs: [], activeTabId: '', recentClosed: [], width: WIDTH_DEFAULT, maximized: false }
+  const fallback: PanePersist = { v: 2, tabs: [], activeTabId: '', recentClosed: [], width: 0 }
   try {
     const raw = localStorage.getItem(LS_KEY)
     if (raw === null || raw === '') return fallback
-    const parsed = JSON.parse(raw) as Partial<PanePersist>
+    const parsed = JSON.parse(raw) as Partial<PanePersist> & { maximized?: boolean }
     if (parsed === null || typeof parsed !== 'object') return fallback
     return {
-      v: 1,
+      v: 2,
       tabs: Array.isArray(parsed.tabs) ? parsed.tabs.filter((t): t is SidePaneTab => t !== null && typeof t === 'object' && typeof t.id === 'string' && typeof t.type === 'string') : [],
       activeTabId: typeof parsed.activeTabId === 'string' ? parsed.activeTabId : '',
       recentClosed: Array.isArray(parsed.recentClosed) ? parsed.recentClosed.filter((c): c is ClosedTabEntry => c !== null && typeof c === 'object' && typeof (c as ClosedTabEntry).closedAt === 'number') : [],
-      width: typeof parsed.width === 'number' && Number.isFinite(parsed.width) ? parsed.width : WIDTH_DEFAULT,
-      maximized: parsed.maximized === true,
+      width: typeof parsed.width === 'number' && Number.isFinite(parsed.width) ? parsed.width : 0,
     }
   } catch {
     return fallback
@@ -178,7 +195,7 @@ function savePersist(state: PanePersist): void {
   try { localStorage.setItem(LS_KEY, JSON.stringify(state)) } catch { /* 配额满则放弃 */ }
 }
 
-/** 相对时间（ZCode：刚刚 / x分钟前 / x小时前 / x天前）。 */
+/** 相对时间（ZCode ZS：刚刚 / x分钟前 / x小时前 / x天前）。 */
 function relativeTime(ts: number, now: number): string {
   const diff = Math.max(0, now - ts)
   const minutes = Math.floor(diff / 60000)
@@ -189,13 +206,13 @@ function relativeTime(ts: number, now: number): string {
   return `${Math.floor(hours / 24)} 天前`
 }
 
-/** 标签标题（ZCode WKt 对应）。 */
+/** 标签标题（ZCode V5 对应）。 */
 function tabTitle(tab: SidePaneTab): string {
   switch (tab.type) {
     case 'treemapping': return 'Treemapping'
     case 'repo-wiki': return '仓库 Wiki'
     case 'git': return '审查'
-    case 'browser': return '浏览器'
+    case 'browser': return tab.title?.trim() || '浏览器'
     case 'code-viewer': {
       const rel = tab.rel ?? ''
       const name = rel.split('/').filter(p => p !== '').pop()
@@ -204,11 +221,22 @@ function tabTitle(tab: SidePaneTab): string {
   }
 }
 
-/** 标签提示（概览行副标题：URL / 路径）。 */
+/** 标签提示（概览行检索/副标题：URL / 路径）。 */
 function tabHint(tab: SidePaneTab): string {
   if (tab.type === 'browser') return tab.url ?? ''
   if (tab.type === 'code-viewer') return tab.rel ?? ''
   return ''
+}
+
+/** 类型标签（ZCode GKt：概览检索的类型字段）。 */
+function tabTypeLabel(tab: SidePaneTab): string {
+  switch (tab.type) {
+    case 'treemapping': return 'Treemapping'
+    case 'repo-wiki': return '仓库 Wiki'
+    case 'git': return '审查'
+    case 'browser': return '浏览器'
+    case 'code-viewer': return '代码查看'
+  }
 }
 
 /** 标签图标（ZCode R5 对应的 DSH 子集）。 */
@@ -222,10 +250,62 @@ function TabIcon({ tab, size = 14 }: { tab: SidePaneTab; size?: number }) {
   }
 }
 
+function makeBrowserTab(url: string): SidePaneTab {
+  browserUid += 1
+  return { id: `browser:${Date.now().toString(36)}-${browserUid}`, type: 'browser', openedAt: Date.now(), url }
+}
+
 function makeTab(type: SidePaneTabType, extra?: Partial<SidePaneTab>): SidePaneTab {
   const base: SidePaneTab = { id: type, type, openedAt: Date.now(), ...extra }
   if (type === 'code-viewer') base.id = `code-viewer:${extra?.rel ?? ''}`
   return base
+}
+
+/* ── 概览检索（ZCode OKt 加权排序对应） ── */
+
+function searchTokens(query: string): string[] {
+  const seen = new Set<string>()
+  return query.trim().toLocaleLowerCase().split(/\s+/).filter(t => t !== '' && !seen.has(t) && (seen.add(t), true))
+}
+
+function norm(s: string): string {
+  return s.trim().toLocaleLowerCase()
+}
+
+function boundaryMatch(hay: string, token: string): boolean {
+  return hay.split(/[\s/_.:-]+/).some(part => part.startsWith(token))
+}
+
+interface SearchRow<T> {
+  item: T
+  score: number
+  index: number
+}
+
+/** ZCode OKt：全部 token 命中才保留；title 前缀 120 / 词界 90 / 包含 70 / hint 40 / 类型 20 / 其他 1。 */
+function rankRows<T>(rows: T[], tokens: string[], fields: (item: T) => { title: string; hint: string; typeLabel: string }): SearchRow<T>[] {
+  if (tokens.length === 0) return rows.map((item, index) => ({ item, score: 1, index }))
+  const scored: SearchRow<T>[] = []
+  rows.forEach((item, index) => {
+    const f = fields(item)
+    const title = norm(f.title)
+    const hint = norm(f.hint)
+    const typeLabel = norm(f.typeLabel)
+    const all = `${title} ${hint} ${typeLabel}`
+    if (!tokens.every(t => all.includes(t))) return
+    let score = 0
+    for (const t of tokens) {
+      if (title.startsWith(t)) score += 120
+      else if (boundaryMatch(title, t)) score += 90
+      else if (title.includes(t)) score += 70
+      else if (hint.includes(t)) score += 40
+      else if (typeLabel.includes(t)) score += 20
+      else score += 1
+    }
+    scored.push({ item, score, index })
+  })
+  scored.sort((a, b) => b.score - a.score || a.index - b.index)
+  return scored
 }
 
 /* ── 面板工具条小按钮 ── */
@@ -251,7 +331,7 @@ function StripButton(props: {
   )
 }
 
-/* ── 关闭图标（lucide x，ZCode 概览/标签关闭钮同形） ── */
+/* ── 关闭图标（lucide x） ── */
 
 function XIcon({ size = 12 }: { size?: number }) {
   return (
@@ -262,7 +342,7 @@ function XIcon({ size = 12 }: { size?: number }) {
   )
 }
 
-/* ── 左/右方向图标（浏览器工具条） ── */
+/* ── 浏览器工具条图标 ── */
 
 function ArrowIcon({ dir, size = 14 }: { dir: 'left' | 'right'; size?: number }) {
   return (
@@ -288,6 +368,19 @@ function ExternalIcon({ size = 14 }: { size?: number }) {
       <path d="M15 3h6v6" />
       <path d="M10 14 21 3" />
       <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    </svg>
+  )
+}
+
+/** 元素拾取钮图标（lucide mouse-pointer-click 近似：ZCode 选择网页元素加入聊天）。 */
+function PickerIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M14 4.1 12 6" />
+      <path d="m5.1 8-2.9-.8" />
+      <path d="m6 12-1.9 2" />
+      <path d="M7.2 2.2 8 5.1" />
+      <path d="M9.037 9.69a.498.498 0 0 1 .653-.653l11 4.5a.5.5 0 0 1-.074.949l-4.349 1.041a1 1 0 0 0-.74.739l-1.04 4.35a.5.5 0 0 1-.95.074z" />
     </svg>
   )
 }
@@ -338,15 +431,15 @@ export function PreviewDetailsPanel({
   const [fileDialogOpen, setFileDialogOpen] = useState(false)
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; tabId: string } | null>(null)
   const [now, setNow] = useState(() => Date.now())
-  const [frameTick, setFrameTick] = useState(0)
   const panelRef = useRef<HTMLDivElement | null>(null)
+  const tabsViewportRef = useRef<HTMLDivElement | null>(null)
   const overviewBtnRef = useRef<HTMLButtonElement | null>(null)
   const addBtnRef = useRef<HTMLButtonElement | null>(null)
   const lastSession = useRef(sessionId)
   const dragTab = useRef<string | null>(null)
   const resizing = useRef(false)
 
-  const { tabs, activeTabId, recentClosed, width, maximized } = persist
+  const { tabs, activeTabId, recentClosed, width } = persist
   const activeTab = tabs.find(t => t.id === activeTabId) ?? tabs[0]
 
   const patch = useCallback((p: Partial<PanePersist>) => {
@@ -394,45 +487,68 @@ export function PreviewDetailsPanel({
     lastSession.current = sessionId
   }, [sessionId])
 
-  /* ── 标签操作 ── */
+  /* ── 标签操作（ZCode 纯函数语义对应） ── */
 
   const activateTab = useCallback((id: string) => { patch({ activeTabId: id }) }, [patch])
 
+  /** ZCode Qo：同 id 就地替换并激活；否则追加并激活。 */
   const openTab = useCallback((tab: SidePaneTab) => {
     setPersist(prev => {
-      const existing = prev.tabs.find(t => t.id === tab.id)
-      const nextTabs = existing === undefined ? [...prev.tabs, tab] : prev.tabs.map(t => t.id === tab.id ? { ...t, ...tab, openedAt: t.openedAt } : t)
+      const index = prev.tabs.findIndex(t => t.id === tab.id)
+      const nextTabs = index >= 0
+        ? prev.tabs.map(t => t.id === tab.id ? tab : t)
+        : [...prev.tabs, tab]
       const next: PanePersist = { ...prev, tabs: nextTabs, activeTabId: tab.id }
       savePersist(next)
       return next
     })
   }, [])
 
+  /** 收起面板（ZCode：关闭最后一个标签 → isSidePaneCollapsed）。 */
+  const collapsePane = useCallback((): void => {
+    setPaneSyncSuppressed(true)
+    setPreviewOpen(false)
+    closeDetails?.()
+    window.dispatchEvent(new CustomEvent(PREVIEW_TOGGLE_EVENT))
+  }, [closeDetails])
+
+  /** ZCode is + toe：关闭标签；激活标签被关时激活同位右邻；关完收起面板。 */
   const closeTab = useCallback((id: string) => {
+    // 同步判断「关完是否为空」（updater 惰性执行，不能依赖其内部赋值）。
+    const willBeEmpty = tabs.length === 1 && tabs.some(t => t.id === id)
     setPersist(prev => {
-      const target = prev.tabs.find(t => t.id === id)
+      const index = prev.tabs.findIndex(t => t.id === id)
+      if (index < 0) return prev
+      const target = prev.tabs[index]
       if (target === undefined) return prev
       const rest = prev.tabs.filter(t => t.id !== id)
       const closed: ClosedTabEntry[] = [{ tab: target, closedAt: Date.now() }, ...prev.recentClosed].slice(0, RECENT_CLOSED_MAX)
-      const activeTabStill = rest.some(t => t.id === prev.activeTabId)
-      const next: PanePersist = {
-        ...prev,
-        tabs: rest,
-        recentClosed: closed,
-        activeTabId: activeTabStill ? prev.activeTabId : (rest.at(-1)?.id ?? ''),
+      if (rest.length === 0) {
+        const next: PanePersist = { ...prev, tabs: [], activeTabId: '', recentClosed: closed }
+        savePersist(next)
+        return next
       }
+      const activeStill = rest.some(t => t.id === prev.activeTabId)
+      const nextActive = activeStill
+        ? prev.activeTabId
+        : (rest[Math.min(index, rest.length - 1)]?.id ?? '')
+      const next: PanePersist = { ...prev, tabs: rest, recentClosed: closed, activeTabId: nextActive }
       savePersist(next)
       return next
     })
-  }, [])
+    if (willBeEmpty) collapsePane()
+  }, [tabs, collapsePane])
 
+  /** ZCode noe：只留指定标签（其余进最近关闭）。 */
   const closeOtherTabs = useCallback((id: string) => {
     setPersist(prev => {
+      const keep = prev.tabs.find(t => t.id === id)
+      if (keep === undefined) return prev
       const nowTs = Date.now()
       const closedOthers: ClosedTabEntry[] = prev.tabs.filter(t => t.id !== id).map(t => ({ tab: t, closedAt: nowTs }))
       const next: PanePersist = {
         ...prev,
-        tabs: prev.tabs.filter(t => t.id === id),
+        tabs: [keep],
         recentClosed: [...closedOthers.reverse(), ...prev.recentClosed].slice(0, RECENT_CLOSED_MAX),
         activeTabId: id,
       }
@@ -441,8 +557,10 @@ export function PreviewDetailsPanel({
     })
   }, [])
 
+  /** ZCode roe：关闭全部 → 面板收起。 */
   const closeAllTabs = useCallback(() => {
     setPersist(prev => {
+      if (prev.tabs.length === 0) return prev
       const nowTs = Date.now()
       const closedAll: ClosedTabEntry[] = prev.tabs.map(t => ({ tab: t, closedAt: nowTs }))
       const next: PanePersist = {
@@ -454,16 +572,26 @@ export function PreviewDetailsPanel({
       savePersist(next)
       return next
     })
-  }, [])
+    collapsePane()
+  }, [collapsePane])
 
+  /** ZCode we：重开最近关闭的标签；浏览器标签换新 id。 */
   const reopenTab = useCallback((id: string) => {
     setPersist(prev => {
       const entry = prev.recentClosed.find(c => c.tab.id === id)
       if (entry === undefined) return prev
+      // ZCode we：浏览器标签重开时换新 id（其余类型原样恢复）。
+      let revived: SidePaneTab
+      if (entry.tab.type === 'browser') {
+        const fresh = makeBrowserTab(entry.tab.url ?? 'about:blank')
+        revived = { ...fresh, title: entry.tab.title ?? '' }
+      } else {
+        revived = { ...entry.tab, openedAt: Date.now() }
+      }
       const next: PanePersist = {
         ...prev,
-        tabs: [...prev.tabs, { ...entry.tab, openedAt: Date.now() }],
-        activeTabId: id,
+        tabs: [...prev.tabs, revived],
+        activeTabId: revived.id,
         recentClosed: prev.recentClosed.filter(c => c.tab.id !== id),
       }
       savePersist(next)
@@ -492,12 +620,49 @@ export function PreviewDetailsPanel({
     setAddMenuOpen(false)
   }, [openTab])
 
-  /** 打开浏览器标签（已存在则导航）。 */
-  const openBrowser = useCallback((url: string) => {
-    openTab(makeTab('browser', { url }))
+  /** ZCode Fae：新增菜单的浏览器 → 复用已有浏览器标签，没有才新建。 */
+  const openBrowserFromMenu = useCallback(() => {
+    setPersist(prev => {
+      const existing = prev.tabs.find(t => t.type === 'browser')
+      if (existing !== undefined) {
+        const next: PanePersist = { ...prev, activeTabId: existing.id }
+        savePersist(next)
+        return next
+      }
+      const fresh = makeBrowserTab('about:blank')
+      const next: PanePersist = { ...prev, tabs: [...prev.tabs, fresh], activeTabId: fresh.id }
+      savePersist(next)
+      return next
+    })
+    setAddMenuOpen(false)
+  }, [])
+
+  /** ZCode z/Iae：URL 导航（产物链接）→ 总是新开浏览器标签。 */
+  const openBrowserUrl = useCallback((url: string) => {
+    openTab(makeBrowserTab(url))
   }, [openTab])
 
-  /** 打开代码查看标签（一会话一文件一标签）。 */
+  /** 浏览器标签内导航：更新同标签 URL（ZCode aoe 对应）。 */
+  const navigateBrowserTab = useCallback((id: string, url: string) => {
+    setPersist(prev => {
+      const next: PanePersist = { ...prev, tabs: prev.tabs.map(t => t.id === id && t.type === 'browser' ? { ...t, url } : t) }
+      savePersist(next)
+      return next
+    })
+  }, [])
+
+  /** 浏览器标签标题（同源页面 document.title）。 */
+  const renameBrowserTab = useCallback((id: string, title: string) => {
+    setPersist(prev => {
+      const target = prev.tabs.find(t => t.id === id)
+      if (target === undefined || target.type !== 'browser' || target.title === title) return prev
+      const next: PanePersist = { ...prev, tabs: prev.tabs.map(t => t.id === id ? { ...t, title } : t) }
+      savePersist(next)
+      return next
+    })
+  }, [])
+
+  /** 打开代码查看标签（ZCode Vae：sourceKey 去重，一文件一标签）。 */
   const openCodeViewer = useCallback((path: string, rel: string) => {
     openTab(makeTab('code-viewer', { path, rel }))
   }, [openTab])
@@ -507,6 +672,14 @@ export function PreviewDetailsPanel({
   }, [openCodeViewer])
 
   /* ── 快捷键：Ctrl/Cmd+K 命令中心，Ctrl/Cmd+Alt+B 切换面板（ZCode 切换右侧面板） ── */
+
+  const togglePane = useCallback((): void => {
+    const next = togglePreviewOpen()
+    setPaneSyncSuppressed(!next)
+    if (next) openDetails?.()
+    else closeDetails?.()
+    window.dispatchEvent(new CustomEvent(PREVIEW_TOGGLE_EVENT))
+  }, [openDetails, closeDetails])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -524,33 +697,24 @@ export function PreviewDetailsPanel({
     }
     window.addEventListener('keydown', onKey, true)
     return () => { window.removeEventListener('keydown', onKey, true) }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [togglePane])
 
-  const togglePane = (): void => {
-    const next = togglePreviewOpen()
-    setPaneSyncSuppressed(!next)
-    if (next) openDetails?.()
-    else closeDetails?.()
-    window.dispatchEvent(new CustomEvent(PREVIEW_TOGGLE_EVENT))
-  }
-
-  /* ── 会话内点击前端产物：开浏览器标签并展开 ── */
+  /* ── 会话内点击前端产物：新开浏览器标签并展开（ZCode z） ── */
 
   useEffect(() => {
     const onNavigate = (e: Event): void => {
       const detail = (e as CustomEvent<{ url?: string }>).detail
       const url = detail?.url
       if (url === undefined || url === '') return
-      openBrowser(url)
+      openBrowserUrl(url)
       setPreviewOpen(true)
       openDetails?.()
     }
     window.addEventListener(PREVIEW_NAVIGATE_EVENT, onNavigate)
     return () => { window.removeEventListener(PREVIEW_NAVIGATE_EVENT, onNavigate) }
-  }, [openDetails, openBrowser])
+  }, [openDetails, openBrowserUrl])
 
-  /* ── 概览打开时刷新相对时间 ── */
+  /* ── 概览打开时刷新相对时间（ZCode：60s） ── */
 
   useEffect(() => {
     if (!overviewOpen) return
@@ -558,6 +722,25 @@ export function PreviewDetailsPanel({
     const timer = window.setInterval(() => { setNow(Date.now()) }, 60000)
     return () => { window.clearInterval(timer) }
   }, [overviewOpen])
+
+  /* ── 激活标签平滑滚入视野（ZCode scrollBy smooth 对应） ── */
+
+  useEffect(() => {
+    if (activeTab === undefined) return
+    const raf = requestAnimationFrame(() => {
+      const viewport = tabsViewportRef.current
+      if (viewport === null) return
+      const chip = viewport.querySelector<HTMLElement>(`[data-side-pane-tab-id="${CSS.escape(activeTab.id)}"]`)
+      if (chip === null) return
+      const v = viewport.getBoundingClientRect()
+      const c = chip.getBoundingClientRect()
+      const left = c.left - v.left
+      const right = c.right - v.right
+      if (left < 0) viewport.scrollBy({ left, behavior: 'smooth' })
+      else if (right > 0) viewport.scrollBy({ left: right, behavior: 'smooth' })
+    })
+    return () => { cancelAnimationFrame(raf) }
+  }, [activeTab?.id, tabs.length])
 
   /* ── 弹层外点击关闭 ── */
 
@@ -588,7 +771,7 @@ export function PreviewDetailsPanel({
     }
   }, [overviewOpen, addMenuOpen, ctxMenu])
 
-  /* ── 宽度控制：grid 覆盖 + 左缘手柄 + 扩大/恢复 ── */
+  /* ── 宽度控制：grid 覆盖 + 左缘手柄（ZCode react-resizable-panels 对应） ── */
 
   const frameEl = useCallback((): HTMLElement | null => {
     let el: HTMLElement | null = panelRef.current
@@ -598,6 +781,20 @@ export function PreviewDetailsPanel({
     }
     return null
   }, [])
+
+  const widthBounds = useCallback((): { min: number; max: number } => {
+    const frame = frameEl()
+    const viewport = frame?.getBoundingClientRect().width ?? window.innerWidth
+    return { min: WIDTH_MIN, max: Math.max(WIDTH_MIN, Math.round(viewport * WIDTH_MAX_RATIO)) }
+  }, [frameEl])
+
+  /** ZCode sqt：首次打开默认宽度 = 父容器 45%。 */
+  const defaultWidth = useCallback((): number => {
+    const frame = frameEl()
+    const viewport = frame?.getBoundingClientRect().width ?? window.innerWidth
+    const { min, max } = widthBounds()
+    return Math.min(max, Math.max(min, Math.round(viewport * WIDTH_DEFAULT_RATIO)))
+  }, [frameEl, widthBounds])
 
   const applyWidthOverride = useCallback((px: number) => {
     const frame = frameEl()
@@ -609,10 +806,10 @@ export function PreviewDetailsPanel({
   }, [frameEl])
 
   // 打开时始终把 details 轨道覆盖为目标宽度（宿主 layout store 不持久化宽度，
-  // 且 maximize 后必须能回到普通宽度）；宿主重渲染后由 MutationObserver 补回。
+  // 且关闭后再打开必须回到记忆宽度）；宿主重渲染后由 MutationObserver 补回。
   useEffect(() => {
     if (!open) return
-    const target = maximized ? maximizeWidth() : width
+    const target = width > 0 ? width : defaultWidth()
     applyWidthOverride(target)
     const frame = frameEl()
     if (frame === null) return
@@ -623,23 +820,13 @@ export function PreviewDetailsPanel({
       if (!Number.isFinite(last)) return
       // 宿主/用户把轨道归零（关闭列）时尊重关闭，不能强行拉回。
       if (last < 1) return
-      const want = maximized ? maximizeWidth() : width
+      const want = width > 0 ? width : defaultWidth()
       if (Math.abs(last - want) >= 2) applyWidthOverride(want)
     })
     mo.observe(frame, { attributes: true, attributeFilter: ['style'] })
     return () => { mo.disconnect() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, width, maximized, applyWidthOverride])
-
-  const maximizeWidth = (): number => {
-    const frame = frameEl()
-    const viewport = frame?.getBoundingClientRect().width ?? window.innerWidth
-    return Math.max(480, Math.round(viewport * 0.72))
-  }
-
-  const toggleMaximize = (): void => {
-    patch({ maximized: !maximized })
-  }
+  }, [open, width, applyWidthOverride])
 
   const onResizeStart = (e: ReactPointerEvent<HTMLDivElement>): void => {
     e.preventDefault()
@@ -647,18 +834,22 @@ export function PreviewDetailsPanel({
     handle.setPointerCapture(e.pointerId)
     handle.setAttribute('data-dragging', '')
     resizing.current = true
-    const startWidth = panelRef.current?.getBoundingClientRect().width ?? width
+    // 一律以 grid 轨道宽度为基准（面板 rect = 轨道 - 宿主列内边距，slot 包裹层宽为 0 不可用）。
+    const frame = frameEl()
+    const tracks = frame?.style.gridTemplateColumns.split(/\s+/) ?? []
+    const startTrack = Number.parseFloat(tracks[tracks.length - 1] ?? '') || (panelRef.current?.getBoundingClientRect().width ?? width)
     const startX = e.clientX
-    let last = startWidth
+    const { min, max } = widthBounds()
+    let last = Math.min(max, Math.max(min, startTrack))
     const onMove = (ev: PointerEvent): void => {
-      last = Math.min(Math.max(WIDTH_MIN, startWidth + (startX - ev.clientX)), Math.round(window.innerWidth * 0.85))
+      last = Math.min(max, Math.max(min, startTrack + (startX - ev.clientX)))
       applyWidthOverride(last)
     }
     const onUp = (ev: PointerEvent): void => {
       handle.releasePointerCapture(ev.pointerId)
       handle.removeAttribute('data-dragging')
       resizing.current = false
-      patch({ width: last, maximized: false })
+      patch({ width: last })
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
     }
@@ -666,20 +857,7 @@ export function PreviewDetailsPanel({
     window.addEventListener('pointerup', onUp)
   }
 
-  /* ── iframe 元素选择器（产物模式同源） ── */
-
-  useEffect(() => {
-    if (!open || sessionId === undefined || sessionId === null) return
-    if (activeTab === undefined) return
-    const frame = document.querySelector<HTMLIFrameElement>('[data-liuli-picker-frame][data-active-frame="1"]')
-    const doc = frame?.contentDocument
-    if (doc === null || doc === undefined) return
-    return attachElementPicker(doc, {
-      onPick: (el) => { insertElement(describeElement(el)) },
-    }, panelRef.current)
-  }, [open, sessionId, activeTab?.id, frameTick, insertElement, activeTab])
-
-  /* ── 命令中心（保留原有命令 + ZCode quickPick 的 切换面板 / 打开文件） ── */
+  /* ── 命令中心（ZCode quickPick 的 切换面板 / 打开文件 + 其余命令） ── */
 
   const commands: CommandPaletteCommand[] = [
     {
@@ -729,7 +907,7 @@ export function PreviewDetailsPanel({
       id: 'browser',
       label: '浏览器',
       hint: '预览产物与 localhost 页面',
-      run: () => { openBrowser('about:blank') },
+      run: () => { openBrowserFromMenu() },
     },
     {
       id: 'new-session',
@@ -799,18 +977,18 @@ export function PreviewDetailsPanel({
     },
   ]
 
-  /* ── 新增标签菜单项（ZCode：条件过滤后的可用面板类型） ── */
+  /* ── 新增标签菜单项（ZCode wqt：条件过滤 + 排序后的可用面板类型） ── */
 
   const addMenuItems = useMemo(() => {
     const has = (type: SidePaneTabType): boolean => tabs.some(t => t.type === type)
     const items: Array<{ id: string; label: string; icon: ReactNode; run: () => void }> = []
     if (!has('git')) items.push({ id: 'git', label: '审查', icon: <FileDiffIcon size={16} />, run: () => { openSingleton('git') } })
-    items.push({ id: 'browser', label: '浏览器', icon: <GlobeIcon size={16} />, run: () => { openBrowser('about:blank'); setAddMenuOpen(false) } })
+    items.push({ id: 'browser', label: '浏览器', icon: <GlobeIcon size={16} />, run: () => { openBrowserFromMenu() } })
     if (!has('treemapping')) items.push({ id: 'treemapping', label: 'Treemapping', icon: <MapIcon size={16} />, run: () => { openSingleton('treemapping') } })
     if (!has('repo-wiki')) items.push({ id: 'repo-wiki', label: '仓库 Wiki', icon: <RepoWikiIcon size={16} />, run: () => { openSingleton('repo-wiki') } })
     items.push({ id: 'open-file', label: '打开文件…', icon: <FileCodeCornerIcon size={16} />, run: () => { setAddMenuOpen(false); setFileDialogOpen(true) } })
     return items
-  }, [tabs, openSingleton, openBrowser])
+  }, [tabs, openSingleton, openBrowserFromMenu])
 
   /* ── 渲染 ── */
 
@@ -821,6 +999,7 @@ export function PreviewDetailsPanel({
         key={tab.id}
         data-side-pane-tab-id={tab.id}
         data-active={active ? '' : undefined}
+        data-state={active ? 'active' : 'inactive'}
         className={css.tab + (active ? ' ' + css.tabActive : '')}
         draggable
         title={tabTitle(tab) + (tabHint(tab) !== '' ? ' · ' + tabHint(tab) : '')}
@@ -889,7 +1068,7 @@ export function PreviewDetailsPanel({
               <ChevronsDownIcon size={16} />
             </StripButton>
           </div>
-          <div className={css.tabsViewport}>
+          <div ref={tabsViewportRef} className={css.tabsViewport} data-side-pane-tabs-viewport="">
             <div className={css.tabsContent} data-side-pane-tabs-content="">
               {tabs.map(renderTabChip)}
             </div>
@@ -903,28 +1082,6 @@ export function PreviewDetailsPanel({
             buttonRef={(el) => { addBtnRef.current = el }}
           >
             <PlusIcon size={16} />
-          </StripButton>
-          <StripButton
-            label={maximized ? '恢复面板宽度' : '扩大面板'}
-            onClick={toggleMaximize}
-          >
-            {maximized
-              ? (
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="m14 10 7-7" />
-                  <path d="M20 10h-6V4" />
-                  <path d="m3 21 7-7" />
-                  <path d="M4 14h6v6" />
-                </svg>
-              )
-              : (
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M8 3H5a2 2 0 0 0-2 2v3" />
-                  <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
-                  <path d="M3 16v3a2 2 0 0 0 2 2h3" />
-                  <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
-                </svg>
-              )}
           </StripButton>
         </div>
       </div>
@@ -973,9 +1130,10 @@ export function PreviewDetailsPanel({
                 <BrowserPanel
                   sessionId={sessionId}
                   url={tab.url ?? 'about:blank'}
-                  onNavigate={(url) => { openTab({ ...tab, url }) }}
-                  onFrameLoad={() => { setFrameTick(t => t + 1) }}
-                  pickerActive={active}
+                  onNavigate={(url) => { navigateBrowserTab(tab.id, url) }}
+                  onTitleChange={(title) => { renameBrowserTab(tab.id, title) }}
+                  insertElement={insertElement}
+                  getPaneEl={() => panelRef.current}
                 />
               )}
               {tab.type === 'code-viewer' && (
@@ -984,8 +1142,6 @@ export function PreviewDetailsPanel({
                   rel={tab.rel ?? ''}
                   path={tab.path ?? ''}
                   onOpenPath={openPath}
-                  onFrameLoad={() => { setFrameTick(t => t + 1) }}
-                  pickerActive={active}
                 />
               )}
             </div>
@@ -1024,12 +1180,12 @@ export function PreviewDetailsPanel({
         </div>
       )}
 
-      {/* 标签右键菜单 */}
+      {/* 标签右键菜单（ZCode w-44 = 176px） */}
       {ctxMenu !== null && ctxTab !== undefined && (
         <div
           data-liuli-pane-popover=""
-          className={css.popoverCard + ' ' + css.addMenu}
-          style={{ left: Math.min(ctxMenu.x, window.innerWidth - 200), top: Math.min(ctxMenu.y, window.innerHeight - 140) }}
+          className={css.popoverCard + ' ' + css.tabMenu}
+          style={{ left: Math.min(ctxMenu.x, window.innerWidth - 190), top: Math.min(ctxMenu.y, window.innerHeight - 140) }}
           role="menu"
         >
           <button type="button" role="menuitem" className={css.menuItem} onClick={() => { closeTab(ctxTab.id); setCtxMenu(null) }}>关闭标签</button>
@@ -1090,14 +1246,9 @@ function OverviewPopover({ anchor, tabs, closed, activeTabId, now, onActivate, o
     return () => { window.clearTimeout(t) }
   }, [])
 
-  const match = (tab: SidePaneTab): boolean => {
-    const q = query.trim().toLowerCase()
-    if (q === '') return true
-    return (tabTitle(tab) + ' ' + tabHint(tab) + ' ' + tab.type).toLowerCase().includes(q)
-  }
-
-  const openRows = tabs.filter(match)
-  const closedRows = closed.filter(c => match(c.tab))
+  const tokens = useMemo(() => searchTokens(query), [query])
+  const openRows = useMemo(() => rankRows(tabs, tokens, tab => ({ title: tabTitle(tab), hint: tabHint(tab), typeLabel: tabTypeLabel(tab) })).map(r => r.item), [tabs, tokens])
+  const closedRows = useMemo(() => rankRows(closed, tokens, entry => ({ title: tabTitle(entry.tab), hint: tabHint(entry.tab), typeLabel: tabTypeLabel(entry.tab) })).map(r => r.item), [closed, tokens])
 
   return (
     <div data-liuli-pane-popover="" className={css.popoverCard + ' ' + css.overviewCard} style={anchorStyle(anchor, 'left')} role="dialog" aria-label="搜索标签页">
@@ -1307,18 +1458,21 @@ function OpenFileDialog({ sessionId, onClose, onOpenFile }: OpenFileDialogProps)
   )
 }
 
-/* ── 浏览器标签面板 ── */
+/* ── 浏览器标签面板（ZCode browser pane：导航工具条 + 元素拾取开关） ── */
 
 interface BrowserPanelProps {
   sessionId?: string | undefined
   url: string
   onNavigate: (url: string) => void
-  onFrameLoad: () => void
-  pickerActive: boolean
+  onTitleChange: (title: string) => void
+  insertElement: (info: PickedElement) => void
+  getPaneEl: () => HTMLElement | null
 }
 
-function BrowserPanel({ sessionId, url, onNavigate, onFrameLoad, pickerActive }: BrowserPanelProps) {
+function BrowserPanel({ sessionId, url, onNavigate, onTitleChange, insertElement, getPaneEl }: BrowserPanelProps) {
   const [draft, setDraft] = useState(url)
+  const [pickerOn, setPickerOn] = useState(false)
+  const [frameTick, setFrameTick] = useState(0)
   const frameRef = useRef<HTMLIFrameElement | null>(null)
 
   useEffect(() => { setDraft(url) }, [url])
@@ -1345,13 +1499,38 @@ function BrowserPanel({ sessionId, url, onNavigate, onFrameLoad, pickerActive }:
       frame.contentWindow?.location.reload()
     } catch {
       // 跨域时退回重设 src。
-      frame.src = url
+      const src = frame.src
+      frame.src = 'about:blank'
+      window.setTimeout(() => { frame.src = src }, 0)
     }
   }
 
   const openExternal = (): void => {
     if (url !== '' && url !== 'about:blank') window.open(url, '_blank', 'noopener')
   }
+
+  // 同源页面加载后提取 document.title 作为标签标题（ZCode onPageMetadataChange 对应）。
+  const handleLoad = (): void => {
+    setFrameTick(t => t + 1)
+    try {
+      const title = frameRef.current?.contentDocument?.title ?? ''
+      if (title.trim() !== '') onTitleChange(title.trim())
+    } catch { /* 跨域不可读 */ }
+  }
+
+  // 元素拾取（ZCode browser.elementPicker：按钮显式开启，选完自动关闭）。
+  useEffect(() => {
+    if (!pickerOn) return
+    const doc = frameRef.current?.contentDocument
+    if (doc === null || doc === undefined) return
+    const detach = attachElementPicker(doc, {
+      onPick: (el) => {
+        insertElement(describeElement(el))
+        setPickerOn(false)
+      },
+    }, getPaneEl())
+    return () => { detach?.() }
+  }, [pickerOn, frameTick, insertElement, getPaneEl])
 
   return (
     <>
@@ -1375,6 +1554,16 @@ function BrowserPanel({ sessionId, url, onNavigate, onFrameLoad, pickerActive }:
           placeholder="输入网址后回车"
           spellCheck={false}
         />
+        <button
+          type="button"
+          className={css.navBtn + (pickerOn ? ' ' + css.navBtnActive : '')}
+          title={pickerOn ? '取消网页元素选择' : '选择网页元素加入聊天'}
+          aria-label={pickerOn ? '取消网页元素选择' : '选择网页元素加入聊天'}
+          aria-pressed={pickerOn}
+          onClick={() => { setPickerOn(v => !v) }}
+        >
+          <PickerIcon />
+        </button>
         <button type="button" className={css.navBtn} title="在默认浏览器中打开" aria-label="在默认浏览器中打开" onClick={openExternal}>
           <ExternalIcon />
         </button>
@@ -1387,27 +1576,23 @@ function BrowserPanel({ sessionId, url, onNavigate, onFrameLoad, pickerActive }:
           className={css.frame}
           title="浏览器"
           src={url}
-          data-liuli-picker-frame=""
-          data-active-frame={pickerActive ? '1' : undefined}
-          onLoad={onFrameLoad}
+          onLoad={handleLoad}
         />
       )}
     </>
   )
 }
 
-/* ── 代码查看标签面板 ── */
+/* ── 代码查看标签面板（ZCode code-viewer：无元素拾取） ── */
 
 interface CodeViewerPanelProps {
   sessionId?: string | undefined
   rel: string
   path: string
   onOpenPath?: ((path: string) => void) | undefined
-  onFrameLoad: () => void
-  pickerActive: boolean
 }
 
-function CodeViewerPanel({ sessionId, rel, path, onOpenPath, onFrameLoad, pickerActive }: CodeViewerPanelProps) {
+function CodeViewerPanel({ sessionId, rel, path, onOpenPath }: CodeViewerPanelProps) {
   const src = sessionId === undefined || sessionId === null || rel === ''
     ? 'about:blank'
     : `/preview/${encodeURIComponent(sessionId)}/${rel.split('/').map(s => encodeURIComponent(s)).join('/')}`
@@ -1432,9 +1617,6 @@ function CodeViewerPanel({ sessionId, rel, path, onOpenPath, onFrameLoad, picker
         className={css.frame}
         title={rel !== '' ? rel : '代码查看'}
         src={src}
-        data-liuli-picker-frame=""
-        data-active-frame={pickerActive ? '1' : undefined}
-        onLoad={onFrameLoad}
       />
     </>
   )

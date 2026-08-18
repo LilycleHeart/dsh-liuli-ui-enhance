@@ -1,88 +1,108 @@
-# ZCode 右侧边栏（侧边面板 / 切换面板）复刻对照表
+# ZCode 右侧边栏(侧边面板)复刻对照与验证
 
-> 依据 ZCode 本机安装（C:\Users\27280\AppData\Local\Programs\ZCode）解包实测：
-> `resources/app.asar` → `out/renderer/assets/styles-*.js`（渲染 bundle）与 i18n 字典逐段对照；
-> 辅以官方文档 [任务与文件管理](https://zcode.z.ai/cn/docs/task-management)、
-> [ADE 工具](https://zcode.z.ai/cn/docs/ADE-tools)、[快捷键表](https://zcode.z.ai/docs/keyboard-shortcuts)。
->
-> ZCode 右侧边栏是「侧边面板（side pane）」：一条 48px 标签条承载多个可切换面板标签，
-> 标签可新增 / 关闭 / 拖拽排序 / 搜索概览，面板可收起 / 展开 / 扩大 / 拖宽。
-> 本插件在 DSH 宿主右侧 `details` 布局列上 1:1 复刻该结构与交互。
+> 依据:用户提供的 ZCode 逆向源码 `C:\Users\27280\.zcode\workspace\default\zcode-reverse`
+> (核心文件:`09-renderer-renamed/styles-OqUHW1P0/deobfuscated.js`,7.5MB,变量已重命名+JSX 反编译)。
+> 本插件(/mnt/d/Agent project/liuli-theme)在 DSH 宿主右侧 `details` 布局列上实现同构的标签式侧边面板,
+> 逐功能对照逆向源码实现并用 Playwright 对运行中的 DSH Web(:18080)实测。
 
-## 入口与快捷键
+## 源码定位(zcode-reverse)
 
-| ZCode | liuli-theme | 状态 |
+| 模块 | 位置(deobfuscated.js 行号) |
+| --- | --- |
+| 标签状态纯函数(fae/Qo/is/toe/rs/noe/roe/soe/ioe/Fae/Vae/Hae/Gae…) | 1766–2560 |
+| 侧边面板控制 hook(Boe:开合/打开/关闭/重开/排序/最近关闭) | 2748–3420 |
+| 最近关闭上限 Roe=8 | 1131 |
+| 标签 chip(FKt)/拖拽影子(IKt)/图标(R5)/tooltip(PKt) | 171650–172100 附近 |
+| 概览弹层(KKt:搜索+两组+相对时间 60s 刷新) | 同上区域 |
+| 标签条(jqt:viewport 遮罩/滚动跟随/+按钮位置切换/空状态/标签面板渲染) | 172880–173900 |
+| 宽度常量:sqt=0.45(默认宽度比)、Eqt(min 240px/max 65%)、yqt=200ms | 172665–172760 |
+| 标题栏切换按钮(panel-right-open/close + sidePane.togglePanel) | 139550–139820 |
+| 面板布局(react-resizable-panels:conversation-column + browser 面板组) | 175400 附近 |
+| i18n(sidePane.* / browser.* / codeViewer.* 等) | IntlProvider 字典 |
+
+## 逐功能对照
+
+### 标签模型与生命周期
+
+| ZCode 逆向源码行为 | 本插件实现 | 实测 |
 | --- | --- | --- |
-| 标题栏「切换面板」按钮（panel-right-open/close 图标） | header utilities 同形按钮，图标路径取自 ZCode bundle lucide 定义，激活态高亮 | ✅ |
-| Ctrl/Cmd+Alt+B 切换右侧面板 | 全局 keydown 捕获同键位；tooltip 标注「切换面板 (Ctrl+Alt+B)」 | ✅ |
-| Ctrl/Cmd+K 命令中心含「切换面板 / 打开文件」 | 命令中心含 切换面板（Ctrl Alt B）/ 打开文件… / 搜索文件 / Treemapping / 仓库 Wiki / 审查 / 浏览器 等 | ✅ |
+| Qo:同 id 就地替换并激活;否则追加并激活 | openTab 同语义 | ✅ |
+| is:关闭标签;被关的是激活标签时激活 `r[Math.min(n, len-1)]`(同位右邻) | closeTab 同语义 | ✅ close active → 右邻激活 |
+| Nae:可见标签归零 → isSidePaneCollapsed=true(面板收起) | 关闭最后一个标签 → collapsePane | ✅ track 归 0 |
+| fae:treemapping 不入持久态(ZCode 已把文件树移到左侧栏,右侧 treemapping 入口已隐藏) | DSH 左侧栏为宿主官方会话列表,文件树保留在右侧面板(DSH 适配差异,已注明) | ➖ 适配差异 |
+| Roe=8:最近关闭上限 8;selection-side-chat/browser-use 不入最近关闭 | 上限 8(DSH 无另两类标签) | ✅ recentClosed ≤ 8 |
+| we:重开最近关闭;browser 类型换新 id | reopenTab 同语义 | ✅ 新 id 验证通过 |
+| Fae/coe:「浏览器」菜单项复用同任务已有 browser 标签 | openBrowserFromMenu 复用首个 browser 标签 | ✅ 无重复标签 |
+| z/Iae:URL 导航(产物链接/webview 请求)总新建 browser 标签 | PREVIEW_NAVIGATE_EVENT → 新建 browser:<uid> | ✅ 多实例验证 |
+| browser 标签标题 = 页面 title,缺省「浏览器」 | 同源 iframe onLoad 取 document.title | ✅ demo 页标题上屏 |
+| code-viewer 以 sourceKey 去重(一文件一标签) | id = code-viewer:<rel> | ✅ |
+| 状态为宿主内内存态(per-workspace Map,LRU 50,不跨重启) | localStorage 持久化(DSH 适配扩展:页面刷新频繁,跨刷新保留标签/宽度) | ➖ 扩展差异 |
 
-## 标签条（48px，border-b）
+### 标签条 UI
 
-| ZCode 结构 | liuli-theme 实现 | 状态 |
+| ZCode | 本插件 | 实测 |
 | --- | --- | --- |
-| 左侧概览触发钮（chevrons-down，outline icon-md，aria「搜索标签页」） | 同图标 / 同位置 / 同 aria | ✅ |
-| 标签：h-7（28px），flex 1 1 9.75rem，min 60 max 156，rounded-lg，icon size-3.5 + truncate 标题 + 渐隐关闭钮 | 尺寸 / 圆角 / 图标 / 渐隐关闭钮同构；active 态 border + card 底 | ✅ |
-| 标签 tooltip（1.5s 延迟显示标题） | 原生 title（标题 · URL/路径） | ✅（等效） |
-| 点击激活 / 拖拽排序（dnd-kit） | 点击激活；HTML5 DnD 拖拽排序 | ✅ |
-| 中键关闭 | onAuxClick(button===1) 关闭 | ✅ |
-| 右键菜单：关闭标签 / 关闭其他标签（无其他时禁用）/ 关闭所有标签 | 同三项、同禁用逻辑（fixed 弹层菜单） | ✅ |
-| 右侧「新增标签」(+) outline 按钮 + w-48 下拉（icon + 文案，按支持情况过滤） | 同形按钮与下拉；项目按 DSH 可行性过滤（见下） | ✅ |
-| 标签内容常驻挂载，inactive 隐藏（保留 iframe/滚动状态） | 全部标签面板常驻，`data-state=inactive` display:none | ✅ |
+| TabsList h-12(48px)、border-b、bg-transparent | .tabStrip 48px + border-b | ✅ |
+| 概览触发钮 chevrons-down outline icon,aria「搜索标签页」 | 同图标(SidePaneIcons 取自 bundle)/同 aria | ✅ |
+| 标签 h-7(28px)、flex 1 1 9.75rem、min 60 max 156、rounded-lg、icon size-3.5、text-ui-base(14px) font-medium | 同尺寸/圆角/字号 | ✅ |
+| 关闭钮常驻(w-2 渐变 + w-6 容器 + x size-3,ghost) | .tabCloseZone 常驻渐隐底 + 关闭钮 | ✅ |
+| data-side-pane-tab-id / data-active / data-state | 同属性 | ✅ |
+| dnd-kit 拖拽排序 + 拖拽影子 | HTML5 DnD 排序 | ✅ |
+| 右键菜单 w-44:关闭标签/关闭其他标签(无其他禁用)/关闭所有标签 | 同三项同禁用逻辑,176px | ✅ |
+| 中键关闭 | onAuxClick | ✅ |
+| 激活标签平滑滚入视野(scrollBy smooth) | scrollIntoView 等效(rAF + scrollBy smooth) | ✅ |
+| tooltip 1.5s 延迟显示标题 | 原生 title(标题 · URL/路径) | ✅ 等效 |
+| + 新增标签:w-48 下拉,项目按条件过滤(wqt 序:辅助对话/审查/终端/浏览器/开发者工具) | DSH 可行集:审查(已有则隐)/浏览器/Treemapping(已有则隐)/仓库 Wiki(已有则隐)/打开文件… | ✅ 适配映射 |
+| 空状态「打开标签页」+ 说明 + h-12 rounded-xl bg-surface 按钮列 | 同结构同文案 | ✅ 5 项 |
 
-## 标签类型（图标与标题逐条取自 ZCode）
+### 概览弹层(搜索标签页)
 
-| ZCode 标签 | 图标（lucide，路径数据 1:1） | DSH 对应面板 | 状态 |
+| ZCode | 本插件 | 实测 |
+| --- | --- | --- |
+| w-72(288px) cmdk 弹层,搜索框 h-8 | 同宽弹层 + 搜索框 | ✅ |
+| 加权检索:全 token 命中才保留;title 前缀 120/词界 90/包含 70/hint 40/类型 20/其他 1,按分排序 | rankRows 同权重 | ✅ title 命中排在 URL 命中之前 |
+| 「打开的标签页」:icon + 标题 + 相对时间 + 关闭钮(opacity-70) | 同 | ✅ |
+| 「最近关闭的标签页」:点击重开 | 同 | ✅ |
+| 相对时间:刚刚/x分钟前/x小时前/x天前,打开期间 60s 刷新 | 同 | ✅ |
+| 无结果「没有找到标签页。」 | 同文案 | ✅ |
+
+### 面板开合 / 宽度
+
+| ZCode | 本插件 | 实测 |
+| --- | --- | --- |
+| Ctrl/Cmd+Alt+B 切换右侧面板(官网快捷键表 + toggleSidePaneShortcutLabel) | 全局捕获同键位;tooltip「切换面板 (Ctrl+Alt+B)」 | ✅ |
+| 标题栏按钮:panel-right-open/close,aria 展开/收起侧边面板,tooltip 切换面板,激活态 bg-selected | header 按钮同图标/aria/激活态 | ✅ |
+| 宽度:react-resizable-panels 面板组,min 240px / max 65%,默认 45%(sqt),布局持久化于 react-resizable-panels 键 | 左缘手柄拖拽,同 min/max/默认比,grid 轨道覆盖 + MutationObserver 防宿主重渲染回写,宽度 localStorage 持久化 | ✅ 首开 45%(720/1600)、min 钳制 240、拖宽持久化 |
+| 无 maximize/restore(sidePane.maximize/restoreSize 为未引用的死键) | 同样不提供(已移除早期版本的按钮) | ✅ 无该按钮 |
+| 收起/展开动画期间宽度过渡 | 宿主 details 轨道自带过渡;插件以 setPaneSyncSuppressed 防止关闭动画中被 RO 翻回 | ✅ 开合无回弹 |
+
+### 面板类型(图标均取自 ZCode bundle 的 lucide 定义)
+
+| ZCode 标签 | 图标 | DSH 对应 | 状态 |
 | --- | --- | --- | --- |
-| Treemapping | map | 工作区文件树（搜索 / 仅变更 / Git 状态徽标 / 右键 / 拖拽进聊天） | ✅ |
-| 仓库 Wiki（repo-wiki） | 自绘 32x32（三圆角方块 + 对角线，fill） | README 摘录 + 顶层模块地图，文件 chip 点回源码 | ✅ |
-| 审查（git） | file-diff | Git 状态 + 只读提交图（点击看完整哈希/作者/日期/父提交，可加载更多） | ✅ |
-| 浏览器（browser） | globe | 内置浏览器：后退/前进/刷新/地址栏/外部打开 + iframe 元素拾取 | ✅ |
-| 代码查看（code-viewer） | file-code-corner（回退图标） | 「打开文件…」对话框递归检索工作区 → `/preview/<session>/<rel>` iframe，顶栏显示相对路径 + 默认编辑器打开 | ✅ |
-| 终端 / 开发者工具 / 辅助对话 / 子智能体 / 画板 / 模型轨迹 / 计划 | — | DSH 宿主无对应能力（无 Web PTY / 无 ZCode agent 运行时），与 ADE-tools 文档结论一致 | ➖ 不适用 |
+| Treemapping | map | 文件树(搜索/仅变更/Git 状态徽标/右键/拖拽进聊天);ZCode 已隐藏该入口,DSH 保留 | ✅(适配保留) |
+| 仓库 Wiki(repo-wiki) | 自绘 32x32(3 圆角方块+对角线) | README 摘录 + 模块地图,chip 点回源码 | ✅ |
+| 审查(git) | file-diff | Git 状态 + 只读提交图(详情/加载更多) | ✅ |
+| 浏览器(browser) | globe | 后退/前进/刷新/地址栏/外部打开 + 元素拾取开关(同 ZCode browser.elementPicker 显式语义) | ✅ |
+| 代码查看(code-viewer) | file-code-corner(回退)/文件图标 | /preview iframe + 路径栏 + 默认编辑器打开;ZCode 有语法高亮渲染,DSH 走 /preview 原样服务 | ✅(渲染深度差异,已注明) |
+| 终端/开发者工具/辅助对话/子智能体/画板/模型轨迹/计划 | — | DSH 宿主无对应能力(无 Web PTY/无 ZCode agent 运行时) | ➖ 不适用 |
 
-## 概览弹层（搜索标签页，w-72 cmdk 风格）
+## 实测记录(Playwright 无头,运行中的 DSH Web :18080,构建后刷新)
 
-| ZCode | liuli-theme | 状态 |
-| --- | --- | --- |
-| 搜索框实时过滤（标题/提示/类型加权） | 搜索框按 标题+提示 包含过滤 | ✅ |
-| 「打开的标签页」组：图标 + 标题 + 相对打开时间（刚刚/x分钟前/x小时前/x天前，60s 刷新）+ 关闭钮 | 同组、同相对时间、同关闭钮 | ✅ |
-| 「最近关闭的标签页」组：点击重开（保留最近 15 条） | 同组、点击重开、上限 15 | ✅ |
-| 无结果显示「没有找到标签页。」 | 同文案 | ✅ |
+- t20-parity(18/18):无 maximize 按钮;首开宽度=45% 帧宽;三标签开启;浏览器菜单复用;
+  产物链接新开浏览器标签;iframe 标题上屏;关闭激活→右邻激活;recentClosed≤8;
+  重开浏览器换 id;关闭最后一个标签→轨道归 0;重开显示空状态;拾取钮存在且可开关;
+  加权检索 title 优先;拖宽 min 钳制 240
+- t2 回归:概览激活/右键菜单/关闭其他/最近关闭重开/Ctrl+Alt+B 开合(704→0→704 精确还原)/
+  拖宽持久化/打开文件→代码查看 iframe/全程无 pageerror
+- t22-width:开-关-开宽度精确还原;拖拽以 grid 轨道为基准(修复 slot 包裹层宽 0 的换算错误)
+- 构建链:tsc -b 无错;tsdown bundle 通过;服务器 /plugins/.../client.js no-cache 直读磁盘,
+  重建后浏览器刷新即生效(宿主 web-app 补丁禁用 HMR,故热重载自测=重建+刷新循环)
 
-## 空状态与面板操作
+## 已知差异(均为宿主能力差异,非复刻遗漏)
 
-| ZCode | liuli-theme | 状态 |
-| --- | --- | --- |
-| 无标签时空状态：「打开标签页」标题 + 说明 + h-12 rounded-xl bg-surface 按钮列（可用类型） | 同标题 / 说明 / 按钮列（审查/浏览器/Treemapping/仓库 Wiki/打开文件…） | ✅ |
-| 收起 / 展开侧边面板 | 标题栏按钮 + Ctrl Alt B；宿主 details 列动画展开收起 | ✅ |
-| 扩大面板 / 恢复面板宽度 | 标签条 maximize-2/minimize 按钮（lucide 路径 1:1），扩大≈72% 视口，可还原 | ✅ |
-| 面板宽度拖拽 + 记忆 | 左缘手柄拖拽（取代宿主 details 手柄），宽度写 localStorage；宿主 store 不持久化，插件打开时按记忆值覆盖 grid 轨道并防宿主重渲染回写 | ✅ |
-| 标签集合 / 激活标签 / 最近关闭 / 宽度 / 扩大态持久化 | `liuli:side-pane` localStorage，刷新恢复 | ✅ |
-
-## 会话联动
-
-| 行为 | 实现 | 状态 |
-| --- | --- | --- |
-| 切换会话宿主自动收起面板 | 跟随宿主；标签集合保留，下次打开恢复 | ✅ |
-| 会话内点击前端产物链接 → 面板打开浏览器标签 | 点击拦截 → `liuli:preview-navigate` → 浏览器标签导航 | ✅ |
-| 文件树单击文件 → 打开代码查看标签 | `onOpenFile` → code-viewer 标签（一会话一文件一标签） | ✅ |
-| 关闭动画期间防止被 ResizeObserver 翻回打开 | `setPaneSyncSuppressed` 抑制窗口（观察到宽度归零或 800ms 超时解除） | ✅ |
-
-## 自测记录（Playwright 无头，针对运行中的 DSH Web :18080，构建后刷新页面）
-
-- `tsc -b` 与 `tsdown bundle` 通过；服务器 `/plugins/.../client.js` 即时读到新 bundle（no-cache）
-- 标签条三按钮（搜索标签页/新增标签/扩大面板）渲染；空状态 5 项
-- 新增标签：空状态与 + 菜单均可开标签；单例类型已开时从菜单隐去
-- 标签文案：Treemapping / 审查 / 浏览器 / 仓库 Wiki；图标按 ZCode lucide 定义
-- 概览：打开的标签页（相对时间+关闭钮）/ 最近关闭的标签页（点击重开）；搜索过滤与无结果文案
-- 右键菜单三项；关闭其他/关闭所有后最近关闭组出现；中键关闭
-- 拖拽排序（browser,treemapping → treemapping,browser）
-- Ctrl+Alt+B 收起（轨道 0px，面板 0）→ 再按展开（恢复记忆宽度）；关闭动画期间无回弹
-- 扩大面板 ≈72% 视口 → 恢复面板宽度回到记忆值
-- 左缘手柄拖宽并持久化（刷新后保持）
-- 打开文件对话框：递归扫描工作区，`readme` 命中 README.md，Enter 开 code-viewer 标签（iframe `/preview/<session>/README.md`）
-- 浏览器标签：地址栏导航 loopback / `/preview` 地址，后退/前进/刷新/外部打开按钮
-- `liuli:preview-navigate` 事件 → 浏览器标签导航并激活
-- 刷新页面后标签集合 / 激活标签恢复；切换会话宿主收起、标签保留
-- 全程无 pageerror
+1. treemapping:ZCode 当前构建隐藏右侧入口(文件树移至左侧栏);DSH 左侧栏为宿主官方组件,
+   插件不可替换,故保留在右侧面板。
+2. 持久化:ZCode 标签状态为应用内内存态;DSH 页面刷新频繁,插件持久化到 localStorage(扩展)。
+3. 代码查看:ZCode 内置语法高亮/diff 渲染;DSH 经 /preview 原样服务(HTML 可渲染,代码按文本)。
+4. 终端/开发者工具/辅助对话/子智能体/画板/模型轨迹/计划:依赖 ZCode 自有运行时,DSH 无对应能力。
