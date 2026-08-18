@@ -60,3 +60,7 @@
   CLI 用环境变量 `LIULI_BROWSER_BASE` 指定。
 - 隐藏标签（无 GUI carrier 的 agent 标签）截图：Host 端会临时把视图垫到 GUI 之下
   取帧再复位（无闪烁）；该修复需重启后生效。
+
+## 无头自测注意
+
+桌面部署按 `dsh-desktop` 设置分 compatibility/advanced 两种 shell 组合：advanced 模式下平台 ui-layout 行被禁用、由桌面壳自带 layout 服务。无头验证脚本用 `?dsh-desktop-mode=advanced`（可用环境变量 `DSH_DESKTOP_MODE` 覆盖），与用户设置保持一致，否则 boot 会因 layout 服务缺位而失败。
