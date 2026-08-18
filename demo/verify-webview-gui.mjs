@@ -27,7 +27,7 @@ console.log('BASE=' + BASE)
 
 const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
 const PORT = 9241
-const chrome = spawn(CHROME, ['--headless=new','--disable-gpu','--no-first-run','--user-data-dir=' + path.join(os.tmpdir(),'liuli-gui-' + process.pid),'--remote-debugging-port=' + String(PORT),'--window-size=1680,980',BASE + '/?dsh-desktop-mode=compatibility&dsh-desktop-platform=win32'],{stdio:'ignore'})
+const chrome = spawn(CHROME, ['--headless=new','--disable-gpu','--no-first-run','--user-data-dir=' + path.join(os.tmpdir(),'liuli-gui-' + process.pid),'--remote-debugging-port=' + String(PORT),'--window-size=1680,980',BASE + '/?dsh-desktop-mode=advanced&dsh-desktop-platform=win32'],{stdio:'ignore'})
 const sleep=(ms)=>new Promise(r=>setTimeout(r,ms))
 let ws=null,sendId=0;const pending=new Map();const pageErrors=[]
 async function connect(){let list=[];for(let i=0;i<40;i++){try{list=await(await fetch('http://127.0.0.1:'+PORT+'/json')).json();if(list.some(t=>t.type==='page'))break}catch{}await sleep(500)}const t=list.find(t=>t.type==='page');if(!t)throw new Error('no page');ws=new WebSocket(t.webSocketDebuggerUrl);await new Promise((res,rej)=>{ws.onopen=res;ws.onerror=rej});ws.onmessage=(e)=>{const m=JSON.parse(e.data);if(m.id&&pending.has(m.id)){pending.get(m.id).res(m.result);pending.delete(m.id);return}if(m.method==='Runtime.exceptionThrown'){pageErrors.push(m.params.exceptionDetails?.exception?.description??'x')}};await send('Runtime.enable')}
