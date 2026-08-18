@@ -69,6 +69,7 @@ interface ElectronMain {
 export interface BrowserTabState {
   url: string
   title: string
+  favicon: string | null
   canGoBack: boolean
   canGoForward: boolean
   loading: boolean
@@ -263,6 +264,12 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
         pushState(tab)
       }
     })
+    wc.on('page-favicon-updated', (...args: unknown[]) => {
+      // ZCode page-favicon-updated → faviconUrl（标签条图标）。
+      const favicons = args[1]
+      tab.state.favicon = Array.isArray(favicons) && typeof favicons[0] === 'string' ? favicons[0] : null
+      pushState(tab)
+    })
     wc.on('did-fail-load', (...args: unknown[]) => {
       // 第一个参数是事件对象；errorCode 起才是载荷。
       const [, errorCode, errorDescription, validatedURL, isMainFrame] = args as [unknown, number, string, string, boolean]
@@ -313,6 +320,7 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
     tab.state = {
       url: restoreUrl !== '' ? restoreUrl : 'about:blank',
       title: '',
+      favicon: null,
       canGoBack: false,
       canGoForward: false,
       loading: restoreUrl !== '' && restoreUrl !== 'about:blank',
@@ -337,7 +345,7 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
     const tab: EngineTab = {
       id,
       view,
-      state: { url: url !== '' ? url : 'about:blank', title: '', canGoBack: false, canGoForward: false, loading: url !== '' && url !== 'about:blank', ready: false, error: null },
+      state: { url: url !== '' ? url : 'about:blank', title: '', favicon: null, canGoBack: false, canGoForward: false, loading: url !== '' && url !== 'about:blank', ready: false, error: null },
       viewport: null,
       geometry: { x: 0, y: 0, width: 0, height: 0, visible: false },
       generation: 0,

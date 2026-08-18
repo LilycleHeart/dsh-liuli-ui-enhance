@@ -192,6 +192,8 @@ export interface SidePaneTab {
   url?: string
   /** browser：页面标题（同源时取 document.title）；terminal/whiteboard/side-chat：显示名。 */
   title?: string
+  /** browser：页面 favicon（webview 引擎 page-favicon-updated，ZCode faviconUrl 对应）。 */
+  favicon?: string
   /** side-chat：fork 出的子会话 id。 */
   childSessionId?: string
 }
@@ -307,6 +309,10 @@ function tabTypeLabel(tab: SidePaneTab): string {
 
 /** 标签图标（ZCode R5 对应的 DSH 子集）。 */
 function TabIcon({ tab, size = 14 }: { tab: SidePaneTab; size?: number }) {
+  // ZCode：浏览器标签 chip 用页面 favicon（缺省 globe）。
+  if (tab.type === 'browser' && tab.favicon !== undefined && tab.favicon !== '') {
+    return <img src={tab.favicon} alt="" width={size} height={size} style={{ borderRadius: 3, flex: 'none' }} />
+  }
   switch (tab.type) {
     case 'treemapping': return <MapIcon size={size} />
     case 'repo-wiki': return <RepoWikiIcon size={size} />
@@ -824,6 +830,17 @@ export function PreviewDetailsPanel({
     })
   }, [])
 
+  /** 浏览器标签 favicon（webview 引擎 page-favicon-updated 经 SSE 上报）。 */
+  const setBrowserTabFavicon = useCallback((id: string, favicon: string) => {
+    setPersist(prev => {
+      const target = prev.tabs.find(t => t.id === id)
+      if (target === undefined || target.type !== 'browser' || target.favicon === favicon) return prev
+      const next: PanePersist = { ...prev, tabs: prev.tabs.map(t => t.id === id ? { ...t, favicon } : t) }
+      savePersist(next)
+      return next
+    })
+  }, [])
+
   /** 打开代码查看标签（ZCode Vae：sourceKey 去重，一文件一标签）。 */
   const openCodeViewer = useCallback((path: string, rel: string) => {
     openTab(makeTab('code-viewer', { path, rel }))
@@ -1327,6 +1344,7 @@ export function PreviewDetailsPanel({
                   onTitleChange={(title) => { renameBrowserTab(tab.id, title) }}
                   insertElement={insertElement}
                   getPaneEl={() => panelRef.current}
+                  onFavicon={(favicon) => { setBrowserTabFavicon(tab.id, favicon) }}
                 />
               )}
               {tab.type === 'code-viewer' && (
@@ -1902,10 +1920,11 @@ interface NativeBrowserPanelProps {
   onNavigate: (url: string) => void
   onTitleChange: (title: string) => void
   insertElement: (info: PickedElement) => void
+  onFavicon?: ((favicon: string) => void) | undefined
 }
 
 /** webview 引擎浏览器面板：Host WebContentsView 的工具条 + carrier。 */
-function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitleChange, insertElement }: NativeBrowserPanelProps) {
+function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitleChange, insertElement, onFavicon }: NativeBrowserPanelProps) {
   const [state, setState] = useState<WebviewTabState | null>(null)
   const [draft, setDraft] = useState(url === 'about:blank' ? '' : url)
   const [draftFocused, setDraftFocused] = useState(false)
@@ -1963,7 +1982,8 @@ function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitle
     const title = state.title.trim()
     if (title !== '') onTitleChange(title)
     if (state.url !== '' && state.url !== 'about:blank') onNavigate(state.url)
-  }, [state?.title, state?.url]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (state.favicon !== null && state.favicon !== '') onFavicon?.(state.favicon)
+  }, [state?.title, state?.url, state?.favicon]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── 地址栏草稿跟随当前 URL（未聚焦时） ── */
 
@@ -2288,6 +2308,7 @@ interface BrowserPanelRouterProps {
   onTitleChange: (title: string) => void
   insertElement: (info: PickedElement) => void
   getPaneEl: () => HTMLElement | null
+  onFavicon?: ((favicon: string) => void) | undefined
 }
 
 /** 浏览器面板路由：webview 引擎（Electron 宿主）→ 原生视图承载；纯 Web → iframe。 */
@@ -2303,6 +2324,7 @@ function BrowserPanel({ tabId, active, ...rest }: BrowserPanelRouterProps) {
         onNavigate={rest.onNavigate}
         onTitleChange={rest.onTitleChange}
         insertElement={rest.insertElement}
+        onFavicon={rest.onFavicon}
       />
     )
   }
