@@ -39,17 +39,19 @@ function fail(message) {
 }
 
 async function getJson(path) {
-  const resp = await fetch(BASE + path, { headers: { accept: 'application/json' } })
+  const resp = await fetch(BASE + path, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(20000) })
   const type = resp.headers.get('content-type') ?? ''
   if (!type.includes('application/json')) fail('route ' + path + ' 不可用（宿主未启用嵌入式浏览器引擎？需要 DSH Desktop 重启加载新版 liuli-theme）')
   return resp.json()
 }
 
 async function postJson(path, body) {
+  const isExec = path === '/liuli-browser/tabs/execute'
   const resp = await fetch(BASE + path, {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json' },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(isExec ? 30000 : 20000),
   })
   const type = resp.headers.get('content-type') ?? ''
   if (!type.includes('application/json')) fail('route ' + path + ' 不可用（宿主未启用嵌入式浏览器引擎？）')
@@ -250,7 +252,11 @@ async function run() {
       const tab = requireTab()
       const code = args.slice(2).join(' ')
       if (code === '') fail('缺少 <js>')
-      const resp = await postJson('/liuli-browser/tabs/execute', { id: tab, code: '(() => { return (' + code + ') })()' })
+      // 优先按表达式求值（拿到返回值）；多语句代码包不进 return(...)，回退原样执行。
+      let resp = await postJson('/liuli-browser/tabs/execute', { id: tab, code: '(() => { return (' + code + ') })()' })
+      if (resp.ok === false && typeof resp.error === 'string' && resp.error.includes('Script failed')) {
+        resp = await postJson('/liuli-browser/tabs/execute', { id: tab, code })
+      }
       console.log(JSON.stringify(resp, null, 2))
       return
     }
