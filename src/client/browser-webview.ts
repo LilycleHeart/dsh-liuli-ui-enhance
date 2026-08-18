@@ -17,6 +17,7 @@
 export interface WebviewTabState {
   url: string
   title: string
+  favicon: string | null
   canGoBack: boolean
   canGoForward: boolean
   loading: boolean
