@@ -270,11 +270,6 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
-/* Input 组件（通用设置同款）拉伸占满行宽 */
-.inputWrap {
-  width: 100%;
-}
-
 .colorTextWrap {
   flex: 1;
   min-width: 0;

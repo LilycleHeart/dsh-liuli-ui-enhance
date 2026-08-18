@@ -62,6 +62,7 @@ export function locateTitleSpan(row: HTMLElement, title: string): HTMLElement | 
 /** 把一个 fixed <input> 覆盖到标题 span 上，进入内联编辑；提交经 commit 回调。 */
 export function mountEditor(span: HTMLElement, title: string, commit: (title: string) => Promise<unknown>): void {
   const rect = span.getBoundingClientRect()
+  const style = getComputedStyle(span)
   const input = document.createElement('input')
   input.type = 'text'
   input.value = title
@@ -71,19 +72,19 @@ export function mountEditor(span: HTMLElement, title: string, commit: (title: st
     position: 'fixed',
     left: rect.left + 'px',
     top: rect.top + 'px',
-    width: Math.max(rect.width, 160) + 'px',
-    height: Math.max(rect.height, 22) + 'px',
+    width: rect.width + 'px',
+    height: rect.height + 'px',
     boxSizing: 'border-box',
-    padding: '0 4px',
+    padding: '0',
     margin: '0',
     border: '1px solid var(--dsw-alias-brand-primary, currentColor)',
     borderRadius: '4px',
     background: 'var(--dsw-alias-bg-overlay, #fff)',
-    color: 'var(--dsw-alias-label-primary, inherit)',
-    fontFamily: 'inherit',
-    fontSize: 'inherit',
-    fontWeight: 'inherit',
-    lineHeight: 'inherit',
+    color: style.color,
+    fontFamily: style.fontFamily,
+    fontSize: style.fontSize,
+    fontWeight: style.fontWeight,
+    lineHeight: style.lineHeight,
     outline: 'none',
     zIndex: '9999',
   } as Partial<CSSStyleDeclaration>)
