@@ -106,6 +106,7 @@
 2. 持久化:ZCode 标签状态为应用内内存态;DSH 页面刷新频繁,插件持久化到 localStorage(扩展)。
 3. 代码查看:ZCode 内置语法高亮/diff 渲染;DSH 经 /preview 原样服务(HTML 可渲染,代码按文本)。
 4. 终端/开发者工具/辅助对话/子智能体/画板/模型轨迹/计划:依赖 ZCode 自有运行时,DSH 无对应能力。
-5. 浏览器承载:ZCode 用 Electron webview(可加载任意站点);DSH 为浏览器插件,用同源 iframe,
-   目标站点若发 X-Frame-Options / CSP frame-ancestors 拒绝嵌入则显示空白(本地 dev server、
-   /preview 与绝大多数 localhost 场景不受影响)。地址栏仍接受任意 http/https 并交给 iframe 尝试。
+5. 浏览器承载:ZCode 用 Electron webview(可加载任意站点)。本插件已在 Electron 宿主内
+   用 WebContentsView 复刻同款承载(browser-engine.ts,会话分区 persist:liuli-embedded-browser、
+   任意站点、弹窗转标签、崩溃原位重建、favicon 同步、响应式视口+拖拽手柄、元素拾取、
+   外部打开/开发者工具),纯 Web 部署自动回退 iframe + /liuli-proxy。详见 docs/browser-use.md。

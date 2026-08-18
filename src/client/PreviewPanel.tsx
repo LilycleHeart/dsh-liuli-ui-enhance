@@ -1934,6 +1934,8 @@ function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitle
   const [responsiveOn, setResponsiveOn] = useState(false)
   const [responsive, setResponsive] = useState<ResponsiveConfig>(loadResponsiveConfig)
   const [zoomFitScale, setZoomFitScale] = useState(1)
+  const [carrierSize, setCarrierSize] = useState({ width: 0, height: 0 })
+  const [resizingFrame, setResizingFrame] = useState(false)
   const carrierRef = useRef<HTMLDivElement | null>(null)
   const stateRef = useRef<WebviewTabState | null>(null)
   const lastRequestedUrl = useRef<string>(url)
@@ -2025,6 +2027,7 @@ function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitle
     if (el === null) return
     const compute = (): void => {
       const rect = el.getBoundingClientRect()
+      setCarrierSize({ width: rect.width, height: rect.height })
       const byWidth = (Math.max(0, rect.width - 32)) / responsive.width
       const byHeight = (Math.max(0, rect.height - 32)) / responsive.height
       setZoomFitScale(Math.max(0.1, Math.min(1, Math.min(byWidth, byHeight))))
@@ -2034,6 +2037,65 @@ function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitle
     ro.observe(el)
     return () => { ro.disconnect() }
   }, [responsiveOn, responsive.width, responsive.height])
+
+  /* ── 响应式视口拖拽缩放手柄（ZCode YUt resize handles 对应） ── */
+
+  const dragResizeFrame = (edge: 'right' | 'bottom' | 'corner') => (down: ReactPointerEvent<HTMLDivElement>): void => {
+    down.preventDefault()
+    const startX = down.clientX
+    const startY = down.clientY
+    const startW = responsive.width
+    const startH = responsive.height
+    const scale = responsiveScale
+    setResizingFrame(true)
+    const onMove = (move: PointerEvent): void => {
+      const next = { ...responsive }
+      if (edge === 'right' || edge === 'corner') {
+        next.width = Math.round(Math.min(3840, Math.max(320, startW + (move.clientX - startX) / scale)))
+      }
+      if (edge === 'bottom' || edge === 'corner') {
+        next.height = Math.round(Math.min(2160, Math.max(320, startH + (move.clientY - startY) / scale)))
+      }
+      setResponsive(next)
+    }
+    const onUp = (): void => {
+      setResizingFrame(false)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
+  const nudgeFrame = (e: React.KeyboardEvent<HTMLDivElement>): void => {
+    const step = e.shiftKey ? 50 : 10
+    let dw = 0
+    let dh = 0
+    if (e.key === 'ArrowLeft') dw = -step
+    else if (e.key === 'ArrowRight') dw = step
+    else if (e.key === 'ArrowUp') dh = -step
+    else if (e.key === 'ArrowDown') dh = step
+    else return
+    e.preventDefault()
+    setResponsive(r => ({
+      ...r,
+      width: Math.round(Math.min(3840, Math.max(320, r.width + dw))),
+      height: Math.round(Math.min(2160, Math.max(320, r.height + dh))),
+    }))
+  }
+
+  // 响应式模式下视口框在 carrier 内的呈现矩形（与 Host applyBounds 居中公式一致）。
+  const frameGuide = useMemo(() => {
+    if (!responsiveOn) return null
+    const w = responsive.width * responsiveScale
+    const h = responsive.height * responsiveScale
+    return {
+      left: Math.max(0, (carrierSize.width - w) / 2),
+      top: Math.max(0, (carrierSize.height - h) / 2),
+      width: Math.min(w, carrierSize.width),
+      height: Math.min(h, carrierSize.height),
+    }
+  }, [responsiveOn, responsive.width, responsive.height, responsiveScale, carrierSize])
 
   /* ── 动作 ── */
 
@@ -2287,6 +2349,49 @@ function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitle
         </div>
       )}
       <div className={css.carrier} data-testid="browser-webview" ref={carrierRef}>
+        {resizingFrame && (
+          <div className={css.resizeWarning} role="status">
+            <span>视口调整期间页面可能重新布局</span>
+          </div>
+        )}
+        {frameGuide !== null && (
+          <div
+            className={css.frameGuide}
+            data-testid="browser-responsive-scaled-frame"
+            style={{ left: frameGuide.left, top: frameGuide.top, width: frameGuide.width, height: frameGuide.height }}
+          >
+            <div
+              className={css.frameHandleRight}
+              data-testid="browser-responsive-resize-width"
+              role="slider"
+              tabIndex={0}
+              aria-label="调整视口宽度"
+              aria-valuenow={responsive.width}
+              onPointerDown={dragResizeFrame('right')}
+              onKeyDown={nudgeFrame}
+            />
+            <div
+              className={css.frameHandleBottom}
+              data-testid="browser-responsive-resize-height"
+              role="slider"
+              tabIndex={0}
+              aria-label="调整视口高度"
+              aria-valuenow={responsive.height}
+              onPointerDown={dragResizeFrame('bottom')}
+              onKeyDown={nudgeFrame}
+            />
+            <div
+              className={css.frameHandleCorner}
+              data-testid="browser-responsive-resize-corner"
+              role="slider"
+              tabIndex={0}
+              aria-label="调整视口尺寸"
+              aria-valuenow={responsive.width}
+              onPointerDown={dragResizeFrame('corner')}
+              onKeyDown={nudgeFrame}
+            />
+          </div>
+        )}
         {isEmpty && (
           <div className={css.emptyWebview}>
             <span className={css.emptyWebviewIcon}><GlobeIcon size={56} /></span>
