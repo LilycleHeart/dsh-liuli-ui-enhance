@@ -42,3 +42,21 @@
 4. GUI 右侧面板 → 浏览器标签：地址栏输入任意站点（含禁嵌入的 Google/GitHub 也可加载）
 5. `node scripts/browser-client.mjs open https://example.com --tab t1` →
    `snap t1` → `shot t1`
+
+## 实测记录（DSH Desktop 重启后，真实 Electron 引擎）
+
+- A 套件 `demo/verify-webview.mjs`：**16/16**（capabilities/SSE hello+state/创建/
+  example.com 加载+标题/favicon/历史 back+forward/executeJavaScript/reload/
+  window.open→new-tab SSE/did-fail-load 错误态/几何/响应式视口/截图 PNG/销毁+closed）。
+- B 套件 `demo/verify-webview-gui.mjs`：**13/13**（无头 GUI 打开侧边栏浏览器：
+  地址栏/carrier/6 工具条钮/空态/引擎标签创建/客户页加载+标题/favicon 同步/
+  客户页截图/标签条标题同步/响应式工具条+视口框/更多菜单两项/零页面错误）。
+- 元素拾取 E2E：注入拾取器→合成 hover+click→返回完整元素描述（tag/selector/
+  attributes/text/rect/color/font）。
+- 对话框垫片：alert/confirm/prompt 自动应答并经 SSE dialog 事件上报（渲染端 toast）。
+- browser-client CLI：caps/open/snap(元素树)/click(触发导航)/wait/text/fill
+  (输入框成功、非输入元素优雅报错)/eval/shot/state/close 全部实测通过。
+- 注意：DSH Desktop 每次重启后 Web 端口会变（ephemeral），验证脚本自动探测；
+  CLI 用环境变量 `LIULI_BROWSER_BASE` 指定。
+- 隐藏标签（无 GUI carrier 的 agent 标签）截图：Host 端会临时把视图垫到 GUI 之下
+  取帧再复位（无闪烁）；该修复需重启后生效。
