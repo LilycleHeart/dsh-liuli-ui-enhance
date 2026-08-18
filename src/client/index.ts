@@ -65,6 +65,8 @@ import {
   resolvePreviewUrl, setPreviewOpen, togglePreviewOpen, setPaneSyncSuppressed,
 } from './PreviewPanel.tsx'
 import type { SidePaneHostAccess } from './SidePaneExtraPanels.tsx'
+import { DockButton, DockWorkspace, DOCK_TOGGLE_EVENT, isDockOpen, toggleDockOpen } from './DockWorkspace.tsx'
+import { DockStore } from './dock-store.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -91,6 +93,36 @@ const WIDE_MODE_CSS = [
   '}',
 ].join('\n')
 
+
+/** DSH Desktop 高级（无边框）模式样式：标题栏进入页面后的琉璃适配。
+ *  宿主 shell 的表面默认不透明 bg-base，会盖住壁纸/帧背景；这里让表面透明，
+ *  并把 --denpa-frame-bg*（壁纸透明/渐变/自定义）搬到桌面 frame 上，
+ *  与兼容模式下 [class*="_frame"] 的消费行为对齐。 */
+const DESKTOP_ADVANCED_CSS = [
+  '/* ── DSH Desktop advanced（无边框）模式 ── */',
+  '/* 帧背景消费：advanced 模式没有上游 *_frame 哈希元素，',
+  '   --denpa-frame-bg*（denpa-runtime 写入）改挂桌面 frame */',
+  'body[data-dsh-desktop-mode="advanced"] .dshDesktopFrame {',
+  '  background-color: var(--denpa-frame-bg, var(--dsw-alias-bg-base)) !important;',
+  '  background-image: var(--denpa-frame-bg-image, none) !important;',
+  '  background-size: var(--denpa-frame-bg-size, auto) !important;',
+  '  background-position: center !important;',
+  '  background-repeat: no-repeat !important;',
+  '}',
+  '/* 桌面 shell 各表面默认不透明 bg-base，统一改透明，
+  '   让帧背景/壁纸层（[data-denpa-bg]）透出，与兼容模式观感一致 */',
+  'body[data-dsh-desktop-mode="advanced"] .dshDesktopConversationSurface,',
+  'body[data-dsh-desktop-mode="advanced"] .dshDesktopDetailsSurface,',
+  'body[data-dsh-desktop-mode="advanced"] .dshDesktopMacCaptionRow,',
+  'body[data-dsh-desktop-mode="advanced"] .dshDesktopWindowsCaptionRow {',
+  '  background: transparent !important;',
+  '}',
+  '/* 侧栏表面被 shell 强制 --dsw-specific-sidebar-fill: transparent；',
+  '   恢复琉璃的半透明亚克力填充，保持与兼容模式一致的磨砂观感 */',
+  'body[data-dsh-desktop-mode="advanced"] .dshDesktopSidebarSurface {',
+  '  --dsw-specific-sidebar-fill: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity));',
+  '}',
+].join('\n')
 /** 解析元素选择器引用（ui-preview 同构：ref = JSON.stringify(PickedElement)）。 */
 function parseLiuliRef(raw: string): PickedElement {
   try {
@@ -106,7 +138,7 @@ function injectThemeCss(): void {
   const style = document.createElement('style')
   style.id = STYLE_ID
   style.setAttribute('data-liuli-theme', '')
-  style.textContent = denpaCss + '\n' + WIDE_MODE_CSS
+  style.textContent = denpaCss + '\n' + WIDE_MODE_CSS + '\n' + DESKTOP_ADVANCED_CSS
   document.head.appendChild(style)
 }
 
@@ -250,12 +282,51 @@ export function apply(ctx: ClientContext): void {
     host.id = 'liuli-floatball-host'
     document.body.appendChild(host)
     const root = createRoot(host)
-    root.render(createElement(FloatBall, { insertElement }))
+    root.render(createElement(FloatBall, { insertElement, openDock: () => { toggleDockOpen() } }))
     return () => {
       root.unmount()
       host.remove()
     }
   }, 'liuli-theme: float ball mount')
+
+  // ── Dockable Workspace（琉璃工作台）：可拖拽/停靠/拆分/浮动/标签合并的面板工作台 ──
+  // 布局自动落 localStorage（dock-store 防抖保存），刷新/HMR 重载后原样恢复；
+  // 顶栏另有命名槽位保存/恢复与 JSON 导出/导入。
+  const dockStore = new DockStore()
+  ctx.effect(() => {
+    const hostEl = document.createElement('div')
+    hostEl.id = 'liuli-dock-host'
+    document.body.appendChild(hostEl)
+    const root = createRoot(hostEl)
+    const renderDock = (): void => {
+      root.render(isDockOpen()
+        ? createElement(DockWorkspace, {
+          store: dockStore,
+          sessionList: ctx.sessions.list,
+          addFileToChat: insertFileReference,
+          openPath: (path: string) => { void ctx.workspaces.openPath(path) },
+          onClose: () => { toggleDockOpen() },
+        })
+        : null)
+    }
+    renderDock()
+    window.addEventListener(DOCK_TOGGLE_EVENT, renderDock)
+    const onKey = (e: KeyboardEvent): void => {
+      if (!(e.ctrlKey || e.metaKey) || !e.altKey || e.code !== 'KeyW') return
+      e.preventDefault()
+      toggleDockOpen()
+    }
+    window.addEventListener('keydown', onKey)
+    const onPageHide = (): void => { dockStore.flush() }
+    window.addEventListener('pagehide', onPageHide)
+    return () => {
+      window.removeEventListener(DOCK_TOGGLE_EVENT, renderDock)
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('pagehide', onPageHide)
+      root.unmount()
+      hostEl.remove()
+    }
+  }, 'liuli-theme: dock workspace mount')
 
   // ── 工作区预览列：header 按钮开合宿主右侧 details 列，面板占用 details slot ──
   const togglePreview = (): void => {
@@ -621,4 +692,10 @@ export function apply(ctx: ClientContext): void {
     id: 'liuli-preview-button',
     order: 25,
   }, () => createElement(PreviewButton, { onToggle: togglePreview })))
+  // Dockable Workspace 入口：打开琉璃工作台（Ctrl+Alt+W）
+  ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
+    name: 'conversation.session.header.utilities',
+    id: 'liuli-dock-button',
+    order: 30,
+  }, () => createElement(DockButton, { onToggle: () => { toggleDockOpen() } })))
 }

@@ -70,8 +70,9 @@ interface Tool {
 }
 
 /** 悬浮圆点 + 工具栏 + 全局元素选择器。
- * @param props.insertElement - 把拾取的元素作为引用 chip 插入当前会话输入框。 */
-export function FloatBall({ insertElement }: { insertElement: InsertElementFn }) {
+ * @param props.insertElement - 把拾取的元素作为引用 chip 插入当前会话输入框。
+ * @param props.openDock - 可选：打开 Dockable Workspace（琉璃工作台）。 */
+export function FloatBall({ insertElement, openDock }: { insertElement: InsertElementFn; openDock?: () => void }) {
   const rootRef = useRef<HTMLDivElement | null>(null)
   const hoverRef = useRef<HTMLDivElement | null>(null)
   const drag = useRef<{ sx: number; sy: number; px: number; py: number; moved: boolean } | null>(null)
@@ -296,6 +297,20 @@ export function FloatBall({ insertElement }: { insertElement: InsertElementFn })
       },
     },
   ]
+  if (openDock !== undefined) {
+    tools.push({
+      id: 'dock-workspace',
+      label: '琉璃工作台',
+      hint: '打开 Dockable Workspace：面板拖拽/停靠/拆分/浮动/标签合并（Ctrl+Alt+W）',
+      hotkey: 'Ctrl+Alt+W',
+      icon: (
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+          <path fill="currentColor" d="M2 2h5.2v5.2H2V2zm1.3 1.3v2.6h2.6V3.3H3.3zM8.8 2H14v3.2H8.8V2zm1.3 1.3v.6h2.6v-.6h-2.6zm-1.3 2h5.2V14H8.8V5.3zm1.3 1.3v6.1h2.6V6.6h-2.6zM2 9.2h5.2V14H2V9.2zm1.3 1.3v2.2h2.6v-2.2H3.3z" />
+        </svg>
+      ),
+      onSelect: () => { openDock() },
+    })
+  }
 
   /* 工具栏展开方向：球偏左向右展开，偏右向左展开 */
   const side = pos.left < window.innerWidth / 2 ? 'right' : 'left'
