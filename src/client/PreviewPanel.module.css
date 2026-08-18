@@ -1039,3 +1039,48 @@
 .frameHandleCorner:focus-visible {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--dsw-alias-brand-primary) 30%, transparent);
 }
+
+
+/* ── webview 对话框垫片提示（ZCode embeddedBrowserJavaScriptDialog 可见性对应） ── */
+
+.dialogToast {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 24px);
+  padding: 6px 12px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.2));
+  border-radius: 10px;
+  background: var(--dsw-specific-popover-major, rgba(255, 255, 255, 0.92));
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.14);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-primary, inherit);
+}
+
+.dialogToastKind {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 14%, transparent);
+  color: var(--dsw-alias-brand-primary, #0079bf);
+  font-weight: 500;
+}
+
+.dialogToastText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dialogToastHint {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary, #888);
+  white-space: nowrap;
+}

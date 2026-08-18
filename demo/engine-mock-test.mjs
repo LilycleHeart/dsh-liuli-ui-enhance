@@ -176,6 +176,15 @@ check('M12 rebuild generation++', stRe.json?.generation === gen0 + 1, 'gen=' + s
 check('M12b view replaced & re-added', winContentView.children.length === 1 && winContentView.children[0] !== view1 && view1.webContents.closed === true)
 check('M12c restore url navigated', winContentView.children[0].webContents.url !== 'about:blank', winContentView.children[0].webContents.url)
 
+// M12d dialog shim: dom-ready injects shim, console-message → SSE dialog
+const view2 = winContentView.children[0]
+view2.webContents.emit('dom-ready')
+await new Promise(r => setTimeout(r, 30))
+check('M12d dom-ready injects dialog shim', String(view2.webContents.lastCode ?? '').includes('__liuliDialogShim'))
+view2.webContents.emit('console-message', 1, '[liuli-dialog] confirm: 确认删除?', 12, 'https://example.org/')
+await new Promise(r => setTimeout(r, 20))
+check('M12e console-message → SSE dialog', sseEvents().some(e => e.type === 'dialog' && e.kind === 'confirm' && e.message === '确认删除?'), JSON.stringify(sseEvents().filter(e => e.type === 'dialog')))
+
 // M13 destroy
 const destroyed = await call('POST', '/liuli-browser/tabs/destroy', { id: 't1' })
 check('M13 destroy', destroyed.json?.ok === true && winContentView.children.length === 0 && sseEvents().some(e => e.type === 'closed' && e.tabId === 't1'))

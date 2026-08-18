@@ -82,6 +82,7 @@ type BrowserEvent =
   | { type: 'hello'; tabs: Array<{ tabId: string; state: BrowserTabState }> }
   | { type: 'state'; tabId: string; state: BrowserTabState }
   | { type: 'new-tab'; sourceTabId: string; url: string; disposition: string }
+  | { type: 'dialog'; tabId: string; kind: 'alert' | 'confirm' | 'prompt'; message: string }
   | { type: 'closed'; tabId: string }
 
 /** ZCode webview 的会话分区对应物（persist: 前缀保留 cookie/storage 跨重启）。 */
@@ -90,6 +91,23 @@ const PARTITION = 'persist:liuli-embedded-browser'
 const VIEWPORT_MIN = 320
 const VIEWPORT_MAX_W = 3840
 const VIEWPORT_MAX_H = 2160
+
+/**
+ * 客户页 JS 对话框垫片（ZCode embeddedBrowserJavaScriptDialog 预加载的轻量对应物）。
+ * 真实 webview 里 alert/confirm/prompt 默认弹原生模态框并阻塞自动化；垫片改为
+ * 自动应答（confirm 接受、prompt 返回默认值）并经 console.info 上报，Host 侧
+ * 用 console-message 事件转发为 SSE dialog 事件供渲染端提示。
+ */
+const DIALOG_SHIM_SCRIPT = `(() => {
+  if (window.__liuliDialogShim) return
+  window.__liuliDialogShim = true
+  const send = (kind, message) => {
+    try { console.info('[liuli-dialog] ' + kind + ': ' + String(message).slice(0, 300)) } catch { /* 忽略 */ }
+  }
+  window.alert = (message) => { send('alert', message) }
+  window.confirm = (message) => { send('confirm', message); return true }
+  window.prompt = (message, fallback) => { send('prompt', message); return fallback === undefined ? null : fallback }
+})()`
 
 /** 单个浏览器标签：一个 WebContentsView + 状态镜像。 */
 interface EngineTab {
@@ -269,6 +287,21 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
       const favicons = args[1]
       tab.state.favicon = Array.isArray(favicons) && typeof favicons[0] === 'string' ? favicons[0] : null
       pushState(tab)
+    })
+    wc.on('dom-ready', () => {
+      // 每次文档加载完成注入对话框垫片（SPA 内导航不重触发，脚本仍在）。
+      wc.executeJavaScript(DIALOG_SHIM_SCRIPT, false).catch(() => { /* 注入失败不影响页面 */ })
+    })
+    wc.on('console-message', (...args: unknown[]) => {
+      // Electron 43 载荷：(event, level, message, line, sourceId)；找 [liuli-dialog] 前缀串。
+      let message = ''
+      for (const arg of args) {
+        if (typeof arg === 'string' && arg.startsWith('[liuli-dialog]')) { message = arg; break }
+      }
+      if (message === '') return
+      const parsed = /^\[liuli-dialog\] (alert|confirm|prompt): (.*)$/s.exec(message)
+      if (parsed === null) return
+      broadcast({ type: 'dialog', tabId: tab.id, kind: parsed[1] as 'alert' | 'confirm' | 'prompt', message: parsed[2] ?? '' })
     })
     wc.on('did-fail-load', (...args: unknown[]) => {
       // 第一个参数是事件对象；errorCode 起才是载荷。
