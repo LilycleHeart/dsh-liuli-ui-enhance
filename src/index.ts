@@ -9,13 +9,15 @@
  */
 import { createReadStream } from 'node:fs'
 import { readFile, readdir, stat } from 'node:fs/promises'
-import { execFile as execFileCb } from 'node:child_process'
+import { execFile as execFileCb, spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { promisify } from 'node:util'
 import { extname, join as joinPath, resolve as resolvePath, sep } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { Duplex } from 'node:stream'
 import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
+import type { WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
 
 export const name = 'liuli-theme'
 
@@ -334,6 +336,7 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.webServer.register(route), 'liuli-theme: /liuli-quota route')
   ctx.effect(() => ctx.webServer.register(previewRoute(ctx)), 'liuli-theme: /preview route')
   ctx.effect(() => ctx.webServer.register(sidebarRoute(ctx)), 'liuli-theme: /liuli-sidebar route')
+  ctx.effect(() => ctx.webServer.registerUpgrade(terminalUpgradeRoute(ctx)), 'liuli-theme: /liuli-terminal upgrade route')
 }
 
 /* ── /preview：会话 cwd 同源静态服务（预览面板 iframe）────────────── */
@@ -732,3 +735,155 @@ function sidebarRoute(ctx: Context): WebRoute {
     handler: (req, res) => { void serveSidebar(ctx, req, res) },
   }
 }
+
+/* ── /liuli-terminal：WebSocket 终端（侧边面板「终端」标签）────────────── */
+
+const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
+
+/** Compute the Sec-WebSocket-Accept hash for the handshake. */
+function wsAccept(key: string): string {
+  return createHash('sha1').update(key + WS_GUID).digest('base64')
+}
+
+/** Encode one unmasked text frame. */
+function wsEncodeText(text: string): Buffer {
+  const payload = Buffer.from(text, 'utf8')
+  const len = payload.length
+  if (len < 126) {
+    return Buffer.concat([Buffer.from([0x81, len]), payload])
+  }
+  if (len < 65536) {
+    const head = Buffer.alloc(4)
+    head[0] = 0x81
+    head[1] = 126
+    head.writeUInt16BE(len, 2)
+    return Buffer.concat([head, payload])
+  }
+  const head = Buffer.alloc(10)
+  head[0] = 0x81
+  head[1] = 127
+  head.writeBigUInt64BE(BigInt(len), 2)
+  return Buffer.concat([head, payload])
+}
+
+/** Incremental WebSocket frame reader (client frames are masked). */
+class WsReader {
+  private buffer = Buffer.alloc(0)
+
+  push(chunk: Buffer): void {
+    this.buffer = Buffer.concat([this.buffer, chunk])
+  }
+
+  next(): { opcode: number; payload: Buffer } | null {
+    const buf = this.buffer
+    if (buf.length < 2) return null
+    const opcode = buf[0]! & 0x0f
+    const masked = (buf[1]! & 0x80) !== 0
+    let len = buf[1]! & 0x7f
+    let offset = 2
+    if (len === 126) {
+      if (buf.length < 4) return null
+      len = buf.readUInt16BE(2)
+      offset = 4
+    } else if (len === 127) {
+      if (buf.length < 10) return null
+      const big = buf.readBigUInt64BE(2)
+      if (big > BigInt(0x7fffffff)) return null
+      len = Number(big)
+      offset = 10
+    }
+    const maskSize = masked ? 4 : 0
+    if (buf.length < offset + maskSize + len) return null
+    let payload = buf.subarray(offset + maskSize, offset + maskSize + len)
+    if (masked) {
+      const mask = buf.subarray(offset, offset + 4)
+      payload = Buffer.from(payload)
+      for (let i = 0; i < payload.length; i += 1) payload[i] = payload[i]! ^ mask[i % 4]!
+    }
+    this.buffer = buf.subarray(offset + maskSize + len)
+    return { opcode, payload }
+  }
+}
+
+/** One piped shell per WebSocket connection, cwd = session cwd（回退进程 cwd）。 */
+function terminalUpgradeRoute(ctx: Context): WebUpgradeRoute {
+  return {
+    path: '/liuli-terminal',
+    handler: (req, socket: Duplex, head: Buffer) => {
+      const host = req.headers.host
+      if (host === undefined || !isLoopbackHostname(new URL(`http://${host}`).hostname)) {
+        socket.destroy()
+        return
+      }
+      const key = req.headers['sec-websocket-key']
+      if (typeof key !== 'string' || key === '') {
+        socket.destroy()
+        return
+      }
+      const url = new URL(req.url ?? '/', 'http://x')
+      const sessionId = url.searchParams.get('sessionId') ?? ''
+      const root = (sessionId !== '' ? sidebarSessionRoot(ctx, sessionId) : undefined) ?? process.cwd()
+
+      socket.write(
+        'HTTP/1.1 101 Switching Protocols\r\n'
+        + 'Upgrade: websocket\r\n'
+        + 'Connection: Upgrade\r\n'
+        + `Sec-WebSocket-Accept: ${wsAccept(key)}\r\n\r\n`,
+      )
+
+      const shell = process.platform === 'win32' ? 'cmd.exe' : 'bash'
+      const child = spawn(shell, [], {
+        cwd: root,
+        env: process.env,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true,
+      })
+      let closed = false
+      const send = (text: string): void => {
+        if (closed) return
+        try { socket.write(wsEncodeText(text)) } catch { /* socket 已死，忽略 */ }
+      }
+      send(`liuli terminal · ${shell} · cwd: ${root}\r\n\r\n`)
+      child.stdout.on('data', (d: Buffer) => { send(d.toString('utf8')) })
+      child.stderr.on('data', (d: Buffer) => { send(d.toString('utf8')) })
+      child.on('exit', (code) => {
+        send(`\r\n[process exited with code ${code ?? 0}]`)
+        closed = true
+        try { socket.end() } catch { /* ignore */ }
+      })
+      child.on('error', (err) => {
+        send(`\r\n[spawn error] ${err.message}`)
+        closed = true
+        try { socket.end() } catch { /* ignore */ }
+      })
+
+      const reader = new WsReader()
+      if (head.length > 0) reader.push(head)
+      socket.on('data', (chunk: Buffer) => {
+        reader.push(chunk)
+        for (let frame = reader.next(); frame !== null; frame = reader.next()) {
+          if (frame.opcode === 0x8) {
+            closed = true
+            try { socket.end() } catch { /* ignore */ }
+            break
+          }
+          if (frame.opcode === 0x9) {
+            try { socket.write(Buffer.from([0x8a, 0x00])) } catch { /* ignore */ }
+            continue
+          }
+          if ((frame.opcode === 0x1 || frame.opcode === 0x2) && child.stdin.writable) {
+            const line = frame.payload.toString('utf8')
+            child.stdin.write(line.endsWith('\n') ? line : line + '\n')
+          }
+        }
+      })
+      const teardown = (): void => {
+        closed = true
+        try { child.kill() } catch { /* ignore */ }
+      }
+      socket.on('close', teardown)
+      socket.on('error', teardown)
+    },
+  }
+}
+

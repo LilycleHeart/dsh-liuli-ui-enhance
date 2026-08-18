@@ -83,7 +83,7 @@
 | Treemapping | map | 文件树(搜索/仅变更/Git 状态徽标/右键/拖拽进聊天);ZCode 已隐藏该入口,DSH 保留 | ✅(适配保留) |
 | 仓库 Wiki(repo-wiki) | 自绘 32x32(3 圆角方块+对角线) | README 摘录 + 模块地图,chip 点回源码 | ✅ |
 | 审查(git) | file-diff | Git 状态 + 只读提交图(详情/加载更多) | ✅ |
-| 浏览器(browser) | globe | 后退/前进/刷新/地址栏/外部打开 + 元素拾取开关(同 ZCode browser.elementPicker 显式语义) | ✅ |
+| 浏览器(browser) | globe | 后退/前进/刷新/地址栏/外部打开 + 元素拾取开关(同 ZCode browser.elementPicker 显式语义);地址栏接受任意 http/https(裸域名补 https、回环/局域网 IP 补 http、相对产物路径映射 /preview),同源页标题回写标签 | ✅ |
 | 代码查看(code-viewer) | file-code-corner(回退)/文件图标 | /preview iframe + 路径栏 + 默认编辑器打开;ZCode 有语法高亮渲染,DSH 走 /preview 原样服务 | ✅(渲染深度差异,已注明) |
 | 终端/开发者工具/辅助对话/子智能体/画板/模型轨迹/计划 | — | DSH 宿主无对应能力(无 Web PTY/无 ZCode agent 运行时) | ➖ 不适用 |
 
@@ -106,3 +106,6 @@
 2. 持久化:ZCode 标签状态为应用内内存态;DSH 页面刷新频繁,插件持久化到 localStorage(扩展)。
 3. 代码查看:ZCode 内置语法高亮/diff 渲染;DSH 经 /preview 原样服务(HTML 可渲染,代码按文本)。
 4. 终端/开发者工具/辅助对话/子智能体/画板/模型轨迹/计划:依赖 ZCode 自有运行时,DSH 无对应能力。
+5. 浏览器承载:ZCode 用 Electron webview(可加载任意站点);DSH 为浏览器插件,用同源 iframe,
+   目标站点若发 X-Frame-Options / CSP frame-ancestors 拒绝嵌入则显示空白(本地 dev server、
+   /preview 与绝大多数 localhost 场景不受影响)。地址栏仍接受任意 http/https 并交给 iframe 尝试。
