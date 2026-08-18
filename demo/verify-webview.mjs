@@ -1,6 +1,26 @@
 // Post-restart verification of the liuli-theme webview engine (ZCode IAB parity checklist).
 import { writeFileSync } from 'node:fs'
-const BASE = 'http://127.0.0.1:7336'
+const BASE = await (async () => {
+  if (process.env.LIULI_BROWSER_BASE) return process.env.LIULI_BROWSER_BASE
+  const { execSync } = await import('node:child_process')
+  let ports = []
+  try {
+    const out = execSync('powershell -NoProfile -Command "Get-Process \\"DSH Desktop\\" -ErrorAction SilentlyContinue | ForEach-Object { Get-NetTCPConnection -OwningProcess $_.Id -State Listen -ErrorAction SilentlyContinue } | Select-Object -ExpandProperty LocalPort -Unique"', { encoding: 'utf8', timeout: 15000 })
+    ports = out.split(/\r?\n/).map(s => s.trim()).filter(s => /^[0-9]+$/.test(s))
+  } catch { /* fall through to static candidates */ }
+  const candidates = [...ports, '10205', '7336']
+  for (const port of candidates) {
+    try {
+      const resp = await fetch('http://127.0.0.1:' + port + '/liuli-browser/capabilities', { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(3000) })
+      const ct = resp.headers.get('content-type') ?? ''
+      if (ct.includes('application/json')) return 'http://127.0.0.1:' + port
+    } catch { /* try next */ }
+  }
+  console.error('no live liuli-browser engine found (tried: ' + candidates.join(',') + ')')
+  process.exit(2)
+})()
+console.log('BASE=' + BASE)
+
 const results = []
 const check = (name, pass, detail = '') => { results.push({ name, pass: !!pass, detail: String(detail).slice(0, 160) }); console.log((pass ? 'PASS' : 'FAIL') + ' ' + name + (detail ? ' :: ' + String(detail).slice(0, 120) : '')) }
 
@@ -116,6 +136,7 @@ check('A14 screenshot PNG', isPng, 'bytes=' + shotBuf.length)
 
 // destroy
 const destroyed = await post('/liuli-browser/tabs/destroy', { id: 'selftest' })
+await sleep(400) // allow the SSE closed frame to arrive and parse
 const closedEvent = events.find(e => e.type === 'closed' && e.tabId === 'selftest')
 check('A15 destroy tab + SSE closed', destroyed.ok === true && !!closedEvent, JSON.stringify({ destroyed, closedEvent: !!closedEvent }))
 

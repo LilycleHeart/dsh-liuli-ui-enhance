@@ -1946,16 +1946,22 @@ function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitle
 
   /* ── 生命周期：Host 侧标签创建/销毁 + SSE 状态同步 ── */
 
+  const urlRef = useRef(url)
+  urlRef.current = url
+
   useEffect(() => {
     let alive = true
-    void webviewBrowser.createTab(tabId, url).then((resp) => {
-      if (!alive) return
-      const created = resp as { ok?: boolean; state?: WebviewTabState }
-      if (created.ok === true && created.state !== undefined) {
-        lastRequestedUrl.current = created.state.url
-        setState(created.state)
-      }
-    })
+    const create = (target: string): void => {
+      void webviewBrowser.createTab(tabId, target).then((resp) => {
+        if (!alive) return
+        const created = resp as { ok?: boolean; state?: WebviewTabState }
+        if (created.ok === true && created.state !== undefined) {
+          lastRequestedUrl.current = created.state.url
+          setState(created.state)
+        }
+      })
+    }
+    create(url)
     const unsubscribe = subscribeWebviewTab(tabId, (event) => {
       if (event.type === 'state') {
         lastRequestedUrl.current = event.state.url
@@ -1965,6 +1971,13 @@ function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitle
       if (event.type === 'dialog') {
         // ZCode embeddedBrowserJavaScriptDialog 的可见性对应：垫片自动应答后提示用户。
         setDialogNotice({ kind: event.kind, message: event.message })
+        return
+      }
+      if (event.type === 'closed') {
+        // Host 侧标签被外部销毁（自动化 CLI/崩溃清理）：原位重建（ZCode residency 恢复语义）。
+        window.setTimeout(() => {
+          if (alive) create(urlRef.current === 'about:blank' ? lastRequestedUrl.current : urlRef.current)
+        }, 250)
       }
     })
     return () => {
@@ -2662,14 +2675,15 @@ function IframeBrowserPanel({ sessionId, url, onNavigate, onTitleChange, insertE
 
 /* ── 代码查看标签面板（ZCode code-viewer：无元素拾取） ── */
 
-interface CodeViewerPanelProps {
+export interface CodeViewerPanelProps {
   sessionId?: string | undefined
   rel: string
   path: string
   onOpenPath?: ((path: string) => void) | undefined
 }
 
-function CodeViewerPanel({ sessionId, rel, path, onOpenPath }: CodeViewerPanelProps) {
+/** 代码查看面板（iframe /preview）；导出供 Dockable Workspace 复用。 */
+export function CodeViewerPanel({ sessionId, rel, path, onOpenPath }: CodeViewerPanelProps) {
   const src = sessionId === undefined || sessionId === null || rel === ''
     ? 'about:blank'
     : `/preview/${encodeURIComponent(sessionId)}/${rel.split('/').map(s => encodeURIComponent(s)).join('/')}`

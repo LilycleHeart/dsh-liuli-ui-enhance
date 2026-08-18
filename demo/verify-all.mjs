@@ -3,7 +3,27 @@ import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 const here = dirname(fileURLToPath(import.meta.url))
-const BASE = 'http://127.0.0.1:7336'
+const BASE = await (async () => {
+  if (process.env.LIULI_BROWSER_BASE) return process.env.LIULI_BROWSER_BASE
+  const { execSync } = await import('node:child_process')
+  let ports = []
+  try {
+    const out = execSync('powershell -NoProfile -Command "Get-Process \\"DSH Desktop\\" -ErrorAction SilentlyContinue | ForEach-Object { Get-NetTCPConnection -OwningProcess $_.Id -State Listen -ErrorAction SilentlyContinue } | Select-Object -ExpandProperty LocalPort -Unique"', { encoding: 'utf8', timeout: 15000 })
+    ports = out.split(/\r?\n/).map(s => s.trim()).filter(s => /^[0-9]+$/.test(s))
+  } catch { /* fall through to static candidates */ }
+  const candidates = [...ports, '10205', '7336']
+  for (const port of candidates) {
+    try {
+      const resp = await fetch('http://127.0.0.1:' + port + '/liuli-browser/capabilities', { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(3000) })
+      const ct = resp.headers.get('content-type') ?? ''
+      if (ct.includes('application/json')) return 'http://127.0.0.1:' + port
+    } catch { /* try next */ }
+  }
+  console.error('no live liuli-browser engine found (tried: ' + candidates.join(',') + ')')
+  process.exit(2)
+})()
+console.log('BASE=' + BASE)
+
 
 const run = (script) => new Promise((resolve) => {
   const child = spawn(process.execPath, [join(here, script)], { stdio: ['ignore', 'pipe', 'pipe'] })
