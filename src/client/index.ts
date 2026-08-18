@@ -13,7 +13,7 @@
  * 依赖宿主主题服务（@deepseek-ai/dsh-client-ui-theme 的 ctx.theme）：偏好持久化、
  * presenter 应用与 theme/change 事件均由该服务承担，本插件只消费。
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 // Type-only: pulls the forwarded remote event vocabulary for ctx.remote.$on.
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
@@ -64,6 +64,7 @@ import {
   PreviewDetailsPanel, PreviewButton, PREVIEW_TOGGLE_EVENT, PREVIEW_NAVIGATE_EVENT,
   resolvePreviewUrl, setPreviewOpen, togglePreviewOpen, setPaneSyncSuppressed,
 } from './PreviewPanel.tsx'
+import type { SidePaneHostAccess } from './SidePaneExtraPanels.tsx'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -276,6 +277,13 @@ export function apply(ctx: ClientContext): void {
     const next = snap.ids[index + dir]
     if (next !== undefined) ctx.sessions.open(next)
   }
+  // 扩展面板（轨迹/计划/子智能体/辅助对话/开发者工具）的宿主数据面。
+  const sidePaneHost: SidePaneHostAccess = {
+    sessionList: ctx.sessions.list,
+    getSessionFace: id => ctx.sessions.binding(id as SessionId)?.session,
+    forkSession: id => ctx.sessions.fork({ sessionId: id as SessionId, increaseTitle: true }),
+    openSession: id => { ctx.sessions.open(id as SessionId) },
+  }
   ctx.slots.inject('details', () => ctx.slots.register({
     name: 'details',
     priority: -1,
@@ -300,6 +308,7 @@ export function apply(ctx: ClientContext): void {
       },
       prevSession: () => { stepSession(-1) },
       nextSession: () => { stepSession(1) },
+      host: sidePaneHost,
     }),
   }, PreviewDetailsPanel))
 

@@ -29,9 +29,14 @@ import {
 } from './RightSidebarPanels.tsx'
 import { fetchSidebarTree } from './right-sidebar-api.ts'
 import {
-  ChevronsDownIcon, FileCodeCornerIcon, FileDiffIcon, GlobeIcon, MapIcon, PanelRightCloseIcon,
-  PanelRightOpenIcon, PlusIcon, RepoWikiIcon, SearchIcon as SearchGlyph,
+  BugIcon, ChevronsDownIcon, FileCodeCornerIcon, FileDiffIcon, GlobeIcon, ListTreeIcon, MapIcon,
+  MessageSquareTextIcon, NotepadTextIcon, PanelRightCloseIcon, PanelRightOpenIcon, PaletteIcon,
+  PlusIcon, RepoWikiIcon, SearchIcon as SearchGlyph, SquareTerminalIcon, WaypointsIcon,
 } from './SidePaneIcons.tsx'
+import {
+  DeveloperToolsPanel, PlanPanel, SideChatPanel, SubagentPanel, TerminalPanel, TrajectoryPanel,
+  WhiteboardPanel, type SidePaneHostAccess,
+} from './SidePaneExtraPanels.tsx'
 import css from './PreviewPanel.module.css'
 
 /** 打开/关闭事件名（header 按钮翻转模块状态后广播，面板同步）。 */
@@ -166,7 +171,9 @@ export function normalizeBrowserUrl(raw: string): string | undefined {
 /* ── 标签模型（ZCode sidePaneState 对应） ── */
 
 /** 面板类型：ZCode 侧边面板在 DSH 内的可复刻集合。 */
-export type SidePaneTabType = 'treemapping' | 'repo-wiki' | 'git' | 'browser' | 'code-viewer'
+export type SidePaneTabType =
+  | 'treemapping' | 'repo-wiki' | 'git' | 'browser' | 'code-viewer'
+  | 'terminal' | 'developer-tools' | 'trajectory' | 'whiteboard' | 'plan' | 'subagents' | 'side-chat'
 
 /** 一个侧边面板标签。 */
 export interface SidePaneTab {
@@ -179,8 +186,10 @@ export interface SidePaneTab {
   path?: string
   /** browser：当前 URL。 */
   url?: string
-  /** browser：页面标题（同源时取 document.title）。 */
+  /** browser：页面标题（同源时取 document.title）；terminal/whiteboard/side-chat：显示名。 */
   title?: string
+  /** side-chat：fork 出的子会话 id。 */
+  childSessionId?: string
 }
 
 /** 最近关闭的标签（概览里可重开）。 */
@@ -252,6 +261,13 @@ function tabTitle(tab: SidePaneTab): string {
     case 'repo-wiki': return '仓库 Wiki'
     case 'git': return '审查'
     case 'browser': return tab.title?.trim() || '浏览器'
+    case 'terminal': return tab.title?.trim() || '终端'
+    case 'developer-tools': return '开发者工具'
+    case 'trajectory': return '模型调用轨迹'
+    case 'whiteboard': return tab.title?.trim() || '画板'
+    case 'plan': return '计划'
+    case 'subagents': return '子智能体目录'
+    case 'side-chat': return tab.title?.trim() || '辅助对话'
     case 'code-viewer': {
       const rel = tab.rel ?? ''
       const name = rel.split('/').filter(p => p !== '').pop()
@@ -274,6 +290,13 @@ function tabTypeLabel(tab: SidePaneTab): string {
     case 'repo-wiki': return '仓库 Wiki'
     case 'git': return '审查'
     case 'browser': return '浏览器'
+    case 'terminal': return '终端'
+    case 'developer-tools': return '开发者工具'
+    case 'trajectory': return '模型调用轨迹'
+    case 'whiteboard': return '画板'
+    case 'plan': return '计划'
+    case 'subagents': return '子智能体目录'
+    case 'side-chat': return '辅助对话'
     case 'code-viewer': return '代码查看'
   }
 }
@@ -285,6 +308,13 @@ function TabIcon({ tab, size = 14 }: { tab: SidePaneTab; size?: number }) {
     case 'repo-wiki': return <RepoWikiIcon size={size} />
     case 'git': return <FileDiffIcon size={size} />
     case 'browser': return <GlobeIcon size={size} />
+    case 'terminal': return <SquareTerminalIcon size={size} />
+    case 'developer-tools': return <BugIcon size={size} />
+    case 'trajectory': return <WaypointsIcon size={size} />
+    case 'whiteboard': return <PaletteIcon size={size} />
+    case 'plan': return <NotepadTextIcon size={size} />
+    case 'subagents': return <ListTreeIcon size={size} />
+    case 'side-chat': return <MessageSquareTextIcon size={size} />
     case 'code-viewer': return <FileCodeCornerIcon size={size} />
   }
 }
@@ -294,9 +324,25 @@ function makeBrowserTab(url: string): SidePaneTab {
   return { id: `browser:${Date.now().toString(36)}-${browserUid}`, type: 'browser', openedAt: Date.now(), url }
 }
 
+/** 多实例面板的 uid（terminal/whiteboard/side-chat 各自计数）。 */
+let terminalUid = 0
+let whiteboardUid = 0
+let sideChatUid = 0
+
 function makeTab(type: SidePaneTabType, extra?: Partial<SidePaneTab>): SidePaneTab {
   const base: SidePaneTab = { id: type, type, openedAt: Date.now(), ...extra }
-  if (type === 'code-viewer') base.id = `code-viewer:${extra?.rel ?? ''}`
+  if (type === 'code-viewer') {
+    base.id = `code-viewer:${extra?.rel ?? ''}`
+  } else if (type === 'terminal') {
+    terminalUid += 1
+    base.id = `terminal:${Date.now().toString(36)}-${terminalUid}`
+  } else if (type === 'whiteboard') {
+    whiteboardUid += 1
+    base.id = `whiteboard:${Date.now().toString(36)}-${whiteboardUid}`
+  } else if (type === 'side-chat') {
+    sideChatUid += 1
+    base.id = `side-chat:${Date.now().toString(36)}-${sideChatUid}`
+  }
   return base
 }
 
@@ -450,6 +496,8 @@ export interface PreviewDetailsPanelProps {
   prevSession?: () => void
   /** 下一个会话。 */
   nextSession?: () => void
+  /** 扩展面板（轨迹/计划/子智能体/辅助对话/开发者工具）的宿主数据面。 */
+  host?: SidePaneHostAccess
 }
 
 /**
@@ -460,7 +508,7 @@ export interface PreviewDetailsPanelProps {
 export function PreviewDetailsPanel({
   sessionId, openDetails, closeDetails, insertElement,
   addFileToChat, openPath, startSession, pickDirectory, toggleTheme,
-  prevSession, nextSession,
+  prevSession, nextSession, host,
 }: PreviewDetailsPanelProps) {
   const [open, setOpen] = useState(previewOpen)
   const [persist, setPersist] = useState<PanePersist>(loadPersist)
@@ -674,6 +722,45 @@ export function PreviewDetailsPanel({
       return next
     })
     setAddMenuOpen(false)
+  }, [])
+
+  /** ZCode zoe：终端编号（终端 / 终端 2 / 终端 3…取第一个未占用的）。 */
+  const nextNumberedTitle = useCallback((base: string, type: SidePaneTabType): string => {
+    const taken = new Set(tabs.filter(t => t.type === type).map(t => t.title?.trim() ?? base))
+    if (!taken.has(base)) return base
+    for (let n = 2; ; n += 1) {
+      const candidate = `${base} ${n}`
+      if (!taken.has(candidate)) return candidate
+    }
+  }, [tabs])
+
+  /** 新开一个终端标签（多实例，ZCode vae 对应）。 */
+  const openTerminal = useCallback(() => {
+    openTab(makeTab('terminal', { title: nextNumberedTitle('终端', 'terminal') }))
+    setAddMenuOpen(false)
+  }, [openTab, nextNumberedTitle])
+
+  /** 新开一个画板标签（多实例，ZCode Cae 对应）。 */
+  const openWhiteboard = useCallback(() => {
+    openTab(makeTab('whiteboard', { title: nextNumberedTitle('画板', 'whiteboard') }))
+    setAddMenuOpen(false)
+  }, [openTab, nextNumberedTitle])
+
+  /** 新开一个辅助对话标签（多实例；子会话在面板内 fork）。 */
+  const openSideChat = useCallback(() => {
+    openTab(makeTab('side-chat', { title: nextNumberedTitle('辅助对话', 'side-chat') }))
+    setAddMenuOpen(false)
+  }, [openTab, nextNumberedTitle])
+
+  /** 辅助对话 fork 成功 → 把子会话 id 写回标签。 */
+  const setSideChatChild = useCallback((tabId: string, childSessionId: string) => {
+    setPersist(prev => {
+      const target = prev.tabs.find(t => t.id === tabId)
+      if (target === undefined || target.childSessionId === childSessionId) return prev
+      const next: PanePersist = { ...prev, tabs: prev.tabs.map(t => t.id === tabId ? { ...t, childSessionId } : t) }
+      savePersist(next)
+      return next
+    })
   }, [])
 
   /** ZCode z/Iae：URL 导航（产物链接）→ 总是新开浏览器标签。 */
@@ -1021,13 +1108,24 @@ export function PreviewDetailsPanel({
   const addMenuItems = useMemo(() => {
     const has = (type: SidePaneTabType): boolean => tabs.some(t => t.type === type)
     const items: Array<{ id: string; label: string; icon: ReactNode; run: () => void }> = []
+    if (sessionId !== undefined && host !== undefined) {
+      items.push({ id: 'side-chat', label: '辅助对话', icon: <MessageSquareTextIcon size={16} />, run: () => { openSideChat() } })
+    }
     if (!has('git')) items.push({ id: 'git', label: '审查', icon: <FileDiffIcon size={16} />, run: () => { openSingleton('git') } })
+    items.push({ id: 'terminal', label: '终端', icon: <SquareTerminalIcon size={16} />, run: () => { openTerminal() } })
     items.push({ id: 'browser', label: '浏览器', icon: <GlobeIcon size={16} />, run: () => { openBrowserFromMenu() } })
+    if (!has('developer-tools')) items.push({ id: 'developer-tools', label: '开发者工具', icon: <BugIcon size={16} />, run: () => { openSingleton('developer-tools') } })
+    items.push({ id: 'whiteboard', label: '画板', icon: <PaletteIcon size={16} />, run: () => { openWhiteboard() } })
+    if (sessionId !== undefined && host !== undefined) {
+      if (!has('plan')) items.push({ id: 'plan', label: '计划', icon: <NotepadTextIcon size={16} />, run: () => { openSingleton('plan') } })
+      if (!has('trajectory')) items.push({ id: 'trajectory', label: '模型调用轨迹', icon: <WaypointsIcon size={16} />, run: () => { openSingleton('trajectory') } })
+      if (!has('subagents')) items.push({ id: 'subagents', label: '子智能体目录', icon: <ListTreeIcon size={16} />, run: () => { openSingleton('subagents') } })
+    }
     if (!has('treemapping')) items.push({ id: 'treemapping', label: 'Treemapping', icon: <MapIcon size={16} />, run: () => { openSingleton('treemapping') } })
     if (!has('repo-wiki')) items.push({ id: 'repo-wiki', label: '仓库 Wiki', icon: <RepoWikiIcon size={16} />, run: () => { openSingleton('repo-wiki') } })
     items.push({ id: 'open-file', label: '打开文件…', icon: <FileCodeCornerIcon size={16} />, run: () => { setAddMenuOpen(false); setFileDialogOpen(true) } })
     return items
-  }, [tabs, openSingleton, openBrowserFromMenu])
+  }, [tabs, sessionId, host, openSingleton, openBrowserFromMenu, openTerminal, openWhiteboard, openSideChat])
 
   /* ── 渲染 ── */
 
@@ -1181,6 +1279,33 @@ export function PreviewDetailsPanel({
                   rel={tab.rel ?? ''}
                   path={tab.path ?? ''}
                   onOpenPath={openPath}
+                />
+              )}
+              {tab.type === 'terminal' && (
+                <TerminalPanel sessionId={sessionId} title={tabTitle(tab)} />
+              )}
+              {tab.type === 'developer-tools' && host !== undefined && (
+                <DeveloperToolsPanel sessionId={sessionId} host={host} />
+              )}
+              {tab.type === 'trajectory' && host !== undefined && (
+                <TrajectoryPanel sessionId={sessionId} host={host} />
+              )}
+              {tab.type === 'whiteboard' && (
+                <WhiteboardPanel boardId={tab.id} />
+              )}
+              {tab.type === 'plan' && host !== undefined && (
+                <PlanPanel sessionId={sessionId} host={host} />
+              )}
+              {tab.type === 'subagents' && host !== undefined && (
+                <SubagentPanel sessionId={sessionId} host={host} />
+              )}
+              {tab.type === 'side-chat' && host !== undefined && (
+                <SideChatPanel
+                  sessionId={sessionId}
+                  host={host}
+                  childSessionId={tab.childSessionId}
+                  onChildCreated={(childId) => { setSideChatChild(tab.id, childId) }}
+                  title={tabTitle(tab)}
                 />
               )}
             </div>
@@ -1508,13 +1633,34 @@ interface BrowserPanelProps {
   getPaneEl: () => HTMLElement | null
 }
 
+/** iframe 可达性/同源状态：用于把「拒绝连接 / 禁止嵌入」变成可操作的提示。 */
+type FrameHealth = 'unknown' | 'same-origin' | 'cross-origin' | 'unreachable'
+
 function BrowserPanel({ sessionId, url, onNavigate, onTitleChange, insertElement, getPaneEl }: BrowserPanelProps) {
   const [draft, setDraft] = useState(url === 'about:blank' ? '' : url)
   const [pickerOn, setPickerOn] = useState(false)
   const [frameTick, setFrameTick] = useState(0)
+  const [health, setHealth] = useState<FrameHealth>('unknown')
+  const [hintDismissed, setHintDismissed] = useState(false)
+  const [retryTick, setRetryTick] = useState(0)
   const frameRef = useRef<HTMLIFrameElement | null>(null)
 
   useEffect(() => { setDraft(url === 'about:blank' ? '' : url) }, [url])
+
+  // 目标可达性预检：no-cors fetch 只能判断「服务器有没有应答」——
+  // 拒绝连接/DNS 失败会 reject（→ unreachable 错误态）；有应答则交给 iframe，
+  // 是否被 X-Frame-Options 拦在 handleLoad 里按 contentDocument 可访问性判定。
+  useEffect(() => {
+    setHealth('unknown')
+    setHintDismissed(false)
+    if (!/^https?:\/\//i.test(url)) return
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => { controller.abort() }, 8000)
+    fetch(url, { mode: 'no-cors', redirect: 'follow', signal: controller.signal })
+      .catch(() => { setHealth(h => h === 'same-origin' ? h : 'unreachable') })
+      .finally(() => { window.clearTimeout(timer) })
+    return () => { window.clearTimeout(timer); controller.abort() }
+  }, [url, retryTick])
 
   const navigate = (raw: string): void => {
     // 浏览器标签是通用浏览器：任意 http/https 均可打开（ZCode browser 语义），
@@ -1558,14 +1704,36 @@ function BrowserPanel({ sessionId, url, onNavigate, onTitleChange, insertElement
     if (url !== '' && url !== 'about:blank') window.open(url, '_blank', 'noopener')
   }
 
-  // 同源页面加载后提取 document.title 作为标签标题（ZCode onPageMetadataChange 对应）。
+  // 通过 Host 代理重新嵌入：/liuli-proxy 抓取目标页并剥除 X-Frame-Options/CSP，
+  // iframe 以同源加载，绕过站点禁止嵌入（ZCode webview 的纯网页近似）。
+  const openViaProxy = (): void => {
+    if (url === '' || url === 'about:blank') return
+    if (url.startsWith('/liuli-proxy')) return
+    onNavigate(`/liuli-proxy?url=${encodeURIComponent(url)}`)
+  }
+
+  const isProxied = url.startsWith('/liuli-proxy')
+
+  // 同源页面加载后提取 document.title 作为标签标题（ZCode onPageMetadataChange 对应）；
+  // contentDocument 不可读 ⇒ 跨域（含被 X-Frame-Options 拦截的空白页）⇒ 给提示条。
   const handleLoad = (): void => {
     setFrameTick(t => t + 1)
-    try {
-      const title = frameRef.current?.contentDocument?.title ?? ''
+    let doc: Document | null | undefined
+    try { doc = frameRef.current?.contentDocument } catch { doc = null }
+    if (doc !== null && doc !== undefined) {
+      setHealth('same-origin')
+      const title = doc.title ?? ''
       if (title.trim() !== '') onTitleChange(title.trim())
-    } catch { /* 跨域不可读 */ }
+    } else if (url !== 'about:blank' && url !== '') {
+      setHealth(h => h === 'unreachable' ? h : 'cross-origin')
+    }
   }
+
+  const retry = (): void => { setRetryTick(t => t + 1) }
+
+  const urlHost = ((): string => {
+    try { return new URL(url, window.location.href).host } catch { return url }
+  })()
 
   // 元素拾取（ZCode browser.elementPicker：按钮显式开启，选完自动关闭）。
   useEffect(() => {
@@ -1619,14 +1787,37 @@ function BrowserPanel({ sessionId, url, onNavigate, onTitleChange, insertElement
       </form>
       {url === 'about:blank' || url === '' ? (
         <div className={css.empty}>粘贴或输入 URL 以打开网页。</div>
+      ) : health === 'unreachable' ? (
+        <div className={css.empty}>
+          <span>无法连接到 {urlHost}(连接被拒绝或网络不可达)。</span>
+          <span className={css.emptyActions}>
+            <button type="button" className={css.hintBtn} onClick={retry}>重试</button>
+            <button type="button" className={css.hintBtn} onClick={openExternal}>在默认浏览器中打开</button>
+          </span>
+        </div>
       ) : (
-        <iframe
-          ref={frameRef}
-          className={css.frame}
-          title="浏览器"
-          src={url}
-          onLoad={handleLoad}
-        />
+        <>
+          {health === 'cross-origin' && !hintDismissed && !isProxied && (
+            <div className={css.frameHint} role="note">
+              <span className={css.frameHintText}>
+                跨域页面:元素拾取不可用。若页面空白,是该站点禁止被嵌入显示(如 Google、GitHub),可试「代理嵌入」或在默认浏览器打开。
+              </span>
+              <button type="button" className={css.hintBtn} title="经 Host 抓取并剥除禁止嵌入头,重 JS 站点可能降级" onClick={openViaProxy}>代理嵌入</button>
+              <button type="button" className={css.hintBtn} onClick={openExternal}>在默认浏览器中打开</button>
+              <button type="button" className={css.navBtn} aria-label="关闭提示" title="关闭提示" onClick={() => { setHintDismissed(true) }}>
+                <XIcon size={10} />
+              </button>
+            </div>
+          )}
+          <iframe
+            key={retryTick}
+            ref={frameRef}
+            className={css.frame}
+            title="浏览器"
+            src={url}
+            onLoad={handleLoad}
+          />
+        </>
       )}
     </>
   )

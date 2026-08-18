@@ -12,7 +12,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type {
-  ConversationSnapshot, ObservableSnapshot, SessionFace, SessionListState,
+  ConversationSnapshot, ObservableSnapshot, SessionFace, SessionId, SessionListState,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import css from './SidePaneExtraPanels.module.css'
 
@@ -186,8 +186,8 @@ export function DeveloperToolsPanel({ sessionId, host }: DeveloperToolsPanelProp
   const todos = useSnapshot(face?.projections.faceOf('todos'))
   const stats = useSnapshot(face?.projections.faceOf('sessionStats'))
 
-  const summary = sessionId === undefined ? undefined : list?.byId[sessionId]
-  const jobs = sessionId === undefined ? undefined : list?.jobsBySession[sessionId]
+  const summary = sessionId === undefined ? undefined : list?.byId[sessionId as SessionId]
+  const jobs = sessionId === undefined ? undefined : list?.jobsBySession[sessionId as SessionId]
 
   const storage = useMemo(() => {
     const rows: Array<{ key: string; bytes: number }> = []
@@ -214,8 +214,8 @@ export function DeveloperToolsPanel({ sessionId, host }: DeveloperToolsPanelProp
         <Row k="更新于" v={summary === undefined ? '—' : relTime(summary.updatedAt)} />
       </Section>
       <Section title="模型请求统计">
-        {stats === undefined && <div className={css.devEmpty}>暂无数据</div>}
-        {stats !== undefined && <pre className={css.devJson}>{fmt(stats)}</pre>}
+        {stats == null && <div className={css.devEmpty}>暂无数据</div>}
+        {stats != null && <pre className={css.devJson}>{fmt(stats)}</pre>}
       </Section>
       <Section title="上下文压力">
         <Row k="pressure" v={fmt(pressure)} />
@@ -440,7 +440,7 @@ export function WhiteboardPanel({ boardId }: WhiteboardPanelProps) {
   const redraw = (): void => {
     const canvas = canvasRef.current
     const ctx = canvas?.getContext('2d')
-    if (canvas === null || canvas === undefined || ctx === null) return
+    if (canvas === null || canvas === undefined || ctx === null || ctx === undefined) return
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     const all = liveRef.current === null ? strokesRef.current : [...strokesRef.current, liveRef.current]
     for (const stroke of all) drawStroke(ctx, stroke)
@@ -616,15 +616,15 @@ export function PlanPanel({ sessionId, host }: PlanPanelProps) {
 
   if (sessionId === undefined) return <div className={css.devEmpty}>没有活动会话</div>
 
-  const planActive = plan !== undefined && (plan.pending === true ? plan.active !== false : plan.active === true)
+  const planActive = plan != null && (plan.pending === true ? plan.active !== false : plan.active === true)
 
   return (
     <div className={css.planRoot}>
       <Section title="计划模式">
-        <Row k="状态" v={plan === undefined ? '未启用' : planActive ? '进行中' : plan.pending === true ? '待确认' : '未激活'} />
+        <Row k="状态" v={plan == null ? '未启用' : planActive ? '进行中' : plan.pending === true ? '待确认' : '未激活'} />
       </Section>
       <Section title="目标">
-        {goal === undefined || goal.objective === undefined
+        {goal == null || goal.objective === undefined
           ? <div className={css.devEmpty}>没有活动目标</div>
           : (
             <div className={css.planGoal}>
@@ -634,7 +634,7 @@ export function PlanPanel({ sessionId, host }: PlanPanelProps) {
           )}
       </Section>
       <Section title="任务清单">
-        {todos === undefined || todos.length === 0
+        {todos == null || todos.length === 0
           ? <div className={css.devEmpty}>暂无任务项</div>
           : (
             <div className={css.planTodos}>
@@ -755,7 +755,7 @@ export function SideChatPanel({ sessionId, host, childSessionId, onChildCreated,
         const text = nodeText((node as { content: readonly unknown[] }).content, 600)
         if (text.trim() !== '') out.push({ key: `u${n.seq}`, role: 'user', text })
       } else if (n.kind === 'assistant') {
-        const blocks = (node as { blocks: readonly Array<{ kind: string; text?: string }> }).blocks
+        const blocks = (node as unknown as { blocks: ReadonlyArray<{ kind: string; text?: string }> }).blocks
         let text = ''
         for (const block of blocks) {
           if (block.kind === 'text' && typeof block.text === 'string') text += block.text
