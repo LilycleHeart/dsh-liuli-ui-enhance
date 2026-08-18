@@ -124,6 +124,45 @@ export function resolvePreviewUrl(raw: string, sessionId: string | undefined): s
   return `/preview/${encodeURIComponent(sessionId)}/${encoded}`
 }
 
+/**
+ * 浏览器标签地址栏（ZCode browser 语义：任意可打开的 URL）。
+ * 自动补全 scheme：裸域名走 https，回环主机走 http；同源相对路径原样保留。
+ * 非法输入返回 undefined（面板给出 browser.invalidUrl 提示）。
+ */
+export function normalizeBrowserUrl(raw: string): string | undefined {
+  const trimmed = raw.trim()
+  if (trimmed === '') return undefined
+  // about:/data: 原样交给浏览器
+  if (/^(about|data):/i.test(trimmed)) return trimmed
+  // 同源相对路径（/preview/...、/plugins/... 等）
+  if (trimmed.startsWith('/')) return trimmed
+  // 协议相对 //host/path
+  if (trimmed.startsWith('//')) {
+    try { return new URL(`https:${trimmed}`).href } catch { return undefined }
+  }
+  // 已带 scheme：只放行 http/https
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) {
+    try {
+      const u = new URL(trimmed)
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') return undefined
+      return u.href
+    } catch { return undefined }
+  }
+  // 无 scheme 的回环主机（localhost:3000 / 127.0.0.1:8080 / 裸 localhost）
+  if (/^(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)(:\d+)?(\/|$)/i.test(trimmed)) {
+    try { return new URL(`http://${trimmed}`).href } catch { return undefined }
+  }
+  // 无 scheme 的 IPv4（局域网 dev server，如 192.168.1.5:3000）→ http://
+  if (/^\d{1,3}(\.\d{1,3}){3}(:\d+)?(\/|$)/.test(trimmed)) {
+    try { return new URL(`http://${trimmed}`).href } catch { return undefined }
+  }
+  // 裸域名（example.com / example.com:8080/path）→ https://
+  if (/^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?(\/|$)/i.test(trimmed)) {
+    try { return new URL(`https://${trimmed}`).href } catch { return undefined }
+  }
+  return undefined
+}
+
 /* ── 标签模型（ZCode sidePaneState 对应） ── */
 
 /** 面板类型：ZCode 侧边面板在 DSH 内的可复刻集合。 */
@@ -1470,15 +1509,25 @@ interface BrowserPanelProps {
 }
 
 function BrowserPanel({ sessionId, url, onNavigate, onTitleChange, insertElement, getPaneEl }: BrowserPanelProps) {
-  const [draft, setDraft] = useState(url)
+  const [draft, setDraft] = useState(url === 'about:blank' ? '' : url)
   const [pickerOn, setPickerOn] = useState(false)
   const [frameTick, setFrameTick] = useState(0)
   const frameRef = useRef<HTMLIFrameElement | null>(null)
 
-  useEffect(() => { setDraft(url) }, [url])
+  useEffect(() => { setDraft(url === 'about:blank' ? '' : url) }, [url])
 
   const navigate = (raw: string): void => {
-    const resolved = resolvePreviewUrl(raw, sessionId)
+    // 浏览器标签是通用浏览器：任意 http/https 均可打开（ZCode browser 语义），
+    // 不再用 resolvePreviewUrl（只放行回环/产物，输真实网址会静默无反应）。
+    // 裸域名自动补 https，回环主机补 http；相对前端产物路径仍映射到 /preview。
+    const trimmed = raw.trim()
+    if (trimmed === '') return
+    const bare = !/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) && !trimmed.startsWith('/') && !trimmed.startsWith('//')
+    if (bare && looksLikeFrontendPath(trimmed) && sessionId !== undefined && sessionId !== null) {
+      const mapped = resolvePreviewUrl(trimmed, sessionId)
+      if (mapped !== undefined) { onNavigate(mapped); return }
+    }
+    const resolved = normalizeBrowserUrl(trimmed)
     if (resolved === undefined) return
     onNavigate(resolved)
   }

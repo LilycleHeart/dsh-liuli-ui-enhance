@@ -305,7 +305,13 @@ export function apply(ctx: ClientContext): void {
 
   // 切换会话时宿主会自动收起 details 列；这里同步重置预览开关，避免下次按钮反向。
   // 宿主收起同样走关闭动画：抑制 RO 同步，防止动画期间被翻回打开。
+  // 只在「当前会话真的变了」时重置：session list 的任何其他更新（状态/流式/未读）
+  // 也会触发快照变化，若在此处重置会把 previewOpen 拉偏，导致 Ctrl+Alt+B 首按失效。
+  let lastCurrentSession = ctx.sessions.list.getSnapshot().current
   ctx.effect(() => ctx.sessions.list.subscribe(() => {
+    const current = ctx.sessions.list.getSnapshot().current
+    if (current === lastCurrentSession) return
+    lastCurrentSession = current
     setPaneSyncSuppressed(true)
     setPreviewOpen(false)
   }), 'liuli-theme: preview open reset on session switch')
