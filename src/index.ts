@@ -344,12 +344,19 @@ export function apply(ctx: Context): void {
   // 渲染端探测 /liuli-browser/capabilities 失败后自动回退 iframe。
   void createBrowserEngine().then((engine) => {
     if (engine === undefined) return
-    ctx.effect(() => {
-      const release = ctx.webServer.register(engine.route)
-      return () => { release(); engine.dispose() }
-    }, 'liuli-theme: /liuli-browser route (embedded webview engine)')
+    try {
+      ctx.effect(() => {
+        const release = ctx.webServer.register(engine.route)
+        return () => { release(); engine.dispose() }
+      }, 'liuli-theme: /liuli-browser route (embedded webview engine)')
+    } catch {
+      // 插件在探测完成前被卸载：直接销毁引擎。
+      engine.dispose()
+    }
   }).catch((cause: unknown) => {
-    ctx.logger.warn(`liuli-theme: embedded browser engine unavailable: ${cause instanceof Error ? cause.message : String(cause)}`)
+    try {
+      ctx.logger.warn(`liuli-theme: embedded browser engine unavailable: ${cause instanceof Error ? cause.message : String(cause)}`)
+    } catch { /* 上下文已释放则静默 */ }
   })
 }
 
