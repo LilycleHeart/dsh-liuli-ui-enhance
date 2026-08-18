@@ -257,12 +257,25 @@ async function run() {
     case 'shot': {
       const tab = requireTab()
       await waitIdle(tab)
-      const resp = await fetch(BASE + '/liuli-browser/tabs/screenshot?id=' + encodeURIComponent(tab))
-      if (!resp.ok) fail('screenshot failed: HTTP ' + String(resp.status))
-      const buf = Buffer.from(await resp.arrayBuffer())
+      const capture = async () => {
+        const resp = await fetch(BASE + '/liuli-browser/tabs/screenshot?id=' + encodeURIComponent(tab))
+        if (!resp.ok) fail('screenshot failed: HTTP ' + String(resp.status))
+        return Buffer.from(await resp.arrayBuffer())
+      }
+      let buf = await capture()
+      let promoted = false
+      if (buf.length === 0) {
+        // 隐藏/无 carrier 标签不参与合成（ZCode headless 对应）：临时移入窗口取帧后复位隐藏。
+        // 有 GUI carrier 的标签其几何心跳（300ms）会自动恢复承载位。
+        await postJson('/liuli-browser/tabs/geometry', { id: tab, x: 0, y: 0, width: 1024, height: 768, visible: true })
+        promoted = true
+        await new Promise(r => setTimeout(r, 450))
+        buf = await capture()
+      }
       const file = args[2] ?? 'liuli-browser-' + tab.replace(/[^a-zA-Z0-9_-]/g, '_') + '.png'
       writeFileSync(file, buf)
-      console.log(JSON.stringify({ ok: true, file, bytes: buf.length }))
+      if (promoted) await postJson('/liuli-browser/tabs/geometry', { id: tab, x: 0, y: 0, width: 0, height: 0, visible: false })
+      console.log(JSON.stringify({ ok: buf.length > 0, file, bytes: buf.length }))
       return
     }
     case 'help':
