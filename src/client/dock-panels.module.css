@@ -1,0 +1,86 @@
+/* Dockable Workspace 面板内容样式（dock-panels.tsx） */
+
+.frame {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: none;
+  background: transparent;
+}
+
+.browserWrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.browserBar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.browserInput {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 10px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.2));
+  border-radius: var(--denpa-radius-sm, 10px);
+  background: rgba(var(--denpa-acrylic-rgb, 255 255 255), 0.45);
+  color: var(--dsw-alias-label-primary, inherit);
+  font-size: 12px;
+  outline: none;
+}
+
+.browserInput:focus {
+  border-color: var(--dsw-alias-brand-primary, #0079bf);
+}
+
+.browserBtn {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.2));
+  border-radius: var(--denpa-radius-sm, 10px);
+  background: rgba(var(--denpa-acrylic-rgb, 255 255 255), 0.35);
+  color: var(--dsw-alias-label-secondary, inherit);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.browserBtn:hover {
+  color: var(--dsw-alias-brand-primary, #0079bf);
+}
+
+.browserEmpty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  border: 1px dashed var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.25));
+  border-radius: var(--denpa-radius-sm, 10px);
+  color: var(--dsw-alias-label-tertiary, #888);
+  font-size: 12px;
+  text-align: center;
+}
+
+.notes {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  resize: none;
+  border: none;
+  outline: none;
+  padding: 10px;
+  border-radius: var(--denpa-radius-sm, 10px);
+  background: rgba(var(--denpa-acrylic-rgb, 255 255 255), 0.3);
+  color: var(--dsw-alias-label-primary, inherit);
+  font: var(--dsw-font-s-13, 13px/1.6 system-ui);
+}
