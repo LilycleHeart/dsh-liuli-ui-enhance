@@ -23,7 +23,11 @@
  */
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
-import { attachElementPicker, describeElement, type PickedElement } from './element-picker.ts'
+import { attachElementPicker, describeElement, computedColor, type PickedElement } from './element-picker.ts'
+import {
+  detectWebviewEngine, reportGeometryLoop, subscribeWebviewGlobal, subscribeWebviewTab,
+  webviewBrowser, type WebviewTabState,
+} from './browser-webview.ts'
 import {
   CommandPalette, FileTreePanel, GitPanel, WikiPanel, type CommandPaletteCommand,
 } from './RightSidebarPanels.tsx'
@@ -470,6 +474,38 @@ function PickerIcon({ size = 14 }: { size?: number }) {
   )
 }
 
+
+/** 响应式视口切换钮图标（lucide smartphone：ZCode browser.responsive.enter/exit）。 */
+function ResponsiveIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
+      <path d="M12 18h.01" />
+    </svg>
+  )
+}
+
+/** 「更多」菜单触发钮图标（lucide ellipsis：ZCode browser.more）。 */
+function MoreIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="19" cy="12" r="1" />
+      <circle cx="5" cy="12" r="1" />
+    </svg>
+  )
+}
+
+/** 开发者工具菜单项图标（lucide code：ZCode browser.devtools）。 */
+function DevToolsIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="16 18 22 12 16 6" />
+      <polyline points="8 6 2 12 8 18" />
+    </svg>
+  )
+}
+
 /* ── 主组件 props ── */
 
 /** 侧边面板组件（宿主 details 列占用者）。 */
@@ -839,6 +875,24 @@ export function PreviewDetailsPanel({
     window.addEventListener(PREVIEW_NAVIGATE_EVENT, onNavigate)
     return () => { window.removeEventListener(PREVIEW_NAVIGATE_EVENT, onNavigate) }
   }, [openDetails, openBrowserUrl])
+
+  /* ── webview 引擎：弹窗/新窗口请求 → 侧边栏新浏览器标签（ZCode [App] webview 请求打开右侧浏览器 tab） ── */
+
+  useEffect(() => {
+    let alive = true
+    let unsubscribe: (() => void) | undefined
+    void detectWebviewEngine().then((caps) => {
+      if (!alive || caps === null) return
+      unsubscribe = subscribeWebviewGlobal((event) => {
+        if (event.type !== 'new-tab') return
+        if (!/^https?:/i.test(event.url)) return
+        openBrowserUrl(event.url)
+        setPreviewOpen(true)
+        openDetails?.()
+      })
+    })
+    return () => { alive = false; unsubscribe?.() }
+  }, [openBrowserUrl, openDetails])
 
   /* ── 概览打开时刷新相对时间（ZCode：60s） ── */
 
@@ -1265,6 +1319,8 @@ export function PreviewDetailsPanel({
               {tab.type === 'git' && <GitPanel sessionId={sessionId} />}
               {tab.type === 'browser' && (
                 <BrowserPanel
+                  tabId={tab.id}
+                  active={active && open}
                   sessionId={sessionId}
                   url={tab.url ?? 'about:blank'}
                   onNavigate={(url) => { navigateBrowserTab(tab.id, url) }}
@@ -1622,6 +1678,638 @@ function OpenFileDialog({ sessionId, onClose, onOpenFile }: OpenFileDialogProps)
   )
 }
 
+
+/* ── 嵌入式浏览器（webview 引擎）：Host WebContentsView 的渲染端承载 ──
+ *
+ * ZCode Desktop IAB 的侧边栏浏览器是 Electron <webview>（独立会话分区、
+ * 任意站点、弹窗转标签、崩溃重建）。DSH 窗口未开 webviewTag，本插件在
+ * Host 半用 WebContentsView 等价承载（browser-engine.ts），这里负责：
+ * 工具条（back/forward/reload/地址栏/响应式/元素拾取/更多）、状态同步
+ * （SSE state → 地址栏/标签标题/前进后退态）、carrier 几何上报、
+ * 响应式视口（ZCode browser.responsive.*）、空态与错误呈现。
+ * data-testid 与 ZCode 一致（browser-address-input 等）。
+ */
+
+/** 客户页内拾取器返回的元素描述（与 PickedElement 字段逐一对齐）。 */
+interface GuestElementInfo {
+  tag: string
+  selector: string
+  attributes: string
+  text: string
+  rect: { x: number; y: number; width: number; height: number }
+  color: string
+  background: string
+  font: string
+}
+
+/**
+ * 注入客户页的元素拾取脚本（ZCode browser.elementPicker 语义：hover 描边、
+ * 点击拾取、Esc 取消）。脚本无反引号/模板插值/反斜杠，直接 executeJavaScript。
+ */
+const PICKER_SCRIPT = `(() => {
+  if (window.__liuliPicker) return window.__liuliPicker.promise
+  const doc = document
+  const outline = doc.createElement('div')
+  outline.style.cssText = 'position:fixed;pointer-events:none;border:2px solid #2f80ed;background:rgba(47,128,237,0.12);z-index:2147483647;display:none;border-radius:2px;'
+  const chip = doc.createElement('div')
+  chip.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483647;display:none;background:#2f80ed;color:#fff;font:11px/16px monospace;padding:1px 6px;border-radius:3px;white-space:nowrap;'
+  doc.documentElement.appendChild(outline)
+  doc.documentElement.appendChild(chip)
+  let current = null
+  let finished = false
+  let resolve = () => {}
+  const esc = (s) => {
+    if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') return CSS.escape(s)
+    let out = ''
+    for (const ch of String(s)) out += /[a-zA-Z0-9_-]/.test(ch) ? ch : String.fromCharCode(92) + ch
+    return out
+  }
+  const segment = (el) => {
+    if (el.id !== '') return '#' + esc(el.id)
+    const tag = el.tagName.toLowerCase()
+    const classes = Array.from(el.classList).map(esc)
+    const base = classes.length === 0 ? tag : tag + '.' + classes.join('.')
+    const parent = el.parentElement
+    if (parent === null) return base
+    const sameTag = Array.from(parent.children).filter((c) => c.tagName === el.tagName)
+    return sameTag.length > 1 ? base + ':nth-of-type(' + String(sameTag.indexOf(el) + 1) + ')' : base
+  }
+  const selectorOf = (el) => {
+    const parts = []
+    let node = el
+    const body = el.ownerDocument.body
+    while (node !== null && node !== body) { parts.unshift(segment(node)); node = node.parentElement }
+    return parts.join(' > ')
+  }
+  const rgb2hex = (value) => {
+    const m = /^rgba?[(]([0-9]+)[, ]+([0-9]+)[, ]+([0-9]+)(?:[, ]+([0-9.]+))?[)]$/.exec(value)
+    if (m === null) return value
+    const alpha = m[4] === undefined ? 1 : Number(m[4])
+    if (alpha === 0) return 'transparent'
+    if (alpha < 1) return value
+    const hex = (n) => Number(n).toString(16).padStart(2, '0')
+    return ('#' + hex(m[1]) + hex(m[2]) + hex(m[3])).toUpperCase()
+  }
+  const describe = (el) => {
+    const rect = el.getBoundingClientRect()
+    const styles = getComputedStyle(el)
+    const attributes = Array.from(el.attributes)
+      .filter((a) => a.name !== 'class' && a.name !== 'id' && a.name !== 'style')
+      .map((a) => a.name + '="' + a.value + '"')
+      .join(', ')
+    return {
+      tag: el.tagName.toLowerCase(),
+      selector: selectorOf(el),
+      attributes,
+      text: (el.textContent || '').trim().slice(0, 200),
+      rect: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) },
+      color: rgb2hex(styles.color),
+      background: rgb2hex(styles.backgroundColor),
+      font: (styles.fontSize + ' ' + styles.fontFamily).trim(),
+    }
+  }
+  const cleanup = () => {
+    finished = true
+    window.removeEventListener('mousemove', onMove, true)
+    window.removeEventListener('click', onClick, true)
+    window.removeEventListener('keydown', onKey, true)
+    outline.remove()
+    chip.remove()
+    window.__liuliPicker = null
+  }
+  const finish = (status, info) => {
+    if (finished) return
+    cleanup()
+    resolve(info === undefined ? { status } : { status, info })
+  }
+  const onMove = (e) => {
+    const el = doc.elementFromPoint(e.clientX, e.clientY)
+    if (el === null || el === outline || el === chip) {
+      current = null
+      outline.style.display = 'none'
+      chip.style.display = 'none'
+      return
+    }
+    current = el
+    const r = el.getBoundingClientRect()
+    outline.style.display = 'block'
+    outline.style.left = r.left + 'px'
+    outline.style.top = r.top + 'px'
+    outline.style.width = r.width + 'px'
+    outline.style.height = r.height + 'px'
+    chip.style.display = 'block'
+    chip.textContent = el.tagName.toLowerCase() + (el.id !== '' ? '#' + el.id : '')
+    chip.style.left = Math.max(0, r.left) + 'px'
+    chip.style.top = Math.max(0, r.top - 18) + 'px'
+  }
+  const onClick = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (current !== null) finish('picked', describe(current))
+  }
+  const onKey = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); finish('cancelled') }
+  }
+  window.addEventListener('mousemove', onMove, true)
+  window.addEventListener('click', onClick, true)
+  window.addEventListener('keydown', onKey, true)
+  const promise = new Promise((res) => { resolve = res })
+  window.__liuliPicker = { promise, cancel: () => finish('cancelled') }
+  return promise
+})()`
+
+/** 取消客户页拾取（渲染端 Escape 时调用，ZCode cancelPicking 对应）。 */
+const PICKER_CANCEL_SCRIPT = `(() => {
+  if (window.__liuliPicker) { window.__liuliPicker.cancel(); return true }
+  return false
+})()`
+
+/** 客户页拾取结果 → 聊天用 PickedElement。 */
+function toPickedElement(info: GuestElementInfo): PickedElement {
+  return {
+    tag: info.tag,
+    selector: info.selector,
+    attributes: info.attributes,
+    text: info.text,
+    rect: info.rect,
+    color: computedColor(info.color),
+    background: computedColor(info.background),
+    font: info.font,
+  }
+}
+
+/** 引擎探测缓存（全部浏览器标签共享一次能力探测）。 */
+type BrowserEngineKind = 'pending' | 'webview' | 'iframe'
+let engineKindCache: BrowserEngineKind = 'pending'
+let engineDetectStarted = false
+const engineListeners = new Set<(kind: BrowserEngineKind) => void>()
+
+function startEngineDetect(): void {
+  if (engineDetectStarted) return
+  engineDetectStarted = true
+  void detectWebviewEngine().then((caps) => {
+    engineKindCache = caps === null ? 'iframe' : 'webview'
+    for (const listener of engineListeners) listener(engineKindCache)
+  })
+}
+
+function useBrowserEngineKind(): BrowserEngineKind {
+  const [kind, setKind] = useState<BrowserEngineKind>(engineKindCache)
+  useEffect(() => {
+    startEngineDetect()
+    if (engineKindCache !== 'pending') {
+      setKind(engineKindCache)
+      return
+    }
+    const listener = (next: BrowserEngineKind): void => { setKind(next) }
+    engineListeners.add(listener)
+    return () => { engineListeners.delete(listener) }
+  }, [])
+  return kind
+}
+
+/** 响应式模式配置（ZCode HUt：fit/50/75/100/125/150/200）。 */
+const ZOOM_OPTIONS = ['fit', '50', '75', '100', '125', '150', '200'] as const
+const RESPONSIVE_LS_KEY = 'liuli:browser-responsive'
+
+interface ResponsiveConfig {
+  width: number
+  height: number
+  zoom: string
+}
+
+function loadResponsiveConfig(): ResponsiveConfig {
+  const fallback: ResponsiveConfig = { width: 390, height: 844, zoom: 'fit' }
+  try {
+    const raw = localStorage.getItem(RESPONSIVE_LS_KEY)
+    if (raw === null) return fallback
+    const parsed = JSON.parse(raw) as Partial<ResponsiveConfig>
+    return {
+      width: typeof parsed.width === 'number' && Number.isFinite(parsed.width) ? Math.round(parsed.width) : fallback.width,
+      height: typeof parsed.height === 'number' && Number.isFinite(parsed.height) ? Math.round(parsed.height) : fallback.height,
+      zoom: typeof parsed.zoom === 'string' && (ZOOM_OPTIONS as readonly string[]).includes(parsed.zoom) ? parsed.zoom : 'fit',
+    }
+  } catch {
+    return fallback
+  }
+}
+
+interface NativeBrowserPanelProps {
+  tabId: string
+  sessionId?: string | undefined
+  url: string
+  active: boolean
+  onNavigate: (url: string) => void
+  onTitleChange: (title: string) => void
+  insertElement: (info: PickedElement) => void
+}
+
+/** webview 引擎浏览器面板：Host WebContentsView 的工具条 + carrier。 */
+function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitleChange, insertElement }: NativeBrowserPanelProps) {
+  const [state, setState] = useState<WebviewTabState | null>(null)
+  const [draft, setDraft] = useState(url === 'about:blank' ? '' : url)
+  const [draftFocused, setDraftFocused] = useState(false)
+  const [localError, setLocalError] = useState<string | null>(null)
+  const [pickerOn, setPickerOn] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
+  const [responsiveOn, setResponsiveOn] = useState(false)
+  const [responsive, setResponsive] = useState<ResponsiveConfig>(loadResponsiveConfig)
+  const [zoomFitScale, setZoomFitScale] = useState(1)
+  const carrierRef = useRef<HTMLDivElement | null>(null)
+  const stateRef = useRef<WebviewTabState | null>(null)
+  const lastRequestedUrl = useRef<string>(url)
+  const moreWrapRef = useRef<HTMLDivElement | null>(null)
+
+  stateRef.current = state
+
+  /* ── 生命周期：Host 侧标签创建/销毁 + SSE 状态同步 ── */
+
+  useEffect(() => {
+    let alive = true
+    void webviewBrowser.createTab(tabId, url).then((resp) => {
+      if (!alive) return
+      const created = resp as { ok?: boolean; state?: WebviewTabState }
+      if (created.ok === true && created.state !== undefined) {
+        lastRequestedUrl.current = created.state.url
+        setState(created.state)
+      }
+    })
+    const unsubscribe = subscribeWebviewTab(tabId, (event) => {
+      if (event.type !== 'state') return
+      lastRequestedUrl.current = event.state.url
+      setState(event.state)
+    })
+    return () => {
+      alive = false
+      unsubscribe()
+      void webviewBrowser.destroyTab(tabId)
+    }
+  }, [tabId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── 外部 URL 变更（产物链接/持久化恢复）→ 客户机导航 ── */
+
+  useEffect(() => {
+    if (url === '' || url === 'about:blank') return
+    if (url === lastRequestedUrl.current) return
+    if (stateRef.current !== null && url === stateRef.current.url) return
+    lastRequestedUrl.current = url
+    void webviewBrowser.action(tabId, 'navigate', url)
+  }, [url, tabId])
+
+  /* ── 状态 → 标签条（标题/URL 持久化，ZCode onPageMetadataChange 对应） ── */
+
+  useEffect(() => {
+    if (state === null) return
+    const title = state.title.trim()
+    if (title !== '') onTitleChange(title)
+    if (state.url !== '' && state.url !== 'about:blank') onNavigate(state.url)
+  }, [state?.title, state?.url]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── 地址栏草稿跟随当前 URL（未聚焦时） ── */
+
+  useEffect(() => {
+    if (draftFocused) return
+    if (state === null) return
+    setDraft(state.url === 'about:blank' ? '' : state.url)
+  }, [state?.url, draftFocused]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── carrier 几何上报（原生视图贴合） ── */
+
+  useEffect(() => {
+    return reportGeometryLoop(tabId, () => carrierRef.current, () => active)
+  }, [tabId, active])
+
+  /* ── 响应式视口（ZCode browser.responsive：客户机固定视口 + zoom 缩放） ── */
+
+  useEffect(() => {
+    try { localStorage.setItem(RESPONSIVE_LS_KEY, JSON.stringify(responsive)) } catch { /* 配额满忽略 */ }
+  }, [responsive])
+
+  const responsiveScale = useMemo(() => {
+    if (responsive.zoom !== 'fit') return Number(responsive.zoom) / 100
+    return zoomFitScale
+  }, [responsive.zoom, zoomFitScale])
+
+  useEffect(() => {
+    if (!responsiveOn) {
+      void webviewBrowser.viewport(tabId, null)
+      return
+    }
+    void webviewBrowser.viewport(tabId, { width: responsive.width, height: responsive.height, scale: responsiveScale })
+  }, [responsiveOn, responsive.width, responsive.height, responsiveScale, tabId])
+
+  // fit 缩放随 carrier 尺寸变化（ZCode UUt：(画布宽-32)/视口宽，上限 1）。
+  useEffect(() => {
+    if (!responsiveOn) return
+    const el = carrierRef.current
+    if (el === null) return
+    const compute = (): void => {
+      const rect = el.getBoundingClientRect()
+      const byWidth = (Math.max(0, rect.width - 32)) / responsive.width
+      const byHeight = (Math.max(0, rect.height - 32)) / responsive.height
+      setZoomFitScale(Math.max(0.1, Math.min(1, Math.min(byWidth, byHeight))))
+    }
+    compute()
+    const ro = new ResizeObserver(compute)
+    ro.observe(el)
+    return () => { ro.disconnect() }
+  }, [responsiveOn, responsive.width, responsive.height])
+
+  /* ── 动作 ── */
+
+  const submitAddress = (): void => {
+    const trimmed = draft.trim()
+    if (trimmed === '') return
+    setLocalError(null)
+    // 相对前端产物路径映射 /preview（与 iframe 模式一致）。
+    const bare = !/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) && !trimmed.startsWith('/') && !trimmed.startsWith('//')
+    if (bare && looksLikeFrontendPath(trimmed) && sessionId !== undefined && sessionId !== null) {
+      const mapped = resolvePreviewUrl(trimmed, sessionId)
+      if (mapped !== undefined) {
+        lastRequestedUrl.current = mapped
+        onNavigate(mapped)
+        void webviewBrowser.action(tabId, 'navigate', new URL(mapped, window.location.href).href)
+        return
+      }
+    }
+    const resolved = normalizeBrowserUrl(trimmed)
+    if (resolved === undefined) {
+      setLocalError('无法识别的网址') // ZCode browser.invalidUrl
+      return
+    }
+    if (stateRef.current !== null && resolved === stateRef.current.url) {
+      // 重复提交同址 → 重新加载（ZCode ge 同语义）。
+      void webviewBrowser.action(tabId, 'navigate', resolved)
+      return
+    }
+    lastRequestedUrl.current = resolved
+    onNavigate(resolved)
+    void webviewBrowser.action(tabId, 'navigate', resolved)
+  }
+
+  const goBack = (): void => { void webviewBrowser.action(tabId, 'back') }
+  const goForward = (): void => { void webviewBrowser.action(tabId, 'forward') }
+  const reload = (): void => { void webviewBrowser.action(tabId, 'reload') }
+  const openDevTools = (): void => { setMoreOpen(false); void webviewBrowser.action(tabId, 'devtools') }
+  const openExternal = (): void => {
+    setMoreOpen(false)
+    const target = stateRef.current?.url ?? ''
+    if (target === '' || target === 'about:blank') return
+    void webviewBrowser.openExternal(target)
+  }
+
+  /* ── 元素拾取（ZCode browser.elementPicker：显式开启、Esc 取消、选完自动关） ── */
+
+  const pickerGeneration = useRef(0)
+
+  const cancelPicker = useCallback((): void => {
+    pickerGeneration.current += 1
+    setPickerOn(false)
+    void webviewBrowser.execute(tabId, PICKER_CANCEL_SCRIPT)
+  }, [tabId])
+
+  const startPicker = useCallback(async (): Promise<void> => {
+    const generation = pickerGeneration.current + 1
+    pickerGeneration.current = generation
+    setPickerOn(true)
+    try {
+      const resp = await webviewBrowser.execute(tabId, PICKER_SCRIPT)
+      if (pickerGeneration.current !== generation) return
+      if (resp.ok !== true) throw new Error(typeof resp.error === 'string' ? resp.error : 'picker failed')
+      const value = resp.value as { status?: string; info?: GuestElementInfo } | null
+      if (value === null || typeof value !== 'object' || typeof value.status !== 'string') return
+      if (value.status === 'cancelled') return
+      if (value.status === 'picked' && value.info !== undefined) insertElement(toPickedElement(value.info))
+    } catch (cause) {
+      if (pickerGeneration.current !== generation) return
+      setLocalError(`网页元素选择失败：${cause instanceof Error ? cause.message : String(cause)}`) // ZCode browser.elementPickerFailed
+    } finally {
+      if (pickerGeneration.current === generation) setPickerOn(false)
+    }
+  }, [tabId, insertElement])
+
+  const togglePicker = useCallback((): void => {
+    if (pickerOn) cancelPicker()
+    else void startPicker()
+  }, [pickerOn, cancelPicker, startPicker])
+
+  // 渲染端 Escape 取消（焦点在宿主页面时；客户页内 Escape 由拾取脚本自处理）。
+  useEffect(() => {
+    if (!pickerOn) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') { e.preventDefault(); cancelPicker() }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => { window.removeEventListener('keydown', onKey, true) }
+  }, [pickerOn, cancelPicker])
+
+  /* ── 「更多」菜单外点关闭 ── */
+
+  useEffect(() => {
+    if (!moreOpen) return
+    const onDown = (e: MouseEvent): void => {
+      if (moreWrapRef.current !== null && !moreWrapRef.current.contains(e.target as Node)) setMoreOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => { document.removeEventListener('mousedown', onDown) }
+  }, [moreOpen])
+
+  /* ── 呈现 ── */
+
+  const ready = state?.ready === true
+  const loading = state?.loading === true
+  const canGoBack = state?.canGoBack === true
+  const canGoForward = state?.canGoForward === true
+  const currentUrl = state?.url ?? ''
+  const errorMessage = localError ?? (state?.error ?? null)
+  const isEmpty = !loading && errorMessage === null && (currentUrl === '' || currentUrl === 'about:blank') && draft.trim() === ''
+  const isExternalReady = ready && /^https?:\/\//i.test(currentUrl)
+
+  return (
+    <>
+      <form
+        className={css.browserBar}
+        onSubmit={(e) => { e.preventDefault(); submitAddress() }}
+      >
+        <button type="button" className={css.navBtn} title="后退" aria-label="后退" data-testid="browser-back-button" disabled={!canGoBack} onClick={goBack}>
+          <ArrowIcon dir="left" />
+        </button>
+        <button type="button" className={css.navBtn} title="前进" aria-label="前进" data-testid="browser-forward-button" disabled={!canGoForward} onClick={goForward}>
+          <ArrowIcon dir="right" />
+        </button>
+        <button type="button" className={css.navBtn} title="刷新" aria-label="刷新" data-testid="browser-refresh-button" disabled={!ready} onClick={reload}>
+          <span className={loading ? css.navBtnSpin : undefined}><ReloadIcon /></span>
+        </button>
+        <input
+          className={css.browserInput}
+          value={draft}
+          data-testid="browser-address-input"
+          onChange={(e) => { setDraft(e.target.value); setLocalError(null) }}
+          onFocus={() => { setDraftFocused(true) }}
+          onBlur={() => { setDraftFocused(false) }}
+          placeholder="输入网址后回车"
+          spellCheck={false}
+        />
+        <button
+          type="button"
+          className={css.navBtn + (responsiveOn ? ' ' + css.navBtnActive : '')}
+          title={responsiveOn ? '退出响应式视口' : '响应式视口'}
+          aria-label={responsiveOn ? '退出响应式视口' : '响应式视口'}
+          aria-pressed={responsiveOn}
+          data-testid="browser-responsive-button"
+          onClick={() => { setResponsiveOn(v => !v) }}
+        >
+          <ResponsiveIcon />
+        </button>
+        <button
+          type="button"
+          className={css.navBtn + (pickerOn ? ' ' + css.navBtnActive : '')}
+          title={pickerOn ? '取消网页元素选择' : '选择网页元素加入聊天'}
+          aria-label={pickerOn ? '取消网页元素选择' : '选择网页元素加入聊天'}
+          aria-pressed={pickerOn}
+          data-testid="browser-element-picker-button"
+          disabled={!ready}
+          onClick={togglePicker}
+        >
+          <PickerIcon />
+        </button>
+        <div className={css.moreWrap} ref={moreWrapRef}>
+          <button
+            type="button"
+            className={css.navBtn + (moreOpen ? ' ' + css.navBtnActive : '')}
+            title="更多"
+            aria-label="更多"
+            aria-haspopup="menu"
+            aria-expanded={moreOpen}
+            data-testid="browser-more-button"
+            onClick={() => { setMoreOpen(v => !v) }}
+          >
+            <MoreIcon />
+          </button>
+          {moreOpen && (
+            <div className={css.moreMenu} role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                className={css.moreItem}
+                data-testid="browser-open-external-item"
+                disabled={!isExternalReady}
+                onClick={openExternal}
+              >
+                <ExternalIcon />
+                <span>在默认浏览器中打开</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className={css.moreItem}
+                data-testid="browser-devtools-button"
+                disabled={!ready}
+                onClick={openDevTools}
+              >
+                <DevToolsIcon />
+                <span>开发者工具</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </form>
+      {responsiveOn && (
+        <div className={css.responsiveBar} data-testid="browser-responsive-toolbar">
+          <label className={css.responsiveField}>
+            <span>宽</span>
+            <input
+              className={css.responsiveInput}
+              data-testid="browser-responsive-width-input"
+              value={String(responsive.width)}
+              inputMode="numeric"
+              onChange={(e) => {
+                const value = Number(e.target.value.replace(/[^0-9]/g, ''))
+                if (Number.isFinite(value) && value > 0) setResponsive(r => ({ ...r, width: Math.min(3840, value) }))
+              }}
+            />
+          </label>
+          <label className={css.responsiveField}>
+            <span>高</span>
+            <input
+              className={css.responsiveInput}
+              data-testid="browser-responsive-height-input"
+              value={String(responsive.height)}
+              inputMode="numeric"
+              onChange={(e) => {
+                const value = Number(e.target.value.replace(/[^0-9]/g, ''))
+                if (Number.isFinite(value) && value > 0) setResponsive(r => ({ ...r, height: Math.min(2160, value) }))
+              }}
+            />
+          </label>
+          <label className={css.responsiveField}>
+            <span>缩放</span>
+            <select
+              className={css.responsiveSelect}
+              data-testid="browser-responsive-zoom-select"
+              value={responsive.zoom}
+              onChange={(e) => { setResponsive(r => ({ ...r, zoom: e.target.value })) }}
+            >
+              {ZOOM_OPTIONS.map(option => (
+                <option key={option} value={option} data-testid="browser-responsive-zoom-option">
+                  {option === 'fit' ? '适应窗口' : option + '%'}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span className={css.responsiveHint}>{responsive.width} × {responsive.height} · {Math.round(responsiveScale * 100)}%</span>
+        </div>
+      )}
+      {errorMessage !== null && (
+        <div className={css.errorBar} role="alert">
+          <span>页面加载失败：{errorMessage}</span>
+          <button type="button" className={css.hintBtn} onClick={reload}>重试</button>
+        </div>
+      )}
+      <div className={css.carrier} data-testid="browser-webview" ref={carrierRef}>
+        {isEmpty && (
+          <div className={css.emptyWebview}>
+            <span className={css.emptyWebviewIcon}><GlobeIcon size={56} /></span>
+            <h3 className={css.emptyWebviewTitle}>浏览器</h3>
+            <p className={css.emptyWebviewDesc}>内嵌浏览器已就绪（独立会话分区，可打开任意站点）。在上方地址栏输入网址开始浏览。</p>
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+
+interface BrowserPanelRouterProps {
+  tabId: string
+  sessionId?: string | undefined
+  url: string
+  active: boolean
+  onNavigate: (url: string) => void
+  onTitleChange: (title: string) => void
+  insertElement: (info: PickedElement) => void
+  getPaneEl: () => HTMLElement | null
+}
+
+/** 浏览器面板路由：webview 引擎（Electron 宿主）→ 原生视图承载；纯 Web → iframe。 */
+function BrowserPanel({ tabId, active, ...rest }: BrowserPanelRouterProps) {
+  const engine = useBrowserEngineKind()
+  if (engine === 'webview') {
+    return (
+      <NativeBrowserPanel
+        tabId={tabId}
+        active={active}
+        sessionId={rest.sessionId}
+        url={rest.url}
+        onNavigate={rest.onNavigate}
+        onTitleChange={rest.onTitleChange}
+        insertElement={rest.insertElement}
+      />
+    )
+  }
+  if (engine === 'pending') return <div className={css.empty}>正在探测浏览器引擎…</div>
+  return <IframeBrowserPanel {...rest} />
+}
+
 /* ── 浏览器标签面板（ZCode browser pane：导航工具条 + 元素拾取开关） ── */
 
 interface BrowserPanelProps {
@@ -1636,7 +2324,7 @@ interface BrowserPanelProps {
 /** iframe 可达性/同源状态：用于把「拒绝连接 / 禁止嵌入」变成可操作的提示。 */
 type FrameHealth = 'unknown' | 'same-origin' | 'cross-origin' | 'unreachable'
 
-function BrowserPanel({ sessionId, url, onNavigate, onTitleChange, insertElement, getPaneEl }: BrowserPanelProps) {
+function IframeBrowserPanel({ sessionId, url, onNavigate, onTitleChange, insertElement, getPaneEl }: BrowserPanelProps) {
   const [draft, setDraft] = useState(url === 'about:blank' ? '' : url)
   const [pickerOn, setPickerOn] = useState(false)
   const [frameTick, setFrameTick] = useState(0)

@@ -18,6 +18,7 @@ import type { Duplex } from 'node:stream'
 import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
+import { createBrowserEngine } from './browser-engine.ts'
 
 export const name = 'liuli-theme'
 
@@ -338,6 +339,18 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.webServer.register(sidebarRoute(ctx)), 'liuli-theme: /liuli-sidebar route')
   ctx.effect(() => ctx.webServer.registerUpgrade(terminalUpgradeRoute(ctx)), 'liuli-theme: /liuli-terminal upgrade route')
   ctx.effect(() => ctx.webServer.register(proxyRoute()), 'liuli-theme: /liuli-proxy route')
+  // 嵌入式浏览器引擎（ZCode Desktop IAB 复刻）：仅 Electron 主进程内有
+  // WebContentsView 可承载真实 webview；纯 Web 部署返回 undefined，
+  // 渲染端探测 /liuli-browser/capabilities 失败后自动回退 iframe。
+  void createBrowserEngine().then((engine) => {
+    if (engine === undefined) return
+    ctx.effect(() => {
+      const release = ctx.webServer.register(engine.route)
+      return () => { release(); engine.dispose() }
+    }, 'liuli-theme: /liuli-browser route (embedded webview engine)')
+  }).catch((cause: unknown) => {
+    ctx.logger.warn(`liuli-theme: embedded browser engine unavailable: ${cause instanceof Error ? cause.message : String(cause)}`)
+  })
 }
 
 /* ── /preview：会话 cwd 同源静态服务（预览面板 iframe）────────────── */
