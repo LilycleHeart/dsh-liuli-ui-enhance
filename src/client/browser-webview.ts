@@ -87,7 +87,7 @@ const bus = {
 
 function dispatch(event: WebviewEvent): void {
   if (event.type === 'hello') bus.lastHello = event
-  if (event.type === 'state' || event.type === 'dialog') {
+  if (event.type === 'state' || event.type === 'dialog' || event.type === 'closed') {
     const set = bus.byTab.get(event.tabId)
     if (set !== undefined) for (const listener of set) listener(event)
   }
