@@ -180,7 +180,8 @@
   text-overflow: ellipsis;
 }
 
-.tabClose {
+.tabClose,
+.tabFloat {
   flex: none;
   width: 16px;
   height: 16px;
@@ -201,6 +202,13 @@
   opacity: 1;
   background: rgba(229, 72, 77, 0.16);
   color: #e5484d;
+}
+
+/* 一键浮动（⧉）：中性 hover，与关闭（红）区分 */
+.tabFloat:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--dsw-alias-label-primary, #333) 12%, transparent);
+  color: var(--dsw-alias-label-primary, inherit);
 }
 
 .paneBody {
