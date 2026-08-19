@@ -1,10 +1,12 @@
 /* 琉璃主题 · 页面内窗口控制按钮（DSH Desktop advanced 无边框模式） */
 
+/* 无边框模式下去掉了 32px caption 拖拽条；窗口拖拽区改由本组件承担：
+   控件容器整体 -webkit-app-region: drag（按钮本身 no-drag 保持可点击）。 */
 .controls {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  -webkit-app-region: no-drag;
+  -webkit-app-region: drag;
 }
 
 .btn {
@@ -21,6 +23,7 @@
   background: transparent;
   color: var(--dsw-alias-label-secondary);
   cursor: pointer;
+  -webkit-app-region: no-drag;
   transition: background 140ms var(--ds-ease-in-out), color 140ms var(--ds-ease-in-out);
 }
 
@@ -39,16 +42,17 @@
   color: #ffffff;
 }
 
-/* 开始页兜底：固定在标题拖拽条右侧，独立磨砂小胶囊 */
+/* 开始页兜底：固定在窗口右上角的磨砂胶囊。去掉 caption 行后它同时是
+   主要窗口拖拽区：加大内边距让按钮周围有足够的可抓握 drag 面积。 */
 .caption {
   position: fixed;
-  top: 3px;
+  top: 6px;
   right: 10px;
   z-index: 60;
   gap: 0;
-  padding: 1px 3px;
+  padding: 5px 6px;
   border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 10px;
+  border-radius: 12px;
   background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity));
   background-image: var(--denpa-noise);
   -webkit-backdrop-filter: var(--denpa-material-blur);
