@@ -391,11 +391,27 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
         data-active={active || undefined}
         title={title}
         onPointerDown={(e) => {
-          if ((e.target as HTMLElement).closest('[data-testid="dock-tab-close"]') !== null) return
+          if ((e.target as HTMLElement).closest('[data-testid="dock-tab-close"], [data-testid="dock-tab-float"]') !== null) return
           beginDrag(e, { kind: sourceKind, containerId, panelId: panel.id }, title)
         }}
       >
         <span className={css.tabLabel}>{title}</span>
+        {sourceKind === 'node' && (
+          <button
+            type="button"
+            className={css.tabFloat}
+            data-testid="dock-tab-float"
+            title={'将 ' + title + ' 浮动为独立窗口'}
+            aria-label={'将 ' + title + ' 浮动为独立窗口'}
+            onPointerDown={(e) => { e.stopPropagation() }}
+            onClick={(e) => {
+              e.stopPropagation()
+              floatPanelCentered(panel.id)
+            }}
+          >
+            ⧉
+          </button>
+        )}
         {panel.type !== REGION_CONVERSATION && panel.type !== REGION_SIDEBAR && (
           <button
             type="button"
@@ -420,9 +436,9 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
   }
 
   /** 悬停抓握点：单区域面板的唯一拖拽入口（平时隐藏，hover 显形）。 */
-  /** 悬浮一键浮动：无边框改造移除了 caption 拖拽悬浮区，这里给单标签面板
-   *  一个显式入口——点击即把面板抽出为居中浮动窗口（movePanel float 目标）。 */
-  const floatPanelFromGrip = (panelId: string): void => {
+  /** 一键浮动：无边框改造移除了 caption 拖拽悬浮区，单标签面板的抓握簇（⧉）
+   *  与多标签 chip（⧉）都走这里——点击即把面板抽出为居中浮动窗口。 */
+  const floatPanelCentered = (panelId: string): void => {
     const x = Math.max(8, Math.round((window.innerWidth - 480) / 2))
     const y = Math.max(44, Math.round((window.innerHeight - 360) / 3))
     actions.setDock(movePanel(shellRef.current.dock, panelId, { kind: 'float', x, y }))
@@ -439,7 +455,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
           data-testid="dock-grip-float"
           title="将此面板浮动为独立窗口"
           aria-label="将此面板浮动为独立窗口"
-          onClick={() => { floatPanelFromGrip(draggable.id) }}
+          onClick={() => { floatPanelCentered(draggable.id) }}
         >
           ⧉
         </button>

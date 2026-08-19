@@ -246,6 +246,20 @@ try {
   }
   check('S15 hot reload survives rebuild', hmrOk, JSON.stringify({ preHmr, markerValue, lastSeen }))
 
+  // S15b 多标签 chip 一键浮动：caption 拖拽悬浮区移除后，多标签组里的单个
+  //      标签通过 chip 上的 ⧉ 按钮浮动（恢复原拖到标题栏悬浮的能力）
+  const notesChipSel3 = await chipSelByLabel('便签')
+  check('S15b notes chip located', typeof notesChipSel3 === 'string', String(notesChipSel3))
+  await evalJs('document.querySelector(' + JSON.stringify(notesChipSel3 + ' [data-testid=dock-tab-float]') + ').click()')
+  await sleep(300)
+  s = await summary()
+  check('S15c multi-tab chip floated', s && s.floats === 1 && s.panels === 3 && s.groups === 2, JSON.stringify(s))
+  // S15d 浮动窗口停靠回边缘
+  await evalJs('document.querySelector("[data-testid=dock-float-dock]").click()')
+  await sleep(300)
+  s = await summary()
+  check('S15d chip float docked back', s && s.floats === 0 && s.panels === 3, JSON.stringify(s))
+
   // S16 无页面报错
   check('S16 no page errors', pageErrors.length === 0, JSON.stringify(pageErrors.slice(0, 3)))
 
