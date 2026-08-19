@@ -1,7 +1,6 @@
 /**
- * ZCode 侧边面板图标：路径数据逐条取自 ZCode app.asar 渲染 bundle 内的 lucide 定义，
- * 与 ZCode 右侧面板 tab / 工具栏图标 1:1。lucide 渲染参数：
- * 24x24 viewBox，fill none，stroke currentColor，strokeWidth 2，round caps/joins。
+ * 右侧边栏图标：统一使用 Material Design 风格图标（24x24 viewBox，fill currentColor）。
+ * 与 ZCode 右侧面板 tab / 工具栏图标语义一一对应。
  */
 
 export interface IconProps {
@@ -11,431 +10,178 @@ export interface IconProps {
   className?: string
 }
 
-/** lucide notepad-text（ZCode 原样路径）。 */
-export const NotepadTextIcon = ({ size = 24, className }: IconProps) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    width={size}
-    height={size}
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-    aria-hidden="true"
-  >
-    <path d="M8 2v4" />
-    <path d="M12 2v4" />
-    <path d="M16 2v4" />
-    <rect width="16" height="18" x="4" y="4" rx="2" />
-    <path d="M8 10h6" />
-    <path d="M8 14h8" />
-    <path d="M8 18h5" />
-  </svg>
+function MaterialIcon({ d, size = 24, className }: IconProps & { d: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="currentColor"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d={d} />
+    </svg>
+  )
+}
+
+/** Material description（计划/文档）。 */
+export const NotepadTextIcon = (props: IconProps) => (
+  <MaterialIcon
+    {...props}
+    d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"
+  />
 )
 
-/** lucide message-square-text（ZCode 原样路径）。 */
-export const MessageSquareTextIcon = ({ size = 24, className }: IconProps) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    width={size}
-    height={size}
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-    aria-hidden="true"
-  >
-    <path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" />
-    <path d="M7 11h10" />
-    <path d="M7 15h6" />
-    <path d="M7 7h8" />
-  </svg>
+/** Material chat（辅助对话）。 */
+export const MessageSquareTextIcon = (props: IconProps) => (
+  <MaterialIcon
+    {...props}
+    d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z"
+  />
 )
 
-/** lucide bot（ZCode 原样路径）。 */
-export const BotIcon = ({ size = 24, className }: IconProps) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    width={size}
-    height={size}
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-    aria-hidden="true"
-  >
-    <path d="M12 8V4H8" />
-    <rect width="16" height="12" x="4" y="8" rx="2" />
-    <path d="M2 14h2" />
-    <path d="M20 14h2" />
-    <path d="M15 13v2" />
-    <path d="M9 13v2" />
-  </svg>
+/** Material smart_toy（机器人）。 */
+export const BotIcon = (props: IconProps) => (
+  <MaterialIcon
+    {...props}
+    d="M20 9V7c0-1.1-.9-2-2-2h-3c0-1.66-1.34-3-3-3S9 3.34 9 5H6c-1.1 0-2 .9-2 2v2c-1.66 0-3 1.34-3 3s1.34 3 3 3v4c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-4c1.66 0 3-1.34 3-3s-1.34-3-3-3zm-2 10H6V7h12v12zm-9-6c-.83 0-1.5-.67-1.5-1.5S8.17 10 9 10s1.5.67 1.5 1.5S9.83 13 9 13zm7.5-1.5c0 .83-.67 1.5-1.5 1.5s-1.5-.67-1.5-1.5.67-1.5 1.5-1.5 1.5.67 1.5 1.5zM8 15h8v2H8v-2z"
+  />
 )
 
-/** lucide list-tree（ZCode 原样路径）。 */
-export const ListTreeIcon = ({ size = 24, className }: IconProps) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    width={size}
-    height={size}
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-    aria-hidden="true"
-  >
-    <path d="M8 5h13" />
-    <path d="M13 12h8" />
-    <path d="M13 19h8" />
-    <path d="M3 10a2 2 0 0 0 2 2h3" />
-    <path d="M3 5v12a2 2 0 0 0 2 2h3" />
-  </svg>
+/** Material account_tree（子智能体目录）。 */
+export const ListTreeIcon = (props: IconProps) => (
+  <MaterialIcon
+    {...props}
+    d="M22 11V3h-8v4h-2V3H4v8h8V7h2v4h8zm-10 0H6V5h6v6zm8 0h-6V5h6v6zm-8 6v4h8v-8h-8v4zm-2 0H6v4h6v-4z"
+  />
 )
 
-/** lucide globe（ZCode 原样路径）。 */
-export const GlobeIcon = ({ size = 24, className }: IconProps) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    width={size}
-    height={size}
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-    aria-hidden="true"
-  >
-    <circle cx="12" cy="12" r="10" />
-    <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
-    <path d="M2 12h20" />
-  </svg>
+/** Material public（浏览器）。 */
+export const GlobeIcon = (props: IconProps) => (
+  <MaterialIcon
+    {...props}
+    d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm7.9 9h-3.4a15.7 15.7 0 0 0-1.2-5.3A8.03 8.03 0 0 1 19.9 11zM12 4.1c.9 1.2 1.9 3.4 2.4 6.9H9.6c.5-3.5 1.5-5.7 2.4-6.9zM4.1 13h3.4c.2 2 .7 3.8 1.2 5.3A8.03 8.03 0 0 1 4.1 13zm3.4-2H4.1a8.03 8.03 0 0 1 4.6-5.3A15.7 15.7 0 0 0 7.5 11zm4.5 8.9c-.9-1.2-1.9-3.4-2.4-6.9h4.8c-.5 3.5-1.5 5.7-2.4 6.9zm3.3-1.6c.6-1.5 1-3.3 1.2-5.3h3.4a8.03 8.03 0 0 1-4.6 5.3z"
+  />
 )
 
-/** lucide file-diff（ZCode 原样路径）。 */
-export const FileDiffIcon = ({ size = 24, className }: IconProps) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    width={size}
-    height={size}
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-    aria-hidden="true"
-  >
-    <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" />
-    <path d="M9 10h6" />
-    <path d="M12 13V7" />
-    <path d="M9 17h6" />
-  </svg>
+/** Material Git（审查图谱）。 */
+export const FileDiffIcon = (props: IconProps) => (
+  <MaterialIcon
+    {...props}
+    d="M12 2a3 3 0 0 1 3 3c0 1.3-.84 2.4-2 2.82v3.36a3.002 3.002 0 0 1 2 2.82 3 3 0 1 1-6 0c0-1.3.84-2.4 2-2.82V7.82A3.008 3.008 0 0 1 9 5a3 3 0 0 1 3-3zm0 12a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"
+  />
 )
 
-/** lucide map（ZCode 原样路径）。 */
-export const MapIcon = ({ size = 24, className }: IconProps) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    width={size}
-    height={size}
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-    aria-hidden="true"
-  >
-    <path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z" />
-    <path d="M15 5.764v15" />
-    <path d="M9 3.236v15" />
-  </svg>
+/** Material map（Treemapping）。 */
+export const MapIcon = (props: IconProps) => (
+  <MaterialIcon
+    {...props}
+    d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z"
+  />
 )
 
-/** lucide palette（ZCode 原样路径）。 */
-export const PaletteIcon = ({ size = 24, className }: IconProps) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    width={size}
-    height={size}
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-    aria-hidden="true"
-  >
-    <path d="M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z" />
-    <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
-    <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
-    <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
-    <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
-  </svg>
+/** Material palette（画板）。 */
+export const PaletteIcon = (props: IconProps) => (
+  <MaterialIcon
+    {...props}
+    d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"
+  />
 )
 
-/** lucide waypoints（ZCode 原样路径）。 */
-export const WaypointsIcon = ({ size = 24, className }: IconProps) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    width={size}
-    height={size}
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-    aria-hidden="true"
-  >
-    <path d="m10.586 5.414-5.172 5.172" />
-    <path d="m18.586 13.414-5.172 5.172" />
-    <path d="M6 12h12" />
-    <circle cx="12" cy="20" r="2" />
-    <circle cx="12" cy="4" r="2" />
-    <circle cx="20" cy="12" r="2" />
-    <circle cx="4" cy="12" r="2" />
-  </svg>
+/** Material timeline（模型调用轨迹）。 */
+export const WaypointsIcon = (props: IconProps) => (
+  <MaterialIcon
+    {...props}
+    d="M23 8c0 1.1-.9 2-2 2-.18 0-.35-.02-.51-.07l-3.56 6.55c.05.16.07.34.07.52 0 1.1-.9 2-2 2s-2-.9-2-2c0-.18.02-.36.07-.52l-3.56-6.55c-.16.05-.33.07-.51.07s-.35-.02-.51-.07l-3.56 6.55c.05.16.07.34.07.52 0 1.1-.9 2-2 2s-2-.9-2-2c0-.18.02-.36.07-.52L2.07 9.93C1.91 9.98 1.73 10 1.56 10 .66 10 0 9.34 0 8.44S.66 7 1.56 7s1.56.66 1.56 1.56c0 .18-.02.36-.07.52l3.56 6.55c.16-.05.33-.07.51-.07s.35.02.51.07l3.56-6.55c-.05-.16-.07-.34-.07-.52 0-1.1.9-2 2-2s2 .9 2 2c0 .18-.02.36-.07.52l3.56 6.55c.16-.05.33-.07.51-.07 1.1 0 2 .9 2 2z"
+  />
 )
 
-/** lucide bug（ZCode 原样路径）。 */
-export const BugIcon = ({ size = 24, className }: IconProps) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    width={size}
-    height={size}
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-    aria-hidden="true"
-  >
-    <path d="M12 20v-9" />
-    <path d="M14 7a4 4 0 0 1 4 4v3a6 6 0 0 1-12 0v-3a4 4 0 0 1 4-4z" />
-    <path d="M14.12 3.88 16 2" />
-    <path d="M21 21a4 4 0 0 0-3.81-4" />
-    <path d="M21 5a4 4 0 0 1-3.55 3.97" />
-    <path d="M22 13h-4" />
-    <path d="M3 21a4 4 0 0 1 3.81-4" />
-    <path d="M3 5a4 4 0 0 0 3.55 3.97" />
-    <path d="M6 13H2" />
-    <path d="m8 2 1.88 1.88" />
-    <path d="M9 7.13V6a3 3 0 1 1 6 0v1.13" />
-  </svg>
+/** Material bug_report（开发者工具）。 */
+export const BugIcon = (props: IconProps) => (
+  <MaterialIcon
+    {...props}
+    d="M20 8h-2.81c-.45-.78-1.07-1.45-1.82-1.96L17 4.41 15.59 3l-2.17 2.17C12.96 5.06 12.49 5 12 5s-.96.06-1.41.17L8.41 3 7 4.41l1.62 1.63C7.88 6.55 7.26 7.22 6.81 8H4v2h2.09c-.05.33-.09.66-.09 1v1H4v2h2v1c0 .34.04.67.09 1H4v2h2.81c1.04 1.79 2.97 3 5.19 3s4.15-1.21 5.19-3H20v-2h-2.09c.05-.33.09-.66.09-1v-1h2v-2h-2v-1c0-.34-.04-.67-.09-1H20V8zm-4 4v3c0 .22-.03.47-.07.7l-.1.65-.37.65c-.72 1.24-2.04 2-3.46 2s-2.74-.77-3.46-2l-.37-.64-.1-.66C8.03 15.48 8 15.23 8 15v-4c0-.23.03-.48.07-.7l.1-.65.37-.65c.72-1.24 2.04-2 3.46-2s2.74.77 3.46 2l.37.64.1.66c.04.22.07.47.07.7v3z"
+  />
 )
 
-/** lucide square-terminal（ZCode 原样路径）。 */
-export const SquareTerminalIcon = ({ size = 24, className }: IconProps) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    width={size}
-    height={size}
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-    aria-hidden="true"
-  >
-    <path d="m7 11 2-2-2-2" />
-    <path d="M11 13h4" />
-    <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
-  </svg>
+/** Material terminal（终端）。 */
+export const SquareTerminalIcon = (props: IconProps) => (
+  <MaterialIcon
+    {...props}
+    d="M4 5h16c.55 0 1 .45 1 1v12c0 .55-.45 1-1 1H4c-.55 0-1-.45-1-1V6c0-.55.45-1 1-1zm3.6 3.2-2.1 2.1 2.1 2.1-1.4 1.4L2.7 10.3l3.5-3.5 1.4 1.4zM21.3 10.3l-3.5 3.5-1.4-1.4 2.1-2.1-2.1-2.1 1.4-1.4 3.5 3.5z"
+  />
 )
 
-/** lucide file-code-corner（ZCode 原样路径）。 */
-export const FileCodeCornerIcon = ({ size = 24, className }: IconProps) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    width={size}
-    height={size}
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-    aria-hidden="true"
-  >
-    <path d="M4 12.15V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2h-3.35" />
-    <path d="M14 2v5a1 1 0 0 0 1 1h5" />
-    <path d="m5 16-3 3 3 3" />
-    <path d="m9 22 3-3-3-3" />
-  </svg>
+/** Material code（代码查看）。 */
+export const FileCodeCornerIcon = (props: IconProps) => (
+  <MaterialIcon
+    {...props}
+    d="M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"
+  />
 )
 
-/** lucide plus（ZCode 原样路径）。 */
-export const PlusIcon = ({ size = 24, className }: IconProps) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    width={size}
-    height={size}
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-    aria-hidden="true"
-  >
-    <path d="M5 12h14" />
-    <path d="M12 5v14" />
-  </svg>
+/** Material add（新增标签）。 */
+export const PlusIcon = (props: IconProps) => (
+  <MaterialIcon
+    {...props}
+    d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"
+  />
 )
 
-/** lucide chevrons-down（ZCode 原样路径）。 */
-export const ChevronsDownIcon = ({ size = 24, className }: IconProps) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    width={size}
-    height={size}
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-    aria-hidden="true"
-  >
-    <path d="m7 6 5 5 5-5" />
-    <path d="m7 13 5 5 5-5" />
-  </svg>
+/** Material unfold_more（概览/搜索标签页）。 */
+export const ChevronsDownIcon = (props: IconProps) => (
+  <MaterialIcon
+    {...props}
+    d="M12 5.83 15.17 9l1.41-1.41L12 3 7.41 7.59 8.83 9 12 5.83zm0 12.34L8.83 15l-1.41 1.41L12 21l4.59-4.59L15.17 15 12 18.17z"
+  />
 )
 
-/** lucide panel-right-open（ZCode 原样路径）。 */
-export const PanelRightOpenIcon = ({ size = 24, className }: IconProps) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    width={size}
-    height={size}
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-    aria-hidden="true"
-  >
-    <rect width="18" height="18" x="3" y="3" rx="2" />
-    <path d="M15 3v18" />
-    <path d="m10 15-3-3 3-3" />
-  </svg>
+/** Material chevron_left（展开右侧面板）。 */
+export const PanelRightOpenIcon = (props: IconProps) => (
+  <MaterialIcon
+    {...props}
+    d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"
+  />
 )
 
-/** lucide panel-right-close（ZCode 原样路径）。 */
-export const PanelRightCloseIcon = ({ size = 24, className }: IconProps) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    width={size}
-    height={size}
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-    aria-hidden="true"
-  >
-    <rect width="18" height="18" x="3" y="3" rx="2" />
-    <path d="M15 3v18" />
-    <path d="m8 9 3 3-3 3" />
-  </svg>
+/** Material chevron_right（收起右侧面板）。 */
+export const PanelRightCloseIcon = (props: IconProps) => (
+  <MaterialIcon
+    {...props}
+    d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"
+  />
 )
 
-/** lucide search（ZCode 原样路径）。 */
-export const SearchIcon = ({ size = 24, className }: IconProps) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    width={size}
-    height={size}
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-    aria-hidden="true"
-  >
-    <path d="m21 21-4.34-4.34" />
-    <circle cx="11" cy="11" r="8" />
-  </svg>
+/** Material search（搜索）。 */
+export const SearchIcon = (props: IconProps) => (
+  <MaterialIcon
+    {...props}
+    d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 0 0 1.48-5.34c-.47-2.78-2.79-5-5.59-5.34a6.505 6.505 0 0 0-7.27 7.27c.34 2.8 2.56 5.12 5.34 5.59a6.5 6.5 0 0 0 5.34-1.48l.27.28v.79l4.25 4.25c.41.41 1.08.41 1.49 0 .41-.41.41-1.08 0-1.49L15.5 14zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"
+  />
 )
 
-/** lucide file（ZCode 原样路径）。 */
-export const FileIcon = ({ size = 24, className }: IconProps) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    width={size}
-    height={size}
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-    aria-hidden="true"
-  >
-    <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" />
-    <path d="M14 2v5a1 1 0 0 0 1 1h5" />
-  </svg>
+/** Material description（文件）。 */
+export const FileIcon = (props: IconProps) => (
+  <MaterialIcon
+    {...props}
+    d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"
+  />
 )
 
-/** lucide folder（ZCode 原样路径）。 */
-export const FolderIcon = ({ size = 24, className }: IconProps) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    width={size}
-    height={size}
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-    aria-hidden="true"
-  >
-    <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
-  </svg>
+/** Material folder（文件夹）。 */
+export const FolderIcon = (props: IconProps) => (
+  <MaterialIcon
+    {...props}
+    d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"
+  />
 )
 
-/** ZCode 仓库 Wiki 自绘图标（32x32 viewBox，三个圆角方块 + 对角线，fill currentColor）。 */
-export const RepoWikiIcon = ({ size = 24, className }: IconProps) => (
-  <svg viewBox="0 0 32 32" width={size} height={size} fill="none" className={className} aria-hidden="true">
-    <path d="M9.91922 3.2002H4.47922C3.77229 3.2002 3.19922 3.77327 3.19922 4.4802V9.9202C3.19922 10.6271 3.77229 11.2002 4.47922 11.2002H9.91922C10.6261 11.2002 11.1992 10.6271 11.1992 9.9202V4.4802C11.1992 3.77327 10.6261 3.2002 9.91922 3.2002Z" fill="currentColor" />
-    <path d="M9.91922 20.7998H4.47922C3.77229 20.7998 3.19922 21.3729 3.19922 22.0798V27.5198C3.19922 28.2267 3.77229 28.7998 4.47922 28.7998H9.91922C10.6261 28.7998 11.1992 28.2267 11.1992 27.5198V22.0798C11.1992 21.3729 10.6261 20.7998 9.91922 20.7998Z" fill="currentColor" />
-    <path d="M27.5208 3.2002H22.0808C21.3739 3.2002 20.8008 3.77327 20.8008 4.4802V9.9202C20.8008 10.6271 21.3739 11.2002 22.0808 11.2002H27.5208C28.2277 11.2002 28.8008 10.6271 28.8008 9.9202V4.4802C28.8008 3.77327 28.2277 3.2002 27.5208 3.2002Z" fill="currentColor" />
-    <path d="M8 24L24 8" stroke="currentColor" strokeWidth={2} strokeLinecap="round" />
-  </svg>
+/** Material menu_book（仓库 Wiki）。 */
+export const RepoWikiIcon = (props: IconProps) => (
+  <MaterialIcon
+    {...props}
+    d="M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1zm0 13.5c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v11.5z"
+  />
 )
