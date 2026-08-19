@@ -699,8 +699,30 @@ export function apply(ctx: ClientContext): void {
     } catch (_) { /* 损坏则回落默认 */ }
     return DENPA_SETTINGS_DEFAULTS
   }
+  // DSH Desktop 每次重启 Web 端口会变（ephemeral），localStorage 按 origin 隔离，
+  // 因此跨重启持久化必须再同步一份到 Host 端 /liuli-settings；纯 Web 无此路由时忽略。
+  let localDirty = false
+  let remoteStateChain: Promise<void> = Promise.resolve()
+  const pushRemoteState = (): void => {
+    remoteStateChain = remoteStateChain
+      .catch(() => {})
+      .then(async () => {
+        try {
+          const payload = { settings: readDenpaSettings(), wallpaper: loadWallpaper() }
+          const res = await fetch('/liuli-settings', {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(5000),
+          })
+          if (!res.ok) throw new Error('HTTP ' + res.status)
+        } catch (_) { /* Host 路由不可用时保留 localStorage 行为 */ }
+      })
+  }
   const writeDenpaSettings = (value: DenpaSettings): void => {
+    localDirty = true
     try { localStorage.setItem(DENPA_LS_KEY, JSON.stringify(value)) } catch (_) {}
+    pushRemoteState()
   }
   const syncDenpa = (value: DenpaSettings): void => {
     denpaRev += 1
@@ -710,6 +732,31 @@ export function apply(ctx: ClientContext): void {
   let lastViewportWidth = window.innerWidth
   let lastViewportHeight = window.innerHeight
   let lastBgArea: DenpaBgArea | null = readDenpaSettings().bg_area
+  // 启动后从 Host 拉取上次 Desktop 会话保存的设置/壁纸（当前端口 localStorage 为空）。
+  // 如果用户已经在当前会话改过设置，则不再用远端覆盖，避免本地新修改被旧值冲掉。
+  const loadRemoteState = async (): Promise<void> => {
+    if (localDirty) return
+    try {
+      const res = await fetch('/liuli-settings', { signal: AbortSignal.timeout(5000) })
+      if (!res.ok) return
+      const data = await res.json() as { value?: { settings?: unknown; wallpaper?: string | null } | null } | null
+      const saved = data?.value
+      if (saved === null || saved === undefined || (saved.settings === undefined && saved.wallpaper === undefined)) return
+      const remote = denpaSettingsOf(saved.settings)
+      try { localStorage.setItem(DENPA_LS_KEY, JSON.stringify(remote)) } catch (_) {}
+      const wallpaper = typeof saved.wallpaper === 'string' && saved.wallpaper.length > 0 ? saved.wallpaper : null
+      if (wallpaper !== null) saveWallpaper(wallpaper)
+      else clearWallpaper()
+      denpaBound?.syncWallpaper(wallpaper)
+      syncDenpa(remote)
+      lastBgArea = remote.bg_area
+      lastViewportWidth = window.innerWidth
+      lastViewportHeight = window.innerHeight
+      void applyDenpaSettings(remote)
+      window.dispatchEvent(new CustomEvent('liuli:vp-params'))
+    } catch (_) { /* Host 路由不可用时保留 localStorage 行为 */ }
+  }
+
   const commitDenpa = (next: DenpaSettings): void => {
     writeDenpaSettings(next)
     syncDenpa(next)
@@ -730,9 +777,9 @@ export function apply(ctx: ClientContext): void {
         commitDenpa(next)
       },
       reset: () => {
-        writeDenpaSettings(DENPA_SETTINGS_DEFAULTS)
         clearWallpaper()
         denpaBound?.syncWallpaper(null)
+        writeDenpaSettings(DENPA_SETTINGS_DEFAULTS)
         syncDenpa(DENPA_SETTINGS_DEFAULTS)
         lastBgArea = null
         lastViewportWidth = window.innerWidth
@@ -771,6 +818,7 @@ export function apply(ctx: ClientContext): void {
       removeWallpaper: () => {
         clearWallpaper()
         denpaBound?.syncWallpaper(null)
+        pushRemoteState()
         // 移除后若处于壁纸模式，回到跟随主题
         const current = readDenpaSettings()
         if (current.background_mode === 'image') {
@@ -785,6 +833,8 @@ export function apply(ctx: ClientContext): void {
   // 初始应用：默认值 + 壁纸立即生效；主题切换时按新明暗重算调色板。
   const denpaBoot = readDenpaSettings()
   void applyDenpaSettings(denpaBoot)
+  // Desktop 端口每次重启会变：从 Host 端恢复上次保存的设置/壁纸。
+  void loadRemoteState()
   ctx.on('theme/change', () => { void applyDenpaSettings(readDenpaSettings()) })
   // 启动时序兜底：boot 时 body 的 data-ds-dark-theme 可能尚未被 presenter 应用
   // （插件加载顺序不定），isDark 误判会把亮色板落到暗色主题上（气泡等颜色"对调"），

@@ -64,7 +64,7 @@ DeepSeek Harness 的 **Material Design 3 × Fluent 2 融合主题**插件:取 Ma
 | 🔤 主题字体 | CSS `@import` 加载 MiSans / Inter / Space Grotesk / JetBrains Mono(字体族令牌早已引用,官方 harness 不注入 link,由插件自行加载) |
 | ⚙️ 设置「界面」分区 | 20 项设置(取色/背景/材质/字体/圆角/泛光/阴影/宽边模式/壁纸适应与选区/会话动画),即时生效、自动保存 |
 
-全部设置随浏览器持久化(`denpa:settings` / `denpa:wallpaper` / `denpa:header-height`),不依赖服务端。
+全部设置随浏览器持久化(`denpa:settings` / `denpa:wallpaper` / `denpa:header-height`);DSH Desktop 因每次重启 Web 端口会变(localStorage 按 origin 隔离),还会额外同步到 Host 端 `~/.liuli-theme/settings.json`,跨重启不丢失。
 
 > **页面内窗口按钮(无边框模式)**:系统最小化/最大化/关闭三按钮移入页面——会话 header 最右端常驻、开始页兜底为标题拖拽条右上角的磨砂胶囊;动作经 Host `/liuli-window` 路由直驱 Electron 窗口(close 收进托盘,与原生同语义)。依赖对 DSH Desktop 的窗口参数补丁(`resources/app.asar.unpacked/lib/electron-runtime-*.js` 的 win32 advanced 分支:`titleBarStyle: "hidden" + titleBarOverlay` → `frame: false`),应用重启后生效;未打补丁时原生覆盖按钮仍在,页面内按钮与其并存。macOS 保持原生红绿灯不动。
 
@@ -169,7 +169,7 @@ chip 内容随用户消息成为对话前缀的一部分,与普通用户消息�
 ## Known Limitations and Deferred Work
 
 - 纯浏览器插件,只在 web 平台生效;无头、ACP 等无界面的会话看不到主题效果。
-- 设置、壁纸与 header 高度只存 `localStorage`,清除站点数据或更换浏览器/设备不会同步。
+- 纯 Web 部署下,设置、壁纸与 header 高度只存 `localStorage`,清除站点数据或更换浏览器/设备不会同步;DSH Desktop 部署会额外经 Host `/liuli-settings` 写入 `~/.liuli-theme/settings.json` 以跨 ephemeral 端口重启保留。
 - 声纹监听只捕获系统音频:依赖 `getDisplayMedia` 用户授权(共享「整个屏幕」并勾选「分享系统音频」),不降级麦克风,也不会绕过授权。
 - 壁纸以压缩 JPEG dataURL 持久化,受 `localStorage` 配额限制;超大原图会先压缩再保存。
 - 会话切换动画是 DOM 观察层实现(消息节点挂类),并非宿主组件级动画:流式更新触发的部分节点重挂载也会再次入场,与宿主组件的缓存策略无关。

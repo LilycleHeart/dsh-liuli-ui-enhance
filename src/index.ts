@@ -8,11 +8,12 @@
  *   只服务会话目录内的文件，Host fence 防 DNS rebinding。
  */
 import { createReadStream } from 'node:fs'
-import { readFile, readdir, stat } from 'node:fs/promises'
+import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { execFile as execFileCb, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
+import { homedir } from 'node:os'
 import { promisify } from 'node:util'
-import { extname, join as joinPath, resolve as resolvePath, sep } from 'node:path'
+import { dirname, extname, join as joinPath, resolve as resolvePath, sep } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
 import type { Context } from '@deepseek-ai/cordis'
@@ -221,6 +222,87 @@ function json(res: Parameters<WebRoute['handler']>[1], status: number, body: unk
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
   res.end(JSON.stringify(body))
 }
+/** 读取小型 JSON 请求体（本地设置持久化用，上限 6MB 以容纳壁纸 dataURL）。 */
+async function readJsonBody(req: IncomingMessage, limit = 6 * 1024 * 1024): Promise<unknown> {
+  const chunks: Buffer[] = []
+  let size = 0
+  for await (const chunk of req) {
+    const buf = chunk as Buffer
+    size += buf.length
+    if (size > limit) throw new Error('body too large')
+    chunks.push(buf)
+  }
+  if (chunks.length === 0) return {}
+  return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown
+}
+
+/** 琉璃主题持久化文件（DSH Desktop 每次重启 Web 端口会变，localStorage 按 origin 隔离，
+ *  因此跨重启稳定状态必须落到 Host 端文件；纯 Web 没有 Host 时仍回退 localStorage）。 */
+function liuliSettingsFile(): string {
+  const root = process.env.LIULI_THEME_DATA_DIR || joinPath(homedir(), '.liuli-theme')
+  return joinPath(root, 'settings.json')
+}
+
+/** /liuli-settings：Host 端保存/读取琉璃界面设置与壁纸（跨 ephemeral 端口持久化）。 */
+function liuliSettingsRoute(): WebRoute {
+  return {
+    kind: 'prefix',
+    path: '/liuli-settings',
+    handler: async (req, res) => {
+      try {
+        // 只允许同源页面读写；带 Origin 的跨站请求直接拒绝。
+        const origin = req.headers.origin
+        if (origin !== undefined) {
+          const originHost = new URL(origin).host
+          const host = req.headers.host ?? ''
+          if (originHost !== host) {
+            json(res, 403, { ok: false, error: 'cross-origin liuli settings request is not allowed' })
+            return
+          }
+        }
+        const url = new URL(req.url ?? '/', 'http://localhost')
+        if (url.pathname !== '/liuli-settings') {
+          json(res, 404, { ok: false, error: 'not found' })
+          return
+        }
+        const file = liuliSettingsFile()
+        if (req.method === 'GET' || req.method === 'HEAD') {
+          try {
+            const text = await readFile(file, 'utf8')
+            json(res, 200, { ok: true, value: JSON.parse(text) as unknown })
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+              json(res, 200, { ok: true, value: null })
+            } else {
+              throw error
+            }
+          }
+          return
+        }
+        if (req.method !== 'PUT' && req.method !== 'POST') {
+          json(res, 405, { ok: false, error: 'method not allowed' })
+          return
+        }
+        const body = await readJsonBody(req) as { settings?: unknown; wallpaper?: unknown } | null
+        if (typeof body !== 'object' || body === null) {
+          json(res, 400, { ok: false, error: 'invalid JSON body' })
+          return
+        }
+        await mkdir(dirname(file), { recursive: true })
+        await writeFile(file, JSON.stringify({
+          v: 1,
+          savedAt: Date.now(),
+          settings: body.settings ?? null,
+          wallpaper: typeof body.wallpaper === 'string' ? body.wallpaper : null,
+        }), 'utf8')
+        json(res, 200, { ok: true })
+      } catch (error) {
+        json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) })
+      }
+    },
+  }
+}
+
 
 async function resolveFirstCredential(ctx: Context, refs: readonly string[]): Promise<string | undefined> {
   for (const ref of refs) {
@@ -336,6 +418,7 @@ export function apply(ctx: Context): void {
     },
   }
   ctx.effect(() => ctx.webServer.register(route), 'liuli-theme: /liuli-quota route')
+  ctx.effect(() => ctx.webServer.register(liuliSettingsRoute()), 'liuli-theme: /liuli-settings route')
   ctx.effect(() => ctx.webServer.register(previewRoute(ctx)), 'liuli-theme: /preview route')
   ctx.effect(() => ctx.webServer.register(sidebarRoute(ctx)), 'liuli-theme: /liuli-sidebar route')
   ctx.effect(() => ctx.webServer.registerUpgrade(terminalUpgradeRoute(ctx)), 'liuli-theme: /liuli-terminal upgrade route')
