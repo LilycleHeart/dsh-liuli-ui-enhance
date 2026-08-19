@@ -19,6 +19,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
 import { createBrowserEngine } from './browser-engine.ts'
+import { windowControlRoute } from './host-window.ts'
 
 export const name = 'liuli-theme'
 
@@ -339,6 +340,9 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.webServer.register(sidebarRoute(ctx)), 'liuli-theme: /liuli-sidebar route')
   ctx.effect(() => ctx.webServer.registerUpgrade(terminalUpgradeRoute(ctx)), 'liuli-theme: /liuli-terminal upgrade route')
   ctx.effect(() => ctx.webServer.register(proxyRoute()), 'liuli-theme: /liuli-proxy route')
+  // advanced（无边框）模式页面内窗口按钮（WindowControls.tsx）的宿主窗口控制面：
+  // GET 查询可用/最大化态，POST 触发 minimize/toggleMaximize/close；纯 Web 返回 available:false。
+  ctx.effect(() => ctx.webServer.register(windowControlRoute()), 'liuli-theme: /liuli-window route')
   // 嵌入式浏览器引擎（ZCode Desktop IAB 复刻）：仅 Electron 主进程内有
   // WebContentsView 可承载真实 webview；纯 Web 部署返回 undefined，
   // 渲染端探测 /liuli-browser/capabilities 失败后自动回退 iframe。
