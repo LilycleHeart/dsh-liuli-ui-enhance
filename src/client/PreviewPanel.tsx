@@ -11,7 +11,7 @@
  * - 浏览器标签多实例（browser:<uid>）：新增菜单复用已有浏览器标签，
  *   会话产物链接导航新开标签；同源页面加载后取 document.title 作为标签标题；
  * - 面板类型：Treemapping / 仓库 Wiki / 审查(git) / 浏览器 / 代码查看；
- *   图标路径数据取自 ZCode bundle 的 lucide 定义；
+ *   图标统一使用 Material Design 风格（fill currentColor）；
  * - 概览弹层（w-72）：搜索（ZCode 加权排序：title 前缀 120/词界 90/包含 70/hint 40/类型 20）
  *   + 打开的标签页（相对时间+关闭钮）+ 最近关闭的标签页（点击重开）；
  * - 空状态「打开标签页」卡片（h-12 rounded-xl 按钮列）；
@@ -426,88 +426,74 @@ function StripButton(props: {
   )
 }
 
-/* ── 关闭图标（lucide x） ── */
+/* ── 关闭图标（Material close） ── */
 
 function XIcon({ size = 12 }: { size?: number }) {
   return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M18 6 6 18" />
-      <path d="m6 6 12 12" />
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden="true">
+      <path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
     </svg>
   )
 }
 
-/* ── 浏览器工具条图标 ── */
+/* ── 浏览器工具条图标（Material 风格） ── */
 
 function ArrowIcon({ dir, size = 14 }: { dir: 'left' | 'right'; size?: number }) {
   return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={dir === 'right' ? { transform: 'scaleX(-1)' } : undefined}>
-      <path d="m12 19-7-7 7-7" />
-      <path d="M19 12H5" />
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden="true" style={dir === 'right' ? { transform: 'scaleX(-1)' } : undefined}>
+      <path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
     </svg>
   )
 }
 
 function ReloadIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
-      <path d="M21 3v5h-5" />
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden="true">
+      <path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" />
     </svg>
   )
 }
 
 function ExternalIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M15 3h6v6" />
-      <path d="M10 14 21 3" />
-      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden="true">
+      <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z" />
     </svg>
   )
 }
 
-/** 元素拾取钮图标（lucide mouse-pointer-click 近似：ZCode 选择网页元素加入聊天）。 */
+/** 元素拾取钮图标（Material ads_click：ZCode 选择网页元素加入聊天）。 */
 function PickerIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M14 4.1 12 6" />
-      <path d="m5.1 8-2.9-.8" />
-      <path d="m6 12-1.9 2" />
-      <path d="M7.2 2.2 8 5.1" />
-      <path d="M9.037 9.69a.498.498 0 0 1 .653-.653l11 4.5a.5.5 0 0 1-.074.949l-4.349 1.041a1 1 0 0 0-.74.739l-1.04 4.35a.5.5 0 0 1-.95.074z" />
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden="true">
+      <path d="M11.71 17.99C8.53 17.84 6 15.22 6 12c0-3.31 2.69-6 6-6 3.22 0 5.84 2.53 5.99 5.71l-2.1-.63a3.999 3.999 0 1 0-4.81 4.81l.63 2.1zM22 12c0 .3-.01.6-.04.9l-1.97-.59c.01-.1.01-.21.01-.31 0-4.42-3.58-8-8-8s-8 3.58-8 8 3.58 8 8 8c.1 0 .21 0 .31-.01l.59 1.97c-.3.03-.6.04-.9.04-5.52 0-10-4.48-10-10S6.48 2 12 2s10 4.48 10 10zm-3.77 4.26 2.27-.76.76 2.27-1.51 1.51-.78-.78-3.2.8.8-3.2-.78-.78 1.44-1.06z" />
     </svg>
   )
 }
 
-
-/** 响应式视口切换钮图标（lucide smartphone：ZCode browser.responsive.enter/exit）。 */
+/** 响应式视口切换钮图标（Material smartphone：ZCode browser.responsive.enter/exit）。 */
 function ResponsiveIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
-      <path d="M12 18h.01" />
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden="true">
+      <path d="M17 1.01 7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z" />
     </svg>
   )
 }
 
-/** 「更多」菜单触发钮图标（lucide ellipsis：ZCode browser.more）。 */
+/** 「更多」菜单触发钮图标（Material more_horiz：ZCode browser.more）。 */
 function MoreIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="12" cy="12" r="1" />
-      <circle cx="19" cy="12" r="1" />
-      <circle cx="5" cy="12" r="1" />
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden="true">
+      <path d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
     </svg>
   )
 }
 
-/** 开发者工具菜单项图标（lucide code：ZCode browser.devtools）。 */
+/** 开发者工具菜单项图标（Material code：ZCode browser.devtools）。 */
 function DevToolsIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <polyline points="16 18 22 12 16 6" />
-      <polyline points="8 6 2 12 8 18" />
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden="true">
+      <path d="M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z" />
     </svg>
   )
 }
