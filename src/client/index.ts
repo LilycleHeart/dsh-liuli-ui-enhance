@@ -42,7 +42,7 @@ import {
   DENPA_LS_KEY, DENPA_SETTINGS_DEFAULTS, denpaSettingsOf,
   type DenpaBgArea, type DenpaSettings,
 } from '../denpa-settings.ts'
-import { en, zh, type DenpaAppearanceKey } from './locales.ts'
+import { en, zh, type DenpaAppearanceKey, modelRetryZh, modelRetryEn, type ModelRetryKey } from './locales.ts'
 import { denpaCss } from './denpa-css.ts'
 import {
   DenpaHeaderVoiceprint, DenpaHeaderChrome, DenpaHeaderResizer,
@@ -51,6 +51,9 @@ import { setTurnRailCommitHandler, TurnRail } from './TurnRail.tsx'
 import { startDenpaTransition } from './denpa-transition.ts'
 import { disposeSupplierQuota, initSupplierQuota, refreshSupplierQuota } from './supplier-quota.ts'
 import { SupplierQuota } from './SupplierQuota.tsx'
+import { ModelRetryRow, type ModelRetryRowInjected } from './ModelRetryRow.tsx'
+import { createModelRetryStore } from './model-retry-store.ts'
+import { initModelRetry, disposeModelRetry, loadModelRetry, saveModelRetry, cacheModelRetryBackoff } from './model-retry-controller.ts'
 import { createElement } from 'react'
 import { FloatBall } from './FloatBall.tsx'
 import { WindowControls, isFramelessWin32 } from './WindowControls.tsx'
@@ -80,11 +83,16 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
     /** DenpaPush 界面设置 section 的文案。 */
     'denpa-appearance': DenpaAppearanceKey
+    /** 模型请求重试行（通用设置区）的文案。 */
+    'liuli-model-retry': ModelRetryKey
   }
 }
 
 /** DenpaPush 设置 section 的文案命名空间。 */
 export const DENPA_LOCALE_NS = 'denpa-appearance'
+
+/** 模型请求重试行的文案命名空间。 */
+export const MODEL_RETRY_LOCALE_NS = 'liuli-model-retry'
 
 /** 主题样式注入的 <style> id（幂等：重复 apply 不叠加）。 */
 const STYLE_ID = 'liuli-theme-css'
@@ -394,6 +402,10 @@ export function apply(ctx: ClientContext): void {
   // ── 供应商额度：注入 connection/remote，供 header 工具区显示当前供应商额度 ──
   initSupplierQuota(ctx.get('connection') as ConnectionHandle, ctx.get('modelDirectories'))
   ctx.effect(() => () => disposeSupplierQuota(), 'liuli-theme: supplier quota dispose')
+
+  // ── 模型请求重试：注入 connection，供通用设置区编辑各供应商 retryPolicy ──
+  initModelRetry(ctx.get('connection') as ConnectionHandle)
+  ctx.effect(() => () => disposeModelRetry(), 'liuli-theme: model retry dispose')
   const refreshQuota = (): void => { void refreshSupplierQuota() }
   ctx.effect(() => {
     const disposers = [
@@ -673,6 +685,7 @@ export function apply(ctx: ClientContext): void {
   }, 'liuli-theme: frontend artifact preview click')
 
   ctx.effect(() => ctx.locale.register(DENPA_LOCALE_NS, { zh, en }), 'liuli-theme: denpa dictionaries')
+  ctx.effect(() => ctx.locale.register(MODEL_RETRY_LOCALE_NS, { zh: modelRetryZh, en: modelRetryEn }), 'liuli-theme: model-retry dictionaries')
 
   // ── DenpaPush 界面设置：localStorage 持久化 + 运行时应用 ──
   const denpaStore = createDenpaStore()
@@ -912,6 +925,50 @@ export function apply(ctx: ClientContext): void {
       }
     },
   }, LiuliAppearanceRow))
+
+  // ── 设置页「通用」分区新增一行：模型请求重试次数 + 重试等待时间 ──
+  //    写入由宿主各供应商 profile 持有的 retryPolicy（dsh-llm-retry 执行），
+  //    path-addressed settings.mutate 只改 retryPolicy 键，不碰密钥等其它字段。
+  //    只新增本插件自身的行，不替换/不修改官方通用设置区其它行。
+  const modelRetryStore = createModelRetryStore()
+  const modelRetryT = ctx.locale.bind(MODEL_RETRY_LOCALE_NS)
+  let modelRetryBound: BoundActions<typeof modelRetryStore> | undefined
+  ctx.slots.inject('settings.general.item', () => ctx.slots.register({
+    name: 'settings.general.item',
+    id: 'liuli-model-retry',
+    order: 15,
+    locale: MODEL_RETRY_LOCALE_NS,
+    store: modelRetryStore,
+    inject: (actions: BoundActions<typeof modelRetryStore>): ModelRetryRowInjected => {
+      modelRetryBound = actions
+      return {
+        reload: async () => {
+          const snap = await loadModelRetry()
+          cacheModelRetryBackoff(snap.maxDelayMs, snap.jitterRatio)
+          modelRetryBound?.sync({
+            maxRetries: snap.maxRetries,
+            initialDelayMs: snap.initialDelayMs,
+            maxDelayMs: snap.maxDelayMs,
+            jitterRatio: snap.jitterRatio,
+            providerCount: snap.providerCount,
+            status: 'ready',
+            error: '',
+          })
+        },
+        save: async (params) => {
+          modelRetryBound?.sync({ status: 'saving' })
+          const err = await saveModelRetry(params)
+          if (err !== undefined) {
+            modelRetryBound?.sync({ status: 'error', error: err })
+          } else {
+            modelRetryBound?.sync({ status: 'ready', error: '' })
+          }
+          return err
+        },
+      }
+    },
+  }, ModelRetryRow))
+  void modelRetryT
 
   // ── 会话 header 效果（供应商额度/声纹/监听/主题切换/拉伸手柄）──
   // 额度放在 header.actions：跟在 agent preset 标签右侧，作为普通文本而非工具区胶囊。

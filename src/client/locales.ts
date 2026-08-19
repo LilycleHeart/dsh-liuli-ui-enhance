@@ -180,3 +180,32 @@ export const en = {
   'transition.none': 'Off',
   'reset': 'Reset to defaults',
 } satisfies Record<string, string>
+
+/* ── 模型请求重试（liuli-model-retry 命名空间）────────────────────── */
+
+/** `liuli-model-retry` 字典（中）。 */
+export const modelRetryZh = {
+  'title': '模型请求重试',
+  'maxRetries': '重试次数',
+  'maxRetriesHint': '模型请求失败后自动重试的最大次数（0 = 不重试）',
+  'initialDelay': '重试等待时间',
+  'initialDelayHint': '首次重试前的等待时间，之后按指数退避递增',
+  'times': '次',
+  'ms': 'ms',
+  'providerCount': '已应用到 {count} 个供应商',
+} satisfies Record<string, string>
+
+/** The liuli-model-retry namespace key union. */
+export type ModelRetryKey = keyof typeof modelRetryZh
+
+/** `liuli-model-retry` 字典（英，与 zh 键集对齐）。 */
+export const modelRetryEn = {
+  'title': 'Model request retry',
+  'maxRetries': 'Retry count',
+  'maxRetriesHint': 'Max auto-retries after a model request fails (0 = no retry)',
+  'initialDelay': 'Retry wait',
+  'initialDelayHint': 'Wait before the first retry; later retries back off exponentially',
+  'times': 'times',
+  'ms': 'ms',
+  'providerCount': 'Applied to {count} provider(s)',
+} satisfies Record<string, string>
