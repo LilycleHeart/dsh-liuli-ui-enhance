@@ -420,17 +420,37 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
   }
 
   /** 悬停抓握点：单区域面板的唯一拖拽入口（平时隐藏，hover 显形）。 */
+  /** 悬浮一键浮动：无边框改造移除了 caption 拖拽悬浮区，这里给单标签面板
+   *  一个显式入口——点击即把面板抽出为居中浮动窗口（movePanel float 目标）。 */
+  const floatPanelFromGrip = (panelId: string): void => {
+    const x = Math.max(8, Math.round((window.innerWidth - 480) / 2))
+    const y = Math.max(44, Math.round((window.innerHeight - 360) / 3))
+    actions.setDock(movePanel(shellRef.current.dock, panelId, { kind: 'float', x, y }))
+  }
+
   const renderGrip = (node: TabsNode): ReactNode => {
     const draggable = node.tabs[0]
     if (draggable === undefined || node.tabs.length > 1) return null
     return (
-      <div
-        className={css.grip}
-        data-testid="dock-grip"
-        title="拖动以自定义布局"
-        onPointerDown={(e) => { beginDrag(e, { kind: 'node', containerId: node.id, panelId: draggable.id }, isRegionPanel(draggable.type) ? regionLabel(draggable.type) : panelTitle(draggable)) }}
-      >
-        ⠿
+      <div className={css.gripCluster}>
+        <button
+          type="button"
+          className={css.gripFloat}
+          data-testid="dock-grip-float"
+          title="将此面板浮动为独立窗口"
+          aria-label="将此面板浮动为独立窗口"
+          onClick={() => { floatPanelFromGrip(draggable.id) }}
+        >
+          ⧉
+        </button>
+        <div
+          className={css.grip}
+          data-testid="dock-grip"
+          title="拖动以自定义布局"
+          onPointerDown={(e) => { beginDrag(e, { kind: 'node', containerId: node.id, panelId: draggable.id }, isRegionPanel(draggable.type) ? regionLabel(draggable.type) : panelTitle(draggable)) }}
+        >
+          ⠿
+        </div>
       </div>
     )
   }
@@ -565,10 +585,16 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
       data-hmr-marker={HMR_MARKER}
       data-panels={String(panelCount(dock))}
     >
-      {platform === 'darwin'
-        ? <div className="dshDesktopMacCaptionRow" aria-hidden="true" />
-        : <div className="dshDesktopWindowsCaptionRow" aria-hidden="true" />}
-      <div className={css.dockBody} ref={rootRef} data-testid="dock-root">
+      {/* win32 无边框：移除 caption 行，画布从第 1 行起占满（窗口拖拽改由
+          WindowControls 承担、面板悬浮改由 grip ⧉ 按钮承担）。
+          macOS 保留 caption 行（红绿灯留白 + 窗口拖拽区）。 */}
+      {platform === 'darwin' && <div className="dshDesktopMacCaptionRow" aria-hidden="true" />}
+      <div
+        className={css.dockBody}
+        ref={rootRef}
+        data-testid="dock-root"
+        style={platform === 'darwin' ? { gridRow: '2 / -1' } : undefined}
+      >
         {dock.root !== null && renderNode(dock.root)}
         {dock.floats.map(renderFloat)}
         {drag !== null && drag.overRect !== null && drag.over !== null && (

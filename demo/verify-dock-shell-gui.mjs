@@ -145,9 +145,10 @@ try {
   s = await summary()
   check('S5b tab merge (groups shrink to 2)', s && s.groups === 2 && s.panels === 3, JSON.stringify(s))
 
-  // S6 侧栏 grip 拖到标题栏区域 → 浮动
-  const caption = await evalJs('(() => { const r = document.querySelector(".dshDesktopWindowsCaptionRow").getBoundingClientRect(); return { x: r.x + r.width * 0.5, y: r.y + r.height / 2 } })()')
-  await dragTo('[data-region-pane="region:sidebar"] [data-testid="dock-grip"]', caption.x, caption.y)
+  // S6 侧栏一键浮动按钮（⧉）→ 浮动（无边框改造后 caption 拖拽悬浮区已移除，
+  //    改用 grip 簇里的显式浮动入口）
+  await evalJs('document.querySelector("[data-testid=dock-grip-float]").click()')
+  await sleep(300)
   s = await summary()
   check('S6 sidebar floated', s && s.floats === 1 && s.groups === 1, JSON.stringify(s))
   const floatBox = await evalJs('(() => { const el = document.querySelector("[data-testid=dock-float]"); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height } })()')

@@ -4,12 +4,14 @@
    （合并标签条/抓握点/布局菜单/浮动窗口/拖拽视觉），默认布局观感与
    原生 advanced shell 保持一致。 */
 
-/* ── 帧体：caption 行之下的 dock 画布（占满桌面 frame 网格剩余区域） ── */
+/* ── 帧体：dock 画布。无边框改造后不再有 32px caption 行，画布从第 1 行
+      起占满整个桌面 frame 网格（1 / -1 横跨全部行）。窗口拖拽区改由
+      WindowControls（caption 变体）承担，见 WindowControls.module.css。 ── */
 
 .dockBody {
   position: relative;
   grid-column: 1 / -1;
-  grid-row: 2 / -1;
+  grid-row: 1 / -1;
   display: flex;
   min-width: 0;
   min-height: 0;
@@ -73,34 +75,56 @@
   touch-action: none;
 }
 
-/* ── 悬停抓握点：单区域面板的隐藏拖拽入口 ── */
+/* ── 悬停抓握簇：单区域面板右上角的隐藏入口（⠿ 拖拽 + ⧉ 一键浮动）。
+      无边框改造移除 caption 行后，⧉ 承担原"拖到标题栏悬浮"的职责。 ── */
 
-.grip {
+.gripCluster {
   position: absolute;
   top: 6px;
   right: 6px;
   z-index: 40;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.pane:hover .gripCluster {
+  opacity: 0.75;
+}
+
+.gripCluster:hover {
+  opacity: 1;
+}
+
+.grip,
+.gripFloat {
   width: 22px;
   height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
+  border: none;
   border-radius: 6px;
+  background: transparent;
   color: var(--dsw-alias-label-tertiary, #999);
   font-size: 11px;
-  cursor: grab;
-  opacity: 0;
-  transition: opacity 140ms ease, background 140ms ease, color 140ms ease;
+  padding: 0;
+  transition: background 140ms ease, color 140ms ease;
   user-select: none;
+}
+
+.grip {
+  cursor: grab;
   touch-action: none;
 }
 
-.pane:hover .grip {
-  opacity: 0.65;
+.gripFloat {
+  cursor: pointer;
 }
 
-.grip:hover {
-  opacity: 1;
+.grip:hover,
+.gripFloat:hover {
   background: color-mix(in srgb, var(--dsw-alias-label-primary, #333) 10%, transparent);
   color: var(--dsw-alias-label-primary, inherit);
 }
