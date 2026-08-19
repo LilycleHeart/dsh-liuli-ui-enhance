@@ -29,6 +29,18 @@
   overflow: hidden;
 }
 
+/* 开始页顶部窗口拖动区（仅会话 pane；默认不拦截事件，全局 CSS 在
+   会话 header 隐藏时激活 -webkit-app-region: drag） */
+.paneTopDrag {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 42px;
+  z-index: 30;
+  pointer-events: none;
+}
+
 .splitBox {
   position: relative;
 }

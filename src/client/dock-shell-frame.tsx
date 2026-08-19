@@ -510,6 +510,8 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
             ? <div className="dshDesktopUpstreamSidebar">{renderPanelBody(only)}</div>
             : renderPanelBody(only)}
           {renderGrip(node)}
+          {/* 开始页（会话 header 隐藏）顶部拖动区：CSS 仅在 header[aria-hidden] 时激活 */}
+          {regionType === REGION_CONVERSATION && <div className={css.paneTopDrag} data-liuli-pane-drag="" aria-hidden="true" />}
         </div>
       )
     }
