@@ -60,7 +60,7 @@ export interface CommandPaletteProps {
   commands: CommandPaletteCommand[]
 }
 
-/** Ctrl/Cmd+K 命令面板：仿 ZCode 命令中心，按输入过滤命令。 */
+/** Ctrl/Cmd+K 命令面板：仿 DSH 命令中心，按输入过滤命令。 */
 export function CommandPalette({ open, onClose, commands }: CommandPaletteProps) {
   const [query, setQuery] = useState('')
   const [index, setIndex] = useState(0)

@@ -48,16 +48,16 @@
 
 .tick:hover,
 .tick:focus-visible {
-  color: var(--denpa-mcu-secondary, var(--dsw-alias-state-business-primary)) !important;
-  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--denpa-mcu-secondary, var(--dsw-alias-state-business-primary)) 45%, transparent));
+  color: var(--liuli-mcu-secondary, var(--dsw-alias-state-business-primary)) !important;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--liuli-mcu-secondary, var(--dsw-alias-state-business-primary)) 45%, transparent));
 }
 
 /* 当前所在轮：放大并使用主题色 */
 .tickFollow {
   width: 28px;
   height: 28px;
-  color: var(--denpa-mcu-primary, var(--dsw-alias-brand-primary)) !important;
-  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--denpa-mcu-primary, var(--dsw-alias-brand-primary)) 45%, transparent));
+  color: var(--liuli-mcu-primary, var(--dsw-alias-brand-primary)) !important;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--liuli-mcu-primary, var(--dsw-alias-brand-primary)) 45%, transparent));
 }
 
 /* 最新一轮：常亮弱高亮（仅当它不是当前跟随轮时；跟随轮保持主题色并放大） */
@@ -68,8 +68,8 @@
 }
 
 .tickHover {
-  color: var(--denpa-mcu-secondary, var(--dsw-alias-state-business-primary)) !important;
-  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--denpa-mcu-secondary, var(--dsw-alias-state-business-primary)) 40%, transparent));
+  color: var(--liuli-mcu-secondary, var(--dsw-alias-state-business-primary)) !important;
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--liuli-mcu-secondary, var(--dsw-alias-state-business-primary)) 40%, transparent));
 }
 
 /* ── 胶囊：使用与输入卡（composer card）同款卡片样式 ─────────── */
@@ -85,15 +85,15 @@
   max-width: min(300px, calc(100% - 64px));
   box-sizing: border-box;
   padding: 8px 12px;
-  border: 1px solid var(--denpa-mcu-outline-variant, var(--dsw-alias-border-l2));
-  border-radius: var(--denpa-radius, 14px);
-  /* 半透明亚克力（DenpaPush 配方）：让 backdrop-filter 磨砂真正透出壁纸 */
-  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity)) !important;
-  background-image: var(--denpa-noise) !important;
-  -webkit-backdrop-filter: var(--denpa-material-blur);
-  backdrop-filter: var(--denpa-material-blur);
-  color: var(--denpa-mcu-on-surface, var(--dsw-alias-label-primary)) !important;
-  box-shadow: var(--denpa-shadow), var(--denpa-glow-brand);
+  border: 1px solid var(--liuli-mcu-outline-variant, var(--dsw-alias-border-l2));
+  border-radius: var(--liuli-radius, 14px);
+  /* 半透明亚克力（琉璃 配方）：让 backdrop-filter 磨砂真正透出壁纸 */
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity)) !important;
+  background-image: var(--liuli-noise) !important;
+  -webkit-backdrop-filter: var(--liuli-material-blur);
+  backdrop-filter: var(--liuli-material-blur);
+  color: var(--liuli-mcu-on-surface, var(--dsw-alias-label-primary)) !important;
+  box-shadow: var(--liuli-shadow), var(--liuli-glow-brand);
   pointer-events: auto;
   transition: top 60ms linear, border-color 120ms var(--ds-ease-in-out),
     box-shadow 120ms var(--ds-ease-in-out), background 120ms var(--ds-ease-in-out);
@@ -104,14 +104,14 @@
   opacity: 0.8;
 }
 
-/* 悬停态：品牌描边加强，接近 DenpaPush `.hovering` */
+/* 悬停态：品牌描边加强，接近 琉璃 `.hovering` */
 .capsuleHover {
-  border-color: var(--denpa-mcu-primary, var(--dsw-alias-brand-primary)) !important;
+  border-color: var(--liuli-mcu-primary, var(--dsw-alias-brand-primary)) !important;
 }
 
 /* 选中态：持久高亮，比悬停更实 */
 .capsuleSelected {
-  border-color: var(--denpa-mcu-primary, var(--dsw-alias-brand-primary)) !important;
+  border-color: var(--liuli-mcu-primary, var(--dsw-alias-brand-primary)) !important;
   pointer-events: auto;
 }
 
@@ -138,7 +138,7 @@
   font-size: 12px;
   font-weight: 600;
   line-height: 1.3;
-  color: var(--denpa-mcu-primary, var(--dsw-alias-brand-primary)) !important;
+  color: var(--liuli-mcu-primary, var(--dsw-alias-brand-primary)) !important;
   white-space: nowrap;
 }
 
@@ -147,7 +147,7 @@
   min-width: 0;
   font-size: 11px;
   line-height: 1.3;
-  color: var(--denpa-mcu-on-surface-variant, var(--dsw-alias-label-secondary)) !important;
+  color: var(--liuli-mcu-on-surface-variant, var(--dsw-alias-label-secondary)) !important;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -161,7 +161,7 @@
 .capsuleMetaRow {
   margin-top: 6px;
   padding-top: 6px;
-  border-top: 1px solid var(--denpa-mcu-primary, var(--dsw-alias-brand-primary));
+  border-top: 1px solid var(--liuli-mcu-primary, var(--dsw-alias-brand-primary));
   width: 100%;
   min-width: 0;
   display: flex;
@@ -193,7 +193,7 @@
   font-size: 13px;
   font-weight: 600;
   line-height: 1.2;
-  color: var(--denpa-mcu-primary, var(--dsw-alias-brand-primary)) !important;
+  color: var(--liuli-mcu-primary, var(--dsw-alias-brand-primary)) !important;
 }
 
 .capsule .capsuleDate {
@@ -201,7 +201,7 @@
   font-weight: 500;
   line-height: 1.2;
   letter-spacing: 0.3px;
-  color: var(--denpa-mcu-on-surface-variant, var(--dsw-alias-label-secondary)) !important;
+  color: var(--liuli-mcu-on-surface-variant, var(--dsw-alias-label-secondary)) !important;
 }
 
 /* commit 左对齐；时间/日期右对齐 */
@@ -219,7 +219,7 @@
   font-weight: 500;
   line-height: 1.2;
   letter-spacing: 0.3px;
-  color: var(--denpa-mcu-tertiary, var(--dsw-alias-state-business-primary)) !important;
+  color: var(--liuli-mcu-tertiary, var(--dsw-alias-state-business-primary)) !important;
   cursor: pointer;
   pointer-events: auto;
   transition: color 120ms var(--ds-ease-in-out);
@@ -227,7 +227,7 @@
 
 .capsule .capsuleCommitButton:hover,
 .capsule .capsuleCommitButton:focus-visible {
-  color: var(--denpa-mcu-tertiary, var(--dsw-alias-state-business-primary)) !important;
+  color: var(--liuli-mcu-tertiary, var(--dsw-alias-state-business-primary)) !important;
   text-decoration: underline;
   outline: none;
 }

@@ -7,10 +7,10 @@
   margin-top: 10px;
   padding: 10px 12px;
   border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.16));
-  border-radius: var(--denpa-radius-sm, 12px);
-  background: rgba(var(--denpa-acrylic-rgb), 0.5);
-  -webkit-backdrop-filter: var(--denpa-material-blur, blur(18px) saturate(1.4));
-  backdrop-filter: var(--denpa-material-blur, blur(18px) saturate(1.4));
+  border-radius: var(--liuli-radius-sm, 12px);
+  background: rgba(var(--liuli-acrylic-rgb), 0.5);
+  -webkit-backdrop-filter: var(--liuli-material-blur, blur(18px) saturate(1.4));
+  backdrop-filter: var(--liuli-material-blur, blur(18px) saturate(1.4));
 }
 
 .head {
@@ -41,7 +41,7 @@
   align-items: center;
   gap: 6px;
   padding: 4px 2px;
-  border-radius: var(--denpa-radius-sm, 10px);
+  border-radius: var(--liuli-radius-sm, 10px);
 }
 
 .fileRow:hover {
@@ -155,12 +155,12 @@
   flex-direction: column;
   gap: 1px;
   border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.22));
-  border-radius: var(--denpa-radius-sm, 10px);
-  background-color: rgba(var(--denpa-acrylic-rgb), 0.96);
-  background-image: var(--denpa-noise);
-  -webkit-backdrop-filter: var(--denpa-material-blur, blur(18px) saturate(1.4));
-  backdrop-filter: var(--denpa-material-blur, blur(18px) saturate(1.4));
-  box-shadow: var(--denpa-shadow, 0 6px 20px rgba(0, 0, 0, 0.18));
+  border-radius: var(--liuli-radius-sm, 10px);
+  background-color: rgba(var(--liuli-acrylic-rgb), 0.96);
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur, blur(18px) saturate(1.4));
+  backdrop-filter: var(--liuli-material-blur, blur(18px) saturate(1.4));
+  box-shadow: var(--liuli-shadow, 0 6px 20px rgba(0, 0, 0, 0.18));
 }
 
 .menuItem {

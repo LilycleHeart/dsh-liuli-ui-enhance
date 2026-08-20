@@ -2,14 +2,14 @@
 // 琉璃主题 · DSH Desktop desktop profile 安装器
 //
 // 作用：解决全新 DSH Desktop 安装后只改 cordis.patch.yml 仍报
-//   Cannot find package '@deepseek-ai/liuli-theme'
+//   Cannot find package 'dsh-liuli-ui-enhance'
 // 的问题。
 //
 // 它会：
-//   1. 把 @deepseek-ai/liuli-theme 写入 ~/.dsh/profiles/desktop/package.json
+//   1. 把 dsh-liuli-ui-enhance 写入 ~/.dsh/profiles/desktop/package.json
 //      dependencies（默认把当前源码 pack 成 tarball 后以 file: 安装；
 //      --from-npm 则写版本号）。
-//   2. 确保 ~/.dsh/profiles/desktop/cordis.patch.yml 里注册了 liuli-theme。
+//   2. 确保 ~/.dsh/profiles/desktop/cordis.patch.yml 里注册了 dsh-liuli-ui-enhance。
 //   3. 在 profile 目录执行 pnpm install。
 //
 // 为什么不用 link:：pnpm 对 link: 本地目录不会自动安装插件自身的
@@ -33,7 +33,7 @@ const noInstall = args.includes('--no-install');
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const repoPkg = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8'));
-const pluginName = '@deepseek-ai/liuli-theme';
+const pluginName = 'dsh-liuli-ui-enhance';
 
 const profileDir = process.env.DSH_PROFILE_DIR || join(homedir(), '.dsh', 'profiles', 'desktop');
 const packagePath = join(profileDir, 'package.json');
@@ -70,7 +70,7 @@ if (fromNpm) {
 }
 
 function fail(message) {
-  console.error(`[liuli-theme] ${message}`);
+  console.error(`[dsh-liuli-ui-enhance] ${message}`);
   process.exit(1);
 }
 
@@ -86,25 +86,25 @@ const profilePkg = JSON.parse(readFileSync(packagePath, 'utf8'));
 profilePkg.dependencies ??= {};
 profilePkg.dependencies[pluginName] = depValue;
 writeFileSync(packagePath, `${JSON.stringify(profilePkg, null, 2)}\n`);
-console.log(`[liuli-theme] 已写入 ${pluginName}: ${depValue} -> ${packagePath}`);
+console.log(`[dsh-liuli-ui-enhance] 已写入 ${pluginName}: ${depValue} -> ${packagePath}`);
 
 // 2. 确保 cordis.patch.yml 注册插件
 const patchBlock = [
   '',
   '# 琉璃主题插件（由 scripts/install-desktop.mjs 写入）',
   '- insert:',
-  '    - id: liuli-theme',
+  '    - id: dsh-liuli-ui-enhance',
   `      name: '${pluginName}'`,
   '',
 ].join('\n');
 
 if (!existsSync(patchPath)) {
   writeFileSync(patchPath, patchBlock.trimStart());
-  console.log(`[liuli-theme] 已创建 ${patchPath} 并注册插件`);
+  console.log(`[dsh-liuli-ui-enhance] 已创建 ${patchPath} 并注册插件`);
 } else {
   const patch = readFileSync(patchPath, 'utf8');
-  if (patch.includes(`id: liuli-theme`) || patch.includes(`name: '${pluginName}'`)) {
-    console.log(`[liuli-theme] ${patchPath} 已包含插件注册，跳过`);
+  if (patch.includes(`id: dsh-liuli-ui-enhance`) || patch.includes(`name: '${pluginName}'`)) {
+    console.log(`[dsh-liuli-ui-enhance] ${patchPath} 已包含插件注册，跳过`);
   } else {
     const lines = patch.split(/\r?\n/);
     const emptyListIndex = lines.findIndex((line) => line.trim() === '[]');
@@ -112,19 +112,19 @@ if (!existsSync(patchPath)) {
       // 全新 profile 默认是 `[]`，直接原位替换为注册块，避免 YAML 双文档/流式与块式混用。
       lines[emptyListIndex] = patchBlock.trim();
       writeFileSync(patchPath, `${lines.join('\n')}\n`);
-      console.log(`[liuli-theme] 已在 ${patchPath} 写入插件注册（替换空列表）`);
+      console.log(`[dsh-liuli-ui-enhance] 已在 ${patchPath} 写入插件注册（替换空列表）`);
     } else {
       writeFileSync(patchPath, `${patch.trimEnd()}\n${patchBlock}\n`);
-      console.log(`[liuli-theme] 已在 ${patchPath} 追加插件注册`);
+      console.log(`[dsh-liuli-ui-enhance] 已在 ${patchPath} 追加插件注册`);
     }
   }
 }
 
 // 3. 安装依赖
 if (noInstall) {
-  console.log('[liuli-theme] 已跳过 pnpm install（--no-install）');
-  console.log(`[liuli-theme] 请手动执行：cd "${profileDir}" && pnpm install`);
+  console.log('[dsh-liuli-ui-enhance] 已跳过 pnpm install（--no-install）');
+  console.log(`[dsh-liuli-ui-enhance] 请手动执行：cd "${profileDir}" && pnpm install`);
 } else {
   run(pnpmCommand(), ['install'], profileDir);
-  console.log('[liuli-theme] 安装完成，可重新启动 DSH Desktop');
+  console.log('[dsh-liuli-ui-enhance] 安装完成，可重新启动 DSH Desktop');
 }

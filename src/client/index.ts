@@ -1,10 +1,10 @@
 /**
- * 琉璃主题（liuli-theme）浏览器半 —— DenpaPush 风格界面主题的完整实现：
+ * 琉璃主题（dsh-liuli-ui-enhance）浏览器半 —— 琉璃 风格界面主题的完整实现：
  *
- *  1. 注入主题样式（denpa.css 字符串，<style> 幂等挂载；覆盖 --dsw-* 语义令牌
+ *  1. 注入主题样式（liuli.css 字符串，<style> 幂等挂载；覆盖 --dsw-* 语义令牌
  *     为电波推送 M3 配色，亮/暗双主题，含字体、圆角、材质、泛光、滚动条等）；
  *  2. 设置页「界面」分区（settings.section，16 项设置 localStorage 持久化）；
- *  3. DenpaPush 运行时：壁纸上传/取色（material-color-utilities 动态 M3 调色）、
+ *  3. 琉璃 运行时：壁纸上传/取色（material-color-utilities 动态 M3 调色）、
  *     材质/字体/圆角/泛光/阴影/暗色遮罩应用（含 isDark 竞态与 seq 令牌保护）；
  *  4. 日/夜主题切换事件桥（startViewTransition 圆形遮罩，--vt-* 变量带坐标）；
  *  5. 会话 header 效果：声纹 canvas 背景、系统音频监听、主题切换按钮、
@@ -30,27 +30,27 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 // Type-only: the input-trigger source roster (element picker reference chip codec).
 import type { InputTriggerSource, ReferenceCodec } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
-import { DenpaAppearanceSection, type DenpaAppearanceInjected } from './DenpaAppearance.tsx'
+import { LiuliAppearanceSection, type LiuliAppearanceInjected } from './LiuliAppearance.tsx'
 import { LiuliAppearanceRow, type LiuliAppearanceRowInjected } from './LiuliAppearanceRow.tsx'
 import { createLiuliAppearanceStore } from './liuli-appearance-store.ts'
-import { createDenpaStore } from './denpa-store.ts'
+import { createLiuliStore } from './liuli-store.ts'
 import {
   clearWallpaper, loadWallpaper, compressImage, saveWallpaper, loadImage,
-  applyDenpaSettings, applyDenpaWallpaper,
-} from './denpa-runtime.ts'
+  applyLiuliSettings, applyLiuliWallpaper,
+} from './liuli-runtime.ts'
 import {
-  DENPA_LS_KEY, DENPA_SETTINGS_DEFAULTS, denpaSettingsOf,
-  type DenpaBgArea, type DenpaSettings,
-} from '../denpa-settings.ts'
-import { en, zh, type DenpaAppearanceKey, modelRetryZh, modelRetryEn, type ModelRetryKey, historyLoadZh, historyLoadEn, type HistoryLoadKey } from './locales.ts'
-import { denpaCss } from './denpa-css.ts'
+  LIULI_LS_KEY, LIULI_SETTINGS_DEFAULTS, liuliSettingsOf,
+  type LiuliBgArea, type LiuliSettings,
+} from '../liuli-settings.ts'
+import { en, zh, type LiuliAppearanceKey, modelRetryZh, modelRetryEn, type ModelRetryKey, historyLoadZh, historyLoadEn, type HistoryLoadKey } from './locales.ts'
+import { liuliCss } from './liuli-css.ts'
 import {
-  DenpaHeaderVoiceprint, DenpaHeaderChrome, DenpaHeaderResizer,
+  LiuliHeaderVoiceprint, LiuliHeaderChrome, LiuliHeaderResizer,
 } from './HeaderEffects.tsx'
 import { setTurnRailCommitHandler, TurnRail } from './TurnRail.tsx'
 import { fileChangesDefinition, RoundSummaryCard } from './TurnFileCard.tsx'
 import { startEditDiffAutoExpand } from './edit-diff-autoplay.ts'
-import { startDenpaTransition } from './denpa-transition.ts'
+import { startLiuliTransition } from './liuli-transition.ts'
 import { startAutoLoadHistory } from './auto-load-history.ts'
 import { startHeaderTabIndicator } from './header-tab-indicator.ts'
 import { startHeaderTextAnimation } from './header-text-animation.ts'
@@ -88,8 +88,8 @@ import {
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
-    /** DenpaPush 界面设置 section 的文案。 */
-    'denpa-appearance': DenpaAppearanceKey
+    /** 琉璃 界面设置 section 的文案。 */
+    'liuli-appearance': LiuliAppearanceKey
     /** 模型请求重试行（通用设置区）的文案。 */
     'liuli-model-retry': ModelRetryKey
     /** 切换会话默认历史加载行（通用设置区）的文案。 */
@@ -97,8 +97,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-/** DenpaPush 设置 section 的文案命名空间。 */
-export const DENPA_LOCALE_NS = 'denpa-appearance'
+/** 琉璃 设置 section 的文案命名空间。 */
+export const LIULI_LOCALE_NS = 'liuli-appearance'
 
 /** 模型请求重试行的文案命名空间。 */
 export const MODEL_RETRY_LOCALE_NS = 'liuli-model-retry'
@@ -108,7 +108,7 @@ export const HISTORY_LOAD_LOCALE_NS = 'liuli-history-load'
 
 /** 主题样式注入的 <style> id（幂等：重复 apply 不叠加）。 */
 const STYLE_ID = 'liuli-theme-css'
-// 设置持久化键在 denpa-settings.ts 中定义（HeaderEffects 运行时读取同一键）。
+// 设置持久化键在 liuli-settings.ts 中定义（HeaderEffects 运行时读取同一键）。
 
 /** Required services: slots/locale for the settings section, theme for the toggle bridge, connection/remote for supplier quota.
  *  layout：advanced 模式由桌面 shell 提供、兼容模式由官方 ui-layout 提供，两种模式都保证在场；
@@ -160,7 +160,7 @@ const SETTINGS_DEFER_CSS = [
 const DESKTOP_ADVANCED_CSS = [
   '/* ── DSH Desktop advanced（无边框）模式 ── */',
   '/* 表面透明：shell 各表面默认不透明 bg-base，会盖住帧背景/壁纸层',
-  '   （[data-denpa-bg]）；改透明后与兼容模式观感一致 */',
+  '   （[data-liuli-bg]）；改透明后与兼容模式观感一致 */',
   'body[data-dsh-desktop-mode="advanced"] .dshDesktopConversationSurface,',
   'body[data-dsh-desktop-mode="advanced"] .dshDesktopDetailsSurface,',
   'body[data-dsh-desktop-mode="advanced"] .dshDesktopMacCaptionRow,',
@@ -268,7 +268,7 @@ function injectThemeCss(): void {
   const style = document.createElement('style')
   style.id = STYLE_ID
   style.setAttribute('data-liuli-theme', '')
-  style.textContent = denpaCss + '\n' + WIDE_MODE_CSS + '\n' + SETTINGS_DEFER_CSS + '\n' + DESKTOP_ADVANCED_CSS
+  style.textContent = liuliCss + '\n' + WIDE_MODE_CSS + '\n' + SETTINGS_DEFER_CSS + '\n' + DESKTOP_ADVANCED_CSS
   document.head.appendChild(style)
 }
 
@@ -327,7 +327,7 @@ function unequipRootEntryChildren(ctx: ClientContext): void {
 }
 
 /**
- * Client plugin body: mount the theme, the Denpa UI settings section,
+ * Client plugin body: mount the theme, the Liuli UI settings section,
  * the runtime + toggle bridge, and the session header effects.
  * @param ctx - client cordis context.
  */
@@ -366,7 +366,7 @@ export function apply(ctx: ClientContext): void {
       if (raf !== 0) cancelAnimationFrame(raf)
       mo.disconnect()
     }
-  }, 'liuli-theme: advanced shell alias classes')
+  }, 'dsh-liuli-ui-enhance: advanced shell alias classes')
 
   // ── Dockable 布局 shell（advanced 模式）：把桌面 advanced shell 的既有布局改造成可停靠工作台 ──
   // advanced 模式下官方 ui-layout 被禁用；桌面 shell（dsh-plugin-desktop）提供 layout 服务
@@ -417,7 +417,7 @@ export function apply(ctx: ClientContext): void {
           delete (window as unknown as { __liuliDockShell__?: unknown }).__liuliDockShell__
         }
       }
-    }, 'liuli-theme: dock shell self-test hook')
+    }, 'dsh-liuli-ui-enhance: dock shell self-test hook')
     ctx.slots.inject('sidebar', () => {
       // 子 slot 声明归桌面 shell（先到者声明，重复声明会抛错）：注册时传空 children
       // 表躲开声明检查，注册完成后把四个子 slot 的规格补进本 entry 的 children 表——
@@ -442,48 +442,48 @@ export function apply(ctx: ClientContext): void {
         DockShellFrame,
       )
       equipRootEntryChildren(ctx)
-      ctx.effect(() => () => { unequipRootEntryChildren(ctx) }, 'liuli-theme: dock shell children release guard')
+      ctx.effect(() => () => { unequipRootEntryChildren(ctx) }, 'dsh-liuli-ui-enhance: dock shell children release guard')
       return disposeRegistration
     })
   }
 
-  // ── 会话切换/新消息入场动画：MutationObserver 挂类（动画定义在 denpa.css）──
-  ctx.effect(() => startDenpaTransition(), 'liuli-theme: message transition observer')
+  // ── 会话切换/新消息入场动画：MutationObserver 挂类（动画定义在 liuli.css）──
+  ctx.effect(() => startLiuliTransition(), 'dsh-liuli-ui-enhance: message transition observer')
 
   // ── 对话页历史自动加载：上翻到消息列顶部时自动点击“加载更早消息”，
   //    替代手动点击 older 按钮 ──
-  ctx.effect(() => startAutoLoadHistory(), 'liuli-theme: auto load history on scroll top')
+  ctx.effect(() => startAutoLoadHistory(), 'dsh-liuli-ui-enhance: auto load history on scroll top')
 
   // ── 会话 header 视图标签（对话/轨迹）滑动激活指示条：官方横条瞬间切换，
-  //    这里注入独立指示条跟随激活 tab 平滑滑动（动画定义在 denpa.css）──
-  ctx.effect(() => startHeaderTabIndicator(), 'liuli-theme: header tab indicator')
+  //    这里注入独立指示条跟随激活 tab 平滑滑动（动画定义在 liuli.css）──
+  ctx.effect(() => startHeaderTabIndicator(), 'dsh-liuli-ui-enhance: header tab indicator')
 
   // ── 会话 header 动态文本（标题名/模型/路由等）变化时入场动画：
   //    MutationObserver 检测文本变化后挂 .liuli-header-text-enter ──
-  ctx.effect(() => startHeaderTextAnimation(), 'liuli-theme: header text animation')
+  ctx.effect(() => startHeaderTextAnimation(), 'dsh-liuli-ui-enhance: header text animation')
 
   // ── 用户发送的网页元素：在聊天气泡里也渲染成卡片（官方只装饰 /@ chip）──
-  ctx.effect(() => startElementCardDecoration(), 'liuli-theme: element card decoration')
+  ctx.effect(() => startElementCardDecoration(), 'dsh-liuli-ui-enhance: element card decoration')
 
   // ── 会话内联重命名：双击侧栏会话标题进入内联编辑（不弹菜单/对话框）──
-  ctx.effect(() => startSessionRename(ctx), 'liuli-theme: session inline rename')
+  ctx.effect(() => startSessionRename(ctx), 'dsh-liuli-ui-enhance: session inline rename')
 
   // ── 会话标记：localStorage store + 会话行图标装饰 ──
-  ctx.effect(() => startSessionMarkerDecoration(ctx), 'liuli-theme: session marker decoration')
+  ctx.effect(() => startSessionMarkerDecoration(ctx), 'dsh-liuli-ui-enhance: session marker decoration')
 
   // ── 会话栏右键菜单：右键会话行弹出标记/重命名/分叉/归档（不改官方代码）──
-  ctx.effect(() => startSessionContextMenu(ctx), 'liuli-theme: session context menu')
+  ctx.effect(() => startSessionContextMenu(ctx), 'dsh-liuli-ui-enhance: session context menu')
 
   // ── 工作区/目录行右键菜单：重命名/删除工作区（不改官方代码）──
-  ctx.effect(() => startWorkspaceContextMenu(ctx), 'liuli-theme: workspace context menu')
+  ctx.effect(() => startWorkspaceContextMenu(ctx), 'dsh-liuli-ui-enhance: workspace context menu')
 
   // ── 供应商额度：注入 connection/remote，供 header 工具区显示当前供应商额度 ──
   initSupplierQuota(ctx.get('connection') as ConnectionHandle, ctx.get('modelDirectories'))
-  ctx.effect(() => () => disposeSupplierQuota(), 'liuli-theme: supplier quota dispose')
+  ctx.effect(() => () => disposeSupplierQuota(), 'dsh-liuli-ui-enhance: supplier quota dispose')
 
   // ── 模型请求重试：注入 connection，供通用设置区编辑各供应商 retryPolicy ──
   initModelRetry(ctx.get('connection') as ConnectionHandle)
-  ctx.effect(() => () => disposeModelRetry(), 'liuli-theme: model retry dispose')
+  ctx.effect(() => () => disposeModelRetry(), 'dsh-liuli-ui-enhance: model retry dispose')
   const refreshQuota = (): void => { void refreshSupplierQuota() }
   ctx.effect(() => {
     const disposers = [
@@ -494,7 +494,7 @@ export function apply(ctx: ClientContext): void {
     return () => {
       for (const dispose of disposers) dispose()
     }
-  }, 'liuli-theme: supplier quota refresh')
+  }, 'dsh-liuli-ui-enhance: supplier quota refresh')
 
   // ── 元素选择器：选中元素作为引用 chip 插入当前会话输入框 ──
   const codec: ReferenceCodec = {
@@ -512,7 +512,7 @@ export function apply(ctx: ClientContext): void {
     onPick: () => undefined,
     codec,
   }
-  ctx.effect(() => ctx.inputTriggers.registerSource(source), 'liuli-theme: element picker source')
+  ctx.effect(() => ctx.inputTriggers.registerSource(source), 'dsh-liuli-ui-enhance: element picker source')
   const insertElement = (info: PickedElement): void => {
     const current = ctx.sessions.list.getSnapshot().current
     if (current === undefined) return
@@ -541,7 +541,7 @@ export function apply(ctx: ClientContext): void {
     onPick: () => undefined,
     codec: commitCodec,
   }
-  ctx.effect(() => ctx.inputTriggers.registerSource(commitSource), 'liuli-theme: commit reference source')
+  ctx.effect(() => ctx.inputTriggers.registerSource(commitSource), 'dsh-liuli-ui-enhance: commit reference source')
 
   // ── 文件引用：右侧边栏文件树「添加到聊天」把路径作为引用卡片插入输入框 ──
   const fileCodec: ReferenceCodec = {
@@ -555,7 +555,7 @@ export function apply(ctx: ClientContext): void {
     onPick: () => undefined,
     codec: fileCodec,
   }
-  ctx.effect(() => ctx.inputTriggers.registerSource(fileSource), 'liuli-theme: file reference source')
+  ctx.effect(() => ctx.inputTriggers.registerSource(fileSource), 'dsh-liuli-ui-enhance: file reference source')
   const insertFileReference = (path: string): void => {
     const current = ctx.sessions.list.getSnapshot().current
     if (current === undefined) return
@@ -611,7 +611,7 @@ export function apply(ctx: ClientContext): void {
       root.unmount()
       host.remove()
     }
-  }, 'liuli-theme: float ball mount')
+  }, 'dsh-liuli-ui-enhance: float ball mount')
 
   // ── 页面内窗口按钮（无边框模式）：固定悬浮在窗口右上角，开始页与会话页一致 ──
   // 会话页不再把按钮内联进 header.utilities（此前随 header 排在工具区最右端）：
@@ -630,10 +630,10 @@ export function apply(ctx: ClientContext): void {
       root.unmount()
       hostEl.remove()
     }
-  }, 'liuli-theme: window controls fixed top-right')
+  }, 'dsh-liuli-ui-enhance: window controls fixed top-right')
 
   // ── 工具区下沉 tabs 行的偏移测量：titleRow 底 → tabs 行底，写入 header ──
-  // 工具区（Session log/监听/主题/面板）经 denpa-css.ts 锚定 titleRow 右下角，
+  // 工具区（Session log/监听/主题/面板）经 liuli-css.ts 锚定 titleRow 右下角，
   // 再按 --dsh-tabs-offset 下移到与视图标签同一栏（右、下对齐）。tabs 行只在
   // 视图标签 >1 时渲染，视图切换/header 拉伸会改几何：body 级观察 + rAF 节流
   // 重测；无 tabs 行时置 0（工具区留在标题行，CSS :has 条件兜底）。
@@ -667,7 +667,7 @@ export function apply(ctx: ClientContext): void {
       mo.disconnect()
       window.removeEventListener('resize', schedule)
     }
-  }, 'liuli-theme: header tabs offset measure')
+  }, 'dsh-liuli-ui-enhance: header tabs offset measure')
 
   // ── 设置页模态让位：设置页（侧栏根内全屏 fixed overlay）打开时，──
   // 琉璃自己的高 z-index 浮层（工作台全屏层 / advanced shell 浮动窗口）会盖住它。
@@ -697,7 +697,7 @@ export function apply(ctx: ClientContext): void {
       mo.disconnect()
       window.removeEventListener('resize', schedule)
     }
-  }, 'liuli-theme: settings overlay defer')
+  }, 'dsh-liuli-ui-enhance: settings overlay defer')
 
   // ── Dockable Workspace（琉璃工作台）：可拖拽/停靠/拆分/浮动/标签合并的面板工作台 ──
   // 布局自动落 localStorage（dock-store 防抖保存），刷新/HMR 重载后原样恢复；
@@ -737,7 +737,7 @@ export function apply(ctx: ClientContext): void {
       root.unmount()
       hostEl.remove()
     }
-  }, 'liuli-theme: dock workspace mount')
+  }, 'dsh-liuli-ui-enhance: dock workspace mount')
 
   // ── 工作区预览列：header 按钮开合宿主右侧 details 列，面板占用 details slot ──
   const togglePreview = (): void => {
@@ -805,7 +805,7 @@ export function apply(ctx: ClientContext): void {
     lastCurrentSession = current
     setPaneSyncSuppressed(true)
     setPreviewOpen(false)
-  }), 'liuli-theme: preview open reset on session switch')
+  }), 'dsh-liuli-ui-enhance: preview open reset on session switch')
 
   // ── 会话内前端产物点击：拦截本地回环/前端文件链接，切换到预览浏览器模式 ──
   ctx.effect(() => {
@@ -825,23 +825,23 @@ export function apply(ctx: ClientContext): void {
     }
     document.addEventListener('click', onDocClick, true)
     return () => { document.removeEventListener('click', onDocClick, true) }
-  }, 'liuli-theme: frontend artifact preview click')
+  }, 'dsh-liuli-ui-enhance: frontend artifact preview click')
 
-  ctx.effect(() => ctx.locale.register(DENPA_LOCALE_NS, { zh, en }), 'liuli-theme: denpa dictionaries')
-  ctx.effect(() => ctx.locale.register(MODEL_RETRY_LOCALE_NS, { zh: modelRetryZh, en: modelRetryEn }), 'liuli-theme: model-retry dictionaries')
-  ctx.effect(() => ctx.locale.register(HISTORY_LOAD_LOCALE_NS, { zh: historyLoadZh, en: historyLoadEn }), 'liuli-theme: history-load dictionaries')
+  ctx.effect(() => ctx.locale.register(LIULI_LOCALE_NS, { zh, en }), 'dsh-liuli-ui-enhance: liuli dictionaries')
+  ctx.effect(() => ctx.locale.register(MODEL_RETRY_LOCALE_NS, { zh: modelRetryZh, en: modelRetryEn }), 'dsh-liuli-ui-enhance: model-retry dictionaries')
+  ctx.effect(() => ctx.locale.register(HISTORY_LOAD_LOCALE_NS, { zh: historyLoadZh, en: historyLoadEn }), 'dsh-liuli-ui-enhance: history-load dictionaries')
 
-  // ── DenpaPush 界面设置：localStorage 持久化 + 运行时应用 ──
-  const denpaStore = createDenpaStore()
-  const denpaT = ctx.locale.bind(DENPA_LOCALE_NS)
-  let denpaBound: BoundActions<typeof denpaStore> | undefined
-  let denpaRev = 0
-  const readDenpaSettings = (): DenpaSettings => {
+  // ── 琉璃 界面设置：localStorage 持久化 + 运行时应用 ──
+  const liuliStore = createLiuliStore()
+  const liuliT = ctx.locale.bind(LIULI_LOCALE_NS)
+  let liuliBound: BoundActions<typeof liuliStore> | undefined
+  let liuliRev = 0
+  const readLiuliSettings = (): LiuliSettings => {
     try {
-      const raw = localStorage.getItem(DENPA_LS_KEY)
-      if (raw) return denpaSettingsOf(JSON.parse(raw))
+      const raw = localStorage.getItem(LIULI_LS_KEY)
+      if (raw) return liuliSettingsOf(JSON.parse(raw))
     } catch (_) { /* 损坏则回落默认 */ }
-    return DENPA_SETTINGS_DEFAULTS
+    return LIULI_SETTINGS_DEFAULTS
   }
   // DSH Desktop 每次重启 Web 端口会变（ephemeral），localStorage 按 origin 隔离，
   // 因此跨重启持久化必须再同步一份到 Host 端 /liuli-settings；纯 Web 无此路由时忽略。
@@ -852,7 +852,7 @@ export function apply(ctx: ClientContext): void {
       .catch(() => {})
       .then(async () => {
         try {
-          const payload = { settings: readDenpaSettings(), wallpaper: loadWallpaper() }
+          const payload = { settings: readLiuliSettings(), wallpaper: loadWallpaper() }
           const res = await fetch('/liuli-settings', {
             method: 'PUT',
             headers: { 'content-type': 'application/json' },
@@ -863,19 +863,19 @@ export function apply(ctx: ClientContext): void {
         } catch (_) { /* Host 路由不可用时保留 localStorage 行为 */ }
       })
   }
-  const writeDenpaSettings = (value: DenpaSettings): void => {
+  const writeLiuliSettings = (value: LiuliSettings): void => {
     localDirty = true
-    try { localStorage.setItem(DENPA_LS_KEY, JSON.stringify(value)) } catch (_) {}
+    try { localStorage.setItem(LIULI_LS_KEY, JSON.stringify(value)) } catch (_) {}
     pushRemoteState()
   }
-  const syncDenpa = (value: DenpaSettings): void => {
-    denpaRev += 1
-    denpaBound?.syncSettings(value, denpaRev)
+  const syncLiuli = (value: LiuliSettings): void => {
+    liuliRev += 1
+    liuliBound?.syncSettings(value, liuliRev)
   }
   // 记录上次应用选区时的窗口尺寸与选区，用于 resize 时围绕中心点按比例缩放。
   let lastViewportWidth = window.innerWidth
   let lastViewportHeight = window.innerHeight
-  let lastBgArea: DenpaBgArea | null = readDenpaSettings().bg_area
+  let lastBgArea: LiuliBgArea | null = readLiuliSettings().bg_area
   // 启动后从 Host 拉取上次 Desktop 会话保存的设置/壁纸（当前端口 localStorage 为空）。
   // 如果用户已经在当前会话改过设置，则不再用远端覆盖，避免本地新修改被旧值冲掉。
   const loadRemoteState = async (): Promise<void> => {
@@ -886,56 +886,56 @@ export function apply(ctx: ClientContext): void {
       const data = await res.json() as { value?: { settings?: unknown; wallpaper?: string | null } | null } | null
       const saved = data?.value
       if (saved === null || saved === undefined || (saved.settings === undefined && saved.wallpaper === undefined)) return
-      const remote = denpaSettingsOf(saved.settings)
-      try { localStorage.setItem(DENPA_LS_KEY, JSON.stringify(remote)) } catch (_) {}
+      const remote = liuliSettingsOf(saved.settings)
+      try { localStorage.setItem(LIULI_LS_KEY, JSON.stringify(remote)) } catch (_) {}
       const wallpaper = typeof saved.wallpaper === 'string' && saved.wallpaper.length > 0 ? saved.wallpaper : null
       if (wallpaper !== null) saveWallpaper(wallpaper)
       else clearWallpaper()
-      denpaBound?.syncWallpaper(wallpaper)
-      syncDenpa(remote)
+      liuliBound?.syncWallpaper(wallpaper)
+      syncLiuli(remote)
       lastBgArea = remote.bg_area
       lastViewportWidth = window.innerWidth
       lastViewportHeight = window.innerHeight
-      void applyDenpaSettings(remote)
+      void applyLiuliSettings(remote)
       window.dispatchEvent(new CustomEvent('liuli:vp-params'))
     } catch (_) { /* Host 路由不可用时保留 localStorage 行为 */ }
   }
 
-  const commitDenpa = (next: DenpaSettings): void => {
-    writeDenpaSettings(next)
-    syncDenpa(next)
+  const commitLiuli = (next: LiuliSettings): void => {
+    writeLiuliSettings(next)
+    syncLiuli(next)
     lastBgArea = next.bg_area
     lastViewportWidth = window.innerWidth
     lastViewportHeight = window.innerHeight
-    void applyDenpaSettings(next)
+    void applyLiuliSettings(next)
     // 声纹响应参数热载（HeaderEffects 监听后重读）
     window.dispatchEvent(new CustomEvent('liuli:vp-params'))
   }
-  const denpaInjected = (actions: BoundActions<typeof denpaStore>): DenpaAppearanceInjected => {
-    denpaBound = actions
-    denpaBound.syncWallpaper(loadWallpaper())
-    denpaBound.syncSettings(readDenpaSettings(), denpaRev)
+  const liuliInjected = (actions: BoundActions<typeof liuliStore>): LiuliAppearanceInjected => {
+    liuliBound = actions
+    liuliBound.syncWallpaper(loadWallpaper())
+    liuliBound.syncSettings(readLiuliSettings(), liuliRev)
     return {
       save: (patch) => {
-        const next = { ...readDenpaSettings(), ...patch }
-        commitDenpa(next)
+        const next = { ...readLiuliSettings(), ...patch }
+        commitLiuli(next)
       },
       reset: () => {
         clearWallpaper()
-        denpaBound?.syncWallpaper(null)
-        writeDenpaSettings(DENPA_SETTINGS_DEFAULTS)
-        syncDenpa(DENPA_SETTINGS_DEFAULTS)
+        liuliBound?.syncWallpaper(null)
+        writeLiuliSettings(LIULI_SETTINGS_DEFAULTS)
+        syncLiuli(LIULI_SETTINGS_DEFAULTS)
         lastBgArea = null
         lastViewportWidth = window.innerWidth
         lastViewportHeight = window.innerHeight
-        void applyDenpaSettings(DENPA_SETTINGS_DEFAULTS)
+        void applyLiuliSettings(LIULI_SETTINGS_DEFAULTS)
       },
       uploadWallpaper: async (file) => {
         const dataUrl = await compressImage(file)
         saveWallpaper(dataUrl)
-        // DenpaPush 原版行为：上传后自动切换到壁纸背景模式（动态取色随之生效）
-        const current = readDenpaSettings()
-        let next: DenpaSettings = current.background_mode === 'image' ? current : { ...current, background_mode: 'image' as const }
+        // 琉璃 原版行为：上传后自动切换到壁纸背景模式（动态取色随之生效）
+        const current = readLiuliSettings()
+        let next: LiuliSettings = current.background_mode === 'image' ? current : { ...current, background_mode: 'image' as const }
         // 首次上传且还没有自定义选区时，按窗口比例生成一个默认居中选区。
         if (current.bg_area === null) {
           try {
@@ -947,7 +947,7 @@ export function apply(ctx: ClientContext): void {
             const scale = 0.9
             const w = maxW * scale
             const h = maxH * scale
-            const bg_area: DenpaBgArea = {
+            const bg_area: LiuliBgArea = {
               x: (1 - w) / 2,
               y: (1 - h) / 2,
               w,
@@ -956,39 +956,39 @@ export function apply(ctx: ClientContext): void {
             next = { ...next, bg_area }
           } catch (_) { /* 取不到图片尺寸时跳过默认选区 */ }
         }
-        denpaBound?.syncWallpaper(dataUrl)
-        commitDenpa(next)
+        liuliBound?.syncWallpaper(dataUrl)
+        commitLiuli(next)
       },
       removeWallpaper: () => {
         clearWallpaper()
-        denpaBound?.syncWallpaper(null)
+        liuliBound?.syncWallpaper(null)
         pushRemoteState()
         // 移除后若处于壁纸模式，回到跟随主题
-        const current = readDenpaSettings()
+        const current = readLiuliSettings()
         if (current.background_mode === 'image') {
           const next = { ...current, background_mode: 'theme' as const }
-          commitDenpa(next)
+          commitLiuli(next)
         } else {
-          void applyDenpaSettings(current)
+          void applyLiuliSettings(current)
         }
       },
     }
   }
   // 初始应用：默认值 + 壁纸立即生效；主题切换时按新明暗重算调色板。
-  const denpaBoot = readDenpaSettings()
-  void applyDenpaSettings(denpaBoot)
+  const liuliBoot = readLiuliSettings()
+  void applyLiuliSettings(liuliBoot)
   // Desktop 端口每次重启会变：从 Host 端恢复上次保存的设置/壁纸。
   void loadRemoteState()
-  ctx.on('theme/change', () => { void applyDenpaSettings(readDenpaSettings()) })
+  ctx.on('theme/change', () => { void applyLiuliSettings(readLiuliSettings()) })
   // 启动时序兜底：boot 时 body 的 data-ds-dark-theme 可能尚未被 presenter 应用
   // （插件加载顺序不定），isDark 误判会把亮色板落到暗色主题上（气泡等颜色"对调"），
   // 且之后若无新的 theme/change 事件就无人纠正。监听 body 属性变化，一旦 presenter
   // 应用/切换主题就按最新明暗重新应用调色板（幂等，低频触发）。
   ctx.effect(() => {
-    const mo = new MutationObserver(() => { void applyDenpaSettings(readDenpaSettings()) })
+    const mo = new MutationObserver(() => { void applyLiuliSettings(readLiuliSettings()) })
     mo.observe(document.body, { attributes: true, attributeFilter: ['data-ds-dark-theme'] })
     return () => { mo.disconnect() }
-  }, 'liuli-theme: body theme observer')
+  }, 'dsh-liuli-ui-enhance: body theme observer')
 
   // 窗口尺寸变化后实时围绕选区中心点按窗口变化比例缩放，避免壁纸被拉伸。
   ctx.effect(() => {
@@ -997,7 +997,7 @@ export function apply(ctx: ClientContext): void {
       if (raf !== 0) return
       raf = requestAnimationFrame(() => {
         raf = 0
-        const current = readDenpaSettings()
+        const current = readLiuliSettings()
         const vw = window.innerWidth
         const vh = window.innerHeight
         if (current.bg_area !== null && lastBgArea !== null && lastViewportWidth > 0 && lastViewportHeight > 0) {
@@ -1012,7 +1012,7 @@ export function apply(ctx: ClientContext): void {
           h *= fit
           w = Math.max(0.04, Math.min(1, w))
           h = Math.max(0.04, Math.min(1, h))
-          const nextArea: DenpaBgArea = {
+          const nextArea: LiuliBgArea = {
             x: Math.min(1 - w, Math.max(0, cx - w / 2)),
             y: Math.min(1 - h, Math.max(0, cy - h / 2)),
             w,
@@ -1020,12 +1020,12 @@ export function apply(ctx: ClientContext): void {
           }
           const next = { ...current, bg_area: nextArea }
           // 轻量同步：只更新壁纸层，不重新跑动态取色，避免 resize 延迟。
-          writeDenpaSettings(next)
-          syncDenpa(next)
+          writeLiuliSettings(next)
+          syncLiuli(next)
           lastBgArea = next.bg_area
           lastViewportWidth = vw
           lastViewportHeight = vh
-          applyDenpaWallpaper(next)
+          applyLiuliWallpaper(next)
         } else {
           lastViewportWidth = vw
           lastViewportHeight = vh
@@ -1038,9 +1038,9 @@ export function apply(ctx: ClientContext): void {
       if (raf !== 0) cancelAnimationFrame(raf)
       window.removeEventListener('resize', onResize)
     }
-  }, 'liuli-theme: window resize reapply')
+  }, 'dsh-liuli-ui-enhance: window resize reapply')
 
-  // ── DenpaPush 日/夜切换事件桥：header 主题按钮 dispatch，这里走正式路径 ──
+  // ── 琉璃 日/夜切换事件桥：header 主题按钮 dispatch，这里走正式路径 ──
   // 照搬原项目：startViewTransition 圆形遮罩（--vt-* 变量由按钮带坐标）。
   ctx.effect(() => {
     /** startViewTransition 圆形遮罩（--vt-* 变量由触发点带坐标）。 */
@@ -1074,28 +1074,28 @@ export function apply(ctx: ClientContext): void {
     // 桥接就绪标记：shell 的 AppearanceRow 据此决定走事件（圆形遮罩）
     // 还是降级直连（插件未启用时）。
     ;(window as unknown as { __liuliThemeBridge__?: boolean }).__liuliThemeBridge__ = true
-    window.addEventListener('denpa:toggle-theme', onToggleTheme)
-    window.addEventListener('denpa:set-theme', onSetTheme)
+    window.addEventListener('liuli:toggle-theme', onToggleTheme)
+    window.addEventListener('liuli:set-theme', onSetTheme)
     return () => {
       ;(window as unknown as { __liuliThemeBridge__?: boolean }).__liuliThemeBridge__ = false
-      window.removeEventListener('denpa:toggle-theme', onToggleTheme)
-      window.removeEventListener('denpa:set-theme', onSetTheme)
+      window.removeEventListener('liuli:toggle-theme', onToggleTheme)
+      window.removeEventListener('liuli:set-theme', onSetTheme)
     }
-  }, 'liuli-theme: denpa theme toggle bridge')
+  }, 'dsh-liuli-ui-enhance: liuli theme toggle bridge')
 
   // ── 设置页「界面」分区 ──
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
-    id: 'denpa-appearance',
+    id: 'liuli-appearance',
     order: 30,
-    label: () => denpaT('nav'),
-    store: denpaStore,
-    locale: DENPA_LOCALE_NS,
-    inject: denpaInjected,
-  }, DenpaAppearanceSection))
+    label: () => liuliT('nav'),
+    store: liuliStore,
+    locale: LIULI_LOCALE_NS,
+    inject: liuliInjected,
+  }, LiuliAppearanceSection))
 
   // ── 设置页「外观」行：以同 id + 更低 priority 替换官方 AppearanceRow ──
-  //    点击带圆形遮罩过渡（denpa:set-theme 事件桥），桥未就绪时降级直连。
+  //    点击带圆形遮罩过渡（liuli:set-theme 事件桥），桥未就绪时降级直连。
   const appearanceStore = createLiuliAppearanceStore()
   let appearanceBound: BoundActions<typeof appearanceStore> | undefined
   const syncAppearance = (snapshot: { preference: ThemePreference; revision: number }): void => {
@@ -1211,19 +1211,19 @@ export function apply(ctx: ClientContext): void {
     name: 'conversation.session.header.actions',
     id: 'liuli-voiceprint',
     order: 10,
-  }, DenpaHeaderVoiceprint))
+  }, LiuliHeaderVoiceprint))
   // 手柄与回合导轨挂在官方 header.utilities（最右端）：tabs 条挂载点只存在于
   // 未发布的 harness 改动里，官方版本没有该 slot；utilities 位置最接近。
   ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
     name: 'conversation.session.header.utilities',
     id: 'liuli-header-chrome',
     order: 10,
-  }, DenpaHeaderChrome))
+  }, LiuliHeaderChrome))
   ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
     name: 'conversation.session.header.utilities',
     id: 'liuli-header-resizer',
     order: 15,
-  }, DenpaHeaderResizer))
+  }, LiuliHeaderResizer))
   ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
     name: 'conversation.session.header.utilities',
     id: 'liuli-turn-rail',
@@ -1236,13 +1236,13 @@ export function apply(ctx: ClientContext): void {
     order: 25,
   }, () => createElement(PreviewButton, { onToggle: togglePreview })))
   // ── 页面内窗口按钮（无边框模式）：不再注入 header utilities ——
-  // 统一由 body 级 host 固定渲染在窗口右上角（见 'liuli-theme: window controls fixed top-right'）。
+  // 统一由 body 级 host 固定渲染在窗口右上角（见 'dsh-liuli-ui-enhance: window controls fixed top-right'）。
 
   // ── 轮次结束 · 文件变更卡片：按 step 累计修改文件与 diff，发布自定义 chat 节点 ──
   // 当前 DSH 会话转写没有 turn/start|end 事件（step 化），turnTail 槽不渲染；
   // Definition 按 step 发布 liuli-round-summary 节点，渲染器在本轮最后节点处
   // 展示卡片（文件名 + DIFF 数量 + 审查/打开/展开打开方式）。
-  ctx.effect(() => ctx.conversationEvents.register(fileChangesDefinition), 'liuli-theme: file-changes definition')
+  ctx.effect(() => ctx.conversationEvents.register(fileChangesDefinition), 'dsh-liuli-ui-enhance: file-changes definition')
   ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
     name: 'conversation.chat.node',
     key: 'liuli-round-summary',
@@ -1251,5 +1251,5 @@ export function apply(ctx: ClientContext): void {
   // ── 对话页 edit/write 工具行自动展开（显示文件 diff）──
   // 上游 ToolRow 把 diff 放在默认收起的可折叠 body；这里在会话正文渲染后
   // 把带 diff 的 edit/write 行自动点开一次（虚拟化重挂载后再展开）。
-  ctx.effect(() => startEditDiffAutoExpand(), 'liuli-theme: edit diff auto-expand')
+  ctx.effect(() => startEditDiffAutoExpand(), 'dsh-liuli-ui-enhance: edit diff auto-expand')
 }

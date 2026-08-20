@@ -1,11 +1,11 @@
-# AGENTS.md — Liuli Theme 开发指导
+# AGENTS.md — dsh-liuli-ui-enhance 开发指导
 
 本文件为在本仓库内工作的 AI Agent / 开发者提供上下文、命令、约定与避坑指南。
 在改动代码前先读 `README.md`，它维护了完整的功能清单、设计语言和安装说明。
 
 ## 项目是什么
 
-`@deepseek-ai/liuli-theme` 是 DeepSeek Harness (DSH) 的 **Material Design 3 × Fluent 2 融合主题**插件，采用 DSH 官方插件扩展点挂载，不改任何宿主组件源码。它同时包含：
+`dsh-liuli-ui-enhance` 是 DeepSeek Harness (DSH) 的 **Material Design 3 × Fluent 2 融合主题**插件，采用 DSH 官方插件扩展点挂载，不改任何宿主组件源码。它同时包含：
 
 - **node 半（Host 半）**：`src/index.ts` 等，注册 `/liuli-quota`、`/preview`、`/liuli-sidebar/*`、`/liuli-window` 等 Host 路由。
 - **浏览器半（Client 半）**：`src/client/*`，注入 CSS、设置页、header 组件、右侧边栏、Dockable 工作台、悬浮球、内嵌浏览器等 UI 能力。
@@ -52,13 +52,13 @@ src/
   browser-engine.ts        # 内嵌浏览器引擎（CDP / Electron / Web 回退）
   host-audio.ts            # Electron 系统回环音频授权
   host-window.ts           # Electron 窗口控制（最小化/最大化/关闭/托盘）
-  denpa-settings.ts        # 20 项设置 schema 与默认值
+  liuli-settings.ts        # 20 项设置 schema 与默认值
   invariant.ts             # 包级 invariant 伴生（无运行时检查）
   vendor/                  # vendored material-color-utilities（勿随意改动）
   client/
     index.ts               # 浏览器入口：CSS 注入、事件桥、header slots、悬浮球等
-    denpa.css              # 主题令牌与全局覆盖样式源
-    denpa-css.ts           # denpa.css 的字符串化拷贝（运行时注入用）
+    liuli.css              # 主题令牌与全局覆盖样式源
+    liuli-css.ts           # liuli.css 的字符串化拷贝（运行时注入用）
     dock-model.ts          # Dockable 布局纯函数模型（有单测）
     DockWorkspace.tsx      # 全屏 Dockable 工作台
     dock-shell-frame.tsx   # advanced 模式下将宿主三列布局改造为 dockable
@@ -85,7 +85,7 @@ skills/
   control-browser/SKILL.md # 控制内嵌浏览器的 agent skill
 docs/
   browser-use.md           # 浏览器 agent 自动化用法
-  zcode-sidebar-comparison.md
+  sidebar-comparison.md
 ```
 
 ## 开发约定
@@ -94,11 +94,11 @@ docs/
 2. 所有新功能优先挂载官方已有扩展点：
    - header 组件挂在 `dsh-client-ui-conversation` 的 `actions` / `utilities` slot；
    - 侧栏面板占用 `dsh-client-ui-layout` 的 `details` 列（`priority: -1`）；
-   - 外观主题事件走 `dsh-client-ui-theme` 的 `denpa:set-theme` + `startViewTransition` 圆形遮罩；
+   - 外观主题事件走 `dsh-client-ui-theme` 的 `liuli:set-theme` + `startViewTransition` 圆形遮罩；
    - Host 路由注册在 node 半，用 `/liuli-*` 前缀，避免与官方路由冲突。
 3. 不要修改宿主组件源码；能用 CSS 覆盖 / DOM 观察 / 自有 overlay 实现的就优先这样做。
 4. 新增 UI 文案必须同时维护 `locales.ts` 的 zh/en 键，保证键集完整。
-5. 新增设置项要同步 `denpa-settings.ts` 的 schema/默认值，并在 README 功能表与设置分区文案中体现。
+5. 新增设置项要同步 `liuli-settings.ts` 的 schema/默认值，并在 README 功能表与设置分区文案中体现。
 6. 纯逻辑尽量抽成无副作用函数（参考 `dock-model.ts`），并在 `demo/test-dock-model.ts` 补单测；Node 直接跑 TS 即可。
 7. 改动 Dockable / dock-model 后至少跑 `node demo/test-dock-model.ts` 和相关 GUI 验证脚本。
 8. 改动内嵌浏览器能力后同步更新 `scripts/browser-client.mjs` 与 `docs/browser-use.md`，并运行 `demo/verify-webview*.mjs`。
@@ -110,13 +110,15 @@ docs/
 
 - **安装到 DSH Desktop 不要用 `pnpm link`**：link 不会安装插件自身 dependencies，会报 `Cannot find package 'iconv-lite'`。用 `pnpm install:desktop` 或 `node scripts/install-desktop.mjs`。
 - **`pnpm install:desktop` 后不需要重启 DSH Desktop**：插件安装到 profile 后刷新页面即可加载新 bundle；不要主动 kill/restart DSH Desktop，重启会让 Web 端口变化并打断运行中的调试。可验证：安装后直接刷新页面观察新样式/行为。
-- 只改 desktop profile 的 `cordis.patch.yml` 不够，必须同时把 `@deepseek-ai/liuli-theme` 写进该 profile 的 `package.json` dependencies。
+- 只改 desktop profile 的 `cordis.patch.yml` 不够，必须同时把 `dsh-liuli-ui-enhance` 写进该 profile 的 `package.json` dependencies。
 - 隐藏原生标题栏需要额外执行 `pnpm patch:desktop`；插件只能提供页面内窗口按钮，不能从渲染进程隐藏原生标题栏。
 - DSH Desktop 每次重启 Web 端口会变，`localStorage` 按 origin 隔离；设置跨重启保留依赖 Host 端 `~/.liuli-theme/settings.json` 同步。
 - `/liuli-sidebar/*`、`/preview`、`/liuli-proxy` 等路由默认只接受 loopback / 同源 Host；局域网部署需额外配置信任域名。
 - 声纹监听只捕获系统音频：Web 端靠 `getDisplayMedia`（共享整个屏幕 + 分享系统音频）；Electron Desktop 端由 Host 安装 `setDisplayMediaRequestHandler` 直接授予 `audio: 'loopback'`（Windows-only）。
-- `denpa.css` 与 `denpa-css.ts` 是同一份样式的两个载体，改 CSS 源后需要同步字符串化拷贝（构建/脚本处理；不要只改其中一个）。
+- `liuli.css` 与 `liuli-css.ts` 是同一份样式的两个载体，改 CSS 源后需要同步字符串化拷贝（构建/脚本处理；不要只改其中一个）。注意历史遗留：当前 `liuli.css`（712 行）与 `liuli-css.ts` 内嵌字符串（1551 行）并不完全一致，运行时注入以 `liuli-css.ts` 为准；后续若以 `liuli.css` 为源，需先补齐同步。
 - vendored `src/vendor/material-color-utilities.js` 是上游库，除非有明确目的否则不要改动。
+- **项目改名后执行 `pnpm install:desktop` 会追加新注册而不是替换旧注册**：安装器只按当前包名（如 `dsh-liuli-ui-enhance`）检测 profile，旧 `id: liuli-theme` / `@deepseek-ai/liuli-theme` 不会被识别为已注册，会在 `cordis.patch.yml` 追加新 insert 块并在 `package.json` dependencies 增加新包；彻底迁移需手动删除 profile 中的旧依赖与旧 insert 块，再执行 `pnpm install`。
+- **批量清理品牌词时不要只做机械替换**：复合品牌词会被替换成生造词，参考来源词会被错误归属到宿主名；需要二次替换为「琉璃」「参考实现源码」等中性词，并在 `pnpm build` 前搜索旧词残留确认无残留。
 
 ## 踩坑自动写入（强制约定）
 

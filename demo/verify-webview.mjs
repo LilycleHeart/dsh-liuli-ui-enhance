@@ -1,4 +1,4 @@
-// Post-restart verification of the liuli-theme webview engine (ZCode IAB parity checklist).
+// Post-restart verification of the dsh-liuli-ui-enhance webview engine (DSH IAB parity checklist).
 import { writeFileSync } from 'node:fs'
 const BASE = await (async () => {
   if (process.env.LIULI_BROWSER_BASE) return process.env.LIULI_BROWSER_BASE
@@ -109,7 +109,7 @@ await post('/liuli-browser/tabs/action', { id: 'selftest', action: 'reload' })
 const st4 = await waitState('selftest', s => s.ready && !s.loading)
 check('A9 reload settles', !!st4, JSON.stringify(st4 ?? {}))
 
-// popup → new-tab SSE (ZCode: webview 请求打开右侧浏览器 tab)
+// popup → new-tab SSE (DSH: webview 请求打开右侧浏览器 tab)
 await post('/liuli-browser/tabs/execute', { id: 'selftest', code: 'window.open("https://www.iana.org/"); "opened"' })
 await sleep(1200)
 const newTabEvent = events.find(e => e.type === 'new-tab' && e.sourceTabId === 'selftest')

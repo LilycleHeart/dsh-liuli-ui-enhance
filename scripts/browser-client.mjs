@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * liuli-theme 浏览器自动化 CLI（ZCode browser-use-plugin 的 browser-client.mjs 对应物）。
+ * dsh-liuli-ui-enhance 浏览器自动化 CLI（browser-use-plugin 的 browser-client.mjs 实现）。
  *
- * ZCode 的 browser-use 插件通过 node_repl js 工具 + browser-client.mjs 驱动
- * 桌面 IAB（内嵌浏览器）；DSH 里 liuli-theme 的 Host 半把同款能力暴露在
+ * browser-use 插件通过 node_repl js 工具 + browser-client.mjs 驱动
+ * 桌面 IAB（内嵌浏览器）；DSH 里 dsh-liuli-ui-enhance 的 Host 半把同款能力暴露在
  * /liuli-browser HTTP API 上，本脚本即其命令行客户端，供 agent（pwsh 工具）
  * 或人工驱动侧边栏嵌入式浏览器：
  *
@@ -23,7 +23,7 @@
  *   node browser-client.mjs shot <tab> [file.png]      # capturePage 截图
  *   node browser-client.mjs close <tab>
  *
- * 无几何上报的 agent 标签保持隐藏（等效 ZCode CLI-managed headless CDP：
+ * 无几何上报的 agent 标签保持隐藏（等效 DSH CLI-managed headless CDP：
  * 导航/执行/截图可用，仅不可见）；GUI 侧边栏打开的标签 id 形如 browser:<uid>，
  * 可直接用本 CLI 驱动（IAB 模式）。
  */
@@ -41,7 +41,7 @@ function fail(message) {
 async function getJson(path) {
   const resp = await fetch(BASE + path, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(20000) })
   const type = resp.headers.get('content-type') ?? ''
-  if (!type.includes('application/json')) fail('route ' + path + ' 不可用（宿主未启用嵌入式浏览器引擎？需要 DSH Desktop 重启加载新版 liuli-theme）')
+  if (!type.includes('application/json')) fail('route ' + path + ' 不可用（宿主未启用嵌入式浏览器引擎？需要 DSH Desktop 重启加载新版 dsh-liuli-ui-enhance）')
   return resp.json()
 }
 
@@ -78,7 +78,7 @@ async function waitIdle(tab, timeoutMs = 15000) {
   }
 }
 
-/** 精简 DOM 快照：可交互/语义元素 + 唯一 selector（ZCode playwright.domSnapshot 的朴素对应）。 */
+/** 精简 DOM 快照：可交互/语义元素 + 唯一 selector（DSH playwright.domSnapshot 的朴素对应）。 */
 const SNAP_SCRIPT = '(() => {'
   + 'const rows = [];'
   + 'const esc = (s) => { let out = ""; for (const ch of String(s)) out += /[a-zA-Z0-9_-]/.test(ch) ? ch : String.fromCharCode(92) + ch; return out };'
@@ -271,7 +271,7 @@ async function run() {
       let buf = await capture()
       let promoted = false
       if (buf.length === 0) {
-        // 隐藏/无 carrier 标签不参与合成（ZCode headless 对应）：临时移入窗口取帧后复位隐藏。
+        // 隐藏/无 carrier 标签不参与合成（DSH headless 对应）：临时移入窗口取帧后复位隐藏。
         // 有 GUI carrier 的标签其几何心跳（300ms）会自动恢复承载位。
         await postJson('/liuli-browser/tabs/geometry', { id: tab, x: 0, y: 0, width: 1024, height: 768, visible: true })
         promoted = true

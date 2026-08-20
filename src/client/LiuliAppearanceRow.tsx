@@ -3,13 +3,13 @@
  *
  * 相比官方 AppearanceRow 的修改：
  * - 点击主题按钮时检测 __liuliThemeBridge__ 标记
- * - 若桥接就绪，触发 denpa:set-theme 事件（带坐标）
+ * - 若桥接就绪，触发 liuli:set-theme 事件（带坐标）
  * - 若桥接未就绪，降级为直接调用 setTheme（无动画）
  *
  * 这样做的原因：
  * 1. 保持 harness 官方代码不被修改
- * 2. liuli-theme 插件自包含所有定制逻辑
- * 3. 用户未安装 liuli-theme 时，仍能正常切换主题
+ * 2. dsh-liuli-ui-enhance 插件自包含所有定制逻辑
+ * 3. 用户未安装 dsh-liuli-ui-enhance 时，仍能正常切换主题
  */
 import clsx from 'clsx'
 import {
@@ -59,7 +59,7 @@ export function LiuliAppearanceRow({ t, setTheme, useStore }: LiuliAppearanceRow
             aria-pressed={preference === id}
             onClick={(e) => {
               // 当前已选中的主题无需切换；其余走带坐标的圆形遮罩过渡
-              // （denpa:set-theme → 琉璃主题事件桥 → startViewTransition）。
+              // （liuli:set-theme → 琉璃主题事件桥 → startViewTransition）。
               // 主题插件未启用时事件无人接，降级为直连切换（无遮罩）。
               if (preference === id) return
               const bridgeReady = (window as unknown as { __liuliThemeBridge__?: boolean }).__liuliThemeBridge__ === true
@@ -68,7 +68,7 @@ export function LiuliAppearanceRow({ t, setTheme, useStore }: LiuliAppearanceRow
                 return
               }
               const rect = e.currentTarget.getBoundingClientRect()
-              window.dispatchEvent(new CustomEvent('denpa:set-theme', {
+              window.dispatchEvent(new CustomEvent('liuli:set-theme', {
                 detail: {
                   id,
                   x: rect.left + rect.width / 2,

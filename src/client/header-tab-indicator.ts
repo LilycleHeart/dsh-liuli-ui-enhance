@@ -6,7 +6,7 @@
  * 瞬间消失、在新 tab 瞬间出现，没有位移动画。
  *
  * 本模块在 tabs 容器内注入一个独立指示条元素 [data-liuli-tab-indicator]
- * （absolute 定位，见 denpa.css），用 MutationObserver 监听激活 tab
+ * （absolute 定位，见 liuli.css），用 MutationObserver 监听激活 tab
  * 变化（aria-selected / class），测量激活 tab 相对容器的 left 与宽度，
  * 通过 transform + width 过渡实现横条平滑滑动到新 tab 下方。
  *
@@ -14,7 +14,7 @@
  * - 普通会话页：div[data-phase] > header（或 > div > header）；
  * - Dockable Workspace 标题面板：region:conversation-header 内的 header。
  *
- * 动画关闭：prefers-reduced-motion 时 CSS 已禁用 transition（denpa.css）。
+ * 动画关闭：prefers-reduced-motion 时 CSS 已禁用 transition（liuli.css）。
  */
 const TABS_SELECTOR = '[class*="_tabs"]'
 const TAB_ACTIVE_SELECTOR = '[class*="_tabActive"], [aria-selected="true"]'

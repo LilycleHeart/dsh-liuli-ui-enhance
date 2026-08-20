@@ -326,7 +326,7 @@ async function boot() {
       })
     }
     // 优先 decodeAudioData（缓冲源，无头 Chrome 下最可靠）；失败则回退
-    // denpa_echo 式 <audio> 元素 + MediaElementSource（元素解码器更健壮）
+    // liuli_echo 式 <audio> 元素 + MediaElementSource（元素解码器更健壮）
     let audioBuf = null
     try {
       let buf = null

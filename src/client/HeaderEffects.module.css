@@ -1,6 +1,6 @@
 /* 琉璃主题 · 会话 header 效果（声纹/监听/主题切换/拉伸手柄） */
 
-/* 声纹作为 header 卡片的背景层（denpa_echo hero-wave 布局）：
+/* 声纹作为 header 卡片的背景层（liuli_echo hero-wave 布局）：
    canvas 铺满整个 header（含拉伸手柄拉高后的高度），标题/工具浮于其上
    （shell .titleRow z-index:1），监听按钮贴工具区右侧。 */
 
@@ -9,7 +9,7 @@
   inset: 0;
   overflow: hidden;
   /* 与 header 卡片同圆角，让 canvas 的直角边缘被裁掉 */
-  border-radius: var(--denpa-radius, 14px);
+  border-radius: var(--liuli-radius, 14px);
   pointer-events: none;
   /* 显式低于标题行/标签行（shell 的 .titleRow/.tabs 均 z-index:1） */
   z-index: 0;
@@ -22,7 +22,7 @@
   height: 100%;
   display: block;
   /* 与 header 卡片同圆角，裁剪直角边缘（inherit 取到的是 wrap，须显式同值） */
-  border-radius: var(--denpa-radius, 14px);
+  border-radius: var(--liuli-radius, 14px);
 }
 
 /* 监听按钮：titleRow 工具区正常流圆钮（主题切换一侧） */
@@ -65,7 +65,7 @@
   background: var(--dsw-alias-bg-overlay);
   padding: 2px 8px;
   border-radius: 8px;
-  box-shadow: var(--denpa-shadow);
+  box-shadow: var(--liuli-shadow);
   z-index: 3;
   pointer-events: auto;
 }

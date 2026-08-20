@@ -58,7 +58,7 @@
   width: 100%;
   padding: 5px 8px;
   border: none;
-  border-radius: var(--denpa-radius-sm, 10px);
+  border-radius: var(--liuli-radius-sm, 10px);
   background: transparent;
   color: var(--dsw-alias-label-primary, inherit);
   font-size: 12px;
@@ -135,7 +135,7 @@
 .empty {
   padding: 14px;
   border: 1px dashed var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.25));
-  border-radius: var(--denpa-radius-sm, 10px);
+  border-radius: var(--liuli-radius-sm, 10px);
   color: var(--dsw-alias-label-tertiary, #888);
   font-size: 12px;
   line-height: 18px;
@@ -203,7 +203,7 @@
   display: inline-flex;
   gap: 2px;
   padding: 2px;
-  border-radius: var(--denpa-radius-sm, 10px);
+  border-radius: var(--liuli-radius-sm, 10px);
   background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.1));
 }
 
@@ -234,8 +234,8 @@
   min-height: 0;
   overflow: auto;
   border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.18));
-  border-radius: var(--denpa-radius-sm, 10px);
-  background: rgba(var(--denpa-acrylic-rgb), 0.35);
+  border-radius: var(--liuli-radius-sm, 10px);
+  background: rgba(var(--liuli-acrylic-rgb), 0.35);
 }
 
 .diffPre {

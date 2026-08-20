@@ -2,7 +2,7 @@
  * 会话切换/新消息入场动画：官方 harness 的挂类逻辑在 ChatNodeSeat /
  * AssistantMarkdown 组件内部（插件无法修改组件源码），本模块用
  * MutationObserver 在消息列（[data-chat-flow]）的新增节点
- * （[data-chat-anchor-key]）上挂入场类，动画定义在 denpa.css。
+ * （[data-chat-anchor-key]）上挂入场类，动画定义在 liuli.css。
  *
  * - 切换会话：消息列整批重挂载 → 按 DOM 顺序分配级联延迟（stagger）；
  * - 流式输出：每条新消息各自入场（无延迟）；
@@ -16,19 +16,19 @@
  * - 一次整批挂载会被 React 拆成多个 MutationObserver 回调（并发/分帧
  *   提交），用合并窗口把窗口内的挂载并入同一批，级联延迟不因分帧重置；
  * - 级联顺序按 compareDocumentPosition 的文档序，而不是节点深度；
- * - 动画结束/取消后清理 data-denpa-entered 标记，重挂载或节点复用可
+ * - 动画结束/取消后清理 data-liuli-entered 标记，重挂载或节点复用可
  *   再次入场（不清理则同一节点永久失去动画资格）；
  * - animationend 校验事件目标，避免消息内部子元素动画冒泡导致误清理。
  */
 import {
-  DENPA_LS_KEY, DENPA_SETTINGS_DEFAULTS, denpaSettingsOf,
-  type DenpaTransitionEffect,
-} from '../denpa-settings.ts'
+  LIULI_LS_KEY, LIULI_SETTINGS_DEFAULTS, liuliSettingsOf,
+  type LiuliTransitionEffect,
+} from '../liuli-settings.ts'
 
-/** 入场基础类（denpa.css 定义 animation 属性）。 */
-const ENTER_CLASS = 'denpa-enter'
-/** 效果类前缀：denpa-enter-<effect>。 */
-const ENTER_EFFECT_PREFIX = 'denpa-enter-'
+/** 入场基础类（liuli.css 定义 animation 属性）。 */
+const ENTER_CLASS = 'liuli-enter'
+/** 效果类前缀：liuli-enter-<effect>。 */
+const ENTER_EFFECT_PREFIX = 'liuli-enter-'
 /** 级联延迟步进与上限（批量挂载时逐条递增）。 */
 const CASCADE_STEP_MS = 60
 const CASCADE_CAP_MS = 600
@@ -36,32 +36,32 @@ const CASCADE_CAP_MS = 600
 const BATCH_WINDOW_MS = 400
 
 /** 读取当前生效的过渡效果（与设置页同一持久化键）。 */
-function currentEffect(): DenpaTransitionEffect {
+function currentEffect(): LiuliTransitionEffect {
   try {
-    const raw = localStorage.getItem(DENPA_LS_KEY)
-    if (raw !== null) return denpaSettingsOf(JSON.parse(raw)).transition_effect
+    const raw = localStorage.getItem(LIULI_LS_KEY)
+    if (raw !== null) return liuliSettingsOf(JSON.parse(raw)).transition_effect
   } catch (_) { /* 损坏则回落默认 */ }
-  return DENPA_SETTINGS_DEFAULTS.transition_effect
+  return LIULI_SETTINGS_DEFAULTS.transition_effect
 }
 
-/** prefers-reduced-motion（与 denpa.css 的媒体查询一致；匹配时不挂类，避免无动画事件残留标记）。 */
+/** prefers-reduced-motion（与 liuli.css 的媒体查询一致；匹配时不挂类，避免无动画事件残留标记）。 */
 const reduceMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
 
 /**
  * 给一个消息锚点挂入场类；动画结束/取消后清理类与标记（节点可再次入场）。
  * 内部子元素的 animationend 会冒泡到这里，必须校验事件目标。
  */
-function applyEnter(el: HTMLElement, effect: DenpaTransitionEffect, delayMs: number): void {
-  if (effect === 'none' || el.dataset.denpaEntered !== undefined) return
+function applyEnter(el: HTMLElement, effect: LiuliTransitionEffect, delayMs: number): void {
+  if (effect === 'none' || el.dataset.liuliEntered !== undefined) return
   if (reduceMotionQuery.matches) return
-  el.dataset.denpaEntered = '1'
+  el.dataset.liuliEntered = '1'
   el.classList.add(ENTER_CLASS, ENTER_EFFECT_PREFIX + effect)
-  if (delayMs > 0) el.style.setProperty('--denpa-enter-delay', `${delayMs}ms`)
+  if (delayMs > 0) el.style.setProperty('--liuli-enter-delay', `${delayMs}ms`)
   const finish = (event: AnimationEvent): void => {
     if (event.target !== el) return
     el.classList.remove(ENTER_CLASS, ENTER_EFFECT_PREFIX + effect)
-    el.style.removeProperty('--denpa-enter-delay')
-    delete el.dataset.denpaEntered
+    el.style.removeProperty('--liuli-enter-delay')
+    delete el.dataset.liuliEntered
     el.removeEventListener('animationend', finish)
     el.removeEventListener('animationcancel', finish)
   }
@@ -89,7 +89,7 @@ type ColumnState = {
  * - 单条（流式）无延迟入场；批量逐条递增延迟。
  * @returns disposer（插件 fiber 卸载时断开观察器并清定时器）。
  */
-export function startDenpaTransition(): () => void {
+export function startLiuliTransition(): () => void {
   const columns = new Map<HTMLElement, ColumnState>()
 
   /** 合并窗口到点：把本列窗口内收集的锚点按文档序统一级联。 */

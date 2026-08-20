@@ -1,6 +1,6 @@
 /**
- * DenpaPush 界面设置 section（设置页「界面」）：取色/壁纸/材质/字体/圆角/泛光阴影。
- * 复刻自电波推送 dashboard 的「界面设置」面板。
+ * 琉璃 界面设置 section（设置页「界面」）：取色/壁纸/材质/字体/圆角/泛光阴影。
+ * 实现自电波推送 dashboard 的「界面设置」面板。
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
@@ -9,16 +9,16 @@ import {
   Button, Input, Menu, IconChevronDownOutline14,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime, PropsStore, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
-import type { DenpaBgArea, DenpaSettings } from '../denpa-settings.ts'
-import { DENPA_SETTINGS_DEFAULTS } from '../denpa-settings.ts'
-import { bgGeometry } from './denpa-runtime.ts'
-import type { createDenpaStore } from './denpa-store.ts'
-import css from './DenpaAppearance.module.css'
+import type { LiuliBgArea, LiuliSettings } from '../liuli-settings.ts'
+import { LIULI_SETTINGS_DEFAULTS } from '../liuli-settings.ts'
+import { bgGeometry } from './liuli-runtime.ts'
+import type { createLiuliStore } from './liuli-store.ts'
+import css from './LiuliAppearance.module.css'
 
 /** 注入面：设置写入 + 壁纸操作 + 文案。 */
-export interface DenpaAppearanceInjected {
+export interface LiuliAppearanceInjected {
   /** 保存一个或多个字段（localStorage 持久化 + 立即应用）。 */
-  save: (patch: Partial<DenpaSettings>) => void
+  save: (patch: Partial<LiuliSettings>) => void
   /** 恢复默认（清空字段 + 清除壁纸）。 */
   reset: () => void
   /** 上传壁纸（File → dataURL → localStorage + 应用）。 */
@@ -27,9 +27,9 @@ export interface DenpaAppearanceInjected {
   removeWallpaper: () => void
 }
 
-export type DenpaAppearanceComponentProps =
-  PropsRuntime<'settings.section'> & PropsStore<ReturnType<typeof createDenpaStore>>
-  & PropsLocale<'denpa-appearance'> & DenpaAppearanceInjected
+export type LiuliAppearanceComponentProps =
+  PropsRuntime<'settings.section'> & PropsStore<ReturnType<typeof createLiuliStore>>
+  & PropsLocale<'liuli-appearance'> & LiuliAppearanceInjected
 
 /** 悬浮功能描述（portal 浮层）：渲染到 body，fixed 定位，永不被设置面板
  *  滚动容器裁剪；上方空间不足时自动翻转到图标下方。 */
@@ -194,22 +194,22 @@ function SelectRow(props: {
 /** 壁纸预览：按实际窗口比例显示效果（fit/选区所见即所得），可框选自定义选区。 */
 function WallpaperPreview(props: {
   src: string
-  fit: DenpaSettings['bg_fit']
-  area: DenpaBgArea | null
-  onArea: (area: DenpaBgArea) => void
+  fit: LiuliSettings['bg_fit']
+  area: LiuliBgArea | null
+  onArea: (area: LiuliBgArea) => void
   onClearArea: () => void
-  t: TranslateNS<'denpa-appearance'>
+  t: TranslateNS<'liuli-appearance'>
 }) {
   const stageRef = useRef<HTMLDivElement | null>(null)
   const [winRatio, setWinRatio] = useState(() => window.innerWidth / window.innerHeight)
   const [imgRatio, setImgRatio] = useState<number | null>(null)
   const [selectMode, setSelectMode] = useState(false)
-  const [selBox, setSelBox] = useState<DenpaBgArea | null>(null)
-  const [displayArea, setDisplayArea] = useState<DenpaBgArea | null>(props.area)
+  const [selBox, setSelBox] = useState<LiuliBgArea | null>(null)
+  const [displayArea, setDisplayArea] = useState<LiuliBgArea | null>(props.area)
   const drag = useRef<
-    | { mode: 'create'; start: { x: number; y: number }; prev: DenpaBgArea | null }
-    | { mode: 'move'; offsetX: number; offsetY: number; box: DenpaBgArea }
-    | { mode: 'resize'; box: DenpaBgArea; corner: 'tl' | 'tr' | 'bl' | 'br' }
+    | { mode: 'create'; start: { x: number; y: number }; prev: LiuliBgArea | null }
+    | { mode: 'move'; offsetX: number; offsetY: number; box: LiuliBgArea }
+    | { mode: 'resize'; box: LiuliBgArea; corner: 'tl' | 'tr' | 'bl' | 'br' }
     | null
   >(null)
 
@@ -256,7 +256,7 @@ function WallpaperPreview(props: {
   const cropRatio = imgRatio !== null && imgRatio > 0 ? winRatio / imgRatio : 1
 
   /** 把已有选区转换为指定比例（保留面积与中心，并限制在 0..1 内）。 */
-  const normalizeAreaToRatio = (area: DenpaBgArea, ratio: number): DenpaBgArea => {
+  const normalizeAreaToRatio = (area: LiuliBgArea, ratio: number): LiuliBgArea => {
     const safeRatio = Math.max(0.05, Math.min(20, ratio))
     const areaSize = Math.max(area.w * area.h, 0.04 * 0.04)
     let w = Math.sqrt(areaSize * safeRatio)
@@ -275,7 +275,7 @@ function WallpaperPreview(props: {
   }
 
   /** 从起点向指针方向创建指定比例的选区（自动限制在图片范围内）。 */
-  const createArea = (start: { x: number; y: number }, p: { x: number; y: number }, ratio: number): DenpaBgArea => {
+  const createArea = (start: { x: number; y: number }, p: { x: number; y: number }, ratio: number): LiuliBgArea => {
     const safeRatio = Math.max(0.05, Math.min(20, ratio))
     const dx = p.x - start.x
     const dy = p.y - start.y
@@ -295,11 +295,11 @@ function WallpaperPreview(props: {
 
   /** 从固定角拖动缩放选区，保持窗口比例。corner 为被拖动的角。 */
   const resizeArea = (
-    box: DenpaBgArea,
+    box: LiuliBgArea,
     corner: 'tl' | 'tr' | 'bl' | 'br',
     p: { x: number; y: number },
     ratio: number,
-  ): DenpaBgArea => {
+  ): LiuliBgArea => {
     const safeRatio = Math.max(0.05, Math.min(20, ratio))
     const fixed = {
       x: corner === 'tl' || corner === 'bl' ? box.x + box.w : box.x,
@@ -324,7 +324,7 @@ function WallpaperPreview(props: {
   /** 当前实际窗口大小对应的默认选区：图片坐标系中与窗口同比例的最大居中区域（Cover 下即整窗视图）。
       预留 0.002 边距：既避免选区恰好铺满图片时背景公式除零，也保证选区低于 bgGeometry 的
       0.999 门槛——若钳到 0.999 会被当作"无选区"忽略，壁纸与预览都不会跟随选区变化。 */
-  const windowArea = (): DenpaBgArea | null => {
+  const windowArea = (): LiuliBgArea | null => {
     if (imgRatio === null || imgRatio <= 0) return null
     const maxW = Math.min(0.998, imgRatio > winRatio ? winRatio / imgRatio : 1)
     const maxH = Math.min(0.998, imgRatio > winRatio ? 1 : imgRatio / winRatio)
@@ -560,10 +560,10 @@ function ColorRow(props: { label: string; value: string; onChange: (v: string) =
   )
 }
 
-/** 渲染 DenpaPush 界面设置 section。 */
-export function DenpaAppearanceSection({
+/** 渲染 琉璃 界面设置 section。 */
+export function LiuliAppearanceSection({
   useStore, t, save, reset, uploadWallpaper, removeWallpaper,
-}: DenpaAppearanceComponentProps) {
+}: LiuliAppearanceComponentProps) {
   const state = useStore(s => s)
   const s = state.settings
   const wallpaper = state.wallpaper
@@ -572,7 +572,7 @@ export function DenpaAppearanceSection({
   const [fileLabel, setFileLabel] = useState<string>('')
   const [uploadError, setUploadError] = useState<string>('')
 
-  const set = (patch: Partial<DenpaSettings>): void => { save(patch) }
+  const set = (patch: Partial<LiuliSettings>): void => { save(patch) }
 
   return (
     <div className={css.section}>
@@ -590,7 +590,7 @@ export function DenpaAppearanceSection({
             { value: 'dynamic', label: t('colorMode.dynamic') },
             { value: 'static', label: t('colorMode.static') },
           ]}
-          onChange={(v) => { set({ color_mode: v as DenpaSettings['color_mode'] }) }}
+          onChange={(v) => { set({ color_mode: v as LiuliSettings['color_mode'] }) }}
         />
 
         {s.color_mode === 'static' && (
@@ -610,7 +610,7 @@ export function DenpaAppearanceSection({
             { value: 'custom', label: t('bgMode.custom') },
             { value: 'image', label: t('bgMode.image') },
           ]}
-          onChange={(v) => { set({ background_mode: v as DenpaSettings['background_mode'] }) }}
+          onChange={(v) => { set({ background_mode: v as LiuliSettings['background_mode'] }) }}
         />
 
         {s.background_mode === 'image' && (
@@ -642,7 +642,7 @@ export function DenpaAppearanceSection({
             { value: 'acrylic', label: t('materialType.acrylic') },
             { value: 'mica', label: t('materialType.mica') },
           ]}
-          onChange={(v) => { set({ material_type: v as DenpaSettings['material_type'] }) }}
+          onChange={(v) => { set({ material_type: v as LiuliSettings['material_type'] }) }}
         />
 
         <ToggleRow
@@ -671,7 +671,7 @@ export function DenpaAppearanceSection({
             { value: 'misans', label: t('fontMode.misans') },
             { value: 'builtin', label: t('fontMode.builtin') },
           ]}
-          onChange={(v) => { set({ font_mode: v as DenpaSettings['font_mode'] }) }}
+          onChange={(v) => { set({ font_mode: v as LiuliSettings['font_mode'] }) }}
         />
 
         <SliderRow
@@ -718,7 +718,7 @@ export function DenpaAppearanceSection({
             { value: 'staggerRise', label: t('transition.staggerRise') },
             { value: 'none', label: t('transition.none') },
           ]}
-          onChange={(v) => { set({ transition_effect: v as DenpaSettings['transition_effect'] }) }}
+          onChange={(v) => { set({ transition_effect: v as LiuliSettings['transition_effect'] }) }}
         />
       </div>
 
@@ -728,67 +728,67 @@ export function DenpaAppearanceSection({
         <div className={css.grid}>
           <SliderRow
             label={t('vp.sensitivity')} value={s.vp_sensitivity} suffix="" min={0.01} max={1} step={0.01}
-            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_sensitivity} tip={t('vp.tip.sensitivity')}
+            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_sensitivity} tip={t('vp.tip.sensitivity')}
             onChange={(v) => { set({ vp_sensitivity: v }) }}
           />
           <SliderRow
             label={t('vp.beatGain')} value={s.vp_beat_gain} suffix="×" min={0} max={5} step={0.1}
-            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_beat_gain} tip={t('vp.tip.beatGain')}
+            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_beat_gain} tip={t('vp.tip.beatGain')}
             onChange={(v) => { set({ vp_beat_gain: v }) }}
           />
           <SliderRow
             label={t('vp.beatDecay')} value={s.vp_beat_decay} suffix="" min={0.5} max={0.995} step={0.005}
-            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_beat_decay} tip={t('vp.tip.beatDecay')}
+            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_beat_decay} tip={t('vp.tip.beatDecay')}
             onChange={(v) => { set({ vp_beat_decay: v }) }}
           />
           <SliderRow
             label={t('vp.beatMult')} value={s.vp_beat_mult} suffix="×" min={1} max={5} step={0.1}
-            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_beat_mult} tip={t('vp.tip.beatMult')}
+            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_beat_mult} tip={t('vp.tip.beatMult')}
             onChange={(v) => { set({ vp_beat_mult: v }) }}
           />
           <SliderRow
             label={t('vp.pulseMult')} value={s.vp_pulse_mult} suffix="×" min={0.1} max={3} step={0.05}
-            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_pulse_mult} tip={t('vp.tip.pulseMult')}
+            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_pulse_mult} tip={t('vp.tip.pulseMult')}
             onChange={(v) => { set({ vp_pulse_mult: v }) }}
           />
           <SliderRow
             label={t('vp.bassWeight')} value={s.vp_bass_weight} suffix="%" min={0} max={100} step={1}
-            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_bass_weight} tip={t('vp.tip.bassWeight')}
+            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_bass_weight} tip={t('vp.tip.bassWeight')}
             onChange={(v) => { set({ vp_bass_weight: v }) }}
           />
           <SliderRow
             label={t('vp.midWeight')} value={s.vp_mid_weight} suffix="%" min={0} max={100} step={1}
-            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_mid_weight} tip={t('vp.tip.midWeight')}
+            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_mid_weight} tip={t('vp.tip.midWeight')}
             onChange={(v) => { set({ vp_mid_weight: v }) }}
           />
           <SliderRow
             label={t('vp.highWeight')} value={s.vp_high_weight} suffix="%" min={0} max={100} step={1}
-            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_high_weight} tip={t('vp.tip.highWeight')}
+            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_high_weight} tip={t('vp.tip.highWeight')}
             onChange={(v) => { set({ vp_high_weight: v }) }}
           />
           <SliderRow
             label={t('vp.beatCooldown')} value={s.vp_beat_cooldown} suffix="ms" min={50} max={1000} step={10}
-            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_beat_cooldown} tip={t('vp.tip.beatCooldown')}
+            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_beat_cooldown} tip={t('vp.tip.beatCooldown')}
             onChange={(v) => { set({ vp_beat_cooldown: v }) }}
           />
           <SliderRow
             label={t('vp.pulseCooldown')} value={s.vp_pulse_cooldown} suffix="ms" min={50} max={1000} step={10}
-            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_pulse_cooldown} tip={t('vp.tip.pulseCooldown')}
+            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_pulse_cooldown} tip={t('vp.tip.pulseCooldown')}
             onChange={(v) => { set({ vp_pulse_cooldown: v }) }}
           />
           <SliderRow
             label={t('vp.envSpeed')} value={s.vp_env_speed} suffix="" min={0} max={100} step={1}
-            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_env_speed} tip={t('vp.tip.envSpeed')}
+            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_env_speed} tip={t('vp.tip.envSpeed')}
             onChange={(v) => { set({ vp_env_speed: v }) }}
           />
           <SliderRow
             label={t('vp.specSmooth')} value={s.vp_spec_smooth} suffix="" min={0.02} max={0.8} step={0.01}
-            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_spec_smooth} tip={t('vp.tip.specSmooth')}
+            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_spec_smooth} tip={t('vp.tip.specSmooth')}
             onChange={(v) => { set({ vp_spec_smooth: v }) }}
           />
           <SliderRow
             label={t('vp.noiseGate')} value={s.vp_noise_gate} suffix="" min={0} max={0.2} step={0.005}
-            defaultValue={DENPA_SETTINGS_DEFAULTS.vp_noise_gate} tip={t('vp.tip.noiseGate')}
+            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_noise_gate} tip={t('vp.tip.noiseGate')}
             onChange={(v) => { set({ vp_noise_gate: v }) }}
           />
         </div>
@@ -841,7 +841,7 @@ export function DenpaAppearanceSection({
             { value: 'contain', label: t('bgFit.contain') },
             { value: 'stretch', label: t('bgFit.stretch') },
           ]}
-          onChange={(v) => { set({ bg_fit: v as DenpaSettings['bg_fit'] }) }}
+          onChange={(v) => { set({ bg_fit: v as LiuliSettings['bg_fit'] }) }}
         />
 
         {wallpaper !== null && (

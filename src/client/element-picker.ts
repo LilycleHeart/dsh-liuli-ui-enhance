@@ -1,5 +1,5 @@
 /**
- * 全局元素选择器（复刻自 ui-preview 的 element-picker：纯 DOM 读取，无依赖）。
+ * 全局元素选择器（实现自 ui-preview 的 element-picker：纯 DOM 读取，无依赖）。
  * Pure element-description helpers for the preview element picker. They turn a
  * DOM element into a CSS selector and a compact structured description the
  * user can send to the agent. No React and no network: DOM reads only, so the

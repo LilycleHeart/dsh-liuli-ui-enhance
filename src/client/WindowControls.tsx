@@ -195,6 +195,22 @@ export function WindowControls() {
           }
         }
       }
+      // 右侧详情列（面板区）与胶囊相交也视为遮挡：dock 布局改动后胶囊常悬停
+      // 在详情列上方，若右上角没有按钮则永不隐藏、提示条失效；详情列打开时
+      // 收起胶囊并显示提示条，详情列关闭时胶囊照常显示。
+      if (!overlapping) {
+        const details = document.querySelector<HTMLElement>(
+          '[data-region-pane="region:details"], [class*="_detailsCol"]',
+        )
+        if (details !== null) {
+          const dr = details.getBoundingClientRect()
+          if (dr.width > 0 && dr.height > 0
+            && r.left < dr.right && r.right > dr.left
+            && r.top < dr.bottom && r.bottom > dr.top) {
+            overlapping = true
+          }
+        }
+      }
       if (overlapping !== last) {
         last = overlapping
         setHidden(overlapping)

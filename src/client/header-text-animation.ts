@@ -5,7 +5,7 @@
  * （headerActions）会随会话切换/重命名/模型切换而更新文本，但宿主没有
  * 为这些文本变化提供动画。本模块用 MutationObserver 监听 header 内的
  * 动态文本容器，检测到文本变化时挂 .liuli-header-text-enter 类，
- * 动画定义在 denpa.css / denpa-css.ts（与侧边栏条目同风格的小幅上浮）。
+ * 动画定义在 liuli.css / liuli-css.ts（与侧边栏条目同风格的小幅上浮）。
  *
  * 覆盖两种宿主形态：
  * - 普通会话页：div[data-phase] > header（或 > div > header）；

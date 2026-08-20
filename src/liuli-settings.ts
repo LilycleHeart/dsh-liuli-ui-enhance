@@ -1,29 +1,29 @@
-/** 琉璃主题界面设置：持久化命名空间、默认值与字段声明（同 DenpaPush 界面设置）。 */
+/** 琉璃主题界面设置：持久化命名空间、默认值与字段声明（同 琉璃 界面设置）。 */
 
 import z from '@deepseek-ai/schemastery'
 
 /** Settings namespace owned by the liuli appearance section. */
-export const LIULI_SETTINGS_NAMESPACE = 'liuli-theme-denpa'
+export const LIULI_SETTINGS_NAMESPACE = 'liuli-theme'
 
 /** 设置持久化键（localStorage，浏览器端；HeaderEffects 运行时读取同一键）。 */
-export const DENPA_LS_KEY = 'denpa:settings'
+export const LIULI_LS_KEY = 'liuli:settings'
 
 /** 取色模式 */
-export type DenpaColorMode = 'dynamic' | 'static'
+export type LiuliColorMode = 'dynamic' | 'static'
 /** 背景模式 */
-export type DenpaBackgroundMode = 'theme' | 'brand_gradient' | 'custom' | 'image'
+export type LiuliBackgroundMode = 'theme' | 'brand_gradient' | 'custom' | 'image'
 /** 材质类型 */
-export type DenpaMaterialType = 'acrylic' | 'mica'
+export type LiuliMaterialType = 'acrylic' | 'mica'
 /** 字体模式 */
-export type DenpaFontMode = 'misans' | 'builtin'
+export type LiuliFontMode = 'misans' | 'builtin'
 /** 会话切换/新消息入场动画效果（none 关闭；stagger* 为级联入场）。 */
-export type DenpaTransitionEffect =
+export type LiuliTransitionEffect =
   | 'fade' | 'rise' | 'drop' | 'slide' | 'zoom' | 'blur' | 'spring'
   | 'stagger' | 'staggerRise' | 'none'
 /** 壁纸适应模式 */
-export type DenpaBgFit = 'cover' | 'contain' | 'stretch'
+export type LiuliBgFit = 'cover' | 'contain' | 'stretch'
 /** 壁纸自定义选区（相对原图的归一化矩形，0..1；Cover 下按窗口比例约束）。 */
-export interface DenpaBgArea {
+export interface LiuliBgArea {
   x: number
   y: number
   w: number
@@ -31,18 +31,18 @@ export interface DenpaBgArea {
 }
 
 /** 琉璃界面设置（全部字段）。 */
-export interface DenpaSettings {
-  color_mode: DenpaColorMode
+export interface LiuliSettings {
+  color_mode: LiuliColorMode
   brand_color: string
-  background_mode: DenpaBackgroundMode
+  background_mode: LiuliBackgroundMode
   custom_background: string
   custom_background_dark: string
   bg_scrim: number
   acrylic_enabled: boolean
-  material_type: DenpaMaterialType
+  material_type: LiuliMaterialType
   material_opacity: number
   material_blur: number
-  font_mode: DenpaFontMode
+  font_mode: LiuliFontMode
   corner_radius: number
   glow_enabled: boolean
   glow_intensity: number
@@ -51,9 +51,9 @@ export interface DenpaSettings {
   /** 宽边模式：对话信息区在宽屏下撑满可用宽度（提高空间利用率）。 */
   wide_mode: boolean
   /** 壁纸适应模式（cover 填充 / contain 适应 / stretch 拉伸）。 */
-  bg_fit: DenpaBgFit
+  bg_fit: LiuliBgFit
   /** 壁纸自定义选区（cover 模式下放大显示该区域，按窗口比例约束）；null 为全图。 */
-  bg_area: DenpaBgArea | null
+  bg_area: LiuliBgArea | null
   /** 声纹响应灵敏度：连续响应的参考响度（ENV_REF，0.05-0.5，越小越灵敏）。 */
   vp_sensitivity: number
   /** 声纹鼓点强度：脉冲振幅倍率加成（PUNCH_GAIN，峰值 ×(1+gain)）。 */
@@ -81,11 +81,11 @@ export interface DenpaSettings {
   /** 声纹静音门限（低于此电平的频段驱动归零，越大静音/底噪时越安静）。 */
   vp_noise_gate: number
   /** 会话切换/新消息入场动画（'rise' 默认；'none' 关闭）。 */
-  transition_effect: DenpaTransitionEffect
+  transition_effect: LiuliTransitionEffect
 }
 
-/** 默认设置（与 DenpaPush 界面设置一致）。 */
-export const DENPA_SETTINGS_DEFAULTS: DenpaSettings = {
+/** 默认设置（与 琉璃 界面设置一致）。 */
+export const LIULI_SETTINGS_DEFAULTS: LiuliSettings = {
   color_mode: 'dynamic',
   brand_color: '#1d9bf0',
   background_mode: 'theme',
@@ -122,7 +122,7 @@ export const DENPA_SETTINGS_DEFAULTS: DenpaSettings = {
 }
 
 /** 持久化 schema（浏览器 scope 复用同一描述）。 */
-export const DenpaSettingsSchema: z<DenpaSettings> = z.object({
+export const LiuliSettingsSchema: z<LiuliSettings> = z.object({
   color_mode: z.union(['dynamic', 'static']).default('dynamic'),
   brand_color: z.string().default('#1d9bf0'),
   background_mode: z.union(['theme', 'brand_gradient', 'custom', 'image']).default('theme'),
@@ -159,13 +159,13 @@ export const DenpaSettingsSchema: z<DenpaSettings> = z.object({
   transition_effect: z.union([
     'fade', 'rise', 'drop', 'slide', 'zoom', 'blur', 'spring', 'stagger', 'staggerRise', 'none',
   ]).default('rise'),
-}) as unknown as z<DenpaSettings>
+}) as unknown as z<LiuliSettings>
 
 /** 合并任意部分值到完整设置（读侧防御）。 */
-export function denpaSettingsOf(value: unknown): DenpaSettings {
-  const v = (value ?? {}) as Partial<DenpaSettings>
+export function liuliSettingsOf(value: unknown): LiuliSettings {
+  const v = (value ?? {}) as Partial<LiuliSettings>
   return {
-    ...DENPA_SETTINGS_DEFAULTS,
+    ...LIULI_SETTINGS_DEFAULTS,
     ...(typeof v === 'object' ? v : {}),
   }
 }

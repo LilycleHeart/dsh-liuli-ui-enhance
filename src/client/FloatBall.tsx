@@ -6,7 +6,7 @@
  * - 点击（非拖拽）展开/收起工具栏；
  * - 工具栏首件工具：全局元素选择器 —— 悬停高亮 + 点击拾取 + 信息卡。
  *
- * 位置记忆到 localStorage（denpa:floatball-pos）；hover/信息卡经 portal
+ * 位置记忆到 localStorage（liuli:floatball-pos）；hover/信息卡经 portal
  * 挂到 body，避免被 root 的 transform（半隐藏滑出）钉住。
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
@@ -24,7 +24,7 @@ const SNAP_DIST = 90
 /** 拖拽位移超过该阈值视为拖动而非点击（px）。 */
 const CLICK_SLOP = 4
 /** 位置记忆键。 */
-const LS_POS = 'denpa:floatball-pos'
+const LS_POS = 'liuli:floatball-pos'
 
 type Side = 'left' | 'right' | 'top' | 'bottom'
 
