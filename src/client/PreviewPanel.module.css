@@ -11,7 +11,7 @@
   min-width: 0;
   /* 描边与侧栏/会话区卡片一致（1px solid border-l1） */
   border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.15));
-  border-radius: var(--denpa-radius, 14px) 0 0 0;
+  border-radius: var(--denpa-radius, 14px) 0 0 var(--denpa-radius, 14px);
   background-color: transparent;
   background-image: none;
   box-shadow: var(--denpa-glow-brand), var(--denpa-shadow);

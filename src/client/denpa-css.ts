@@ -623,6 +623,31 @@ div[class*="hoverCard"] {
 }
 
 /* ════════════════════════════════════════════════════════════
+ * 会话 header 动态文本（标题名/模型/路由等）变化时入场动画。
+ * 由 header-text-animation.ts 在文本变化时挂 .liuli-header-text-enter。
+ * ════════════════════════════════════════════════════════════ */
+@keyframes liuli-header-text-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.liuli-header-text-enter {
+  animation: liuli-header-text-rise 0.3s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liuli-header-text-enter {
+    animation: none;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
  * 官方 harness 观感还原（用户 WIP 曾在宿主 module.css 中实现，
  * 现由插件全局样式承担）：浮动卡片布局 —— frame 背景消费
  * --denpa-frame-bg*（壁纸/渐变/自定义由 denpa-runtime 写入），
@@ -1224,29 +1249,31 @@ div[data-phase='active'] {
 
 /* ════════════════════════════════════════════════════════════
  * 预览列（右侧 details）像侧栏一样：透明列留白 + 右贴边圆角卡片。
- * 与侧栏配方镜像：padding 16/0/0/16（下方触底），圆角 左上圆其余直，背景层走 ::before。
+ * 与侧栏配方镜像：padding 16/0/16/16（上下留白一致，收起/展开时
+ * 容器高度不跳变），圆角 左侧圆、右侧直（含左下），背景层走 ::before。
  * ════════════════════════════════════════════════════════════ */
 [class*="_detailsCol"] {
-  padding: 16px 0 0 16px !important;
+  padding: 16px 0 16px 16px !important;
   background: transparent !important;
   border-left: none !important;
   transition: padding 300ms var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1)) !important;
 }
 
-/* 展开时放开横向溢出让卡片辉光/阴影完整露出；收起（宽度 0）必须裁掉内容。 */
+/* 展开时放开横向溢出让卡片辉光/阴影完整露出；收起（宽度 0）必须裁掉内容。
+   收起态保留上下 16px 内边距，与侧栏一致：容器高度始终 = 列高 - 32px。 */
 [class*="_frame"]:not([data-details-collapsed]) [class*="_detailsCol"] {
   overflow: visible !important;
 }
 
 [class*="_frame"][data-details-collapsed] [class*="_detailsCol"] {
-  padding: 0 !important;
+  padding: 16px 0 !important;
   overflow: hidden !important;
 }
 
 [class*="_detailsCol"] [data-preview-panel] {
   position: relative !important;
   z-index: 1 !important;
-  border-radius: var(--denpa-radius, 14px) 0 0 0 !important;
+  border-radius: var(--denpa-radius, 14px) 0 0 var(--denpa-radius, 14px) !important;
   background-color: transparent !important;
   background-image: none !important;
   box-shadow: var(--denpa-glow-brand), var(--denpa-shadow) !important;

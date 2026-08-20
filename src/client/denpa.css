@@ -581,6 +581,31 @@ div[class$="hoverCard"] {
 }
 
 /* ════════════════════════════════════════════════════════════
+ * 会话 header 动态文本（标题名/模型/路由等）变化时入场动画。
+ * 由 header-text-animation.ts 在文本变化时挂 .liuli-header-text-enter。
+ * ════════════════════════════════════════════════════════════ */
+@keyframes liuli-header-text-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.liuli-header-text-enter {
+  animation: liuli-header-text-rise 0.3s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liuli-header-text-enter {
+    animation: none;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
  * 用户消息里的元素引用卡片（element-picker 发送后由 element-card.ts
  * 把 [selected element] 纯文本替换为卡片 DOM）。
  * ════════════════════════════════════════════════════════════ */
