@@ -679,7 +679,8 @@
 .frame {
   flex: 1 1 auto;
   border: none;
-  background: #fff;
+  /* 跟随明/暗主题：--dsw-alias-bg-base 由主题在亮/暗下分别定义 */
+  background: var(--dsw-alias-bg-base);
 }
 
 .empty {
@@ -701,7 +702,9 @@
   bottom: 0;
   left: 0;
   width: 5px;
-  z-index: 30;
+  /* 高于 desktop advanced shell 的 .dshDesktopResizeHandle（z-index 50），
+     保证用户拖到的是本面板手柄（88% 上限）而非 desktop 的 clamp 300-520。 */
+  z-index: 60;
   cursor: ew-resize;
   touch-action: none;
 }
@@ -932,7 +935,8 @@
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  background: var(--dsw-specific-bg-major, #fff);
+  /* 跟随明/暗主题（原 --dsw-specific-bg-major 未定义，恒回退 #fff） */
+  background: var(--dsw-alias-bg-base);
 }
 
 .emptyWebview {
@@ -946,7 +950,8 @@
   gap: 4px;
   padding: 24px;
   text-align: center;
-  background: var(--dsw-specific-bg-major, #fff);
+  /* 跟随明/暗主题（原 --dsw-specific-bg-major 未定义，恒回退 #fff） */
+  background: var(--dsw-alias-bg-base);
 }
 
 .emptyWebviewIcon {

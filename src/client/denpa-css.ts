@@ -671,118 +671,6 @@ div[class*="hoverCard"] {
   padding: 16px 16px 16px 12px !important;
 }
 
-/* ════════════════════════════════════════════════════════════
- * 会话标题面板拆分（Dockable Workspace）
- * ────────────────────────────────────────────────────────────
- * DockShellFrame 把会话区域垂直拆成两个 dock 容器：上方
- * REGION_CONVERSATION_HEADER 面板渲染宿主的会话 header（面包屑/
- * tabs/操作/工具），下方 REGION_CONVERSATION 面板渲染完整
- * conversation。宿主 ConversationRoot 内部仍会渲染一份 header，
- * 拆分模式下用 CSS 隐藏它（header 已在标题面板里显示），避免双份。
- * frame 根挂 data-conversation-header 标记，仅拆分时生效；
- * 无该标记（旧布局/标题面板被移除）时对话页 header 恢复原样。
- * 注意：conversation 面板可能是单区域（data-region-pane）或多标签
- * 组（tabStrip），选择器只依赖 [data-phase] 根，两种形态都命中。
- * ════════════════════════════════════════════════════════════ */
-[data-conversation-header] [data-phase] > header,
-[data-conversation-header] [data-phase] > div > header {
-  display: none !important;
-}
-
-/* 拆分模式：对话页根不再有 header 卡，正文卡独占高度。壁纸模糊缝
-   （--dsh-header-height 挖空）不再需要 —— 整根铺满正文卡的磨砂。 */
-[data-conversation-header] [data-phase]::before {
-  -webkit-mask-image: none !important;
-  mask-image: none !important;
-  --dsh-header-height: 0px;
-}
-
-/* 标题面板容器：撑满高度、横向留白，与对话页共用卡片间隙观感 */
-[data-region-pane="region:conversation-header"] {
-  padding: 0 16px 0 0 !important;
-}
-
-/* 标题面板内的宿主 header：沿用对话页 header 卡片的浮动观感
-   （圆角/描边/亚克力），但去掉原卡片对下缘 12px 间距的依赖
-   （dock 垂直 split 的 sash 已提供面板间隙）。 */
-[data-region-pane="region:conversation-header"] header {
-  margin-bottom: 0 !important;
-  border: 1px solid var(--dsw-alias-border-l1) !important;
-  border-radius: var(--denpa-radius, 14px) !important;
-  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity)) !important;
-  background-image: var(--denpa-noise) !important;
-  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow) !important;
-  -webkit-backdrop-filter: none !important;
-  backdrop-filter: none !important;
-}
-
-/* 标题面板内 header 撑满面板高度（宿主默认 flex:none 内容高；
-   dock split 决定面板高度，header 填满后声纹 canvas/间距均匀） */
-[data-region-pane="region:conversation-header"] header {
-  flex: 1 1 auto !important;
-  box-sizing: border-box !important;
-  height: 100% !important;
-}
-
-/* 标题面板内工具区与 tabs 行的 absolute 锚定规则（对话页规则的选择器
-   是 div[data-phase] > header，面板场景补命中） */
-[data-region-pane="region:conversation-header"] header:has([class*="_tabs"]) [class*="_titleRow"] [class*="_headerUtilities"] {
-  position: absolute !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  margin-left: 0 !important;
-  transform: translateY(var(--dsh-tabs-offset, 31px)) !important;
-}
-
-/* 标题面板内 header 的分隔线同样去掉（与卡片圆角冲突） */
-[data-region-pane="region:conversation-header"] header::after {
-  display: none !important;
-}
-
-/* 标题行浮于声纹 canvas 之上（同对话页规则，面板场景补命中选择器） */
-[data-region-pane="region:conversation-header"] header [class*="_titleRow"] {
-  position: relative !important;
-  z-index: 1 !important;
-}
-
-/* 标题面板 header 的壁纸模糊：面板是独立 dock 容器，自身持有磨砂
-   （无 [data-phase]::before 可借），用 ::before 伪元素注入模糊层，
-   与侧栏卡同套路（根不持有 backdrop-filter，避免截断内部浮层）。 */
-[data-region-pane="region:conversation-header"] {
-  position: relative;
-}
-
-[data-region-pane="region:conversation-header"]::before {
-  content: '';
-  position: absolute;
-  inset: 16px 16px 16px 12px;
-  z-index: 0;
-  border-radius: var(--denpa-radius, 14px);
-  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity));
-  background-image: var(--denpa-noise);
-  -webkit-backdrop-filter: var(--denpa-material-blur);
-  backdrop-filter: var(--denpa-material-blur);
-  pointer-events: none;
-}
-
-/* 面板内容浮于模糊层之上 */
-[data-region-pane="region:conversation-header"] > div {
-  position: relative;
-  z-index: 1;
-}
-
-/* 声纹 canvas（HeaderEffects portal 到 header）仍在 header 卡片内铺满 */
-[data-region-pane="region:conversation-header"] header {
-  position: relative;
-  overflow: hidden;
-}
-
-/* 拉伸手柄在标题面板里跨面板间隙：底部 12px 悬空命中带改到面板内
-   （sash 已承担面板缩放，resizer 只改 header 高度自身） */
-[data-region-pane="region:conversation-header"] header [class*="_resizer"] {
-  bottom: 0 !important;
-}
-
 /* 会话 header 浮动卡片：官方 header 为 <header> 标签 + 哈希类名。
    只命中会话列顶部的 header，避免把问题/审批卡片内部的 <header> 也套上
    卡片背景导致上下样式不统一。 */
@@ -821,6 +709,55 @@ div[data-phase] > div > header:has([class*="_tabs"]) [class*="_titleRow"] [class
   /* 防御：右上角窗口胶囊曾要求 132px 让位，工具区已移出标题行，清零防错位 */
   padding-right: 0 !important;
   transform: translateY(var(--dsh-tabs-offset, 31px)) !important;
+}
+
+/* 修复"四个工具按钮无法点击"：tabs 行（position:relative; z-index:1，DOM 在
+   titleRow 之后）绘制在 titleRow 上方，会把 absolute + translateY 下沉到
+   tabs 行区域的工具区盖住并拦截点击。让 tabs 行整行对点击透明（pointer-events:
+   none），仅标签按钮自身可点——下沉的工具按钮即可正常命中。 */
+div[data-phase] > header [class*="_tabs"],
+div[data-phase] > div > header [class*="_tabs"],
+[data-region-pane="region:conversation-header"] header [class*="_tabs"] {
+  pointer-events: none !important;
+}
+
+div[data-phase] > header [class*="_tabs"] [class*="_tab"],
+div[data-phase] > div > header [class*="_tabs"] [class*="_tab"],
+[data-region-pane="region:conversation-header"] header [class*="_tabs"] [class*="_tab"] {
+  pointer-events: auto !important;
+}
+
+/* ════════════════════════════════════════════════════════════
+ * 会话 header 视图标签（对话/轨迹）滑动激活指示条：
+ * 官方每个 tab 按钮用自己 ::after 画底部激活横条，切换时横条瞬间
+ * 出现/消失（无位移）。这里隐藏官方横条，改由 header-tab-indicator.ts
+ * 在 tabs 容器注入独立指示条 [data-liuli-tab-indicator]，JS 测量
+ * 激活 tab 的 left/width，用 transform + width 过渡平滑滑动过去。
+ * ════════════════════════════════════════════════════════════ */
+div[data-phase] > header [class*="_tabs"] [class*="_tab"]::after,
+div[data-phase] > div > header [class*="_tabs"] [class*="_tab"]::after,
+[data-region-pane="region:conversation-header"] header [class*="_tabs"] [class*="_tab"]::after {
+  background: transparent !important;
+}
+
+[data-liuli-tab-indicator] {
+  position: absolute;
+  left: 0;
+  bottom: 1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--dsw-alias-state-business-primary);
+  pointer-events: none;
+  transition: transform 220ms var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1)),
+    width 220ms var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1));
+  will-change: transform, width;
+  z-index: 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-liuli-tab-indicator] {
+    transition: none;
+  }
 }
 
 /* Session log 按钮：只留 svg 图标，去掉圆钮容器（与相邻监听/主题按钮一致） */

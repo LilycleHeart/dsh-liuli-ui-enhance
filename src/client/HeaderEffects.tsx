@@ -352,13 +352,6 @@ export function DenpaHeaderVoiceprint() {
     if (canvas === null) return
     const ctx = canvas.getContext('2d')
     if (ctx === null) return
-    // 标题面板拆分：对话页内被 CSS 隐藏的 header 那份 canvas 不绘制
-    // （可见性检测，避免双份声纹空转 rAF）。
-    const headerHost = canvas.closest('header')
-    if (headerHost !== null && (getComputedStyle(headerHost).display === 'none'
-      || headerHost.getClientRects().length === 0)) {
-      return
-    }
     let w = 0, h = 0
     let raf = 0
     let visible = true
@@ -761,16 +754,10 @@ export function DenpaHeaderResizer() {
     if (el === null) return
     const header = el.closest('header')
     if (header === null) return
-    // 标题面板拆分：对话页内被 CSS 隐藏的 header 那份 resizer 跳过
-    // （不可见 → 不测量/不拖拽，避免把 --dsh-header-height 写成 0）。
-    if (getComputedStyle(header).display === 'none' || header.getClientRects().length === 0) return
     // 把 header 实际高度同步到 root 的 --dsh-header-height，
     // 并生成跟随卡片圆角的 SVG mask（--dsh-wallpaper-mask），
     // 让壁纸模糊层只在 header / 正文两张圆角卡片范围内可见。
-    // header 提升到独立标题面板（REGION_CONVERSATION_HEADER）时 closest
-    // 找不到 [data-phase]，回退到文档中的会话根（同一时刻仅一个活动根）。
     const root = header.closest<HTMLElement>('[data-phase]')
-      ?? document.querySelector<HTMLElement>('[data-phase]')
     const sync = (): void => {
       if (root === null) return
       const headerRect = header.getBoundingClientRect()
@@ -779,9 +766,6 @@ export function DenpaHeaderResizer() {
       // [data-phase]::before 伪元素替代，querySelector 会落空提前 return，
       // 导致变量从未写入、rail 拉伸不跟随（见此前 bug）。
       root.style.setProperty('--dsh-header-height', `${headerRect.height}px`)
-      // dock 面板的 grip 横条位于 [data-phase] 的兄弟节点（pane 内），CSS 变量
-      // 无法从兄弟继承，同步写到根元素让横条位置跟随 header 高度。
-      document.documentElement.style.setProperty('--dsh-header-height', `${headerRect.height}px`)
       const blur = root.querySelector<HTMLElement>(':scope > [aria-hidden="true"]:first-child')
       const blurRect = blur?.getBoundingClientRect()
       if (blurRect === undefined || blurRect.height <= 0) return

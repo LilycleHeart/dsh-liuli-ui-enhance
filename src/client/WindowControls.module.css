@@ -32,6 +32,28 @@
   pointer-events: none;
 }
 
+/* 收起提示条：胶囊避让隐藏时，在右上角顶部（胶囊正上方/触发区位置）显示
+   一条小横条，提示"鼠标移向此处唤出三大金刚键"。纯提示：pointer-events
+   none 不拦截点击；z-index 59 低于胶囊（60），胶囊出现时在其下方。 */
+.hint {
+  position: fixed;
+  top: 4px;
+  right: 54px;
+  width: 28px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--dsw-alias-label-tertiary);
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 59;
+  transition: opacity 140ms var(--ds-ease-in-out);
+}
+
+/* 胶囊可见时提示条淡出 */
+.hintHidden {
+  opacity: 0;
+}
+
 .btn {
   appearance: none;
   display: inline-flex;
