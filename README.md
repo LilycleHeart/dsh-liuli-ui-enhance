@@ -82,24 +82,40 @@ DeepSeek Harness 的 **Material Design 3 × Fluent 2 融合主题**插件:取 Ma
 > **重要**：全新 DSH Desktop 安装时，只改 `cordis.patch.yml` 是不够的，必须同时把
 > `@deepseek-ai/liuli-theme` 安装进 desktop profile 的 `package.json` 依赖，否则会报：
 > `Cannot find package '@deepseek-ai/liuli-theme'`。
+>
+> 另外，全新 DSH Desktop 默认没有应用 win32 无边框宿主补丁，原生标题栏/窗口按钮
+> 不会隐藏。需要额外执行 `pnpm patch:desktop`。
 
 ### 自动安装（推荐）
 
 在插件源码目录执行：
 
 ```bash
-# 本地源码安装（link 到当前目录）
+# 1. 安装插件到 DSH Desktop desktop profile（本地源码会先 pack 成 tarball，
+#    确保 iconv-lite、react 等依赖能正确装进 profile）
 pnpm install:desktop
 
-# 或等发布到 npm 后，从 npm 安装
+# 2. 给 DSH Desktop 打 win32 无边框宿主补丁（隐藏原生标题栏/窗口按钮）
+pnpm patch:desktop
+
+# 或等发布到 npm 后，从 npm 安装：
 pnpm install:desktop:npm
 ```
 
-脚本会：
+`pnpm install:desktop` 会：
 
 1. 把 `@deepseek-ai/liuli-theme` 写入 `~/.dsh/profiles/desktop/package.json` 的 `dependencies`；
+   - 本地源码模式：`pnpm pack` 生成 tarball，以 `file:<tarball>` 安装；
+   - 这样插件自身的 `dependencies`（`iconv-lite`、`react` 等）会被装进 profile。
 2. 确保 `~/.dsh/profiles/desktop/cordis.patch.yml` 注册了 `liuli-theme`；
 3. 在 desktop profile 目录执行 `pnpm install`。
+
+`pnpm patch:desktop` 会：
+
+1. 备份 `resources/app.asar` 为 `app.asar.bak-frameless`；
+2. 修改 `resources/app.asar.unpacked/lib/electron-runtime-he0yaDKX.js`；
+3. 重建 `resources/app.asar` 并同步 integrity；
+4. 写入 `resources/app.asar.patched`。
 
 ### 手动安装
 
@@ -110,8 +126,9 @@ cd ~/.dsh/profiles/desktop
 # 2a. 已发布到 npm：
 pnpm add @deepseek-ai/liuli-theme
 
-# 2b. 本地源码：
-pnpm add @deepseek-ai/liuli-theme@link:/绝对/路径/liuli-theme
+# 2b. 本地源码（先 pack，避免 link 导致依赖缺失）：
+pnpm pack --pack-destination /tmp/liuli
+pnpm add file:/tmp/liuli/deepseek-ai-liuli-theme-0.1.0.tgz
 ```
 
 然后确认 `~/.dsh/profiles/desktop/cordis.patch.yml` 里有：
