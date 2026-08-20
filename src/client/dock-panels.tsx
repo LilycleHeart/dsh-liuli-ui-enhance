@@ -5,9 +5,10 @@
  * 渲染全部复用现有组件，dock 层只负责装载与标题/状态转发。
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { FileTreePanel, GitPanel, WikiPanel } from './RightSidebarPanels.tsx'
+import { FileTreePanel, WikiPanel } from './RightSidebarPanels.tsx'
 import { TerminalPanel, WhiteboardPanel } from './SidePaneExtraPanels.tsx'
 import { CodeViewerPanel, normalizeBrowserUrl } from './PreviewPanel.tsx'
+import { FileReviewPanel } from './FileReviewPanel.tsx'
 import type { PanelInstance } from './dock-model.ts'
 import css from './dock-panels.module.css'
 
@@ -172,10 +173,12 @@ export const DOCK_PANEL_DEFS: DockPanelDef[] = [
   },
   {
     type: 'git',
-    label: 'Git 图谱',
-    defaultTitle: 'Git',
+    label: '审查文件',
+    defaultTitle: '审查',
     icon: <Icon d={ICONS.git} />,
-    render: ({ host }) => <GitPanel sessionId={host.sessionId} />,
+    render: ({ host }) => (
+      <FileReviewPanel sessionId={host.sessionId} onOpenPath={host.openPath} />
+    ),
   },
   {
     type: 'wiki',

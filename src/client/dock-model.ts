@@ -401,6 +401,28 @@ export function moveFloat(layout: DockLayout, floatId: string, target: DropTarge
   return insertPanels(next, moving, activeId, target)
 }
 
+/**
+ * 把一个「不在布局树中」的新面板放入布局（外部拖入场景：右侧标签面板标签、
+ * 文件系统文件等先构造面板实例，再落到目标）。与 movePanel 不同，不涉及
+ * 先从布局中移除源面板；float 目标新建浮动窗口，其余目标并入/拆分。
+ */
+export function placePanel(layout: DockLayout, panel: PanelInstance, target: DropTarget): DockLayout {
+  if (target.kind === 'float') {
+    const next = structuredClone(layout)
+    next.floats.push({
+      id: nextId(next, 'f'),
+      x: target.x,
+      y: target.y,
+      w: 480,
+      h: 360,
+      tabs: [panel],
+      activeId: panel.id,
+    })
+    return next
+  }
+  return insertPanels(layout, [panel], panel.id, target)
+}
+
 /** 设置某标签组/浮动窗口的激活面板。 */
 export function setActivePanel(layout: DockLayout, containerId: string, panelId: string): DockLayout {
   const next = structuredClone(layout)

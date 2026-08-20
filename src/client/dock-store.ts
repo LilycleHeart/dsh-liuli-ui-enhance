@@ -7,7 +7,7 @@
  */
 import {
   addPanel, createPanel, defaultLayout, emptyLayout, moveFloat, movePanel,
-  parseDockLayout, patchPanel, removePanel, resizeSplit, resizeSplitTo, serializeDockLayout,
+  parseDockLayout, patchPanel, placePanel, removePanel, resizeSplit, resizeSplitTo, serializeDockLayout,
   setActivePanel, updateFloat,
   type DockLayout, type DropTarget,
 } from './dock-model.ts'
@@ -93,6 +93,17 @@ export class DockStore {
 
   closePanel(panelId: string): void {
     this.commit(removePanel(this.state, panelId))
+  }
+
+  /**
+   * 把外部拖入的新面板放到指定落点（右侧标签面板标签拖入布局等场景）。
+   * type/title/state 与 addPanel 一致；target 支持 tab/split/edge/float。
+   */
+  placePanel(type: string, title: string | undefined, state: Record<string, unknown> | undefined, target: DropTarget): void {
+    const scratch = emptyLayout()
+    scratch.seq = this.state.seq
+    const panel = createPanel(scratch, type, title, state)
+    this.commit(placePanel({ ...this.state, seq: scratch.seq }, panel, target))
   }
 
   move(panelId: string, target: DropTarget): void {

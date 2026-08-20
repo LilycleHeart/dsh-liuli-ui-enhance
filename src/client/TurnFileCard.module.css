@@ -1,0 +1,184 @@
+/* 轮次结束 · 文件变更卡片（TurnFileCard）：文件名 + DIFF 数量 + 审查/打开/打开方式 */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.16));
+  border-radius: var(--denpa-radius-sm, 12px);
+  background: rgba(var(--denpa-acrylic-rgb), 0.5);
+  -webkit-backdrop-filter: var(--denpa-material-blur, blur(18px) saturate(1.4));
+  backdrop-filter: var(--denpa-material-blur, blur(18px) saturate(1.4));
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.title {
+  font: var(--dsw-font-s-strong-14, 600 13px/1.4 system-ui);
+  color: var(--dsw-alias-label-primary, inherit);
+}
+
+.count {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary, #888);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fileRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 2px;
+  border-radius: var(--denpa-radius-sm, 10px);
+}
+
+.fileRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.1));
+}
+
+.fileInfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.fileName {
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 20px;
+  font-family: var(--ds-font-family-code, ui-monospace, "Cascadia Code", monospace);
+  color: var(--dsw-alias-label-primary, inherit);
+}
+
+.fileDir {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary, #888);
+}
+
+.fileStats {
+  flex: none;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 11px;
+  line-height: 16px;
+  font-family: var(--ds-font-family-code, ui-monospace, monospace);
+  white-space: nowrap;
+}
+
+.statAdd {
+  color: var(--dsw-alias-state-success-primary, #00875a);
+}
+
+.statDel {
+  color: var(--dsw-alias-state-error-primary, #c62828);
+}
+
+.statHunks {
+  color: var(--dsw-alias-label-tertiary, #888);
+}
+
+.btn {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.22));
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, inherit);
+  font-size: 11px;
+  line-height: 18px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.btn:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.14));
+  color: var(--dsw-alias-label-primary, inherit);
+}
+
+.menuWrap {
+  flex: none;
+  position: relative;
+}
+
+.iconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, inherit);
+  cursor: pointer;
+}
+
+.iconBtn:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.14));
+  color: var(--dsw-alias-label-primary, inherit);
+}
+
+.menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 60;
+  min-width: 168px;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.22));
+  border-radius: var(--denpa-radius-sm, 10px);
+  background-color: rgba(var(--denpa-acrylic-rgb), 0.96);
+  background-image: var(--denpa-noise);
+  -webkit-backdrop-filter: var(--denpa-material-blur, blur(18px) saturate(1.4));
+  backdrop-filter: var(--denpa-material-blur, blur(18px) saturate(1.4));
+  box-shadow: var(--denpa-shadow, 0 6px 20px rgba(0, 0, 0, 0.18));
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary, inherit);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.menuItem:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.14));
+}

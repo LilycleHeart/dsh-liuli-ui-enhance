@@ -2,11 +2,34 @@
 
 /* 无边框模式下去掉了 32px caption 拖拽条；窗口拖拽区改由本组件承担：
    控件容器整体 -webkit-app-region: drag（按钮本身 no-drag 保持可点击）。 */
+
+/* 开始页与会话页一致：固定在窗口右上角的磨砂胶囊。去掉 caption 行后它同时是
+   主要窗口拖拽区：加大内边距让按钮周围有足够的可抓握 drag 面积。 */
 .controls {
+  position: fixed;
+  top: 6px;
+  right: 10px;
+  z-index: 60;
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 0;
+  padding: 5px 6px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 12px;
+  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity));
+  background-image: var(--denpa-noise);
+  -webkit-backdrop-filter: var(--denpa-material-blur);
+  backdrop-filter: var(--denpa-material-blur);
+  box-shadow: var(--denpa-shadow);
   -webkit-app-region: drag;
+  /* 智能避让：遮挡交互元素时淡出隐藏（悬停右上角唤出） */
+  transition: opacity 140ms var(--ds-ease-in-out);
+}
+
+/* 避让隐藏态：不拦截下方按钮点击（opacity 0 + pointer-events none） */
+.hidden {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .btn {
@@ -15,8 +38,8 @@
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 26px;
+  width: 34px;
+  height: 24px;
   padding: 0;
   border: none;
   border-radius: 8px;
@@ -40,27 +63,4 @@
 .close:hover {
   background: var(--dsw-alias-state-error-primary);
   color: #ffffff;
-}
-
-/* 开始页兜底：固定在窗口右上角的磨砂胶囊。去掉 caption 行后它同时是
-   主要窗口拖拽区：加大内边距让按钮周围有足够的可抓握 drag 面积。 */
-.caption {
-  position: fixed;
-  top: 6px;
-  right: 10px;
-  z-index: 60;
-  gap: 0;
-  padding: 5px 6px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 12px;
-  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity));
-  background-image: var(--denpa-noise);
-  -webkit-backdrop-filter: var(--denpa-material-blur);
-  backdrop-filter: var(--denpa-material-blur);
-  box-shadow: var(--denpa-shadow);
-}
-
-.caption .btn {
-  width: 34px;
-  height: 24px;
 }

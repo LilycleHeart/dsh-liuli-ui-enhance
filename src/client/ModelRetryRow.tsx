@@ -17,7 +17,7 @@
 import { useEffect, useState } from 'react'
 import type { PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type { createModelRetryStore } from './model-retry-store.ts'
-import { loadModelRetry, saveModelRetry, cacheModelRetryBackoff } from './model-retry-controller.ts'
+// model-retry-controller 的 load/save/cache 由 index.ts 经注入面接线，行组件不直接 import。
 import css from './ModelRetryRow.module.css'
 
 /** 注入面：保存重试参数。 */

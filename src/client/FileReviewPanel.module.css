@@ -1,0 +1,282 @@
+/* 审查文件面板（FileReviewPanel）：替换原 Git 图谱 —— 文件列表 + 全文 + Diff */
+
+.root {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  font: var(--dsw-font-s-strong-14, 600 14px/1.4 system-ui);
+  color: var(--dsw-alias-label-primary, inherit);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.branch {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 35%, transparent);
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 12%, transparent);
+  color: var(--dsw-alias-brand-primary, #0079bf);
+  font-size: 11px;
+  line-height: 16px;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileList {
+  flex: none;
+  max-height: 34%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fileRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  border-radius: var(--denpa-radius-sm, 10px);
+  background: transparent;
+  color: var(--dsw-alias-label-primary, inherit);
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 120ms ease;
+}
+
+.fileRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.14));
+}
+
+.fileRowActive {
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 14%, transparent);
+}
+
+.fileCode {
+  flex: none;
+  min-width: 22px;
+  text-align: center;
+  font-size: 11px;
+  font-family: var(--ds-font-family-code, ui-monospace, monospace);
+  padding: 0 5px;
+  border-radius: 6px;
+  background: rgba(255, 171, 0, 0.16);
+  color: var(--dsw-alias-state-warn-primary, #c77700);
+}
+
+.fileCode[data-status=' M'],
+.fileCode[data-status='M '],
+.fileCode[data-status='MM'],
+.fileCode[data-status='A '],
+.fileCode[data-status='??'] {
+  background: rgba(0, 190, 120, 0.16);
+  color: var(--dsw-alias-state-success-primary, #00875a);
+}
+
+.fileCode[data-status=' D'],
+.fileCode[data-status='D '] {
+  background: rgba(229, 57, 53, 0.16);
+  color: var(--dsw-alias-state-error-primary, #c62828);
+}
+
+.filePath {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--ds-font-family-code, ui-monospace, monospace);
+  font-size: 11px;
+}
+
+.empty {
+  padding: 14px;
+  border: 1px dashed var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.25));
+  border-radius: var(--denpa-radius-sm, 10px);
+  color: var(--dsw-alias-label-tertiary, #888);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.detail {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.detailBar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.detailPath {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--ds-font-family-code, ui-monospace, monospace);
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-primary, inherit);
+}
+
+.detailActions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.actBtn {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.22));
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, inherit);
+  font-size: 11px;
+  line-height: 18px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.actBtn:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.14));
+  color: var(--dsw-alias-label-primary, inherit);
+}
+
+.tabs {
+  flex: none;
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--denpa-radius-sm, 10px);
+  background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.1));
+}
+
+.tabBtn {
+  flex: none;
+  padding: 3px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, inherit);
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.tabBtn:hover {
+  color: var(--dsw-alias-label-primary, inherit);
+}
+
+.tabBtnActive {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.2));
+  color: var(--dsw-alias-label-primary, inherit);
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.18));
+  border-radius: var(--denpa-radius-sm, 10px);
+  background: rgba(var(--denpa-acrylic-rgb), 0.35);
+}
+
+.diffPre {
+  margin: 0;
+  padding: 8px;
+  font-size: 11px;
+  line-height: 17px;
+  font-family: var(--ds-font-family-code, ui-monospace, monospace);
+  white-space: pre;
+}
+
+.diffLine {
+  min-height: 17px;
+  color: var(--dsw-alias-label-primary, inherit);
+}
+
+.diffLine[data-kind='add'] {
+  background: rgba(0, 190, 120, 0.14);
+  color: var(--dsw-alias-state-success-primary, #00875a);
+}
+
+.diffLine[data-kind='del'] {
+  background: rgba(229, 57, 53, 0.13);
+  color: var(--dsw-alias-state-error-primary, #c62828);
+}
+
+.diffLine[data-kind='hunk'] {
+  background: rgba(0, 121, 191, 0.12);
+  color: var(--dsw-alias-brand-primary, #0079bf);
+}
+
+.diffLine[data-kind='meta'] {
+  color: var(--dsw-alias-label-tertiary, #888);
+}
+
+.fullPre {
+  margin: 0;
+  padding: 8px;
+  font-size: 11px;
+  line-height: 17px;
+  font-family: var(--ds-font-family-code, ui-monospace, monospace);
+}
+
+.fullLine {
+  display: flex;
+  gap: 10px;
+  min-height: 17px;
+}
+
+.fullNo {
+  flex: none;
+  width: 34px;
+  text-align: right;
+  color: var(--dsw-alias-label-tertiary, #888);
+  user-select: none;
+}
+
+.fullText {
+  flex: 1;
+  min-width: 0;
+  color: var(--dsw-alias-label-primary, inherit);
+  white-space: pre;
+}

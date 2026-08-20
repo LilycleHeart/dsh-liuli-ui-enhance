@@ -191,6 +191,20 @@ async function vpToggle(): Promise<void> {
   }
   vpState.error = ''
   vpEmit()
+  /** DSH Desktop（Electron）经宿主 /liuli-audio 提供系统回环音频能力：主进程
+   *  setDisplayMediaRequestHandler 直接授予 audio:'loopback'（无选择器）；纯 Web
+   *  部署返回 available:false，继续走浏览器屏幕共享流程。 */
+  let desktopLoopback = false
+  try {
+    const probe = await fetch('/liuli-audio', {
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(3000),
+    })
+    if (probe.ok) {
+      const body = await probe.json() as { available?: unknown }
+      desktopLoopback = body.available === true
+    }
+  } catch { /* 探测失败按纯 Web 处理 */ }
   /** 启动分析器（共用引擎）；成功返回 true。 */
   const startAnalyser = (stream: MediaStream): boolean => {
     const audioTrack = stream.getAudioTracks()[0]
@@ -261,7 +275,9 @@ async function vpToggle(): Promise<void> {
     } catch (err) {
       const name = (err as DOMException | undefined)?.name
       if (name === 'NotAllowedError' || name === 'SecurityError') {
-        vpState.error = '系统音频监听需要授权：' + (name === 'NotAllowedError' ? '已拒绝屏幕共享' : '浏览器策略限制')
+        vpState.error = desktopLoopback
+          ? '系统音频监听不可用：DSH Desktop 未启用系统音频捕获（请确认已安装最新版琉璃主题并重启应用）'
+          : '系统音频监听需要授权：' + (name === 'NotAllowedError' ? '已拒绝屏幕共享' : '浏览器策略限制')
         vpEmit()
         return
       }
@@ -269,7 +285,9 @@ async function vpToggle(): Promise<void> {
     }
   }
 
-  vpState.error = '系统音频监听不可用：请用 Chrome/Edge 访问本页面（当前 ' + window.location.protocol + '//' + window.location.host + '）并允许屏幕共享'
+  vpState.error = desktopLoopback
+    ? '系统音频监听不可用：DSH Desktop 未启用系统音频捕获（请重启应用后重试）'
+    : '系统音频监听不可用：请用 Chrome/Edge 访问本页面（当前 ' + window.location.protocol + '//' + window.location.host + '）并允许屏幕共享'
   vpEmit()
 }
 
@@ -334,6 +352,13 @@ export function DenpaHeaderVoiceprint() {
     if (canvas === null) return
     const ctx = canvas.getContext('2d')
     if (ctx === null) return
+    // 标题面板拆分：对话页内被 CSS 隐藏的 header 那份 canvas 不绘制
+    // （可见性检测，避免双份声纹空转 rAF）。
+    const headerHost = canvas.closest('header')
+    if (headerHost !== null && (getComputedStyle(headerHost).display === 'none'
+      || headerHost.getClientRects().length === 0)) {
+      return
+    }
     let w = 0, h = 0
     let raf = 0
     let visible = true
@@ -736,10 +761,16 @@ export function DenpaHeaderResizer() {
     if (el === null) return
     const header = el.closest('header')
     if (header === null) return
+    // 标题面板拆分：对话页内被 CSS 隐藏的 header 那份 resizer 跳过
+    // （不可见 → 不测量/不拖拽，避免把 --dsh-header-height 写成 0）。
+    if (getComputedStyle(header).display === 'none' || header.getClientRects().length === 0) return
     // 把 header 实际高度同步到 root 的 --dsh-header-height，
     // 并生成跟随卡片圆角的 SVG mask（--dsh-wallpaper-mask），
     // 让壁纸模糊层只在 header / 正文两张圆角卡片范围内可见。
+    // header 提升到独立标题面板（REGION_CONVERSATION_HEADER）时 closest
+    // 找不到 [data-phase]，回退到文档中的会话根（同一时刻仅一个活动根）。
     const root = header.closest<HTMLElement>('[data-phase]')
+      ?? document.querySelector<HTMLElement>('[data-phase]')
     const sync = (): void => {
       if (root === null) return
       const headerRect = header.getBoundingClientRect()
@@ -748,6 +779,9 @@ export function DenpaHeaderResizer() {
       // [data-phase]::before 伪元素替代，querySelector 会落空提前 return，
       // 导致变量从未写入、rail 拉伸不跟随（见此前 bug）。
       root.style.setProperty('--dsh-header-height', `${headerRect.height}px`)
+      // dock 面板的 grip 横条位于 [data-phase] 的兄弟节点（pane 内），CSS 变量
+      // 无法从兄弟继承，同步写到根元素让横条位置跟随 header 高度。
+      document.documentElement.style.setProperty('--dsh-header-height', `${headerRect.height}px`)
       const blur = root.querySelector<HTMLElement>(':scope > [aria-hidden="true"]:first-child')
       const blurRect = blur?.getBoundingClientRect()
       if (blurRect === undefined || blurRect.height <= 0) return

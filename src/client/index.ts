@@ -48,7 +48,10 @@ import {
   DenpaHeaderVoiceprint, DenpaHeaderChrome, DenpaHeaderResizer,
 } from './HeaderEffects.tsx'
 import { setTurnRailCommitHandler, TurnRail } from './TurnRail.tsx'
+import { fileChangesDefinition, RoundSummaryCard } from './TurnFileCard.tsx'
+import { startEditDiffAutoExpand } from './edit-diff-autoplay.ts'
 import { startDenpaTransition } from './denpa-transition.ts'
+import { startHeaderTabIndicator } from './header-tab-indicator.ts'
 import { disposeSupplierQuota, initSupplierQuota, refreshSupplierQuota } from './supplier-quota.ts'
 import { SupplierQuota } from './SupplierQuota.tsx'
 import { ModelRetryRow, type ModelRetryRowInjected } from './ModelRetryRow.tsx'
@@ -69,7 +72,7 @@ import {
   resolvePreviewUrl, setPreviewOpen, togglePreviewOpen, setPaneSyncSuppressed,
 } from './PreviewPanel.tsx'
 import type { SidePaneHostAccess } from './SidePaneExtraPanels.tsx'
-import { DockWorkspace, DOCK_TOGGLE_EVENT, isDockOpen, toggleDockOpen } from './DockWorkspace.tsx'
+import { DockWorkspace, DOCK_TOGGLE_EVENT, isDockOpen, setDockOpen, toggleDockOpen } from './DockWorkspace.tsx'
 import { DockStore } from './dock-store.ts'
 import { addPanel as addDockPanel } from './dock-model.ts'
 import { DockShellFrame, DOCK_MENU_TOGGLE_EVENT, setDockHostBridge } from './dock-shell-frame.tsx'
@@ -103,13 +106,28 @@ const STYLE_ID = 'liuli-theme-css'
  *  conversation / workspaces：交互能力依赖（引用入输入框 / 打开路径），boot 期由上游插件提供。
  *  注意：包级 boot 图依赖（package.json dsh.client.inject）不含 ui-layout / ui-conversation，
  *  避免 advanced 模式下 ui-layout 条目缺席造成的启动图死锁。 */
-export const inject = ['slots', 'locale', 'theme', 'layout', 'sessions', 'workspaces', 'conversation', 'inputTriggers', 'connection', 'remote']
+export const inject = ['slots', 'locale', 'theme', 'layout', 'sessions', 'workspaces', 'conversation', 'conversationEvents', 'inputTriggers', 'connection', 'remote']
 
 /** 宽边模式样式：对话信息区在宽屏下撑满可用宽度（提高左右空间利用率）。 */
 const WIDE_MODE_CSS = [
   '/* 宽边模式：覆盖会话列的内容宽度轴（--dsh-chat-content-width 定义于会话 root） */',
   'body[data-liuli-wide] [data-phase] {',
   '  --dsh-chat-content-width: min(1280px, calc(100% - 160px));',
+  '}',
+].join('\n')
+
+/** 设置页模态让位（body[data-liuli-settings-open] 由 settings overlay 检测 effect 维护）：
+ *  1) 右侧边栏（details 列）面板 z-index:1 与侧栏根（z-index:1）同层、DOM 靠后，
+ *     会盖住侧栏根上下文内的设置页 overlay —— 设置页打开时把侧栏根抬到 100，
+ *     overlay 随之超越右侧面板/缩放手柄/抓握簇（模态优先）；
+ *  2) webview 嵌入式浏览器是 Host WebContentsView 原生视图，不受 CSS 层级控制，
+ *     始终浮在 DOM 之上 —— 隐藏 carrier 后几何上报（rect=0）驱动 Host 隐藏视图。 */
+const SETTINGS_DEFER_CSS = [
+  'body[data-liuli-settings-open] [class*="_sidebarCol"] > div > [class*="_root"] {',
+  '  z-index: 100 !important;',
+  '}',
+  'body[data-liuli-settings-open] [data-testid="browser-webview"] {',
+  '  display: none !important;',
   '}',
 ].join('\n')
 
@@ -147,6 +165,11 @@ const DESKTOP_ADVANCED_CSS = [
   '   补上去左线规则（镜像 [class*="_detailsCol"] [class*="_root"]） */',
   'body[data-dsh-desktop-mode="advanced"] [class*="_detailsCol"] [class*="_panel"] {',
   '  border-left: none !important;',
+  '}',
+  '/* 详情列面板根统一描边：卡片四边与会话/侧栏一致——预览面板根补上完整',
+  '   1px 描边后，左缘需覆盖上面的 border-left:none（同特异性、更靠后生效） */',
+  'body[data-dsh-desktop-mode="advanced"] [class*="_detailsCol"] [data-preview-panel] {',
+  '  border-left: 1px solid var(--dsw-alias-border-l1) !important;',
   '}',
   '/* 侧栏根被 slot 注入内联宽度（280px 列宽），会顶掉右留白；',
   '   100% !important 收回内容盒，恢复卡片间隙（收起态 padding 0 时不受影响） */',
@@ -186,6 +209,13 @@ const DESKTOP_ADVANCED_CSS = [
   '  -webkit-app-region: drag;',
   '  pointer-events: auto;',
   '}',
+  '/* 设置页模态（侧栏根内全屏 fixed overlay）打开时：advanced shell 浮动窗口',
+  '   （fixed 高 z-index）会盖住设置页，整体隐藏让位；设置页关闭后自动恢复',
+  '   （visibility 保留窗口位置，不破坏 dock 布局持久化） */',
+  'body[data-liuli-settings-open] [data-testid="dock-float"] {',
+  '  visibility: hidden !important;',
+  '  pointer-events: none !important;',
+  '}',
 ].join('\n')
 /** 解析元素选择器引用（ui-preview 同构：ref = JSON.stringify(PickedElement)）。 */
 function parseLiuliRef(raw: string): PickedElement {
@@ -196,13 +226,30 @@ function parseLiuliRef(raw: string): PickedElement {
   return { tag: 'element', selector: raw, attributes: '', text: '', rect: { x: 0, y: 0, width: 0, height: 0 }, color: '', background: '', font: '' }
 }
 
+/** 设置页模态判定：官方设置页（ui-settings）是渲染在侧栏根内的全屏 fixed overlay
+ *  （侧栏根 z-index:1 上下文内 z-index:1000）。琉璃自己的浮层（工作台全屏层 /
+ *  advanced shell 浮动窗口）z-index 高达 2147482xxx，会盖住设置页 ——
+ *  检测此模态出现/消失，供浮层让位（body 标记 + 工作台收起 + CSS 隐藏）。 */
+function isSettingsOverlayOpen(): boolean {
+  const sidebarRoot = document.querySelector<HTMLElement>('[class*="_sidebarCol"] > div > [class*="_root"]')
+  if (sidebarRoot === null) return false
+  const vw = window.innerWidth
+  const vh = window.innerHeight
+  for (const el of sidebarRoot.querySelectorAll<HTMLElement>('*')) {
+    if (getComputedStyle(el).position !== 'fixed') continue
+    const r = el.getBoundingClientRect()
+    if (r.width >= vw * 0.6 && r.height >= vh * 0.6) return true
+  }
+  return false
+}
+
 /** 注入主题样式（幂等；已存在则跳过）。 */
 function injectThemeCss(): void {
   if (document.getElementById(STYLE_ID) !== null) return
   const style = document.createElement('style')
   style.id = STYLE_ID
   style.setAttribute('data-liuli-theme', '')
-  style.textContent = denpaCss + '\n' + WIDE_MODE_CSS + '\n' + DESKTOP_ADVANCED_CSS
+  style.textContent = denpaCss + '\n' + WIDE_MODE_CSS + '\n' + SETTINGS_DEFER_CSS + '\n' + DESKTOP_ADVANCED_CSS
   document.head.appendChild(style)
 }
 
@@ -228,7 +275,9 @@ function equipRootEntryChildren(ctx: ClientContext): boolean {
     const mine = rec.entries.find(e => e.options?.priority === -1 && e.children !== undefined && Object.keys(e.children).length === 0)
     if (mine === undefined) return false
     const table: Record<string, { kind: string; scope: string }> = {}
-    for (const key of ['sidebar', 'conversation', 'details', 'shell.overlay']) {
+    // 会话标题面板（REGION_CONVERSATION_HEADER）渲染宿主 header，必须一并
+    // 声明，否则 root 渲染时因 slot 未声明而崩溃（abdicate 回退原生帧）。
+    for (const key of ['sidebar', 'conversation', 'details', 'shell.overlay', 'conversation.session.header']) {
       const spec = core.spec(key)
       if (spec === undefined) return false
       table[key] = { kind: spec.kind, scope: spec.scope }
@@ -384,6 +433,10 @@ export function apply(ctx: ClientContext): void {
   // ── 会话切换/新消息入场动画：MutationObserver 挂类（动画定义在 denpa.css）──
   ctx.effect(() => startDenpaTransition(), 'liuli-theme: message transition observer')
 
+  // ── 会话 header 视图标签（对话/轨迹）滑动激活指示条：官方横条瞬间切换，
+  //    这里注入独立指示条跟随激活 tab 平滑滑动（动画定义在 denpa.css）──
+  ctx.effect(() => startHeaderTabIndicator(), 'liuli-theme: header tab indicator')
+
   // ── 用户发送的网页元素：在聊天气泡里也渲染成卡片（官方只装饰 /@ chip）──
   ctx.effect(() => startElementCardDecoration(), 'liuli-theme: element card decoration')
 
@@ -526,7 +579,7 @@ export function apply(ctx: ClientContext): void {
     const root = createRoot(host)
     root.render(createElement(FloatBall, {
       insertElement,
-      openDock: () => { toggleDockOpen() },
+      openDock: () => { if (!isSettingsOverlayOpen()) toggleDockOpen() },
       openLayoutMenu: () => { window.dispatchEvent(new CustomEvent(DOCK_MENU_TOGGLE_EVENT)) },
     }))
     return () => {
@@ -535,27 +588,91 @@ export function apply(ctx: ClientContext): void {
     }
   }, 'liuli-theme: float ball mount')
 
-  // ── 页面内窗口按钮（无边框模式）：开始页无会话 header 时兜底固定在标题拖拽条右侧 ──
+  // ── 页面内窗口按钮（无边框模式）：固定悬浮在窗口右上角，开始页与会话页一致 ──
+  // 会话页不再把按钮内联进 header.utilities（此前随 header 排在工具区最右端）：
+  // header 卡片带 backdrop-filter，会成为 fixed 后代的包含块、破坏视口定位，
+  // 因此统一由 body 级 host 渲染与开始页同款的磨砂胶囊（右上角 6px/10px）。
+  // 胶囊内置智能避让：遮挡交互元素（header 工具按钮/详情面板头部/浮动窗口
+  // 标题栏等）时自动淡出，悬停右上角检测区唤出（见 WindowControls.tsx）。
   ctx.effect(() => {
     if (!isFramelessWin32()) return () => {}
     const hostEl = document.createElement('div')
     hostEl.id = 'liuli-window-controls-host'
     document.body.appendChild(hostEl)
     const root = createRoot(hostEl)
-    const render = (): void => {
-      const snap = ctx.sessions.list.getSnapshot()
-      const current = snap.current
-      const hasHeader = current !== undefined && snap.byId[current]?.blank === false
-      root.render(hasHeader ? null : createElement(WindowControls, { variant: 'caption' }))
-    }
-    render()
-    const off = ctx.sessions.list.subscribe(render)
+    root.render(createElement(WindowControls))
     return () => {
-      off()
       root.unmount()
       hostEl.remove()
     }
-  }, 'liuli-theme: window controls caption fallback')
+  }, 'liuli-theme: window controls fixed top-right')
+
+  // ── 工具区下沉 tabs 行的偏移测量：titleRow 底 → tabs 行底，写入 header ──
+  // 工具区（Session log/监听/主题/面板）经 denpa-css.ts 锚定 titleRow 右下角，
+  // 再按 --dsh-tabs-offset 下移到与视图标签同一栏（右、下对齐）。tabs 行只在
+  // 视图标签 >1 时渲染，视图切换/header 拉伸会改几何：body 级观察 + rAF 节流
+  // 重测；无 tabs 行时置 0（工具区留在标题行，CSS :has 条件兜底）。
+  ctx.effect(() => {
+    let raf = 0
+    let last = -1
+    const measure = (): void => {
+      raf = 0
+      const header = document.querySelector<HTMLElement>(
+        '[data-region-pane="region:conversation-header"] header, [data-region-pane="region:conversation"] header, div[data-phase] > header, div[data-phase] > div > header',
+      )
+      if (header === null) return
+      const titleRow = header.querySelector<HTMLElement>('[class*="_titleRow"]')
+      const tabs = header.querySelector<HTMLElement>('[class*="_tabs"]')
+      const next = (titleRow === null || tabs === null)
+        ? 0
+        : Math.max(0, Math.round(tabs.getBoundingClientRect().bottom - titleRow.getBoundingClientRect().bottom))
+      // 值不变则跳过写入，避免 body 级观察在高频 DOM 活动下反复触发样式重算
+      if (next !== last) {
+        last = next
+        header.style.setProperty('--dsh-tabs-offset', next + 'px')
+      }
+    }
+    const schedule = (): void => { if (raf === 0) raf = requestAnimationFrame(measure) }
+    measure()
+    const mo = new MutationObserver(schedule)
+    mo.observe(document.body, { childList: true, subtree: true })
+    window.addEventListener('resize', schedule)
+    return () => {
+      if (raf !== 0) cancelAnimationFrame(raf)
+      mo.disconnect()
+      window.removeEventListener('resize', schedule)
+    }
+  }, 'liuli-theme: header tabs offset measure')
+
+  // ── 设置页模态让位：设置页（侧栏根内全屏 fixed overlay）打开时，──
+  // 琉璃自己的高 z-index 浮层（工作台全屏层 / advanced shell 浮动窗口）会盖住它。
+  // 这里检测模态出现/消失：body 打 data-liuli-settings-open 标记（CSS 据此隐藏
+  // advanced shell 浮动窗口），并自动收起工作台（模态优先；工作台布局持久化在
+  // localStorage，重新打开原样恢复）。
+  ctx.effect(() => {
+    let raf = 0
+    const update = (): void => {
+      raf = 0
+      if (isSettingsOverlayOpen()) {
+        document.body.setAttribute('data-liuli-settings-open', '')
+        setDockOpen(false)
+      } else {
+        document.body.removeAttribute('data-liuli-settings-open')
+      }
+    }
+    const schedule = (): void => {
+      if (raf === 0) raf = requestAnimationFrame(update)
+    }
+    update()
+    const mo = new MutationObserver(schedule)
+    mo.observe(document.body, { childList: true, subtree: true })
+    window.addEventListener('resize', schedule)
+    return () => {
+      if (raf !== 0) cancelAnimationFrame(raf)
+      mo.disconnect()
+      window.removeEventListener('resize', schedule)
+    }
+  }, 'liuli-theme: settings overlay defer')
 
   // ── Dockable Workspace（琉璃工作台）：可拖拽/停靠/拆分/浮动/标签合并的面板工作台 ──
   // 布局自动落 localStorage（dock-store 防抖保存），刷新/HMR 重载后原样恢复；
@@ -582,6 +699,7 @@ export function apply(ctx: ClientContext): void {
     const onKey = (e: KeyboardEvent): void => {
       if (!(e.ctrlKey || e.metaKey) || !e.altKey || e.code !== 'KeyW') return
       e.preventDefault()
+      if (isSettingsOverlayOpen()) return
       toggleDockOpen()
     }
     window.addEventListener('keydown', onKey)
@@ -1055,10 +1173,21 @@ export function apply(ctx: ClientContext): void {
     id: 'liuli-preview-button',
     order: 25,
   }, () => createElement(PreviewButton, { onToggle: togglePreview })))
-  // ── 页面内窗口按钮（无边框模式）：会话 header 最右端，替代原生标题栏三按钮 ──
-  ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
-    name: 'conversation.session.header.utilities',
-    id: 'liuli-window-controls',
-    order: 99,
-  }, () => createElement(WindowControls, { variant: 'header' })))
+  // ── 页面内窗口按钮（无边框模式）：不再注入 header utilities ——
+  // 统一由 body 级 host 固定渲染在窗口右上角（见 'liuli-theme: window controls fixed top-right'）。
+
+  // ── 轮次结束 · 文件变更卡片：按 step 累计修改文件与 diff，发布自定义 chat 节点 ──
+  // 当前 DSH 会话转写没有 turn/start|end 事件（step 化），turnTail 槽不渲染；
+  // Definition 按 step 发布 liuli-round-summary 节点，渲染器在本轮最后节点处
+  // 展示卡片（文件名 + DIFF 数量 + 审查/打开/展开打开方式）。
+  ctx.effect(() => ctx.conversationEvents.register(fileChangesDefinition), 'liuli-theme: file-changes definition')
+  ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
+    name: 'conversation.chat.node',
+    key: 'liuli-round-summary',
+  }, RoundSummaryCard))
+
+  // ── 对话页 edit/write 工具行自动展开（显示文件 diff）──
+  // 上游 ToolRow 把 diff 放在默认收起的可折叠 body；这里在会话正文渲染后
+  // 把带 diff 的 edit/write 行自动点开一次（虚拟化重挂载后再展开）。
+  ctx.effect(() => startEditDiffAutoExpand(), 'liuli-theme: edit diff auto-expand')
 }
