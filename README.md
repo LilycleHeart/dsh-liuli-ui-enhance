@@ -145,12 +145,16 @@ pnpm add file:/tmp/liuli/deepseek-ai-liuli-theme-0.1.0.tgz
 
 ## 构建
 
+独立仓库已自包含构建链，全新 clone 后可直接：
+
 ```bash
-pnpm --filter @deepseek-ai/liuli-theme bundle
+pnpm install   # 自动触发 prepare：tsc + tsdown，生成 lib/
+# 或手动构建：
+pnpm build
 ```
 
-产出 `lib/index.js`(node 半)+ `lib/client.js`(浏览器半,closure-factory 产物)。
-类型声明由 tsbuild 生成(`tsc -b packages/client/liuli-theme`,供 tsdown 打包入口引用)。
+产出 `lib/index.js`（node 半）+ `lib/client.js`（浏览器半，closure-factory 产物）。
+类型声明由 `tsc -p tsconfig.json` 生成到 `lib/types`，供 tsdown 打包入口引用。
 
 ## 结构
 

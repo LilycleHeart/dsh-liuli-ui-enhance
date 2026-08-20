@@ -1,4 +1,4 @@
-import { clientBundle } from '../tsdown.client.ts'
+import { clientBundle } from './scripts/tsdown.client.ts'
 
 /**
  * denpa-runtime 引用 src/vendor/material-color-utilities.js（tsc 不会把纯 JS
