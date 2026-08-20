@@ -206,6 +206,7 @@ function argsToJson(raw: unknown): string {
 
 export const fileChangesDefinition: ConversationNodeDefinition<StepFileState> = {
   kind: 'liuli-file-changes',
+  target: 'chat',
   match: (event) => {
     if (event.type === 'tool/code-dispatch-start') {
       return { id: 'c:' + String(event.data.subCallId), role: 'start' }
