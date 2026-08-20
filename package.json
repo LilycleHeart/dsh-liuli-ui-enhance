@@ -44,7 +44,9 @@
     }
   },
   "scripts": {
+    "build": "tsc -p tsconfig.json && tsdown",
     "bundle": "tsdown",
+    "prepare": "pnpm build",
     "watch": "tsdown --watch",
     "install:desktop": "node scripts/install-desktop.mjs",
     "install:desktop:npm": "node scripts/install-desktop.mjs --from-npm",
@@ -100,7 +102,12 @@
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-client-ui-settings": "^0.1.0-rc.7",
     "@types/react-dom": "~18.3.0",
-    "@deepseek-ai/dsh-client-ui-input-trigger": "^0.1.0-rc.7"
+    "@deepseek-ai/dsh-client-ui-input-trigger": "^0.1.0-rc.7",
+    "@deepseek-ai/dsh-tools": "^0.1.0-rc.7",
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "lightningcss": "^1.32.0",
+    "tsdown": "^0.22.2",
+    "typescript": "^6.0.3"
   },
   "files": [
     "lib/index.js",
