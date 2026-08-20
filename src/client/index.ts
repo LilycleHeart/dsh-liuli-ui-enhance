@@ -129,6 +129,16 @@ const SETTINGS_DEFER_CSS = [
   'body[data-liuli-settings-open] [data-testid="browser-webview"] {',
   '  display: none !important;',
   '}',
+  '/* header 拉伸变高后，其 -webkit-app-region: drag 拖拽区按元素几何生效、',
+  '   不受 DOM z-index/绘制层级影响：设置页全屏 overlay 虽盖在 header 之上，',
+  '   但叠在拖拽区上的按钮点击会被吞掉（表现为"没盖住却点不了"）。',
+  '   设置页打开时把琉璃的拖拽区临时置为 no-drag，让点击正常穿透。 */',
+  'body[data-liuli-settings-open] [data-region-pane="region:conversation"] header,',
+  'body[data-liuli-settings-open] [data-region-pane="region:conversation-header"] header,',
+  'body[data-liuli-settings-open] [data-testid="dock-tab-strip"],',
+  'body[data-liuli-settings-open] [data-liuli-pane-drag] {',
+  '  -webkit-app-region: no-drag !important;',
+  '}',
 ].join('\n')
 
 
@@ -275,9 +285,7 @@ function equipRootEntryChildren(ctx: ClientContext): boolean {
     const mine = rec.entries.find(e => e.options?.priority === -1 && e.children !== undefined && Object.keys(e.children).length === 0)
     if (mine === undefined) return false
     const table: Record<string, { kind: string; scope: string }> = {}
-    // 会话标题面板（REGION_CONVERSATION_HEADER）渲染宿主 header，必须一并
-    // 声明，否则 root 渲染时因 slot 未声明而崩溃（abdicate 回退原生帧）。
-    for (const key of ['sidebar', 'conversation', 'details', 'shell.overlay', 'conversation.session.header']) {
+    for (const key of ['sidebar', 'conversation', 'details', 'shell.overlay']) {
       const spec = core.spec(key)
       if (spec === undefined) return false
       table[key] = { kind: spec.kind, scope: spec.scope }
@@ -618,7 +626,7 @@ export function apply(ctx: ClientContext): void {
     const measure = (): void => {
       raf = 0
       const header = document.querySelector<HTMLElement>(
-        '[data-region-pane="region:conversation-header"] header, [data-region-pane="region:conversation"] header, div[data-phase] > header, div[data-phase] > div > header',
+        '[data-region-pane="region:conversation"] header, div[data-phase] > header, div[data-phase] > div > header',
       )
       if (header === null) return
       const titleRow = header.querySelector<HTMLElement>('[class*="_titleRow"]')

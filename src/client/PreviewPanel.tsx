@@ -219,6 +219,10 @@ interface PanePersist {
 }
 
 const LS_KEY = 'liuli:side-pane'
+/** 跨组件挂载的上次会话 id（details slot 重挂组件时保留，供会话状态记忆判断切换）。 */
+let moduleLastSessionId: string | undefined = (() => {
+  try { return localStorage.getItem('liuli:last-session') ?? undefined } catch { return undefined }
+})()
 /** ZCode Roe = 8：最近关闭标签上限。 */
 const RECENT_CLOSED_MAX = 8
 /** ZCode Eqt：侧边面板 minSize 240px。 */
@@ -556,7 +560,10 @@ export function PreviewDetailsPanel({
   const tabsViewportRef = useRef<HTMLDivElement | null>(null)
   const overviewBtnRef = useRef<HTMLButtonElement | null>(null)
   const addBtnRef = useRef<HTMLButtonElement | null>(null)
-  const lastSession = useRef(sessionId)
+  // 跨组件挂载保留「上次会话 id」：details slot 每次切会话都会重挂本组件，
+  // useRef(sessionId) 会跟着新值初始化导致 last===sessionId、保存/恢复永不触发；
+  // 模块级变量在重挂载后仍是上一次会话，effect 才能识别「真的切换了」。
+  const lastSession = useRef<string | undefined>(moduleLastSessionId)
   const dragTab = useRef<string | null>(null)
   const resizing = useRef(false)
 
@@ -574,7 +581,7 @@ export function PreviewDetailsPanel({
   /* ── 开合同步 ── */
 
   useEffect(() => {
-    const onToggle = (): void => { setOpen(previewOpen) }
+    const onToggle = (): void => { setOpen(previewOpen); saveOpenState(previewOpen) }
     window.addEventListener(PREVIEW_TOGGLE_EVENT, onToggle)
     return () => { window.removeEventListener(PREVIEW_TOGGLE_EVENT, onToggle) }
   }, [])
@@ -599,14 +606,93 @@ export function PreviewDetailsPanel({
     return () => { ro.disconnect() }
   }, [])
 
-  // 切换会话时宿主自动收起 details 列：同步开关（标签集合保留）。
+  // 会话状态记忆：切换会话时保存当前会话的展开状态与宽度，
+  // 进入新会话时恢复该会话的记忆（有存档则恢复；无存档默认收起，与宿主行为一致）。
+  // 宽度同时同步到 dock-shell 的 detailsWidth（liuli:details-width），供 advanced 布局使用。
+  const openRef = useRef(previewOpen)
+  openRef.current = previewOpen
+  const widthRef = useRef(width)
+  widthRef.current = width
+  // 用户主动开合时即时写入会话存档（宽度取 advanced 布局的 liuli:details-width，
+  // 否则用本面板持久化 width）。这样切走时不会被宿主自动收起覆盖成 false。
+  const saveOpenState = useCallback((v: boolean) => {
+    const id = sessionId
+    if (id === undefined || id === null || id === '') return
+    const w = (() => {
+      try {
+        const raw = localStorage.getItem('liuli:details-width')
+        const n = raw === null ? 0 : Number.parseFloat(raw)
+        if (Number.isFinite(n) && n > 0) return n
+      } catch { /* 忽略 */ }
+      return widthRef.current
+    })()
+    try { localStorage.setItem('liuli:side-pane-session:' + id, JSON.stringify({ open: v, width: w })) } catch { /* 忽略 */ }
+  }, [sessionId])
   useEffect(() => {
-    if (lastSession.current !== undefined && lastSession.current !== sessionId) {
+    // 同会话重跑（依赖中的 openDetails/patch 引用变化）直接忽略。
+    if (lastSession.current !== undefined && lastSession.current === sessionId) return
+    const isSwitch = lastSession.current !== undefined && lastSession.current !== sessionId
+    // 离开：保存旧会话状态。宽度优先取 advanced 布局（dock-shell sash）写入的
+    // liuli:details-width，否则用本面板持久化的 width（compatibility 布局）。
+    if (isSwitch) {
+      const prev = lastSession.current
+      const savedWidth = (() => {
+        try {
+          const raw = localStorage.getItem('liuli:details-width')
+          const n = raw === null ? 0 : Number.parseFloat(raw)
+          if (Number.isFinite(n) && n > 0) return n
+        } catch { /* 忽略 */ }
+        return widthRef.current
+      })()
+      // open 优先保留该会话已有的存档值（用户最后主动开合），避免被宿主自动收起覆盖。
+      const prevOpen = (() => {
+        try {
+          const raw = localStorage.getItem('liuli:side-pane-session:' + prev)
+          if (raw !== null && raw !== '') {
+            const p = JSON.parse(raw) as { open?: boolean }
+            if (typeof p.open === 'boolean') return p.open
+          }
+        } catch { /* 忽略 */ }
+        return openRef.current
+      })()
+      try {
+        localStorage.setItem('liuli:side-pane-session:' + prev, JSON.stringify({ open: prevOpen, width: savedWidth }))
+      } catch { /* 配额/隐私模式则放弃 */ }
+    }
+    lastSession.current = sessionId
+    moduleLastSessionId = sessionId
+    try { localStorage.setItem('liuli:last-session', sessionId ?? '') } catch { /* 忽略 */ }
+    // 进入：恢复该会话状态
+    let restored: { open?: boolean; width?: number } | null = null
+    try {
+      const raw = localStorage.getItem('liuli:side-pane-session:' + sessionId)
+      if (raw !== null && raw !== '') restored = JSON.parse(raw) as { open?: boolean; width?: number }
+    } catch { /* 损坏存档则按无存档处理 */ }
+    if (restored !== null && (restored.open === true || typeof restored.width === 'number')) {
+      if (typeof restored.width === 'number' && restored.width > 0) {
+        patch({ width: restored.width })
+        try { localStorage.setItem('liuli:details-width', String(restored.width)) } catch { }
+        window.dispatchEvent(new CustomEvent('liuli:details-width-change'))
+      }
+      if (restored.open === true) {
+        setPreviewOpen(true)
+        setOpen(true)
+        openDetails?.()
+        // desktop AdvancedFrame（更外层组件）在会话切换时也会 closeDetails 且后执行，
+        // 这里延迟一帧再补一次 openDetails，确保恢复展开不被外层收起覆盖。
+        const retry = window.setTimeout(() => { openDetails?.() }, 60)
+        return () => window.clearTimeout(retry)
+      } else {
+        setPreviewOpen(false)
+        setOpen(false)
+      }
+    } else if (isSwitch) {
+      // 切到无存档会话：默认收起（与宿主「切换会话收起 details」行为一致）；
+      // 首次挂载不干预（保持 previewOpen 的模块级初始值）。
       setPreviewOpen(false)
       setOpen(false)
     }
-    lastSession.current = sessionId
-  }, [sessionId])
+  }, [sessionId, patch, openDetails])
 
   /* ── 标签操作（ZCode 纯函数语义对应） ── */
 
@@ -629,6 +715,7 @@ export function PreviewDetailsPanel({
   const collapsePane = useCallback((): void => {
     setPaneSyncSuppressed(true)
     setPreviewOpen(false)
+    saveOpenState(false)
     closeDetails?.()
     window.dispatchEvent(new CustomEvent(PREVIEW_TOGGLE_EVENT))
   }, [closeDetails])
@@ -879,6 +966,7 @@ export function PreviewDetailsPanel({
       if (url === undefined || url === '') return
       openBrowserUrl(url)
       setPreviewOpen(true)
+      saveOpenState(true)
       openDetails?.()
     }
     window.addEventListener(PREVIEW_NAVIGATE_EVENT, onNavigate)
@@ -895,6 +983,7 @@ export function PreviewDetailsPanel({
       if (detail.sessionId !== undefined && detail.sessionId !== sessionId) return
       // 打开 details 列 + 确保「审查文件」标签存在并激活。
       setPreviewOpen(true)
+      saveOpenState(true)
       openDetails?.()
       openSingleton('git')
       setReviewRequest({ path, nonce: Date.now() })
@@ -915,6 +1004,7 @@ export function PreviewDetailsPanel({
         if (!/^https?:/i.test(event.url)) return
         openBrowserUrl(event.url)
         setPreviewOpen(true)
+        saveOpenState(true)
         openDetails?.()
       })
     })
@@ -1035,17 +1125,12 @@ export function PreviewDetailsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, width, applyWidthOverride])
 
-  const onResizeStart = (e: ReactPointerEvent<HTMLDivElement>): void => {
-    e.preventDefault()
-    const handle = e.currentTarget
-    handle.setPointerCapture(e.pointerId)
-    handle.setAttribute('data-dragging', '')
+  /** 共享宽度拖拽：从 startX/startTrack 开始，随 pointer 覆盖 grid 轨道并持久化。
+   *  draggingEl 非空时（本面板手柄）做 pointer capture 与 data-dragging 标记；
+   *  拦截 desktop shell 手柄时传 null（不依赖元素捕获，直接用 window 监听）。 */
+  const beginWidthDrag = useCallback((startX: number, startTrack: number, draggingEl: HTMLElement | null): void => {
     resizing.current = true
-    // 一律以 grid 轨道宽度为基准（面板 rect = 轨道 - 宿主列内边距，slot 包裹层宽为 0 不可用）。
-    const frame = frameEl()
-    const tracks = frame?.style.gridTemplateColumns.split(/\s+/) ?? []
-    const startTrack = Number.parseFloat(tracks[tracks.length - 1] ?? '') || (panelRef.current?.getBoundingClientRect().width ?? width)
-    const startX = e.clientX
+    if (draggingEl !== null) draggingEl.setAttribute('data-dragging', '')
     const { min, max } = widthBounds()
     let last = Math.min(max, Math.max(min, startTrack))
     const onMove = (ev: PointerEvent): void => {
@@ -1053,8 +1138,10 @@ export function PreviewDetailsPanel({
       applyWidthOverride(last)
     }
     const onUp = (ev: PointerEvent): void => {
-      handle.releasePointerCapture(ev.pointerId)
-      handle.removeAttribute('data-dragging')
+      if (draggingEl !== null) {
+        draggingEl.releasePointerCapture(ev.pointerId)
+        draggingEl.removeAttribute('data-dragging')
+      }
       resizing.current = false
       patch({ width: last })
       window.removeEventListener('pointermove', onMove)
@@ -1062,9 +1149,39 @@ export function PreviewDetailsPanel({
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
+  }, [widthBounds, applyWidthOverride, patch])
+
+  const onResizeStart = (e: ReactPointerEvent<HTMLDivElement>): void => {
+    e.preventDefault()
+    const handle = e.currentTarget
+    handle.setPointerCapture(e.pointerId)
+    // 一律以 grid 轨道宽度为基准（面板 rect = 轨道 - 宿主列内边距，slot 包裹层宽为 0 不可用）。
+    const frame = frameEl()
+    const tracks = frame?.style.gridTemplateColumns.split(/\s+/) ?? []
+    const startTrack = Number.parseFloat(tracks[tracks.length - 1] ?? '') || (panelRef.current?.getBoundingClientRect().width ?? width)
+    beginWidthDrag(e.clientX, startTrack, handle)
   }
 
-  /* ── 命令中心（ZCode quickPick 的 切换面板 / 打开文件 + 其余命令） ── */
+  // 接管 desktop advanced shell 的 details 拖拽手柄：desktop 的 .dshDesktopResizeHandle
+  // z-index 50 盖过本面板手柄（z-index 60 之前为 30），其 onResize 走 layout.setDetails
+  // 被 clamp 在 300–520px。这里在 capture 阶段拦截 pointerdown，把拖动转接到
+  // beginWidthDrag（上限 = 视口 88%），从而在「只改插件」的前提下放开宽度上限。
+  useEffect(() => {
+    const onDown = (e: PointerEvent): void => {
+      if (resizing.current) return
+      const target = e.target as HTMLElement | null
+      if (target === null || typeof target.closest !== 'function') return
+      if (target.closest('.dshDesktopResizeHandle[data-side="details"]') === null) return
+      e.preventDefault()
+      e.stopPropagation()
+      const frame = frameEl()
+      const tracks = frame?.style.gridTemplateColumns.split(/\s+/) ?? []
+      const startTrack = Number.parseFloat(tracks[tracks.length - 1] ?? '') || (panelRef.current?.getBoundingClientRect().width ?? width)
+      beginWidthDrag(e.clientX, startTrack, null)
+    }
+    document.addEventListener('pointerdown', onDown, true)
+    return () => document.removeEventListener('pointerdown', onDown, true)
+  }, [beginWidthDrag, frameEl, width])
 
   const commands: CommandPaletteCommand[] = [
     {
@@ -1938,6 +2055,44 @@ function loadResponsiveConfig(): ResponsiveConfig {
   }
 }
 
+/**
+ * 是否被 DOM 覆盖层遮挡：Electron 原生 WebContentsView 永远绘制在 DOM 之上
+ * （z-index 无效），任何浮现在浏览器区域上方的 DOM 元素——浮动窗口、菜单、
+ * 弹层、对话框、工作台等——都会被原生视图盖住、无法看到/点击（表现为
+ * "进入视口区域后还是点不了"）。检测到遮挡即返回 true，geometry 上报据此
+ * 隐藏原生视图、给上层 DOM 让位。浏览器自身在覆盖层内（o.contains）不算
+ * 遮挡（如浏览器面板被浮动/置入工作台）。
+ */
+const BROWSER_OVERLAY_SELECTOR = [
+  '[data-testid="dock-float"]',
+  '[data-testid="dock-workspace"]',
+  '[data-testid="dock-menu-card"]',
+  '[data-testid="dock-modal"]',
+  '[role="menu"]',
+  '[role="dialog"]',
+  '[data-liuli-pane-popover]',
+  '[class*="_moreMenu"]',
+  '[class*="_popover"]',
+  '[class*="_popup"]',
+].join(', ')
+
+function isObscuredByOverlay(el: HTMLElement | null): boolean {
+  if (el === null) return false
+  const r = el.getBoundingClientRect()
+  if (r.width < 4 || r.height < 4) return false
+  for (const o of document.querySelectorAll<HTMLElement>(BROWSER_OVERLAY_SELECTOR)) {
+    if (getComputedStyle(o).visibility === 'hidden') continue
+    if (o.contains(el)) continue
+    const or = o.getBoundingClientRect()
+    if (or.width > 0 && or.height > 0
+      && r.left < or.right && r.right > or.left
+      && r.top < or.bottom && r.bottom > or.top) {
+      return true
+    }
+  }
+  return false
+}
+
 interface NativeBrowserPanelProps {
   tabId: string
   sessionId?: string | undefined
@@ -2052,7 +2207,11 @@ function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitle
   /* ── carrier 几何上报（原生视图贴合） ── */
 
   useEffect(() => {
-    return reportGeometryLoop(tabId, () => carrierRef.current, () => active)
+    return reportGeometryLoop(
+      tabId,
+      () => carrierRef.current,
+      () => active && !isObscuredByOverlay(carrierRef.current),
+    )
   }, [tabId, active])
 
   /* ── 响应式视口（ZCode browser.responsive：客户机固定视口 + zoom 缩放） ── */

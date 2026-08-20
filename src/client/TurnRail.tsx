@@ -201,17 +201,7 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
   useLayoutEffect(() => {
     // anchorRef 挂在 header 内（header.utilities slot），与正文卡片是兄弟，
     // 先经 [data-phase] 根再向下找卡片作为 portal 目标。
-    // 标题面板拆分后：header 面板里这份 TurnRail 的 anchor 不在 [data-phase]
-    // 内（closest 落空），回退到文档中的会话根（同一时刻仅一个活动根）；
-    // 对话页内被 CSS 隐藏的 header 那份则直接跳过（header 不可见 → 不挂 rail，
-    // 避免双份时间线）。
-    const header = anchorRef.current?.closest<HTMLElement>('header') ?? null
-    if (header !== null) {
-      const style = getComputedStyle(header)
-      if (style.display === 'none' || style.visibility === 'hidden' || header.getClientRects().length === 0) return
-    }
-    const root = anchorRef.current?.closest<HTMLElement>('[data-phase]')
-      ?? document.querySelector<HTMLElement>('[data-phase]')
+    const root = anchorRef.current?.closest<HTMLElement>('[data-phase]') ?? null
     setPhaseRoot(root)
     setHost(root?.querySelector<HTMLElement>('[data-conversation-scroll]') ?? null)
   }, [sessionId])

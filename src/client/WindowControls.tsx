@@ -65,9 +65,13 @@ const INTERACTIVE_SELECTOR = [
   '[data-testid="dock-tab-chip"]',
 ].join(', ')
 
-/** 右上角悬停唤出检测区尺寸（纯坐标判定；胶囊自身位于其内）。 */
+/** 右上角悬停检测区尺寸（纯坐标判定；胶囊自身位于其内）。 */
 const REVEAL_W = 140
+/** 展开保持区高度：胶囊已展开时，指针仍在此范围内就不隐藏（防抖/防误触）。 */
 const REVEAL_H = 48
+/** 展开触发区高度：仅指针进入最顶部这一小条范围才唤出胶囊；
+    触发更精准，避免误碰标题行按钮区域就弹出。 */
+const TRIGGER_H = 16
 
 /** 命中元素是否属于"应避让"的交互内容（向上找最近的交互祖先）。 */
 function isInteractiveHit(el: Element): boolean {
@@ -163,13 +167,16 @@ export function WindowControls() {
     // 与 hidden 状态对应的"检测器上次判定"；悬停唤出时复位，保证离开后能重新评估
     let last = false
     const pointer = { x: -1, y: -1 }
-    const inRevealZone = (): boolean => pointer.x > window.innerWidth - REVEAL_W && pointer.y < REVEAL_H
+    // 保持区（REVEAL_H）：胶囊已展开时在此范围内不隐藏
+    const inHoldZone = (): boolean => pointer.x > window.innerWidth - REVEAL_W && pointer.y < REVEAL_H
+    // 触发区（TRIGGER_H）：指针进入最顶部一半才唤出胶囊
+    const inTriggerZone = (): boolean => pointer.x > window.innerWidth - REVEAL_W && pointer.y < TRIGGER_H
     const check = (): void => {
       raf = 0
       const el = rootRef.current
       if (el === null) return
-      // 指针在检测区内：悬停唤出优先，暂不评估（离开后由 onMove 触发重评估）
-      if (inRevealZone()) return
+      // 指针在保持区内：悬停唤出优先，暂不评估（离开保持区后由 onMove 触发重评估）
+      if (inHoldZone()) return
       const r = el.getBoundingClientRect()
       if (r.width === 0 || r.height === 0) return
       // 胶囊矩形内采样 2×2 点，命中交互元素即判定遮挡
@@ -197,8 +204,8 @@ export function WindowControls() {
     const onMove = (e: PointerEvent): void => {
       pointer.x = e.clientX
       pointer.y = e.clientY
-      if (inRevealZone()) {
-        // 悬停唤出：显示胶囊（复位 last，离开检测区后能重新评估隐藏）
+      if (inTriggerZone()) {
+        // 悬停唤出：显示胶囊（复位 last，离开保持区后能重新评估隐藏）
         if (hiddenRef.current) {
           last = false
           setHidden(false)
@@ -228,6 +235,7 @@ export function WindowControls() {
   }
 
   return (
+    <>
     <div
       ref={rootRef}
       className={`${css.controls}${hidden ? ' ' + css.hidden : ''}`}
@@ -249,5 +257,12 @@ export function WindowControls() {
         <CloseIcon />
       </button>
     </div>
+    {/* 收起提示条：胶囊避让隐藏时，右上角顶部显示一条小横条，提示鼠标移向此处唤出 */}
+    <div
+      className={`${css.hint}${hidden ? '' : ' ' + css.hintHidden}`}
+      data-liuli-window-controls-hint=""
+      aria-hidden="true"
+    />
+    </>
   )
 }

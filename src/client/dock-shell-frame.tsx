@@ -29,7 +29,7 @@ import {
   createDockShellStore, exportDockJSON, findRegion, importDockJSON, isRegionPanel,
   listShellSlotNames, loadShellSlotByName, regionLabel, saveShellDock,
   saveShellSlotByName, withRegion,
-  REGION_CONVERSATION, REGION_CONVERSATION_HEADER, REGION_DETAILS, REGION_SIDEBAR,
+  REGION_CONVERSATION, REGION_DETAILS, REGION_SIDEBAR,
   type HostLayoutFace,
 } from './dock-shell.ts'
 import css from './DockShellFrame.module.css'
@@ -126,6 +126,31 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
   const shellRef = useRef(shell)
   shellRef.current = shell
 
+  // 详情区域宽度（liuli 自管，突破 desktop shell 的 clamp 300-520；上限 = 视口 88%，
+  // 与 PreviewPanel 的 WIDTH_MAX_RATIO 一致）。宿主开合（hostPanels.details 0↔w）仍驱动折叠。
+  const [detailsWidth, setDetailsWidth] = useState<number>(() => {
+    try {
+      const raw = localStorage.getItem('liuli:details-width')
+      const n = raw === null ? 0 : Number.parseFloat(raw)
+      return Number.isFinite(n) && n > 0 ? n : 360
+    } catch { return 360 }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('liuli:details-width', String(detailsWidth)) } catch { /* 配额/隐私模式则放弃 */ }
+  }, [detailsWidth])
+  // 会话切换恢复宽度时，PreviewPanel 会写 liuli:details-width 并派发本事件。
+  useEffect(() => {
+    const onWidthChange = (): void => {
+      try {
+        const raw = localStorage.getItem('liuli:details-width')
+        const n = raw === null ? 0 : Number.parseFloat(raw)
+        if (Number.isFinite(n) && n > 0) setDetailsWidth(n)
+      } catch { /* 忽略损坏值 */ }
+    }
+    window.addEventListener('liuli:details-width-change', onWidthChange)
+    return () => window.removeEventListener('liuli:details-width-change', onWidthChange)
+  }, [])
+
   /* ── 自动保存 dock 树（防抖 250ms）+ 卸载前落盘 ── */
   useEffect(() => {
     if (saveTimer.current !== null) clearTimeout(saveTimer.current)
@@ -135,11 +160,23 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
   }, [shell])
   useEffect(() => () => { saveShellDock(shellRef.current.dock) }, [])
 
-  /* ── 会话切换关闭详情（官方 AppFrame 语义，经宿主 layout 服务） ── */
+  /* ── 会话切换关闭详情（官方 AppFrame 语义，经宿主 layout 服务） ──
+     · 新会话若有「展开」存档（liuli:side-pane-session:<id>.open），保持展开，
+       由 PreviewDetailsPanel 恢复；否则按官方语义收起。 ── */
   const lastSession = useRef(detailsSession)
   useEffect(() => {
     if (detailsSession === undefined) return
-    if (lastSession.current !== undefined && lastSession.current !== detailsSession) hostLayout.closeDetails()
+    if (lastSession.current !== undefined && lastSession.current !== detailsSession) {
+      let wantOpen = false
+      try {
+        const raw = localStorage.getItem('liuli:side-pane-session:' + detailsSession)
+        if (raw !== null && raw !== '') {
+          const s = JSON.parse(raw) as { open?: boolean }
+          wantOpen = s.open === true
+        }
+      } catch { /* 忽略 */ }
+      if (!wantOpen) hostLayout.closeDetails()
+    }
     lastSession.current = detailsSession
   }, [hostLayout, detailsSession])
 
@@ -213,17 +250,16 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     switch (panel.type) {
       case REGION_SIDEBAR:
         return renderSlot('sidebar', { collapsed: sidebarCollapsed, width: sidebarWidth })
-      case REGION_CONVERSATION_HEADER:
-        // 会话标题面板：渲染宿主的会话 header（面包屑/操作/工具/tabs）。
-        // 宿主 ConversationRoot 内还会渲染一份 header，由 denpa-css.ts 的
-        // 拆分规则隐藏（避免双 header），这里只承载可见的那份。
-        // 运行时授权由 equipRootEntryChildren 补进 root entry children 表，
-        // 类型面未声明该子 slot，此处显式断言（SlotOwnershipError 只在运行时检查）。
-        return (renderSlot as (key: string, owner?: Record<string, unknown>) => ReactNode)('conversation.session.header', {})
       case REGION_CONVERSATION:
         return renderSlot('conversation', {})
       case REGION_DETAILS:
-        return renderSlot('details', {})
+        // 把会话 id 与宿主开合动作传给 details 面板（PreviewDetailsPanel），
+        // 使其能感知会话切换并按会话记忆展开状态与宽度。
+        return renderSlot('details', {
+          sessionId: detailsSession,
+          openDetails: () => hostLayout.openDetails(),
+          closeDetails: () => hostLayout.closeDetails(),
+        })
       default: {
         const def = panelDef(panel.type)
         if (def === undefined) return <div className={css.paneEmpty}>未知面板类型：{panel.type}</div>
@@ -428,8 +464,13 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
         const newSize = dir === 'h'
           ? (isBefore ? ev.clientX - regionPaneRect.left : regionPaneRect.right - ev.clientX)
           : (isBefore ? ev.clientY - regionPaneRect.top : regionPaneRect.bottom - ev.clientY)
-        if (regionType === REGION_SIDEBAR) hostLayout.setSidebar(newSize)
-        else hostLayout.setDetails(newSize)
+        if (regionType === REGION_SIDEBAR) {
+          hostLayout.setSidebar(newSize)
+        } else if (regionType === REGION_DETAILS) {
+          // 详情区域宽度由 liuli 自管（上限 = 视口 88%），不再走宿主 clamp 300-520。
+          const maxW = Math.max(240, Math.round(window.innerWidth * 0.88))
+          setDetailsWidth(Math.min(maxW, Math.max(240, Math.round(newSize))))
+        }
         return
       }
       const pos = dir === 'h' ? ev.clientX : ev.clientY
@@ -483,7 +524,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
             ⧉
           </button>
         )}
-        {panel.type !== REGION_CONVERSATION && panel.type !== REGION_CONVERSATION_HEADER && panel.type !== REGION_SIDEBAR && (
+        {panel.type !== REGION_CONVERSATION && panel.type !== REGION_SIDEBAR && (
           <button
             type="button"
             className={css.tabClose}
@@ -551,7 +592,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     const only = child.tabs[0]
     if (only === undefined) return undefined
     if (only.type === REGION_SIDEBAR) return sidebarWidth
-    if (only.type === REGION_DETAILS) return hostPanels.details
+    if (only.type === REGION_DETAILS) return hostPanels.details === 0 ? 0 : detailsWidth
     return undefined
   }
 
@@ -674,14 +715,12 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
   const slots = listShellSlotNames()
   void slotsVersion
 
-  const headerPanelPresent = findRegion(dock, REGION_CONVERSATION_HEADER) !== undefined
   return (
     <div
       className="dshDesktopFrame"
       data-desktop-platform={platform}
       data-sidebar-collapsed={sidebarCollapsed || undefined}
       data-details-collapsed={hostPanels.details === 0 || undefined}
-      data-conversation-header={headerPanelPresent || undefined}
       data-testid="dock-shell"
       data-hmr-marker={HMR_MARKER}
       data-panels={String(panelCount(dock))}
