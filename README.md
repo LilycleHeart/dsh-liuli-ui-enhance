@@ -79,16 +79,52 @@ DeepSeek Harness 的 **Material Design 3 × Fluent 2 融合主题**插件:取 Ma
 
 ## 安装
 
-插件随 Harness 客户端包构建;在 web-app 的浏览器插件清单(`cordis.patch.yml` 的 `dsh.client` 行区)加入:
+> **重要**：全新 DSH Desktop 安装时，只改 `cordis.patch.yml` 是不够的，必须同时把
+> `@deepseek-ai/liuli-theme` 安装进 desktop profile 的 `package.json` 依赖，否则会报：
+> `Cannot find package '@deepseek-ai/liuli-theme'`。
 
-```yaml
-- id: liuli-theme
-  name: '@deepseek-ai/liuli-theme'
+### 自动安装（推荐）
+
+在插件源码目录执行：
+
+```bash
+# 本地源码安装（link 到当前目录）
+pnpm install:desktop
+
+# 或等发布到 npm 后，从 npm 安装
+pnpm install:desktop:npm
 ```
 
-宿主会从 `/plugins/@deepseek-ai/liuli-theme/client.js` 服务并自动加载。移除该行即回到素版外观(shell 的外观行降级为直连切换,无圆形遮罩)。
+脚本会：
 
-依赖宿主主题服务(`ctx.theme`,由 `dsh-client-ui-theme` 提供):偏好持久化与 `theme/change` 事件由宿主承担,本插件只消费。host 半(node 半)提供两条本地路由:`/liuli-quota`(凭据额度)与 `/preview`(会话 cwd 静态站点,preview 面板用)。
+1. 把 `@deepseek-ai/liuli-theme` 写入 `~/.dsh/profiles/desktop/package.json` 的 `dependencies`；
+2. 确保 `~/.dsh/profiles/desktop/cordis.patch.yml` 注册了 `liuli-theme`；
+3. 在 desktop profile 目录执行 `pnpm install`。
+
+### 手动安装
+
+```bash
+# 1. 进入 desktop profile
+cd ~/.dsh/profiles/desktop
+
+# 2a. 已发布到 npm：
+pnpm add @deepseek-ai/liuli-theme
+
+# 2b. 本地源码：
+pnpm add @deepseek-ai/liuli-theme@link:/绝对/路径/liuli-theme
+```
+
+然后确认 `~/.dsh/profiles/desktop/cordis.patch.yml` 里有：
+
+```yaml
+- insert:
+    - id: liuli-theme
+      name: '@deepseek-ai/liuli-theme'
+```
+
+最后重启 DSH Desktop。移除该注册行即回到素版外观（shell 的外观行降级为直连切换，无圆形遮罩）。
+
+依赖宿主主题服务（`ctx.theme`，由 `dsh-client-ui-theme` 提供）：偏好持久化与 `theme/change` 事件由宿主承担，本插件只消费。host 半（node 半）提供两条本地路由：`/liuli-quota`（凭据额度）与 `/preview`（会话 cwd 静态站点，preview 面板用）。
 
 ## 构建
 
