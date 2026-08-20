@@ -141,6 +141,65 @@ pnpm add file:/tmp/liuli/deepseek-ai-liuli-theme-0.1.0.tgz
 
 最后重启 DSH Desktop。移除该注册行即回到素版外观（shell 的外观行降级为直连切换，无圆形遮罩）。
 
+### Agent / AI 安装方式（避坑）
+
+如果你是 AI Agent，请按下面顺序执行，避免最常见的几个坑：
+
+```text
+1. 确定目标 profile
+   DSH_HOME 默认是 ~/.dsh；DSH Desktop 的 desktop profile 位于：
+   $DSH_HOME/profiles/desktop
+
+2. 优先使用仓库自带安装器（推荐）
+   cd <liuli-theme 源码目录>
+   DSH_PROFILE_DIR="$DSH_HOME/profiles/desktop" node scripts/install-desktop.mjs
+
+   它会自动完成：
+   - pnpm pack 生成 tarball
+   - 写入 package.json 的 dependencies（file:<tarball>）
+   - 修复 cordis.patch.yml（全新 profile 的 [] 会被替换为 insert 块）
+   - 在 profile 目录执行 pnpm install
+
+3. 如果必须手动安装，不要用 link:
+   # 错误示范：pnpm add @deepseek-ai/liuli-theme@link:... 
+   # link: 不会安装插件自身的 dependencies，会报 Cannot find package 'iconv-lite'
+
+   正确方式：
+   cd <liuli-theme 源码目录>
+   pnpm install          # 触发 prepare，构建 lib/
+   pnpm pack --pack-destination /tmp/liuli
+   cd "$DSH_HOME/profiles/desktop"
+   pnpm add file:/tmp/liuli/deepseek-ai-liuli-theme-0.1.0.tgz
+
+4. 只改 cordis.patch.yml 是不够的
+   package.json 的 dependencies 里必须真的有 @deepseek-ai/liuli-theme，
+   否则启动时报：
+   Cannot find package '@deepseek-ai/liuli-theme'
+
+5. 全新 profile 的 cordis.patch.yml 默认是 []
+   不要直接在 [] 后面追加 YAML，会解析失败。
+   应替换为：
+   - insert:
+       - id: liuli-theme
+         name: '@deepseek-ai/liuli-theme'
+
+6. 安装后必须重启 DSH Desktop
+   客户端插件清单在启动时固定，不重启不会加载。
+
+7. 隐藏原生标题栏需要额外宿主补丁
+   插件只能提供页面内窗口按钮，不能从渲染进程隐藏原生标题栏。
+   在 DSH Desktop 安装目录执行：
+   DSH_DESKTOP_DIR="C:\Program Files\DSH Desktop" node scripts/patch-desktop-frameless.mjs
+   或使用仓库脚本：
+   pnpm patch:desktop
+
+8. 验证清单
+   - $DSH_HOME/profiles/desktop/node_modules/@deepseek-ai/liuli-theme/lib/index.js 存在
+   - $DSH_HOME/profiles/desktop/node_modules/@deepseek-ai/liuli-theme/lib/client.js 存在
+   - cordis.patch.yml 包含 liuli-theme insert
+   - 重启后页面出现 [data-liuli-theme] 和右侧边栏/窗口控制胶囊
+```
+
 依赖宿主主题服务（`ctx.theme`，由 `dsh-client-ui-theme` 提供）：偏好持久化与 `theme/change` 事件由宿主承担，本插件只消费。host 半（node 半）提供两条本地路由：`/liuli-quota`（凭据额度）与 `/preview`（会话 cwd 静态站点，preview 面板用）。
 
 ## 构建
