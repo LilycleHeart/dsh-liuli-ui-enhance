@@ -84,7 +84,15 @@ function Tip({ text }: { text: string }) {
 /** 一个表单行：标签 + 控件；tip 提供指针悬浮功能描述（ⓘ 图标）。 */
 function Row(props: { label: string; hint?: string; tip?: string | undefined; children: ReactNode }) {
   return (
-    <label className={css.row}>
+    <label
+      className={css.row}
+      onClick={(e) => {
+        // 修复：<label> 会把行内任意位置的点击合成派发给内部控件（如开关被误切换）。
+        // 指针落在控件本身上时放行；点标签文字 / 提示 / 留白一律不触发控件激活。
+        const control = e.currentTarget.querySelector('button, input, select, textarea, [role="button"], [role="switch"]')
+        if (control === null || !control.contains(e.target as Node)) e.preventDefault()
+      }}
+    >
       <span className={css.label}>
         {props.label}
         {props.tip !== undefined && <Tip text={props.tip} />}
@@ -568,12 +576,9 @@ export function DenpaAppearanceSection({
 
   return (
     <div className={css.section}>
-      <p className={css.desc}>{t('desc')}</p>
-
       <div className={css.grid}>
         <ToggleRow
           label={t('wideMode')}
-          hint={t('wideModeHint')}
           checked={s.wide_mode}
           onChange={(v) => { set({ wide_mode: v }) }}
         />

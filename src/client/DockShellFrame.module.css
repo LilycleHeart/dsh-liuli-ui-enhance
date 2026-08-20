@@ -65,6 +65,24 @@
   display: flex;
   min-width: 0;
   min-height: 0;
+  /* 收起/展开动画：固定宽度 shard（侧栏/详情）的 flex-basis 过渡，时长对齐
+     官方 AppFrame 的 grid-template-columns 过渡（--ds-transition-duration-slow
+     = 0.3s）。会话列是 flex-grow 成员，其他 shard 宽度逐帧变化时自动平滑补位，
+     因此收起/展开时整个三列布局（含会话页）同步滑动，不跳变。 */
+  transition: flex-basis 0.3s var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1)),
+    flex-grow 0.3s var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+/* sash 拖拽期间禁用过渡（对齐官方 AppFrame [data-dragging] { transition: none }）：
+   拖拽时宽度每帧连续变化，过渡会造成滞后/跟手性差 */
+.dockBody[data-resizing] .shard {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shard {
+    transition: none;
+  }
 }
 
 /* sash：作为 split 的 flex 成员恰好落在相邻面板分界上（负外边距使其
@@ -87,16 +105,18 @@
   touch-action: none;
 }
 
-/* ── 悬停抓握簇：单区域面板右上角的隐藏入口（⠿ 拖拽 + ⧉ 一键浮动）。
+/* ── 悬停抓握簇：单区域面板顶部居中的隐藏入口（横条拖拽 + ⧉ 一键浮动）。
       无边框改造移除 caption 行后，⧉ 承担原"拖到标题栏悬浮"的职责。 ── */
 
 .gripCluster {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 40;
   display: flex;
-  gap: 2px;
+  align-items: center;
+  gap: 6px;
   opacity: 0;
   transition: opacity 140ms ease;
 }
@@ -109,7 +129,66 @@
   opacity: 1;
 }
 
-.grip,
+/* 会话面板：横条常驻显示在 header 与对话内容之间的位置（header 高度由
+   HeaderEffects 运行时写入 --dsh-header-height；header 隐藏时回落顶部）。 */
+.pane[data-region-pane='conversation'] .gripCluster {
+  top: calc(var(--dsh-header-height, 0px) + 4px);
+  opacity: 0.55;
+}
+
+.pane[data-region-pane='conversation']:hover .gripCluster,
+.pane[data-region-pane='conversation'] .gripCluster:hover {
+  opacity: 1;
+}
+
+/* 拖动按钮：横向长条把手（宽命中区 + 视觉细条 + 中央亮纹） */
+.grip {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  padding: 0;
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.grip::before {
+  content: '';
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dsw-alias-label-tertiary, #999) 40%, transparent);
+  transition: background 140ms ease, box-shadow 140ms ease;
+}
+
+.grip:hover::before {
+  background: color-mix(in srgb, var(--dsw-alias-label-primary, #333) 55%, transparent);
+}
+
+.grip:active::before {
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary, #0079bf) 65%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--dsw-alias-brand-primary, #0079bf) 40%, transparent);
+}
+
+.grip::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dsw-alias-bg-layer-2, #fff) 75%, transparent);
+  pointer-events: none;
+}
+
+/* 一键浮动（⧉）：横条旁边的中性小按钮，与关闭（红）区分 */
 .gripFloat {
   width: 22px;
   height: 20px;
@@ -122,20 +201,11 @@
   color: var(--dsw-alias-label-tertiary, #999);
   font-size: 11px;
   padding: 0;
+  cursor: pointer;
   transition: background 140ms ease, color 140ms ease;
   user-select: none;
 }
 
-.grip {
-  cursor: grab;
-  touch-action: none;
-}
-
-.gripFloat {
-  cursor: pointer;
-}
-
-.grip:hover,
 .gripFloat:hover {
   background: color-mix(in srgb, var(--dsw-alias-label-primary, #333) 10%, transparent);
   color: var(--dsw-alias-label-primary, inherit);

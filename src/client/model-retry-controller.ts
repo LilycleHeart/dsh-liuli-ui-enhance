@@ -229,6 +229,6 @@ let snapshotJitterRatio = MODEL_RETRY_DEFAULTS.jitterRatio
 
 /** 由 loadModelRetry 调用以缓存展示基准（供 save 沿用未暴露字段）。 */
 export function cacheModelRetryBackoff(maxDelayMs: number, jitterRatio: number): void {
-  if (Number.isFinite(maxDelayMs) && maxDelayMs > 0) snapshotMaxDelayMs = maxDelayMs
-  if (Number.isFinite(jitterRatio) && jitterRatio >= 0 && jitterRatio <= 1) snapshotJitterRatio = jitterRatio
+  if (Number.isFinite(maxDelayMs) && maxDelayMs > 0) snapshotMaxDelayMs = maxDelayMs as typeof MODEL_RETRY_DEFAULTS.maxDelayMs
+  if (Number.isFinite(jitterRatio) && jitterRatio >= 0 && jitterRatio <= 1) snapshotJitterRatio = jitterRatio as typeof MODEL_RETRY_DEFAULTS.jitterRatio
 }

@@ -9,6 +9,8 @@
   flex-direction: column;
   height: 100%;
   min-width: 0;
+  /* 描边与侧栏/会话区卡片一致（1px solid border-l1） */
+  border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.15));
   border-radius: var(--denpa-radius, 14px) 0 0 0;
   background-color: transparent;
   background-image: none;
@@ -200,7 +202,7 @@
   width: 26px;
   height: 26px;
   flex: none;
-  border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.2));
+  border: none;
   border-radius: 7px;
   background: transparent;
   color: var(--dsw-alias-label-secondary, inherit);

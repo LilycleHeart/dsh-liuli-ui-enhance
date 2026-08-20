@@ -3,7 +3,7 @@
 import {
   addPanel, collectTabsNodes, createPanel, defaultLayout, emptyLayout,
   findNode, findPanel, moveFloat, movePanel, panelCount, parseDockLayout,
-  removePanel, resizeSplit, resizeSplitTo, serializeDockLayout, setActivePanel, updateFloat,
+  placePanel, removePanel, resizeSplit, resizeSplitTo, serializeDockLayout, setActivePanel, updateFloat,
   type DockLayout, type SplitNode, type TabsNode,
 } from '../src/client/dock-model.ts'
 
@@ -239,6 +239,41 @@ function withPanel(type: string): DockLayout {
   const layout = defaultLayout()
   check('M15 default is h-split', layout.root !== null && layout.root.kind === 'split' && layout.root.dir === 'h' && layout.root.children.length === 2)
   check('M15b default panel count', panelCount(layout) === 3)
+}
+
+// M16 placePanel（外部拖入：右侧标签面板标签 → 布局落点）
+{
+  // 空布局 + split 目标 → 根为标签组
+  let layout = emptyLayout()
+  const p1 = createPanel(layout, 'browser', undefined, { url: 'https://example.com' })
+  layout = placePanel(layout, p1, { kind: 'split', nodeId: 'missing', side: 'right' })
+  check('M16 empty split target creates root tabs', layout.root !== null && layout.root.kind === 'tabs' && (layout.root as TabsNode).tabs[0]?.id === p1.id)
+
+  // 已有布局 + edge 目标 → 根变 h-split，新组在目标侧
+  layout = withPanel('files')
+  const p2 = createPanel(layout, 'git')
+  layout = placePanel(layout, p2, { kind: 'edge', side: 'right' })
+  check('M16b edge right splits root', layout.root !== null && layout.root.kind === 'split' && layout.root.dir === 'h' && layout.root.children.length === 2)
+  const rightChild = layout.root.children[1]
+  check('M16c new panel lands in right shard', rightChild !== undefined && rightChild.kind === 'tabs' && rightChild.tabs.some(p => p.id === p2.id), JSON.stringify(rightChild))
+
+  // tab 目标 → 并入指定标签组
+  layout = withPanel('files')
+  const p3 = createPanel(layout, 'wiki')
+  const rootId = (layout.root as TabsNode).id
+  layout = placePanel(layout, p3, { kind: 'tab', nodeId: rootId, index: 0 })
+  check('M16d tab target merges', layout.root !== null && layout.root.kind === 'tabs' && (layout.root as TabsNode).tabs.length === 2 && (layout.root as TabsNode).tabs[0]?.id === p3.id)
+
+  // float 目标 → 新建浮动窗口
+  layout = emptyLayout()
+  const p4 = createPanel(layout, 'notes')
+  layout = placePanel(layout, p4, { kind: 'float', x: 10, y: 20 })
+  check('M16e float target creates float window', layout.floats.length === 1 && layout.floats[0]!.tabs[0]?.id === p4.id && layout.floats[0]!.x === 10)
+  check('M16f float leaves root empty', layout.root === null)
+
+  // 面板不重复进入（placePanel 只放不删源——外部新面板语义）
+  const total = panelCount(layout)
+  check('M16g panel count consistent', total === 1)
 }
 
 console.log('SUMMARY: ' + pass + '/' + (pass + fail) + ' passed')

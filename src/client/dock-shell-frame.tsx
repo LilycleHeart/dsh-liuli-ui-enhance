@@ -19,16 +19,17 @@
 import { Fragment, useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import type { PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import {
-  addPanel, collectTabsNodes, moveFloat, movePanel, panelCount,
-  patchPanel, removePanel, resizeSplitTo, setActivePanel, updateFloat,
+  addPanel, collectTabsNodes, createPanel, moveFloat, movePanel, panelCount,
+  patchPanel, placePanel, removePanel, resizeSplitTo, setActivePanel, updateFloat,
   type DockLayout, type DockNode, type DropTarget, type FloatWindow, type PanelInstance, type SplitNode, type TabsNode,
 } from './dock-model.ts'
 import { DOCK_PANEL_DEFS, panelDef, panelTitle, type DockHostAccess } from './dock-panels.tsx'
+import { markSideTabAccepted, parseSideTab, SIDE_TAB_MIME, sideTabToDockPanel, type SideTabDockPanel } from './side-tab-dock.ts'
 import {
   createDockShellStore, exportDockJSON, findRegion, importDockJSON, isRegionPanel,
   listShellSlotNames, loadShellSlotByName, regionLabel, saveShellDock,
-  saveShellSlotByName, withRegion, withoutRegion,
-  REGION_CONVERSATION, REGION_DETAILS, REGION_SIDEBAR,
+  saveShellSlotByName, withRegion,
+  REGION_CONVERSATION, REGION_CONVERSATION_HEADER, REGION_DETAILS, REGION_SIDEBAR,
   type HostLayoutFace,
 } from './dock-shell.ts'
 import css from './DockShellFrame.module.css'
@@ -117,6 +118,9 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
   const [toast, setToast] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const dragRef = useRef<{ source: DragSource; title: string; sx: number; sy: number; active: boolean } | null>(null)
+  /** HTML5 外部拖入（右侧标签面板标签）的落点指示。 */
+  const [htmlDrop, setHtmlDrop] = useState<{ over: DropTarget | null; rect: DragState['overRect'] } | null>(null)
+  const htmlDragActive = useRef(false)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const shellRef = useRef(shell)
@@ -139,17 +143,19 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     lastSession.current = detailsSession
   }, [hostLayout, detailsSession])
 
-  /* ── 详情区域与宿主状态同步：开(0→w)加面板到右缘，关(w→0)移除面板 ── */
+  /* ── 详情区域与宿主状态同步：面板常驻树中（官方 DetailsColumn 语义：宽度
+        0 保持挂载），开合只切换 shard 宽度（0 ↔ 详情宽），由 CSS 过渡驱动动画，
+        会话列平滑补位；仅当面板被用户移出树（关闭标签/拖走/导入布局）后再次
+        openDetails 时补挂面板。 ── */
   const prevDetails = useRef(hostPanels.details)
   useEffect(() => {
     const prev = prevDetails.current
     prevDetails.current = hostPanels.details
-    const current = shellRef.current.dock
-    const present = findRegion(current, REGION_DETAILS) !== undefined
-    if (prev === 0 && hostPanels.details > 0 && !present) {
-      actions.setDock(withRegion(current, REGION_DETAILS, 'right'))
-    } else if (prev > 0 && hostPanels.details === 0 && present) {
-      actions.setDock(withoutRegion(current, REGION_DETAILS))
+    if (prev === 0 && hostPanels.details > 0) {
+      const current = shellRef.current.dock
+      if (findRegion(current, REGION_DETAILS) === undefined) {
+        actions.setDock(withRegion(current, REGION_DETAILS, 'right'))
+      }
     }
   }, [hostPanels.details, actions])
 
@@ -207,6 +213,13 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     switch (panel.type) {
       case REGION_SIDEBAR:
         return renderSlot('sidebar', { collapsed: sidebarCollapsed, width: sidebarWidth })
+      case REGION_CONVERSATION_HEADER:
+        // 会话标题面板：渲染宿主的会话 header（面包屑/操作/工具/tabs）。
+        // 宿主 ConversationRoot 内还会渲染一份 header，由 denpa-css.ts 的
+        // 拆分规则隐藏（避免双 header），这里只承载可见的那份。
+        // 运行时授权由 equipRootEntryChildren 补进 root entry children 表，
+        // 类型面未声明该子 slot，此处显式断言（SlotOwnershipError 只在运行时检查）。
+        return (renderSlot as (key: string, owner?: Record<string, unknown>) => ReactNode)('conversation.session.header', {})
       case REGION_CONVERSATION:
         return renderSlot('conversation', {})
       case REGION_DETAILS:
@@ -269,6 +282,59 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     }
     return { target: null, rect: null }
   }, [])
+
+  /* ── HTML5 外部拖入（右侧标签面板标签 → 布局落点） ── */
+
+  useEffect(() => {
+    const rootEl = rootRef.current
+    if (rootEl === null) return
+    const hasSideTab = (e: DragEvent): boolean =>
+      Array.from(e.dataTransfer?.types ?? []).includes(SIDE_TAB_MIME)
+    const onDragOver = (e: DragEvent): void => {
+      if (!hasSideTab(e)) return
+      // 拖到右侧标签面板自身内部（其 48px 标签条/内容区）不接管：
+      // 那里保留 SidePane 自己的内部排序语义，不触发布局落点。
+      if (e.target instanceof Element && e.target.closest('[data-liuli-side-pane]') !== null) return
+      e.preventDefault()
+      e.dataTransfer!.dropEffect = 'move'
+      htmlDragActive.current = true
+      const { target, rect } = computeDrop(e.clientX, e.clientY)
+      setHtmlDrop({ over: target, rect })
+    }
+    const onDragLeave = (e: DragEvent): void => {
+      if (!htmlDragActive.current) return
+      // 离开 root 自身才算离开（子元素间移动不算）。
+      const next = e.relatedTarget instanceof Node ? e.relatedTarget : null
+      if (!rootEl.contains(next)) {
+        htmlDragActive.current = false
+        setHtmlDrop(null)
+      }
+    }
+    const onDrop = (e: DragEvent): void => {
+      if (!hasSideTab(e)) return
+      e.preventDefault()
+      htmlDragActive.current = false
+      const raw = e.dataTransfer?.getData(SIDE_TAB_MIME) ?? ''
+      const tab = parseSideTab(raw)
+      const mapped: SideTabDockPanel | undefined = tab === undefined ? undefined : sideTabToDockPanel(tab)
+      setHtmlDrop(null)
+      if (tab === undefined || mapped === undefined) return
+      const { target } = computeDrop(e.clientX, e.clientY)
+      markSideTabAccepted()
+      const current = shellRef.current.dock
+      const next = structuredClone(current)
+      const panel = createPanel(next, mapped.type, mapped.title, mapped.state)
+      actions.setDock(placePanel(next, panel, target ?? { kind: 'edge', side: 'right' }))
+    }
+    rootEl.addEventListener('dragover', onDragOver)
+    rootEl.addEventListener('dragleave', onDragLeave)
+    rootEl.addEventListener('drop', onDrop)
+    return () => {
+      rootEl.removeEventListener('dragover', onDragOver)
+      rootEl.removeEventListener('dragleave', onDragLeave)
+      rootEl.removeEventListener('drop', onDrop)
+    }
+  }, [computeDrop, actions])
 
   const beginDrag = useCallback((e: React.PointerEvent, source: DragSource, title: string): void => {
     if (e.button !== 0) return
@@ -352,6 +418,10 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     }
     const start = dir === 'h' ? e.clientX : e.clientY
     const startRatio = splitNode.sizes[dividerIndex - 1] ?? 0.5
+    // 拖拽期间禁用 shard 宽度过渡（flex-basis 每帧变化，过渡会滞后/跟手性差），
+    // 对齐官方 AppFrame 的 [data-dragging] { transition: none }。
+    const rootEl = rootRef.current
+    rootEl?.setAttribute('data-resizing', '')
     const onMove = (ev: PointerEvent): void => {
       if (regionType !== undefined && regionPaneRect !== undefined) {
         const isBefore = beforeType !== undefined
@@ -368,6 +438,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     const onUp = (): void => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
+      rootEl?.removeAttribute('data-resizing')
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
@@ -412,7 +483,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
             ⧉
           </button>
         )}
-        {panel.type !== REGION_CONVERSATION && panel.type !== REGION_SIDEBAR && (
+        {panel.type !== REGION_CONVERSATION && panel.type !== REGION_CONVERSATION_HEADER && panel.type !== REGION_SIDEBAR && (
           <button
             type="button"
             className={css.tabClose}
@@ -449,6 +520,14 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     if (draggable === undefined || node.tabs.length > 1) return null
     return (
       <div className={css.gripCluster}>
+        <div
+          className={css.grip}
+          data-testid="dock-grip"
+          role="button"
+          title="拖动以自定义布局"
+          aria-label="拖动以自定义布局"
+          onPointerDown={(e) => { beginDrag(e, { kind: 'node', containerId: node.id, panelId: draggable.id }, isRegionPanel(draggable.type) ? regionLabel(draggable.type) : panelTitle(draggable)) }}
+        />
         <button
           type="button"
           className={css.gripFloat}
@@ -459,26 +538,20 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
         >
           ⧉
         </button>
-        <div
-          className={css.grip}
-          data-testid="dock-grip"
-          title="拖动以自定义布局"
-          onPointerDown={(e) => { beginDrag(e, { kind: 'node', containerId: node.id, panelId: draggable.id }, isRegionPanel(draggable.type) ? regionLabel(draggable.type) : panelTitle(draggable)) }}
-        >
-          ⠿
-        </div>
       </div>
     )
   }
 
   /** 区域固定宽度（默认布局保真）：单区域侧栏/详情按宿主宽度语义，
-   *  让 split 的对应 shard 用精确 px，而非会跟比例打架的 flex-grow。 */
+   *  让 split 的对应 shard 用精确 px，而非会跟比例打架的 flex-grow。
+   *  详情关闭时返回 0（而非 undefined）：面板常驻树中，宽度 0 保持挂载，
+   *  开合由 flex-basis 过渡驱动，会话列平滑补位。 */
   const childFixedWidth = (child: DockNode): number | undefined => {
     if (child.kind !== 'tabs' || child.tabs.length !== 1) return undefined
     const only = child.tabs[0]
     if (only === undefined) return undefined
     if (only.type === REGION_SIDEBAR) return sidebarWidth
-    if (only.type === REGION_DETAILS) return hostPanels.details > 0 ? hostPanels.details : undefined
+    if (only.type === REGION_DETAILS) return hostPanels.details
     return undefined
   }
 
@@ -545,12 +618,19 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
       <div className={(split.dir === 'h' ? css.splitH : css.splitV) + ' ' + css.splitBox} data-dock-split={split.id}>
         {split.children.map((child, i) => {
           const fixed = fixedFlags[i] === true ? childFixedWidth(child) : undefined
+          // 固定宽度 shard 用分属性（flexGrow/flexShrink/flexBasis）而非 flex 简写：
+          // CSS 过渡按 flex-basis 插值（简写过渡在部分浏览器不稳定），开合动画即
+          // 由此驱动；flex-basis 为 0 时保持挂载（详情收起），便于 0↔w 平滑过渡。
           const shardStyle = fixed !== undefined
-            ? { flex: '0 0 ' + String(fixed) + 'px' }
+            ? { flexGrow: 0, flexShrink: 0, flexBasis: String(fixed) + 'px' }
             : { flexGrow: growSum > 0 ? (split.sizes[i] ?? 1) / growSum : 1, flexBasis: 0, flexShrink: 1 }
+          // 收起态（固定宽度 0）的面板与相邻面板间不渲染 sash：官方 AppFrame 在
+          // details 关闭时不渲染拖拽把手（cols.details > 0 才挂），避免窗口最右缘
+          // 出现隐形的 col-resize 拖拽带。
+          const collapsed = fixed !== undefined && fixed === 0
           return (
             <Fragment key={child.id}>
-              {i > 0 && (
+              {i > 0 && !collapsed && (
                 <div
                   className={split.dir === 'h' ? css.sashH : css.sashV}
                   data-testid="dock-sash"
@@ -594,11 +674,14 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
   const slots = listShellSlotNames()
   void slotsVersion
 
+  const headerPanelPresent = findRegion(dock, REGION_CONVERSATION_HEADER) !== undefined
   return (
     <div
       className="dshDesktopFrame"
       data-desktop-platform={platform}
       data-sidebar-collapsed={sidebarCollapsed || undefined}
+      data-details-collapsed={hostPanels.details === 0 || undefined}
+      data-conversation-header={headerPanelPresent || undefined}
       data-testid="dock-shell"
       data-hmr-marker={HMR_MARKER}
       data-panels={String(panelCount(dock))}
@@ -621,6 +704,15 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
             data-testid="dock-drop-indicator"
             data-kind={drag.over.kind}
             style={{ left: drag.overRect.left, top: drag.overRect.top, width: drag.overRect.width, height: drag.overRect.height }}
+          />
+        )}
+        {htmlDrop !== null && htmlDrop.over !== null && htmlDrop.rect !== null && (
+          <div
+            className={css.dropIndicator}
+            data-testid="dock-drop-indicator"
+            data-kind={htmlDrop.over.kind}
+            data-source="side-tab"
+            style={{ left: htmlDrop.rect.left, top: htmlDrop.rect.top, width: htmlDrop.rect.width, height: htmlDrop.rect.height }}
           />
         )}
       </div>

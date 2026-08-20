@@ -16,7 +16,7 @@
  *   + 打开的标签页（相对时间+关闭钮）+ 最近关闭的标签页（点击重开）；
  * - 空状态「打开标签页」卡片（h-12 rounded-xl 按钮列）；
  * - 快捷键 Ctrl/Cmd+Alt+B 切换面板（ZCode：切换右侧面板）；Ctrl/Cmd+K 命令中心；
- * - 宽度：左缘手柄拖拽，min 240px、max 65%、首次打开默认 45%（ZCode sqt/Eqt），
+ * - 宽度：左缘手柄拖拽，min 240px、max 88%、首次打开默认 45%（ZCode sqt/Eqt，max 由 65% 放宽），
  *   localStorage 持久化（ZCode 为内存态，此处为适配 DSH 热重载的扩展）；
  *   ZCode 无 maximize/restore（i18n 死键），本实现同样不提供；
  * - 元素拾取：浏览器面板工具条按钮显式开启（ZCode browser.elementPicker 语义）。
@@ -29,7 +29,7 @@ import {
   webviewBrowser, type WebviewTabState,
 } from './browser-webview.ts'
 import {
-  CommandPalette, FileTreePanel, GitPanel, WikiPanel, type CommandPaletteCommand,
+  CommandPalette, FileTreePanel, WikiPanel, type CommandPaletteCommand,
 } from './RightSidebarPanels.tsx'
 import { fetchSidebarTree } from './right-sidebar-api.ts'
 import {
@@ -41,6 +41,11 @@ import {
   DeveloperToolsPanel, PlanPanel, SideChatPanel, SubagentPanel, TerminalPanel, TrajectoryPanel,
   WhiteboardPanel, type SidePaneHostAccess,
 } from './SidePaneExtraPanels.tsx'
+import { FileReviewPanel } from './FileReviewPanel.tsx'
+import { REVIEW_FILE_EVENT } from './review-bus.ts'
+import {
+  consumeSideTabAccepted, SIDE_TAB_MIME, serializeSideTab, sideTabToDockPanel,
+} from './side-tab-dock.ts'
 import css from './PreviewPanel.module.css'
 
 /** 打开/关闭事件名（header 按钮翻转模块状态后广播，面板同步）。 */
@@ -218,8 +223,8 @@ const LS_KEY = 'liuli:side-pane'
 const RECENT_CLOSED_MAX = 8
 /** ZCode Eqt：侧边面板 minSize 240px。 */
 const WIDTH_MIN = 240
-/** ZCode Eqt：侧边面板 maxSize = 65%。 */
-const WIDTH_MAX_RATIO = 0.65
+/** 侧边面板最大宽度 = 视口 88%（放宽 ZCode 原 65% 上限，充分利用大屏横向空间）。 */
+const WIDTH_MAX_RATIO = 0.88
 /** ZCode sqt = 0.45：首次打开默认宽度 = 父容器 45%。 */
 const WIDTH_DEFAULT_RATIO = 0.45
 
@@ -265,7 +270,7 @@ function tabTitle(tab: SidePaneTab): string {
   switch (tab.type) {
     case 'treemapping': return 'Treemapping'
     case 'repo-wiki': return '仓库 Wiki'
-    case 'git': return '审查'
+    case 'git': return '审查文件'
     case 'browser': return tab.title?.trim() || '浏览器'
     case 'terminal': return tab.title?.trim() || '终端'
     case 'developer-tools': return '开发者工具'
@@ -294,7 +299,7 @@ function tabTypeLabel(tab: SidePaneTab): string {
   switch (tab.type) {
     case 'treemapping': return 'Treemapping'
     case 'repo-wiki': return '仓库 Wiki'
-    case 'git': return '审查'
+    case 'git': return '审查文件'
     case 'browser': return '浏览器'
     case 'terminal': return '终端'
     case 'developer-tools': return '开发者工具'
@@ -546,6 +551,7 @@ export function PreviewDetailsPanel({
   const [fileDialogOpen, setFileDialogOpen] = useState(false)
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; tabId: string } | null>(null)
   const [now, setNow] = useState(() => Date.now())
+  const [reviewRequest, setReviewRequest] = useState<{ path: string; nonce: number } | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
   const tabsViewportRef = useRef<HTMLDivElement | null>(null)
   const overviewBtnRef = useRef<HTMLButtonElement | null>(null)
@@ -879,6 +885,24 @@ export function PreviewDetailsPanel({
     return () => { window.removeEventListener(PREVIEW_NAVIGATE_EVENT, onNavigate) }
   }, [openDetails, openBrowserUrl])
 
+  /* ── 轮次卡片「审查」：打开侧栏并切到审查文件标签、选中目标文件 ── */
+
+  useEffect(() => {
+    const onReview = (e: Event): void => {
+      const detail = (e as CustomEvent<{ sessionId?: string; path: string }>).detail
+      const path = detail?.path
+      if (typeof path !== 'string' || path === '') return
+      if (detail.sessionId !== undefined && detail.sessionId !== sessionId) return
+      // 打开 details 列 + 确保「审查文件」标签存在并激活。
+      setPreviewOpen(true)
+      openDetails?.()
+      openSingleton('git')
+      setReviewRequest({ path, nonce: Date.now() })
+    }
+    window.addEventListener(REVIEW_FILE_EVENT, onReview)
+    return () => { window.removeEventListener(REVIEW_FILE_EVENT, onReview) }
+  }, [openDetails, openSingleton, sessionId])
+
   /* ── webview 引擎：弹窗/新窗口请求 → 侧边栏新浏览器标签（ZCode [App] webview 请求打开右侧浏览器 tab） ── */
 
   useEffect(() => {
@@ -1168,7 +1192,7 @@ export function PreviewDetailsPanel({
     if (sessionId !== undefined && host !== undefined) {
       items.push({ id: 'side-chat', label: '辅助对话', icon: <MessageSquareTextIcon size={16} />, run: () => { openSideChat() } })
     }
-    if (!has('git')) items.push({ id: 'git', label: '审查', icon: <FileDiffIcon size={16} />, run: () => { openSingleton('git') } })
+    if (!has('git')) items.push({ id: 'git', label: '审查文件', icon: <FileDiffIcon size={16} />, run: () => { openSingleton('git') } })
     items.push({ id: 'terminal', label: '终端', icon: <SquareTerminalIcon size={16} />, run: () => { openTerminal() } })
     items.push({ id: 'browser', label: '浏览器', icon: <GlobeIcon size={16} />, run: () => { openBrowserFromMenu() } })
     if (!has('developer-tools')) items.push({ id: 'developer-tools', label: '开发者工具', icon: <BugIcon size={16} />, run: () => { openSingleton('developer-tools') } })
@@ -1207,6 +1231,11 @@ export function PreviewDetailsPanel({
         onDragStart={(e) => {
           dragTab.current = tab.id
           e.dataTransfer.setData('application/x-liuli-pane-tab', tab.id)
+          // 有布局对应类型的标签额外写入 dock 拖拽桥 MIME：拖到 Dockable 布局
+          // （琉璃工作台 / DockShell）时由布局侧 drop 接收并放入布局落点。
+          if (sideTabToDockPanel(tab) !== undefined) {
+            e.dataTransfer.setData(SIDE_TAB_MIME, serializeSideTab(tab))
+          }
           e.dataTransfer.effectAllowed = 'move'
         }}
         onDragOver={(e) => {
@@ -1223,7 +1252,12 @@ export function PreviewDetailsPanel({
           }
           dragTab.current = null
         }}
-        onDragEnd={() => { dragTab.current = null }}
+        onDragEnd={() => {
+          dragTab.current = null
+          // 拖拽被布局接收（drop 已成功放入布局）→ 移动语义：关闭源标签，
+          // 标签从右侧面板「拆分」进布局；内部排序/拖拽取消不标记，标签保留。
+          if (consumeSideTabAccepted()) closeTab(tab.id)
+        }}
       >
         <span className={css.tabIcon}><TabIcon tab={tab} /></span>
         <span className={css.tabTitle}>{tabTitle(tab)}</span>
@@ -1319,7 +1353,13 @@ export function PreviewDetailsPanel({
                 />
               )}
               {tab.type === 'repo-wiki' && <WikiPanel sessionId={sessionId} onOpenFile={previewFile} />}
-              {tab.type === 'git' && <GitPanel sessionId={sessionId} />}
+              {tab.type === 'git' && (
+                <FileReviewPanel
+                  sessionId={sessionId}
+                  onOpenPath={openPath}
+                  reviewRequest={reviewRequest}
+                />
+              )}
               {tab.type === 'browser' && (
                 <BrowserPanel
                   tabId={tab.id}

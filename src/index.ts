@@ -7,13 +7,14 @@
  * - `/preview`：把当前会话 cwd 作为同源静态站点（预览面板 iframe 用），
  *   只服务会话目录内的文件，Host fence 防 DNS rebinding。
  */
-import { createReadStream } from 'node:fs'
+import { createReadStream, existsSync } from 'node:fs'
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { execFile as execFileCb, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { homedir } from 'node:os'
-import { promisify } from 'node:util'
-import { dirname, extname, join as joinPath, resolve as resolvePath, sep } from 'node:path'
+import { TextDecoder, promisify } from 'node:util'
+import iconv from 'iconv-lite'
+import { dirname, extname, join as joinPath, relative as relativePath, resolve as resolvePath, sep } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
 import type { Context } from '@deepseek-ai/cordis'
@@ -21,6 +22,7 @@ import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
 import { createBrowserEngine } from './browser-engine.ts'
 import { windowControlRoute } from './host-window.ts'
+import { audioCaptureRoute, installSystemAudioCapture } from './host-audio.ts'
 
 export const name = 'liuli-theme'
 
@@ -283,7 +285,7 @@ function liuliSettingsRoute(): WebRoute {
           json(res, 405, { ok: false, error: 'method not allowed' })
           return
         }
-        const body = await readJsonBody(req) as { settings?: unknown; wallpaper?: unknown } | null
+        const body = await readJsonBody(req) as { settings?: unknown; wallpaper?: unknown; sessionMarkers?: unknown } | null
         if (typeof body !== 'object' || body === null) {
           json(res, 400, { ok: false, error: 'invalid JSON body' })
           return
@@ -294,6 +296,10 @@ function liuliSettingsRoute(): WebRoute {
           savedAt: Date.now(),
           settings: body.settings ?? null,
           wallpaper: typeof body.wallpaper === 'string' ? body.wallpaper : null,
+          // 会话标记（右键菜单「添加标记」）：与设置/壁纸一样跨重启持久化。
+          sessionMarkers: typeof body.sessionMarkers === 'object' && body.sessionMarkers !== null
+            ? body.sessionMarkers
+            : null,
         }), 'utf8')
         json(res, 200, { ok: true })
       } catch (error) {
@@ -426,6 +432,25 @@ export function apply(ctx: Context): void {
   // advanced（无边框）模式页面内窗口按钮（WindowControls.tsx）的宿主窗口控制面：
   // GET 查询可用/最大化态，POST 触发 minimize/toggleMaximize/close；纯 Web 返回 available:false。
   ctx.effect(() => ctx.webServer.register(windowControlRoute()), 'liuli-theme: /liuli-window route')
+  // 审查面板「在资源管理器中打开」：系统文件管理器定位文件（explorer /select 等）。
+  ctx.effect(() => ctx.webServer.register(revealRoute(ctx)), 'liuli-theme: /liuli-reveal route')
+  // 系统音频监听（HeaderEffects.tsx 的「监听系统音量」按钮）：Electron 主进程给
+  // defaultSession 装 setDisplayMediaRequestHandler，getDisplayMedia 的 audio 请求
+  // 直接授予系统回环音频（audio:'loopback'，仅 Windows）；另提供 /liuli-audio 探测。
+  // 纯 Web 部署两者都为空操作（handler 不装、路由返回 available:false）。
+  ctx.effect(() => {
+    let disposed = false
+    let dispose: (() => void) | undefined
+    void installSystemAudioCapture().then((release) => {
+      if (disposed) release()
+      else dispose = release
+    })
+    return () => {
+      disposed = true
+      dispose?.()
+    }
+  }, 'liuli-theme: desktop system audio capture handler')
+  ctx.effect(() => ctx.webServer.register(audioCaptureRoute()), 'liuli-theme: /liuli-audio route')
   // 嵌入式浏览器引擎（ZCode Desktop IAB 复刻）：仅 Electron 主进程内有
   // WebContentsView 可承载真实 webview；纯 Web 部署返回 undefined，
   // 渲染端探测 /liuli-browser/capabilities 失败后自动回退 iframe。
@@ -822,6 +847,18 @@ async function serveSidebar(ctx: Context, req: IncomingMessage, res: ServerRespo
       })
       return
     }
+    if (pathname === '/liuli-sidebar/file') {
+      const rel = url.searchParams.get('path') ?? ''
+      const payload = await sidebarReadFile(root, rel)
+      json(res, 200, { ok: true, root, rel, ...payload })
+      return
+    }
+    if (pathname === '/liuli-sidebar/diff') {
+      const rel = url.searchParams.get('path') ?? ''
+      const payload = await sidebarFileDiff(root, rel)
+      json(res, 200, { ok: true, root, rel, ...payload })
+      return
+    }
     if (pathname === '/liuli-sidebar/wiki') {
       const wiki = await sidebarReadWiki(root)
       json(res, 200, { ok: true, root, ...wiki })
@@ -841,6 +878,155 @@ function sidebarRoute(ctx: Context): WebRoute {
     kind: 'prefix',
     path: '/liuli-sidebar',
     handler: (req, res) => { void serveSidebar(ctx, req, res) },
+  }
+}
+
+/* ── /liuli-sidebar/file：读取会话工作区单个文件全文（审查面板「全文」用） ── */
+
+/** 读取一个文本文件全文；二进制（含 NUL 字节）或超大文件返回错误。 */
+async function sidebarReadFile(root: string, rel: string): Promise<{
+  path: string
+  content: string
+  size: number
+}> {
+  const target = resolveWithin(root, rel)
+  if (target === undefined) throw new Error('forbidden')
+  const info = await stat(target)
+  if (!info.isFile()) throw new Error('not a file')
+  if (info.size > 4 * 1024 * 1024) throw new Error('file too large to preview')
+  const raw = await readFile(target)
+  if (raw.includes(0)) throw new Error('binary file')
+  return { path: target, content: raw.toString('utf8'), size: info.size }
+}
+
+/* ── /liuli-sidebar/diff：单文件 git diff（审查面板「Diff」用） ── */
+
+/** 未跟踪文件：把全文渲染成整文件新增的 diff。 */
+function wholeFileAddedDiff(content: string): string {
+  const lines = content.replace(/\r\n/g, '\n').replace(/\n$/, '').split('\n')
+  return lines.map(line => '+' + line).join('\n')
+}
+
+/** 读取单个文件的 git diff（HEAD 优先，其次未暂存）；未跟踪文件合成整文件新增。 */
+async function sidebarFileDiff(root: string, rel: string): Promise<{
+  path: string
+  diff: string
+  x: string
+  y: string
+  untracked: boolean
+}> {
+  const target = resolveWithin(root, rel)
+  if (target === undefined) throw new Error('forbidden')
+  const info = await stat(target).catch(() => undefined)
+  const relPath = target === undefined ? rel : relativePath(root, target)
+  let x = ' '
+  let y = ' '
+  let untracked = false
+  try {
+    const { stdout } = await execFile('git', ['-C', root, 'status', '--porcelain=v1', '--', relPath], {
+      timeout: 8000,
+      maxBuffer: 1024 * 1024,
+      windowsHide: true,
+    })
+    const line = stdout.split(/\r?\n/).find(entry => entry.length >= 3)
+    if (line !== undefined) {
+      x = line[0] ?? ' '
+      y = line[1] ?? ' '
+      untracked = x === '?' || x === '!'
+    }
+  } catch {
+    // 非 git 仓库：保持默认空格状态。
+  }
+  if (untracked) {
+    if (target !== undefined && info?.isFile() === true) {
+      const content = await readFile(target, 'utf8')
+      return { path: target, diff: wholeFileAddedDiff(content), x, y, untracked: true }
+    }
+    return { path: target ?? rel, diff: '', x, y, untracked: true }
+  }
+  let diff = ''
+  try {
+    const { stdout } = await execFile('git', ['-C', root, 'diff', 'HEAD', '--', relPath], {
+      timeout: 8000,
+      maxBuffer: 8 * 1024 * 1024,
+      windowsHide: true,
+    })
+    diff = stdout
+  } catch {
+    // HEAD 不存在（无提交）时回退未暂存 diff。
+  }
+  if (diff === '') {
+    try {
+      const { stdout } = await execFile('git', ['-C', root, 'diff', '--', relPath], {
+        timeout: 8000,
+        maxBuffer: 8 * 1024 * 1024,
+        windowsHide: true,
+      })
+      diff = stdout
+    } catch {
+      // 非 git 仓库：无 diff。
+    }
+  }
+  return { path: target ?? rel, diff, x, y, untracked: false }
+}
+
+/* ── /liuli-reveal：在系统文件管理器中显示文件（审查「在资源管理器中打开」） ── */
+
+/** 系统「在文件管理器中显示」命令（按平台）。 */
+function revealInExplorer(target: string): void {
+  if (process.platform === 'win32') {
+    spawn('explorer.exe', ['/select,' + target], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
+    return
+  }
+  if (process.platform === 'darwin') {
+    spawn('open', ['-R', target], { detached: true, stdio: 'ignore' }).unref()
+    return
+  }
+  spawn('xdg-open', [dirname(target)], { detached: true, stdio: 'ignore' }).unref()
+}
+
+/** 解析 /liuli-reveal 请求（Host fence：回环调用方 + 会话根内路径）。 */
+async function serveReveal(ctx: Context, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    json(res, 405, { ok: false, error: 'method not allowed' })
+    return
+  }
+  const host = req.headers.host
+  if (host === undefined || !isLoopbackHostname(new URL('http://' + host).hostname)) {
+    json(res, 403, { ok: false, error: 'forbidden' })
+    return
+  }
+  const url = new URL(req.url ?? '/', 'http://x')
+  const sessionId = url.searchParams.get('sessionId') ?? ''
+  const path = url.searchParams.get('path') ?? ''
+  if (sessionId === '' || path === '') {
+    json(res, 400, { ok: false, error: 'missing sessionId or path' })
+    return
+  }
+  const root = sidebarSessionRoot(ctx, sessionId)
+  if (root === undefined) {
+    json(res, 404, { ok: false, error: 'not found' })
+    return
+  }
+  const target = resolveWithin(root, path)
+  if (target === undefined) {
+    json(res, 403, { ok: false, error: 'forbidden' })
+    return
+  }
+  try {
+    revealInExplorer(target)
+    json(res, 200, { ok: true })
+  } catch (error) {
+    json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) })
+  }
+}
+
+/** Build the /liuli-reveal prefix route. */
+function revealRoute(ctx: Context): WebRoute {
+  return {
+    kind: 'prefix',
+    path: '/liuli-reveal',
+    handler: (req, res) => { void serveReveal(ctx, req, res) },
   }
 }
 
@@ -913,6 +1099,136 @@ class WsReader {
   }
 }
 
+interface TerminalShellOption {
+  id: string
+  label: string
+}
+
+const TERMINAL_SHELL_OPTIONS: TerminalShellOption[] = process.platform === 'win32'
+  ? [
+      { id: 'cmd', label: '命令提示符 (cmd)' },
+      { id: 'powershell', label: 'Windows PowerShell' },
+      { id: 'pwsh', label: 'PowerShell 7 (pwsh)' },
+      { id: 'bash', label: 'Git Bash' },
+    ]
+  : [
+      { id: 'bash', label: 'Bash' },
+    ]
+
+interface ResolvedTerminalShell {
+  id: string
+  label: string
+  command: string
+  args: string[]
+  encoding: 'gbk' | 'utf-8'
+}
+
+/** 优先使用常见的绝对路径，找不到时回退到 PATH 里的命令名。 */
+function resolveWindowsCommand(fallback: string, candidates: string[]): string {
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate
+  }
+  return fallback
+}
+
+function resolveTerminalShell(requested: string | null): ResolvedTerminalShell {
+  const id = requested !== null && TERMINAL_SHELL_OPTIONS.some(option => option.id === requested)
+    ? requested
+    : (process.platform === 'win32' ? 'cmd' : 'bash')
+  const option = TERMINAL_SHELL_OPTIONS.find(item => item.id === id) ?? TERMINAL_SHELL_OPTIONS[0]!
+
+  if (process.platform !== 'win32') {
+    return { id: option.id, label: option.label, command: 'bash', args: [], encoding: 'utf-8' }
+  }
+
+  const programFiles = process.env.ProgramFiles
+  const programFiles86 = process.env['ProgramFiles(x86)']
+  const localAppData = process.env.LOCALAPPDATA
+  const systemRoot = process.env.SystemRoot ?? 'C:\\Windows'
+
+  switch (id) {
+    case 'powershell':
+      return {
+        id,
+        label: option.label,
+        command: resolveWindowsCommand('powershell.exe', [
+          joinPath(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
+          joinPath(systemRoot, 'SysWOW64', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
+        ]),
+        args: ['-NoLogo'],
+        encoding: 'utf-8',
+      }
+    case 'pwsh':
+      return {
+        id,
+        label: option.label,
+        command: resolveWindowsCommand('pwsh', [
+          ...(programFiles ? [joinPath(programFiles, 'PowerShell', '7', 'pwsh.exe')] : []),
+          ...(programFiles86 ? [joinPath(programFiles86, 'PowerShell', '7', 'pwsh.exe')] : []),
+        ]),
+        args: ['-NoLogo'],
+        encoding: 'utf-8',
+      }
+    case 'bash':
+      return {
+        id,
+        label: option.label,
+        command: resolveWindowsCommand('bash', [
+          ...(programFiles ? [joinPath(programFiles, 'Git', 'bin', 'bash.exe')] : []),
+          ...(programFiles86 ? [joinPath(programFiles86, 'Git', 'bin', 'bash.exe')] : []),
+          ...(localAppData ? [joinPath(localAppData, 'Programs', 'Git', 'bin', 'bash.exe')] : []),
+        ]),
+        args: ['--norc', '--noprofile'],
+        encoding: 'utf-8',
+      }
+    case 'cmd':
+    default: {
+      const comSpec = process.env.ComSpec
+      return {
+        id: 'cmd',
+        label: '命令提示符 (cmd)',
+        command: comSpec !== undefined && existsSync(comSpec) ? comSpec : 'cmd.exe',
+        args: [],
+        encoding: 'gbk',
+      }
+    }
+  }
+}
+
+/** cmd.exe 使用系统 ANSI/OEM 代码页（中文系统通常是 GBK），PowerShell/Git Bash 走 UTF-8。 */
+function createTerminalDecoder(encoding: 'gbk' | 'utf-8'): TextDecoder {
+  return new TextDecoder(encoding)
+}
+
+/** 把浏览器来的文本编码为 shell 管道需要的字节。 */
+function encodeTerminalInput(line: string, encoding: 'gbk' | 'utf-8'): Buffer {
+  const text = line.endsWith('\n') ? line : line + '\n'
+  return encoding === 'gbk' ? iconv.encode(text, 'gbk') : Buffer.from(text, 'utf8')
+}
+
+function terminalShellInstallHint(shell: ResolvedTerminalShell): string {
+  switch (shell.id) {
+    case 'pwsh':
+      return '请先安装 PowerShell 7（https://github.com/PowerShell/PowerShell），或在下方选择其他 Shell。'
+    case 'bash':
+      return '请先安装 Git for Windows（https://git-scm.com/download/win），或在下方选择其他 Shell。'
+    case 'powershell':
+      return '请检查 Windows PowerShell 是否可用，或在下方选择其他 Shell。'
+    case 'cmd':
+      return '请检查系统命令提示符（cmd.exe）是否可用，或在下方选择其他 Shell。'
+    default:
+      return '请确认已安装对应 Shell，或在下方选择其他 Shell。'
+  }
+}
+
+function terminalSpawnErrorMessage(shell: ResolvedTerminalShell, error: Error): string {
+  const code = (error as { code?: string }).code
+  if (code === 'ENOENT') {
+    return `[无法启动 ${shell.label}] 未找到 ${shell.command}。${terminalShellInstallHint(shell)}`
+  }
+  return `[无法启动 ${shell.label}] ${error.message}`
+}
+
 /** One piped shell per WebSocket connection, cwd = session cwd（回退进程 cwd）。 */
 function terminalUpgradeRoute(ctx: Context): WebUpgradeRoute {
   return {
@@ -939,8 +1255,9 @@ function terminalUpgradeRoute(ctx: Context): WebUpgradeRoute {
         + `Sec-WebSocket-Accept: ${wsAccept(key)}\r\n\r\n`,
       )
 
-      const shell = process.platform === 'win32' ? 'cmd.exe' : 'bash'
-      const child = spawn(shell, [], {
+      const requestedShell = url.searchParams.get('shell')
+      const resolved = resolveTerminalShell(requestedShell)
+      const child = spawn(resolved.command, resolved.args, {
         cwd: root,
         env: process.env,
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -951,16 +1268,20 @@ function terminalUpgradeRoute(ctx: Context): WebUpgradeRoute {
         if (closed) return
         try { socket.write(wsEncodeText(text)) } catch { /* socket 已死，忽略 */ }
       }
-      send(`liuli terminal · ${shell} · cwd: ${root}\r\n\r\n`)
-      child.stdout.on('data', (d: Buffer) => { send(d.toString('utf8')) })
-      child.stderr.on('data', (d: Buffer) => { send(d.toString('utf8')) })
+      send(`liuli terminal · ${resolved.label} · cwd: ${root}\r\n\r\n`)
+      const stdoutDecoder = createTerminalDecoder(resolved.encoding)
+      const stderrDecoder = createTerminalDecoder(resolved.encoding)
+      child.stdout.on('data', (d: Buffer) => { send(stdoutDecoder.decode(d, { stream: true })) })
+      child.stderr.on('data', (d: Buffer) => { send(stderrDecoder.decode(d, { stream: true })) })
       child.on('exit', (code) => {
+        send(stdoutDecoder.decode())
+        send(stderrDecoder.decode())
         send(`\r\n[process exited with code ${code ?? 0}]`)
         closed = true
         try { socket.end() } catch { /* ignore */ }
       })
       child.on('error', (err) => {
-        send(`\r\n[spawn error] ${err.message}`)
+        send(`\r\n${terminalSpawnErrorMessage(resolved, err)}`)
         closed = true
         try { socket.end() } catch { /* ignore */ }
       })
@@ -981,7 +1302,7 @@ function terminalUpgradeRoute(ctx: Context): WebUpgradeRoute {
           }
           if ((frame.opcode === 0x1 || frame.opcode === 0x2) && child.stdin.writable) {
             const line = frame.payload.toString('utf8')
-            child.stdin.write(line.endsWith('\n') ? line : line + '\n')
+            child.stdin.write(encodeTerminalInput(line, resolved.encoding))
           }
         }
       })

@@ -42,7 +42,7 @@ async function detectBase() {
 const BASE = await detectBase()
 console.log('host: ' + BASE)
 
-const chrome = spawn(CHROME, ['--headless=new', '--disable-gpu', '--no-first-run', '--user-data-dir=' + path.join(os.tmpdir(), 'liuli-dockshell-' + process.pid), '--remote-debugging-port=' + String(CDP_PORT), '--window-size=1680,980', BASE + '/?dsh-desktop-mode=advanced&dsh-desktop-platform=win32'], { stdio: 'ignore' })
+const chrome = spawn(CHROME, ['--headless=new', '--disable-gpu', '--no-first-run', '--user-data-dir=' + path.join(os.tmpdir(), 'liuli-dockshell-' + process.pid), '--remote-debugging-port=' + String(CDP_PORT), '--window-size=1680,980', 'about:blank'], { stdio: 'ignore' })
 const sleep = (ms) => new Promise(r => setTimeout(r, ms))
 let ws = null, sendId = 0
 const pending = new Map()
@@ -63,6 +63,9 @@ async function connect() {
     if (m.method === 'Runtime.exceptionThrown') pageErrors.push(String(m.params.exceptionDetails?.exception?.description ?? 'x').slice(0, 160))
   }
   await send('Runtime.enable')
+  // 显式导航（spawn 带 URL 存在页面 target 竞态，可能连到空白页）
+  await send('Page.enable')
+  await send('Page.navigate', { url: BASE + '/?dsh-desktop-mode=advanced&dsh-desktop-platform=win32' })
 }
 function send(method, params = {}) {
   return new Promise((res, rej) => { const id = ++sendId; pending.set(id, { res, rej }); setTimeout(() => { if (pending.has(id)) { pending.delete(id); rej(new Error(method + ' timeout')) } }, 30000); ws.send(JSON.stringify({ id, method, params })) })
@@ -98,12 +101,19 @@ const chipSelByLabel = (label) => evalJs('(() => { const c = Array.from(document
 
 try {
   await connect()
-  await sleep(14000)
+  // 初始化较慢（插件变多），轮询等待 dock shell 挂载
+  let mounted = false
+  for (let i = 0; i < 45; i++) {
+    const hit = await evalJs('document.querySelector("[data-testid=dock-shell]") !== null && !!window.__liuliDockShell__')
+    if (hit === true) { mounted = true; break }
+    await sleep(1000)
+  }
 
-  // S1 视觉零侵入：dock shell 接管 root，但无自定义工具栏/菜单，默认 [侧栏|会话]
-  check('S1 dock shell owns root', await evalJs('document.querySelector("[data-testid=dock-shell]") !== null && document.querySelector(".dshDesktopFrame") !== null'))
+  // S1 视觉零侵入：dock shell 接管 root，但无自定义工具栏/菜单，默认
+  // [侧栏 | (会话标题+会话) | 详情]，详情面板常驻（宽度 0 保持挂载）
+  check('S1 dock shell owns root', mounted)
   let s = await summary()
-  check('S1b default 2 regions', s && s.panels === 2 && s.groups === 2 && s.rootKind === 'split', JSON.stringify(s))
+  check('S1b default layout (sidebar/header/conversation/details)', s && s.panels === 4 && s.groups === 4 && s.rootKind === 'split', JSON.stringify(s))
   check('S1c no always-on toolbar', await evalJs('document.querySelector("[data-testid=dock-topbar]") === null'))
   check('S1d menu hidden by default', await evalJs('document.querySelector("[data-testid=dock-menu-card]") === null'))
   const sb = await paneRect('region:sidebar')
@@ -114,7 +124,7 @@ try {
   await hook('addPanel', 'notes')
   await sleep(400)
   s = await summary()
-  check('S2 notes added (3 panels, 2 groups)', s && s.panels === 3 && s.groups === 2, JSON.stringify(s))
+  check('S2 notes added (details group, 5 panels / 4 groups)', s && s.panels === 5 && s.groups === 4, JSON.stringify(s))
   check('S2b notes rendered', await evalJs('document.querySelector("[data-testid=dock-notes-textarea]") !== null'))
 
   // S3 便签 chip 拖到侧栏右缘 → 拆分
@@ -123,7 +133,7 @@ try {
   const sbRect = await paneRect('region:sidebar')
   await dragTo(notesChip, sbRect.x + sbRect.w * 0.93, sbRect.y + sbRect.h / 2)
   s = await summary()
-  check('S3b drag to edge splits (3 groups)', s && s.groups === 3 && s.panels === 3, JSON.stringify(s))
+  check('S3b drag to edge splits (5 groups)', s && s.groups === 5 && s.panels === 5, JSON.stringify(s))
 
   // S4 会话区域（单区域=grip）拖到便签面板下缘 → 垂直拆分
   const convGrip = '[data-region-pane="region:conversation"] [data-testid="dock-grip"]'
@@ -134,7 +144,7 @@ try {
   s = await summary()
   // 垂直堆叠判定：会话面板顶边应低于便签面板中线
   const stackCheck = await evalJs('(() => { const np = document.querySelector("[data-testid=dock-tab-chip]"); const notesPaneEl = Array.from(document.querySelectorAll("[data-testid=dock-tab-chip]")).find(el => el.textContent.includes("便签"))?.closest("[data-dock-node]"); const convEl = document.querySelector("[data-region-pane=\'region:conversation\']"); if (!notesPaneEl || !convEl) return null; const nr = notesPaneEl.getBoundingClientRect(); const cr = convEl.getBoundingClientRect(); return { notesMidY: nr.y + nr.height / 2, convTopY: cr.y } })()')
-  check('S4b v-split (conversation stacked below notes)', s && s.panels === 3 && stackCheck && stackCheck.convTopY > stackCheck.notesMidY - 4, JSON.stringify({ s, stackCheck }))
+  check('S4b v-split (conversation stacked below notes)', s && s.panels === 5 && stackCheck && stackCheck.convTopY > stackCheck.notesMidY - 4, JSON.stringify({ s, stackCheck }))
 
   // S5 便签 chip（非区域单面板仍有标签条）拖回会话面板中心 → 标签合并
   const notesChip2 = await chipSelByLabel('便签')
@@ -143,14 +153,14 @@ try {
   await dragTo(notesChip2, convPane.x + convPane.w / 2, convPane.y + convPane.h / 2)
   await sleep(300)
   s = await summary()
-  check('S5b tab merge (groups shrink to 2)', s && s.groups === 2 && s.panels === 3, JSON.stringify(s))
+  check('S5b tab merge (groups shrink to 4)', s && s.groups === 4 && s.panels === 5, JSON.stringify(s))
 
   // S6 侧栏一键浮动按钮（⧉）→ 浮动（无边框改造后 caption 拖拽悬浮区已移除，
   //    改用 grip 簇里的显式浮动入口）
   await evalJs('document.querySelector("[data-testid=dock-grip-float]").click()')
   await sleep(300)
   s = await summary()
-  check('S6 sidebar floated', s && s.floats === 1 && s.groups === 1, JSON.stringify(s))
+  check('S6 sidebar floated', s && s.floats === 1 && s.groups === 3, JSON.stringify(s))
   const floatBox = await evalJs('(() => { const el = document.querySelector("[data-testid=dock-float]"); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height } })()')
   check('S6b float window rendered', floatBox !== null && floatBox.w > 100, JSON.stringify(floatBox))
 
@@ -166,7 +176,7 @@ try {
   await evalJs('document.querySelector("[data-testid=dock-float-dock]").click()')
   await sleep(400)
   s = await summary()
-  check('S8 float docked back', s && s.floats === 0 && s.panels === 3, JSON.stringify(s))
+  check('S8 float docked back', s && s.floats === 0 && s.panels === 5, JSON.stringify(s))
 
   // S9 sash 缩放
   const before = await paneRect('region:sidebar') ?? await evalJs('(() => { const p = document.querySelectorAll("[data-dock-node]")[0]; const r = p.getBoundingClientRect(); return { w: r.width } })()')
@@ -185,11 +195,11 @@ try {
   await hook('openDetails')
   await sleep(500)
   s = await summary()
-  check('S10 openDetails adds pane', s && s.details > 0 && await evalJs('document.querySelector("[data-region-pane=\'region:details\']") !== null'), JSON.stringify(s))
+  check('S10 openDetails expands pane', s && s.details > 0 && await evalJs('(() => { const el = document.querySelector("[data-region-pane=\'region:details\']"); return el !== null && el.getBoundingClientRect().width > 300 })()'), JSON.stringify(s))
   await hook('closeDetails')
   await sleep(500)
   s = await summary()
-  check('S11 closeDetails removes pane', s && s.details === 0 && await evalJs('document.querySelector("[data-region-pane=\'region:details\']") === null'), JSON.stringify(s))
+  check('S11 closeDetails collapses pane (kept mounted)', s && s.details === 0 && await evalJs('(() => { const el = document.querySelector("[data-region-pane=\'region:details\']"); return el !== null && el.getBoundingClientRect().width < 2 })()'), JSON.stringify(s))
 
   // S12 保存槽位 → 重置 → 恢复（钩子驱动）
   await hook('saveSlot', 'selftest-shell')
@@ -197,7 +207,7 @@ try {
   await hook('reset')
   await sleep(400)
   s = await summary()
-  check('S12 reset to default', s && s.groups === 2 && s.rootKind === 'split', JSON.stringify(s))
+  check('S12 reset to default', s && s.panels === 4 && s.groups === 4 && s.rootKind === 'split', JSON.stringify(s))
   const loaded = await hook('loadSlot', 'selftest-shell')
   await sleep(400)
   s = await summary()
@@ -215,8 +225,13 @@ try {
 
   // S14 页面刷新后布局自动恢复
   await send('Page.navigate', { url: BASE + '/?dsh-desktop-mode=advanced&dsh-desktop-platform=win32' })
-  await sleep(14000)
-  check('S14 dock shell renders after reload', await evalJs('document.querySelector("[data-testid=dock-shell]") !== null'))
+  let s14ok = false
+  for (let i = 0; i < 45; i++) {
+    const hit = await evalJs('document.querySelector("[data-testid=dock-shell]") !== null')
+    if (hit === true) { s14ok = true; break }
+    await sleep(1000)
+  }
+  check('S14 dock shell renders after reload', s14ok)
   s = await summary()
   check('S14b layout restored after reload', s && s.panels === savedSummary.panels && s.groups === savedSummary.groups, JSON.stringify(s))
 
@@ -253,15 +268,43 @@ try {
   await evalJs('document.querySelector(' + JSON.stringify(notesChipSel3 + ' [data-testid=dock-tab-float]') + ').click()')
   await sleep(300)
   s = await summary()
-  check('S15c multi-tab chip floated', s && s.floats === 1 && s.panels === 3 && s.groups === 2, JSON.stringify(s))
+  check('S15c multi-tab chip floated', s && s.floats === 1 && s.panels === 5 && s.groups === 4, JSON.stringify(s))
   // S15d 浮动窗口停靠回边缘
   await evalJs('document.querySelector("[data-testid=dock-float-dock]").click()')
   await sleep(300)
   s = await summary()
-  check('S15d chip float docked back', s && s.floats === 0 && s.panels === 3, JSON.stringify(s))
+  check('S15d chip float docked back', s && s.floats === 0 && s.panels === 5, JSON.stringify(s))
 
   // S16 无页面报错
   check('S16 no page errors', pageErrors.length === 0, JSON.stringify(pageErrors.slice(0, 3)))
+
+  // S17 右侧标签面板(SidePane)标签拖入布局（HTML5 DnD 桥）：
+  //     打开详情 → SidePane 新增 Treemapping 标签 → 把标签拖到会话面板右缘
+  //     → 布局按落点拆分出新面板、源标签从 SidePane 关闭（移动语义）。
+  await hook('openDetails')
+  await sleep(600)
+  s = await summary()
+  check('S17 details pane open', s && s.details > 0 && await evalJs('document.querySelector("[data-liuli-side-pane]") !== null'), JSON.stringify(s))
+  // SidePane 空状态列表里点开 Treemapping（文件树标签）
+  const openedTab = await evalJs('(() => { const item = document.querySelector("[data-side-pane-open-tab-item=\'treemapping\']"); if (!item) return false; item.click(); return true })()')
+  await sleep(500)
+  const sideChip = await evalJs('(() => { const c = Array.from(document.querySelectorAll("[data-side-pane-tab-id]")).find(el => el.textContent.includes("Treemapping")); return c ? c.getAttribute("data-side-pane-tab-id") : null })()')
+  check('S17b side-pane treemapping tab opened', openedTab === true && typeof sideChip === 'string' && sideChip !== null, String(sideChip))
+  const panelsBefore = (await summary())?.panels ?? 0
+  const convRect = await paneRect('region:conversation')
+  check('S17c conversation pane located', convRect !== null, JSON.stringify(convRect))
+  // 构造 DataTransfer 模拟 HTML5 拖拽：dragstart(源 chip) → dragover/drop(会话面板右缘)
+  const dragResult = await evalJs('(() => { const chip = Array.from(document.querySelectorAll("[data-side-pane-tab-id]")).find(el => el.textContent.includes("Treemapping")); const pane = document.querySelector("[data-region-pane=\'region:conversation\']"); if (!chip || !pane) return null; const pr = pane.getBoundingClientRect(); const x = pr.x + pr.width * 0.94, y = pr.y + pr.height / 2; const dt = new DataTransfer(); const tab = { id: chip.getAttribute("data-side-pane-tab-id"), type: "treemapping", openedAt: Date.now() }; dt.setData("application/x-liuli-side-tab", JSON.stringify(tab)); chip.dispatchEvent(new DragEvent("dragstart", { dataTransfer: dt, bubbles: true, cancelable: true })); window.dispatchEvent(new DragEvent("dragover", { dataTransfer: dt, clientX: x, clientY: y, bubbles: true, cancelable: true })); window.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, clientX: x, clientY: y, bubbles: true, cancelable: true })); chip.dispatchEvent(new DragEvent("dragend", { dataTransfer: dt, bubbles: true, cancelable: true })); return { x, y } })()')
+  await sleep(500)
+  s = await summary()
+  check('S17d drop into layout adds panel', dragResult !== null && s && s.panels === panelsBefore + 1, JSON.stringify({ dragResult, s, panelsBefore }))
+  const sideChipGone = await evalJs('Array.from(document.querySelectorAll("[data-side-pane-tab-id]")).every(el => !el.textContent.includes("Treemapping"))')
+  check('S17e source tab closed (moved into layout)', sideChipGone === true)
+  const filesPanelInLayout = await evalJs('Array.from(document.querySelectorAll("[data-testid=dock-tab-chip]")).some(el => el.textContent.includes("文件树"))')
+  check('S17f files panel present in layout', filesPanelInLayout === true)
+  // 收尾：关闭详情（S11 已测过移除面板；这里确保后续不干扰）
+  await hook('closeDetails')
+  await sleep(500)
 
   const failed = results.filter(r => !r.pass)
   console.log('SUMMARY: ' + String(results.length - failed.length) + '/' + String(results.length) + ' passed')

@@ -1,12 +1,12 @@
 /**
- * 右侧边栏面板：文件树 / Wiki / Git 图谱 / 命令中心。
+ * 右侧边栏面板：文件树 / Wiki / 命令中心。（Git 图谱已由 FileReviewPanel 取代）
  * 组件全部为自包含 React 面板，通过 /liuli-sidebar/* 读取 Host 数据；
  * 样式走 RightSidebarPanels.module.css（CSS Modules）。
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   fetchSidebarGit, fetchSidebarTree, fetchSidebarWiki,
-  type SidebarGitCommit, type SidebarGitPayload, type SidebarGitStatusRow, type SidebarTreeEntry, type SidebarTreePayload,
+  type SidebarGitPayload, type SidebarGitStatusRow, type SidebarTreeEntry, type SidebarTreePayload,
 } from './right-sidebar-api.ts'
 import css from './RightSidebarPanels.module.css'
 
@@ -384,104 +384,7 @@ export function FileTreePanel({ sessionId, onOpenFile, onAddFileToChat, onOpenPa
   )
 }
 
-/* ── Git 面板 ── */
-
-export interface GitPanelProps {
-  sessionId?: string | undefined
-}
-
-/** 只读 Git 图谱：分支 + git log --graph 文本。 */
-export function GitPanel({ sessionId }: GitPanelProps) {
-  const [payload, setPayload] = useState<SidebarGitPayload | null>(null)
-  const [selected, setSelected] = useState<SidebarGitCommit | null>(null)
-  const [commits, setCommits] = useState<SidebarGitCommit[]>([])
-  const [hasMore, setHasMore] = useState(false)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (sessionId === undefined) return
-    setCommits([])
-    setHasMore(false)
-    const controller = new AbortController()
-    fetchSidebarGit(sessionId, controller.signal, 0)
-      .then((p) => {
-        setPayload(p)
-        setCommits(p.commits ?? [])
-        setHasMore(p.hasMore ?? false)
-        setError(p.ok ? null : (p.error ?? '加载失败'))
-      })
-      .catch((reason: unknown) => {
-        if (controller.signal.aborted) return
-        setError(reason instanceof Error ? reason.message : String(reason))
-      })
-    return () => { controller.abort() }
-  }, [sessionId])
-
-  const loadMore = (): void => {
-    if (sessionId === undefined || loadingMore) return
-    setLoadingMore(true)
-    fetchSidebarGit(sessionId, undefined, commits.length)
-      .then((p) => {
-        setCommits(prev => [...prev, ...(p.commits ?? [])])
-        setHasMore(p.hasMore ?? false)
-      })
-      .catch((reason: unknown) => {
-        console.warn('liuli git loadMore failed:', reason)
-      })
-      .finally(() => { setLoadingMore(false) })
-  }
-
-  return (
-    <div className={css.panelBody}>
-      <div className={css.panelToolbar}>
-        <span className={css.panelTitle}>Git 图谱</span>
-        {payload?.git === true && payload.branch !== undefined && (
-          <span className={css.branchBadge}>{payload.branch}</span>
-        )}
-      </div>
-      <div className={css.gitStatusList}>
-        {payload?.status?.map((row) => (
-          <div key={row.path + row.x + row.y} className={css.gitStatusRow}>
-            <span className={css.gitStatusCode}>{row.x + row.y}</span>
-            <span className={css.gitStatusPath}>{row.path}</span>
-          </div>
-        ))}
-        {payload?.status !== undefined && payload.status.length === 0 && (
-          <div className={css.panelEmpty}>工作区干净，没有未提交变更</div>
-        )}
-      </div>
-      <pre className={css.gitLog}>{payload?.log ?? (error ?? '加载中…')}</pre>
-      <div className={css.commitList}>
-        {commits.map((commit) => (
-          <button
-            type="button"
-            key={commit.hash}
-            className={css.commitRow + (selected?.hash === commit.hash ? ' ' + css.commitActive : '')}
-            onClick={() => { setSelected(commit) }}
-          >
-            <span className={css.commitHash}>{commit.short}</span>
-            <span className={css.commitSubject}>{commit.subject}</span>
-          </button>
-        ))}
-      </div>
-      {hasMore && (
-        <button type="button" className={css.loadMoreBtn} onClick={loadMore} disabled={loadingMore}>
-          {loadingMore ? '加载中…' : '加载更多提交'}
-        </button>
-      )}
-      {selected !== null && (
-        <div className={css.commitDetail}>
-          <div className={css.commitDetailRow}><span>完整哈希</span><code>{selected.hash}</code></div>
-          <div className={css.commitDetailRow}><span>标题</span><code>{selected.subject}</code></div>
-          <div className={css.commitDetailRow}><span>作者</span><code>{selected.author}</code></div>
-          <div className={css.commitDetailRow}><span>日期</span><code>{selected.date}</code></div>
-          <div className={css.commitDetailRow}><span>父提交</span><code>{selected.parents.length > 0 ? selected.parents.join(' · ') : '（无）'}</code></div>
-        </div>
-      )}
-    </div>
-  )
-}
+/* ── Git 图谱已由 FileReviewPanel（审查文件：全文 + diff）取代 ── */
 
 /* ── Wiki 面板 ── */
 

@@ -3,7 +3,6 @@
 /** `denpa-appearance` 字典（键相对命名空间）。 */
 export const zh = {
   'nav': '界面',
-  'desc': '琉璃主题（DenpaPush 复刻）：动态取色、壁纸、材质与效果（即时生效，自动保存）',
   'colorMode': '取色模式',
   'colorMode.dynamic': '动态（壁纸 Material 取色）',
   'colorMode.static': '静态（自定义颜色）',
@@ -31,7 +30,6 @@ export const zh = {
   'shadowOn': '投影阴影',
   'shadowStrength': '阴影强度',
   'wideMode': '宽边模式',
-  'wideModeHint': '对话信息区在宽屏下撑满可用宽度（提高左右空间利用率）',
   'wallpaper': '壁纸设置',
   'wallpaper.choose': '选择图片',
   'bgFit': '适应模式',
@@ -95,7 +93,6 @@ export type DenpaAppearanceKey = keyof typeof zh
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
   'nav': 'Liuli UI',
-  'desc': 'Liuli theme (DenpaPush replica): dynamic accent, wallpaper, materials and effects (live, auto-saved)',
   'colorMode': 'Accent mode',
   'colorMode.dynamic': 'Dynamic (Material from wallpaper)',
   'colorMode.static': 'Static (custom color)',
@@ -123,7 +120,6 @@ export const en = {
   'shadowOn': 'Drop shadow',
   'shadowStrength': 'Shadow strength',
   'wideMode': 'Wide mode',
-  'wideModeHint': 'Spread the conversation column across wide displays',
   'wallpaper': 'Wallpaper',
   'wallpaper.choose': 'Choose image',
   'bgFit': 'Fit mode',

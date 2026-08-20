@@ -13,6 +13,7 @@ import { Fragment, useCallback, useEffect, useRef, useState, useSyncExternalStor
 import { collectTabsNodes, findNode, panelCount, type DockLayout, type DockNode, type DropTarget, type FloatWindow, type PanelInstance, type TabsNode } from './dock-model.ts'
 import type { DockStore } from './dock-store.ts'
 import { DOCK_PANEL_DEFS, panelDef, panelTitle, type DockHostAccess } from './dock-panels.tsx'
+import { markSideTabAccepted, parseSideTab, SIDE_TAB_MIME, sideTabToDockPanel, type SideTabDockPanel } from './side-tab-dock.ts'
 import css from './DockWorkspace.module.css'
 
 /** 工作台开合事件（header 按钮/快捷键/FloatBall 共用）。 */
@@ -93,6 +94,8 @@ export function DockWorkspace({ store, sessionList, addFileToChat, openPath, onC
   const layout = useSyncExternalStore(store.subscribe, store.getSnapshot)
   const [sessionId, setSessionId] = useState<string | undefined>(() => sessionList?.getSnapshot().current)
   const [drag, setDrag] = useState<DragState | null>(null)
+  /** HTML5 外部拖入（右侧标签面板标签）的落点指示。 */
+  const [htmlDrop, setHtmlDrop] = useState<{ over: DropTarget | null; rect: DragState['overRect'] } | null>(null)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
   const [slotName, setSlotName] = useState('')
   const [slotsVersion, setSlotsVersion] = useState(0)
@@ -100,6 +103,7 @@ export function DockWorkspace({ store, sessionList, addFileToChat, openPath, onC
   const [toast, setToast] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const dragRef = useRef<{ source: DragSource; title: string; sx: number; sy: number; active: boolean } | null>(null)
+  const htmlDragActive = useRef(false)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -201,6 +205,57 @@ export function DockWorkspace({ store, sessionList, addFileToChat, openPath, onC
     // ③ 空白处 → 浮动
     return { target: null, rect: null }
   }, [])
+
+  /* ── HTML5 外部拖入（右侧标签面板标签 → 布局落点） ── */
+
+  useEffect(() => {
+    const rootEl = rootRef.current
+    if (rootEl === null) return
+    const hasSideTab = (e: DragEvent): boolean =>
+      Array.from(e.dataTransfer?.types ?? []).includes(SIDE_TAB_MIME)
+    const onDragOver = (e: DragEvent): void => {
+      if (!hasSideTab(e)) return
+      // 拖到右侧标签面板自身内部（其 48px 标签条/内容区）不接管：
+      // 那里保留 SidePane 自己的内部排序语义，不触发布局落点。
+      if (e.target instanceof Element && e.target.closest('[data-liuli-side-pane]') !== null) return
+      e.preventDefault()
+      e.dataTransfer!.dropEffect = 'move'
+      htmlDragActive.current = true
+      const { target, rect } = computeDrop(e.clientX, e.clientY)
+      setHtmlDrop({ over: target, rect })
+    }
+    const onDragLeave = (e: DragEvent): void => {
+      if (!htmlDragActive.current) return
+      // 离开 root 自身才算离开（子元素间移动不算）。
+      const next = e.relatedTarget instanceof Node ? e.relatedTarget : null
+      if (!rootEl.contains(next)) {
+        htmlDragActive.current = false
+        setHtmlDrop(null)
+      }
+    }
+    const onDrop = (e: DragEvent): void => {
+      if (!hasSideTab(e)) return
+      e.preventDefault()
+      htmlDragActive.current = false
+      const raw = e.dataTransfer?.getData(SIDE_TAB_MIME) ?? ''
+      const tab = parseSideTab(raw)
+      const mapped: SideTabDockPanel | undefined = tab === undefined ? undefined : sideTabToDockPanel(tab)
+      setHtmlDrop(null)
+      if (tab === undefined || mapped === undefined) return
+      const { target } = computeDrop(e.clientX, e.clientY)
+      markSideTabAccepted()
+      store.placePanel(mapped.type, mapped.title, mapped.state, target ?? { kind: 'edge', side: 'right' })
+      notify('已加入布局：' + (mapped.title ?? panelDef(mapped.type)?.label ?? mapped.type))
+    }
+    rootEl.addEventListener('dragover', onDragOver)
+    rootEl.addEventListener('dragleave', onDragLeave)
+    rootEl.addEventListener('drop', onDrop)
+    return () => {
+      rootEl.removeEventListener('dragover', onDragOver)
+      rootEl.removeEventListener('dragleave', onDragLeave)
+      rootEl.removeEventListener('drop', onDrop)
+    }
+  }, [computeDrop, store, notify])
 
   /* ── 拖拽：起/移/落 ── */
 
@@ -530,6 +585,15 @@ export function DockWorkspace({ store, sessionList, addFileToChat, openPath, onC
               data-testid="dock-drop-indicator"
               data-kind={drag.over.kind}
               style={{ left: drag.overRect.left, top: drag.overRect.top, width: drag.overRect.width, height: drag.overRect.height }}
+            />
+          )}
+          {htmlDrop !== null && htmlDrop.over !== null && htmlDrop.rect !== null && (
+            <div
+              className={css.dropIndicator}
+              data-testid="dock-drop-indicator"
+              data-kind={htmlDrop.over.kind}
+              data-source="side-tab"
+              style={{ left: htmlDrop.rect.left, top: htmlDrop.rect.top, width: htmlDrop.rect.width, height: htmlDrop.rect.height }}
             />
           )}
         </div>

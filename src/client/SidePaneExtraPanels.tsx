@@ -69,12 +69,23 @@ export interface TerminalPanelProps {
   title: string
 }
 
+const TERMINAL_SHELL_OPTIONS = [
+  { id: '', label: '默认' },
+  { id: 'cmd', label: '命令提示符 (cmd)' },
+  { id: 'powershell', label: 'Windows PowerShell' },
+  { id: 'pwsh', label: 'PowerShell 7 (pwsh)' },
+  { id: 'bash', label: 'Git Bash' },
+]
+
 /** WebSocket 终端：行模式 piped shell（ZCode 终端面板的 DSH 对应物）。 */
 export function TerminalPanel({ sessionId, title }: TerminalPanelProps) {
   const [output, setOutput] = useState('')
   const [status, setStatus] = useState<'connecting' | 'open' | 'closed' | 'error'>('connecting')
   const [input, setInput] = useState('')
   const [epoch, setEpoch] = useState(0)
+  const [shell, setShell] = useState<string>(() => {
+    try { return localStorage.getItem('denpa:terminal-shell') ?? '' } catch { return '' }
+  })
   const wsRef = useRef<WebSocket | null>(null)
   const outRef = useRef<HTMLDivElement | null>(null)
   const historyRef = useRef<string[]>([])
@@ -82,8 +93,11 @@ export function TerminalPanel({ sessionId, title }: TerminalPanelProps) {
 
   useEffect(() => {
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const qs = sessionId === undefined ? '' : `?sessionId=${encodeURIComponent(sessionId)}`
-    const ws = new WebSocket(`${proto}://${window.location.host}/liuli-terminal${qs}`)
+    const params = new URLSearchParams()
+    if (sessionId !== undefined) params.set('sessionId', sessionId)
+    if (shell !== '') params.set('shell', shell)
+    const qs = params.toString()
+    const ws = new WebSocket(`${proto}://${window.location.host}/liuli-terminal${qs === '' ? '' : `?${qs}`}`)
     wsRef.current = ws
     setStatus('connecting')
     ws.onopen = () => { setStatus('open') }
@@ -97,7 +111,7 @@ export function TerminalPanel({ sessionId, title }: TerminalPanelProps) {
       ws.onerror = null
       try { ws.close() } catch { /* ignore */ }
     }
-  }, [sessionId, epoch])
+  }, [sessionId, epoch, shell])
 
   useEffect(() => {
     const el = outRef.current
@@ -140,6 +154,13 @@ export function TerminalPanel({ sessionId, title }: TerminalPanelProps) {
     }
   }
 
+  const onShellChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
+    const next = e.target.value
+    setShell(next)
+    setOutput('')
+    try { localStorage.setItem('denpa:terminal-shell', next) } catch { /* ignore */ }
+  }
+
   return (
     <div className={css.termRoot}>
       <div className={css.termBar}>
@@ -147,6 +168,16 @@ export function TerminalPanel({ sessionId, title }: TerminalPanelProps) {
         <span className={css.termStatus} data-status={status}>
           {status === 'connecting' ? '连接中' : status === 'open' ? '已连接' : status === 'error' ? '连接失败' : '已断开'}
         </span>
+        <select
+          className={css.termShell}
+          value={shell}
+          onChange={onShellChange}
+          title="选择终端 Shell"
+        >
+          {TERMINAL_SHELL_OPTIONS.map(option => (
+            <option key={option.id} value={option.id}>{option.label}</option>
+          ))}
+        </select>
         <button type="button" className={css.termBtn} onClick={() => { setOutput('') }}>清屏</button>
         <button type="button" className={css.termBtn} onClick={() => { setEpoch(v => v + 1) }}>重连</button>
       </div>

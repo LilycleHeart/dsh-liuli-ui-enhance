@@ -9,8 +9,9 @@
  */
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
 import {
-  createPanel, emptyLayout, makeTabsNode, nextId, parseDockLayout, removePanel,
-  type DockLayout, type PanelInstance,
+  createPanel, emptyLayout, findTabsContaining, makeTabsNode, nextId, normalizeSizes,
+  parseDockLayout, removePanel,
+  type DockLayout, type DockNode, type PanelInstance,
 } from './dock-model.ts'
 
 /* ── 几何常量（对齐官方 ui-layout 契约，仅作文档参考） ── */
@@ -22,16 +23,19 @@ export const DETAILS_DEFAULT = 360
 
 export const REGION_SIDEBAR = 'region:sidebar'
 export const REGION_CONVERSATION = 'region:conversation'
+/** 会话标题面板：渲染宿主的 conversation.session.header（与会话面板垂直拆分）。 */
+export const REGION_CONVERSATION_HEADER = 'region:conversation-header'
 export const REGION_DETAILS = 'region:details'
 
 export function isRegionPanel(type: string): boolean {
-  return type === REGION_SIDEBAR || type === REGION_CONVERSATION || type === REGION_DETAILS
+  return type === REGION_SIDEBAR || type === REGION_CONVERSATION || type === REGION_CONVERSATION_HEADER || type === REGION_DETAILS
 }
 
 export function regionLabel(type: string): string {
   switch (type) {
     case REGION_SIDEBAR: return '侧边栏'
     case REGION_CONVERSATION: return '会话'
+    case REGION_CONVERSATION_HEADER: return '会话标题'
     case REGION_DETAILS: return '详情'
     default: return type
   }
@@ -58,20 +62,35 @@ export interface HostLayoutFace {
   setDetails(width: number): void
 }
 
-/* ── 默认布局：[侧边栏 | 会话]（详情按宿主状态动态加入右缘） ── */
+/* ── 默认布局：[侧边栏 | 会话 | 详情] ──
+   详情面板常驻树中（对齐官方 AppFrame 的 DetailsColumn 语义：关闭时宽度 0、
+   子树保持挂载），开合只切换 shard 宽度（0 ↔ 详情宽），由帧层 CSS 过渡驱动
+   平滑动画，会话列随之补位。sizes 中详情占比仅作会话列 grow 的归一参考。 ── */
 
 export function defaultShellLayout(): DockLayout {
   const layout = emptyLayout()
   const sidebar = createPanel(layout, REGION_SIDEBAR)
+  const header = createPanel(layout, REGION_CONVERSATION_HEADER)
   const conversation = createPanel(layout, REGION_CONVERSATION)
+  const details = createPanel(layout, REGION_DETAILS)
   const left = makeTabsNode(layout, [sidebar])
-  const right = makeTabsNode(layout, [conversation])
+  // 会话区域垂直拆分：上 = 会话标题面板，下 = 对话页面板
+  const headerGroup = makeTabsNode(layout, [header])
+  const convGroup = makeTabsNode(layout, [conversation])
+  const middle = {
+    id: nextId(layout, 's'),
+    kind: 'split' as const,
+    dir: 'v' as const,
+    sizes: [0.14, 0.86],
+    children: [headerGroup, convGroup],
+  }
+  const right = makeTabsNode(layout, [details])
   layout.root = {
     id: nextId(layout, 's'),
     kind: 'split',
     dir: 'h',
-    sizes: [0.2, 0.8],
-    children: [left, right],
+    sizes: [0.2, 0.75, 0.05],
+    children: [left, middle, right],
   }
   return layout
 }
@@ -141,6 +160,58 @@ type DockShellActions = {
   resetShell: (draft: DockShellState) => void
 }
 
+/** 树内替换节点（dock-model 的 mapTree 未导出，此处按相同折叠语义实现）。 */
+function mapTreeReplace(node: DockNode | null, targetId: string, fn: (n: DockNode) => DockNode | null): DockNode | null {
+  if (node === null) return null
+  if (node.id === targetId) return fn(node)
+  if (node.kind === 'tabs') return node
+  const children: DockNode[] = []
+  const sizes: number[] = []
+  node.children.forEach((child, i) => {
+    const mapped = mapTreeReplace(child, targetId, fn)
+    if (mapped !== null) { children.push(mapped); sizes.push(node.sizes[i] ?? 1) }
+  })
+  if (children.length === 0) return null
+  if (children.length === 1) return children[0]!
+  if (children.length === node.children.length) return { ...node, children, sizes: node.sizes }
+  return { ...node, children, sizes: normalizeSizes(sizes) }
+}
+
+/** 布局恢复的会话标题面板保底：旧布局没有 header 面板时，把会话面板所在
+ *  标签组垂直拆成 [header 面板 | 原标签组]（标题在上）。若 header 已在树中
+ *  则原样返回。 */
+export function ensureConversationHeader(layout: DockLayout): DockLayout {
+  if (findRegion(layout, REGION_CONVERSATION_HEADER) !== undefined) return layout
+  const conv = findRegion(layout, REGION_CONVERSATION)
+  if (conv === undefined) return layout
+  const hit = findTabsContaining(layout.root, conv.id)
+  if (hit === undefined) {
+    // 会话在浮动窗口（少见）：把 header 面板并入同一浮动标签组
+    const next = structuredClone(layout)
+    for (const float of next.floats) {
+      if (float.tabs.some(p => p.id === conv.id)) {
+        const header = createPanel(next, REGION_CONVERSATION_HEADER)
+        float.tabs.splice(float.tabs.findIndex(p => p.id === conv.id), 0, header)
+        float.activeId = header.id
+        return next
+      }
+    }
+    return layout
+  }
+  const next = structuredClone(layout)
+  const header = createPanel(next, REGION_CONVERSATION_HEADER)
+  const headerGroup = makeTabsNode(next, [header])
+  const replacement: DockNode = {
+    id: nextId(next, 's'),
+    kind: 'split',
+    dir: 'v',
+    sizes: [0.14, 0.86],
+    children: [headerGroup, hit.node],
+  }
+  next.root = mapTreeReplace(next.root, hit.node.id, () => replacement)
+  return next
+}
+
 export function loadSavedDock(): DockLayout | undefined {
   try {
     const raw = localStorage.getItem(DOCK_SHELL_LS_KEY)
@@ -149,11 +220,19 @@ export function loadSavedDock(): DockLayout | undefined {
     if (parsed === null || typeof parsed !== 'object') return undefined
     const payload = 'dock' in parsed ? parsed.dock : parsed
     if (payload === undefined || payload === null) return undefined
-    const dock = parseDockLayout(payload)
+    let dock = parseDockLayout(payload)
     // 会话区域必须在树里（布局恢复的保底不变量）
-    return findRegion(dock, REGION_CONVERSATION) === undefined
-      ? withRegion(dock, REGION_CONVERSATION, 'right')
-      : dock
+    if (findRegion(dock, REGION_CONVERSATION) === undefined) {
+      dock = withRegion(dock, REGION_CONVERSATION, 'right')
+    }
+    // 会话标题面板保底：旧布局无 header 面板时垂直拆分补挂（标题在上）
+    dock = ensureConversationHeader(dock)
+    // 详情面板常驻树中（宽 0 隐藏）：旧布局/外部布局缺详情时补挂，
+    // 保证开合始终走宽度过渡而非整组挂卸。
+    if (findRegion(dock, REGION_DETAILS) === undefined) {
+      dock = withRegion(dock, REGION_DETAILS, 'right')
+    }
+    return dock
   } catch {
     return undefined
   }
