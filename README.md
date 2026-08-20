@@ -65,6 +65,7 @@ DeepSeek Harness 的 **Material Design 3 × Fluent 2 融合主题**插件:取 Ma
 | 🎛️ 页面内窗口按钮 | 无边框模式三按钮(最小化/最大化·还原/关闭)移入页面:会话 header 最右端常驻 + 开始页固定窗口右上角的磨砂胶囊兜底(win32 已移除 32px caption 行,内容顶格铺满;该胶囊同时是窗口拖动区,承接原标题栏拖拽职能);经 Host `/liuli-window` 路由直驱 Electron 窗口(close=收进托盘,与原生同语义);Win+方向键贴边/双击拖动区最大化等系统行为保留 |
 | 🔤 主题字体 | CSS `@import` 加载 MiSans / Inter / Space Grotesk / JetBrains Mono(字体族令牌早已引用,官方 harness 不注入 link,由插件自行加载) |
 | ⚙️ 设置「界面」分区 | 20 项设置(取色/背景/材质/字体/圆角/泛光/阴影/宽边模式/壁纸适应与选区/会话动画),即时生效、自动保存 |
+| 🗂️ 对话历史加载增强 | 切换会话时按通用设置「默认加载轮数」自动补载更多历史(宿主基线约 2 轮,调大后自动点击 older 按钮);上翻到消息列顶部自动加载更早消息,替代手动点击 |
 
 全部设置随浏览器持久化(`denpa:settings` / `denpa:wallpaper` / `denpa:header-height`);DSH Desktop 因每次重启 Web 端口会变(localStorage 按 origin 隔离),还会额外同步到 Host 端 `~/.liuli-theme/settings.json`,跨重启不丢失。
 
@@ -183,8 +184,8 @@ pnpm add file:/tmp/liuli/deepseek-ai-liuli-theme-0.1.0.tgz
        - id: liuli-theme
          name: '@deepseek-ai/liuli-theme'
 
-6. 安装后必须重启 DSH Desktop
-   客户端插件清单在启动时固定，不重启不会加载。
+6. 安装后不需要重启 DSH Desktop
+   客户端插件安装到 profile 后，刷新页面即可加载新 bundle；不要主动重启 DSH Desktop（会改变 Web 端口并打断调试）。
 
 7. 隐藏原生标题栏需要额外宿主补丁
    插件只能提供页面内窗口按钮，不能从渲染进程隐藏原生标题栏。

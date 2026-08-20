@@ -42,7 +42,7 @@ import {
   DENPA_LS_KEY, DENPA_SETTINGS_DEFAULTS, denpaSettingsOf,
   type DenpaBgArea, type DenpaSettings,
 } from '../denpa-settings.ts'
-import { en, zh, type DenpaAppearanceKey, modelRetryZh, modelRetryEn, type ModelRetryKey } from './locales.ts'
+import { en, zh, type DenpaAppearanceKey, modelRetryZh, modelRetryEn, type ModelRetryKey, historyLoadZh, historyLoadEn, type HistoryLoadKey } from './locales.ts'
 import { denpaCss } from './denpa-css.ts'
 import {
   DenpaHeaderVoiceprint, DenpaHeaderChrome, DenpaHeaderResizer,
@@ -51,10 +51,14 @@ import { setTurnRailCommitHandler, TurnRail } from './TurnRail.tsx'
 import { fileChangesDefinition, RoundSummaryCard } from './TurnFileCard.tsx'
 import { startEditDiffAutoExpand } from './edit-diff-autoplay.ts'
 import { startDenpaTransition } from './denpa-transition.ts'
+import { startAutoLoadHistory } from './auto-load-history.ts'
 import { startHeaderTabIndicator } from './header-tab-indicator.ts'
+import { startHeaderTextAnimation } from './header-text-animation.ts'
 import { disposeSupplierQuota, initSupplierQuota, refreshSupplierQuota } from './supplier-quota.ts'
 import { SupplierQuota } from './SupplierQuota.tsx'
 import { ModelRetryRow, type ModelRetryRowInjected } from './ModelRetryRow.tsx'
+import { HistoryLoadRow, type HistoryLoadRowInjected } from './HistoryLoadRow.tsx'
+import { createHistoryLoadStore, loadHistoryBatches, saveHistoryBatches } from './history-load-store.ts'
 import { createModelRetryStore } from './model-retry-store.ts'
 import { initModelRetry, disposeModelRetry, loadModelRetry, saveModelRetry, cacheModelRetryBackoff } from './model-retry-controller.ts'
 import { createElement } from 'react'
@@ -88,6 +92,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'denpa-appearance': DenpaAppearanceKey
     /** 模型请求重试行（通用设置区）的文案。 */
     'liuli-model-retry': ModelRetryKey
+    /** 切换会话默认历史加载行（通用设置区）的文案。 */
+    'liuli-history-load': HistoryLoadKey
   }
 }
 
@@ -96,6 +102,9 @@ export const DENPA_LOCALE_NS = 'denpa-appearance'
 
 /** 模型请求重试行的文案命名空间。 */
 export const MODEL_RETRY_LOCALE_NS = 'liuli-model-retry'
+
+/** 切换会话默认历史加载行的文案命名空间。 */
+export const HISTORY_LOAD_LOCALE_NS = 'liuli-history-load'
 
 /** 主题样式注入的 <style> id（幂等：重复 apply 不叠加）。 */
 const STYLE_ID = 'liuli-theme-css'
@@ -441,9 +450,17 @@ export function apply(ctx: ClientContext): void {
   // ── 会话切换/新消息入场动画：MutationObserver 挂类（动画定义在 denpa.css）──
   ctx.effect(() => startDenpaTransition(), 'liuli-theme: message transition observer')
 
+  // ── 对话页历史自动加载：上翻到消息列顶部时自动点击“加载更早消息”，
+  //    替代手动点击 older 按钮 ──
+  ctx.effect(() => startAutoLoadHistory(), 'liuli-theme: auto load history on scroll top')
+
   // ── 会话 header 视图标签（对话/轨迹）滑动激活指示条：官方横条瞬间切换，
   //    这里注入独立指示条跟随激活 tab 平滑滑动（动画定义在 denpa.css）──
   ctx.effect(() => startHeaderTabIndicator(), 'liuli-theme: header tab indicator')
+
+  // ── 会话 header 动态文本（标题名/模型/路由等）变化时入场动画：
+  //    MutationObserver 检测文本变化后挂 .liuli-header-text-enter ──
+  ctx.effect(() => startHeaderTextAnimation(), 'liuli-theme: header text animation')
 
   // ── 用户发送的网页元素：在聊天气泡里也渲染成卡片（官方只装饰 /@ chip）──
   ctx.effect(() => startElementCardDecoration(), 'liuli-theme: element card decoration')
@@ -812,6 +829,7 @@ export function apply(ctx: ClientContext): void {
 
   ctx.effect(() => ctx.locale.register(DENPA_LOCALE_NS, { zh, en }), 'liuli-theme: denpa dictionaries')
   ctx.effect(() => ctx.locale.register(MODEL_RETRY_LOCALE_NS, { zh: modelRetryZh, en: modelRetryEn }), 'liuli-theme: model-retry dictionaries')
+  ctx.effect(() => ctx.locale.register(HISTORY_LOAD_LOCALE_NS, { zh: historyLoadZh, en: historyLoadEn }), 'liuli-theme: history-load dictionaries')
 
   // ── DenpaPush 界面设置：localStorage 持久化 + 运行时应用 ──
   const denpaStore = createDenpaStore()
@@ -1146,12 +1164,48 @@ export function apply(ctx: ClientContext): void {
   }, ModelRetryRow))
   void modelRetryT
 
+  // ── 设置页「通用」分区新增一行：切换会话默认历史加载轮数 ──
+  //    只影响插件自身行为（自动点击 older 按钮），持久化在 localStorage。
+  const historyLoadStore = createHistoryLoadStore()
+  const historyLoadT = ctx.locale.bind(HISTORY_LOAD_LOCALE_NS)
+  let historyLoadBound: BoundActions<typeof historyLoadStore> | undefined
+  ctx.slots.inject('settings.general.item', () => ctx.slots.register({
+    name: 'settings.general.item',
+    id: 'liuli-history-load',
+    order: 20,
+    locale: HISTORY_LOAD_LOCALE_NS,
+    store: historyLoadStore,
+    inject: (actions: BoundActions<typeof historyLoadStore>): HistoryLoadRowInjected => {
+      historyLoadBound = actions
+      return {
+        load: () => {
+          const batches = loadHistoryBatches()
+          historyLoadBound?.sync({
+            batches,
+            status: 'ready',
+            error: '',
+          })
+          return batches
+        },
+        save: (batches) => {
+          saveHistoryBatches(batches)
+          historyLoadBound?.sync({
+            batches,
+            status: 'ready',
+            error: '',
+          })
+        },
+      }
+    },
+  }, HistoryLoadRow))
+  void historyLoadT
+
   // ── 会话 header 效果（供应商额度/声纹/监听/主题切换/拉伸手柄）──
-  // 额度放在 header.actions：跟在 agent preset 标签右侧，作为普通文本而非工具区胶囊。
+  // 额度放在 header.actions：排到后台任务/子代理等官方入口右侧，作为普通文本而非工具区胶囊。
   ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
     name: 'conversation.session.header.actions',
     id: 'liuli-supplier-quota',
-    order: 5,
+    order: 100,
   }, SupplierQuota))
   ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
     name: 'conversation.session.header.actions',

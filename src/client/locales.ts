@@ -205,3 +205,24 @@ export const modelRetryEn = {
   'ms': 'ms',
   'providerCount': 'Applied to {count} provider(s)',
 } satisfies Record<string, string>
+
+/* ── 切换会话默认历史加载量（liuli-history-load 命名空间）────────────── */
+
+/** `liuli-history-load` 字典（中）。 */
+export const historyLoadZh = {
+  'title': '切换会话默认历史加载',
+  'batches': '默认加载轮数',
+  'batchesHint': '切换会话时希望默认加载的历史轮数（一个用户对话算一轮；宿主基线约 2 轮，调大后自动补载更多历史，0-2 保持默认）',
+  'rounds': '轮',
+} satisfies Record<string, string>
+
+/** The liuli-history-load namespace key union. */
+export type HistoryLoadKey = keyof typeof historyLoadZh
+
+/** `liuli-history-load` 字典（英，与 zh 键集对齐）。 */
+export const historyLoadEn = {
+  'title': 'Default history load on session switch',
+  'batches': 'Default batches',
+  'batchesHint': 'Desired history rounds when switching sessions (one user message = one round; host baseline ~2 rounds; larger values auto-load more, 0-2 keeps default)',
+  'rounds': 'rounds',
+} satisfies Record<string, string>

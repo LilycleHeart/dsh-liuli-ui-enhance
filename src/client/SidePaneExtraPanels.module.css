@@ -12,20 +12,26 @@
 .termBar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px 8px;
   padding: 7px 10px;
   border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.15));
   background: rgba(var(--denpa-acrylic-rgb-low), 0.35);
   flex: none;
+  min-width: 0;
 }
 
 .termTitle {
+  flex: none;
+  white-space: nowrap;
   font-size: 12px;
   font-weight: 600;
   color: var(--dsw-alias-label-primary, inherit);
 }
 
 .termStatus {
+  flex: none;
+  white-space: nowrap;
   font-size: 11px;
   padding: 1px 8px;
   border-radius: 999px;
@@ -44,7 +50,9 @@
 }
 
 .termShell {
-  max-width: 180px;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.2));
   border-radius: 7px;
   background: transparent;
@@ -56,6 +64,8 @@
 }
 
 .termBtn {
+  flex: none;
+  white-space: nowrap;
   margin-left: auto;
   border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.2));
   border-radius: 7px;

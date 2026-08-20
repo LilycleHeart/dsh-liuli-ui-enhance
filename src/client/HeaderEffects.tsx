@@ -594,17 +594,30 @@ export function DenpaHeaderVoiceprint() {
       draw()
     }
 
+    // 尺寸变化会重设 canvas 位图尺寸（清空画布），必须同步补一帧，
+    // 避免 ResizeObserver 清空后要等下一帧 rAF 才重绘的闪断。
+    const onResize = (): void => {
+      resize()
+      draw()
+    }
+
     resize()
-    ro = new ResizeObserver(resize)
+    // 首帧同步绘制：组件在切换会话/进出会话页后会重挂载，canvas 刚创建时
+    // 若只交给 rAF 会在下一帧才有内容，造成“空白一帧→看起来像重置/重绘”。
+    // 这里基于模块级 vpDraw/vpState 立即恢复当前波形，切换页面不产生闪断。
+    draw()
+    ro = new ResizeObserver(onResize)
     ro.observe(canvas)
-    window.addEventListener('resize', resize)
+    window.addEventListener('resize', onResize)
     if ('IntersectionObserver' in window) {
       io = new IntersectionObserver((entries) => {
         const nowVisible = entries[0]?.isIntersecting ?? false
         if (nowVisible === visible) return
         visible = nowVisible
-        if (visible) loop()
-        else {
+        if (visible) {
+          draw()
+          loop()
+        } else {
           cancelAnimationFrame(raf)
           raf = 0
         }
@@ -617,7 +630,7 @@ export function DenpaHeaderVoiceprint() {
       cancelAnimationFrame(raf)
       io?.disconnect()
       ro?.disconnect()
-      window.removeEventListener('resize', resize)
+      window.removeEventListener('resize', onResize)
       // 不在此停止捕获：监听状态是模块级单例，切换会话/进出会话页时
       // 本组件卸载再重挂载，不应中断系统音频监听；需要停止时由按钮显式触发。
     }
