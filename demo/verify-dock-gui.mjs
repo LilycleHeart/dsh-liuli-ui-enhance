@@ -1,4 +1,4 @@
-// Dockable Workspace GUI 自测（无头 Chrome + CDP，对照 verify-webview-gui.mjs 模式）。
+// Dockable Workspace GUI 自测（无头 Chrome + CDP，说明 verify-webview-gui.mjs 模式）。
 // 覆盖：打开/布局、添加面板、拖拽拆分、边缘停靠、标签页合并、浮动窗口（拖动/缩放/回收）、
 //       sash 缩放、保存/重置/恢复槽位、页面刷新恢复、导出/导入、关闭、HMR 存活、页面零报错。
 // 运行：node demo/verify-dock-gui.mjs [port]

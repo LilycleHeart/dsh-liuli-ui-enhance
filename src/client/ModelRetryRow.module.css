@@ -45,7 +45,7 @@
   flex: none;
 }
 
-/* 数字输入框：与 DenpaAppearance 的 numInput 同款窄框。 */
+/* 数字输入框：与 LiuliAppearance 的 numInput 同款窄框。 */
 .numInput {
   width: 96px;
   box-sizing: border-box;

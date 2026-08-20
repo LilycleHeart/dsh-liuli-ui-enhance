@@ -1,5 +1,5 @@
 /**
- * 琉璃主题（liuli-theme）—— 节点半。
+ * 琉璃主题（dsh-liuli-ui-enhance）—— 节点半。
  *
  * 除了作为宿主 Loader 中的插件存在，节点半还提供两个本地 HTTP 路由：
  * - `/liuli-quota`：浏览器半用它查询 DeepSeek / OpenCode Go 的余额或套餐额度。
@@ -24,7 +24,7 @@ import { createBrowserEngine } from './browser-engine.ts'
 import { windowControlRoute } from './host-window.ts'
 import { audioCaptureRoute, installSystemAudioCapture } from './host-audio.ts'
 
-export const name = 'liuli-theme'
+export const name = 'dsh-liuli-ui-enhance'
 
 export const inject = ['webServer', 'credentials', 'sessions']
 
@@ -423,17 +423,17 @@ export function apply(ctx: Context): void {
       }
     },
   }
-  ctx.effect(() => ctx.webServer.register(route), 'liuli-theme: /liuli-quota route')
-  ctx.effect(() => ctx.webServer.register(liuliSettingsRoute()), 'liuli-theme: /liuli-settings route')
-  ctx.effect(() => ctx.webServer.register(previewRoute(ctx)), 'liuli-theme: /preview route')
-  ctx.effect(() => ctx.webServer.register(sidebarRoute(ctx)), 'liuli-theme: /liuli-sidebar route')
-  ctx.effect(() => ctx.webServer.registerUpgrade(terminalUpgradeRoute(ctx)), 'liuli-theme: /liuli-terminal upgrade route')
-  ctx.effect(() => ctx.webServer.register(proxyRoute()), 'liuli-theme: /liuli-proxy route')
+  ctx.effect(() => ctx.webServer.register(route), 'dsh-liuli-ui-enhance: /liuli-quota route')
+  ctx.effect(() => ctx.webServer.register(liuliSettingsRoute()), 'dsh-liuli-ui-enhance: /liuli-settings route')
+  ctx.effect(() => ctx.webServer.register(previewRoute(ctx)), 'dsh-liuli-ui-enhance: /preview route')
+  ctx.effect(() => ctx.webServer.register(sidebarRoute(ctx)), 'dsh-liuli-ui-enhance: /liuli-sidebar route')
+  ctx.effect(() => ctx.webServer.registerUpgrade(terminalUpgradeRoute(ctx)), 'dsh-liuli-ui-enhance: /liuli-terminal upgrade route')
+  ctx.effect(() => ctx.webServer.register(proxyRoute()), 'dsh-liuli-ui-enhance: /liuli-proxy route')
   // advanced（无边框）模式页面内窗口按钮（WindowControls.tsx）的宿主窗口控制面：
   // GET 查询可用/最大化态，POST 触发 minimize/toggleMaximize/close；纯 Web 返回 available:false。
-  ctx.effect(() => ctx.webServer.register(windowControlRoute()), 'liuli-theme: /liuli-window route')
+  ctx.effect(() => ctx.webServer.register(windowControlRoute()), 'dsh-liuli-ui-enhance: /liuli-window route')
   // 审查面板「在资源管理器中打开」：系统文件管理器定位文件（explorer /select 等）。
-  ctx.effect(() => ctx.webServer.register(revealRoute(ctx)), 'liuli-theme: /liuli-reveal route')
+  ctx.effect(() => ctx.webServer.register(revealRoute(ctx)), 'dsh-liuli-ui-enhance: /liuli-reveal route')
   // 系统音频监听（HeaderEffects.tsx 的「监听系统音量」按钮）：Electron 主进程给
   // defaultSession 装 setDisplayMediaRequestHandler，getDisplayMedia 的 audio 请求
   // 直接授予系统回环音频（audio:'loopback'，仅 Windows）；另提供 /liuli-audio 探测。
@@ -449,9 +449,9 @@ export function apply(ctx: Context): void {
       disposed = true
       dispose?.()
     }
-  }, 'liuli-theme: desktop system audio capture handler')
-  ctx.effect(() => ctx.webServer.register(audioCaptureRoute()), 'liuli-theme: /liuli-audio route')
-  // 嵌入式浏览器引擎（ZCode Desktop IAB 复刻）：仅 Electron 主进程内有
+  }, 'dsh-liuli-ui-enhance: desktop system audio capture handler')
+  ctx.effect(() => ctx.webServer.register(audioCaptureRoute()), 'dsh-liuli-ui-enhance: /liuli-audio route')
+  // 嵌入式浏览器引擎（DSH Desktop IAB 实现）：仅 Electron 主进程内有
   // WebContentsView 可承载真实 webview；纯 Web 部署返回 undefined，
   // 渲染端探测 /liuli-browser/capabilities 失败后自动回退 iframe。
   void createBrowserEngine().then((engine) => {
@@ -460,14 +460,14 @@ export function apply(ctx: Context): void {
       ctx.effect(() => {
         const release = ctx.webServer.register(engine.route)
         return () => { release(); engine.dispose() }
-      }, 'liuli-theme: /liuli-browser route (embedded webview engine)')
+      }, 'dsh-liuli-ui-enhance: /liuli-browser route (embedded webview engine)')
     } catch {
       // 插件在探测完成前被卸载：直接销毁引擎。
       engine.dispose()
     }
   }).catch((cause: unknown) => {
     try {
-      ctx.logger.warn(`liuli-theme: embedded browser engine unavailable: ${cause instanceof Error ? cause.message : String(cause)}`)
+      ctx.logger.warn(`dsh-liuli-ui-enhance: embedded browser engine unavailable: ${cause instanceof Error ? cause.message : String(cause)}`)
     } catch { /* 上下文已释放则静默 */ }
   })
 }
@@ -1318,7 +1318,7 @@ function terminalUpgradeRoute(ctx: Context): WebUpgradeRoute {
 
 /* ── /liuli-proxy：浏览器标签的嵌入代理（剥除 X-Frame-Options/CSP）─────
  * 纯网页里 iframe 是唯一嵌入原语，目标站点可用 X-Frame-Options/CSP 拒绝嵌入
- * （ZCode 是 Electron webview 无此限制）。本路由由 Host 抓取目标页：
+ * （DSH 是 Electron webview 无此限制）。本路由由 Host 抓取目标页：
  * - 非 HTML（图片/css/js 等）原样流式回传；
  * - HTML 注入 <base href="最终 URL">，相对/根相对资源仍回原站解析；
  * 仅接受回环调用方、http/https 目标；10MB 截断；15s 超时。

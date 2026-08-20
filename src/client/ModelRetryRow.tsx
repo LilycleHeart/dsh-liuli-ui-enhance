@@ -12,7 +12,7 @@
  *   供应商写 retryPolicy 键；不碰密钥等其它字段）。
  * - 写入失败展示错误文本，不阻塞后续重试。
  *
- * 只修改 liuli-theme 插件自身代码，不触碰宿主通用设置分区其它行。
+ * 只修改 dsh-liuli-ui-enhance 插件自身代码，不触碰宿主通用设置分区其它行。
  */
 import { useEffect, useState } from 'react'
 import type { PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'

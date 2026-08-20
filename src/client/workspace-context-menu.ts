@@ -2,7 +2,7 @@
  * 工作区 / 目录行右键菜单（浏览器侧覆盖层，不改官方代码）。
  *
  * 官方 ui-workspace 的目录行右键菜单（重命名 / 删除工作区）是通过改官方
- * 文件实现的；本模块搬进 liuli-theme：document 级 contextmenu 委托，右键
+ * 文件实现的；本模块搬进 dsh-liuli-ui-enhance：document 级 contextmenu 委托，右键
  * 目录行弹出自绘菜单，动作经 ctx.workspaces.rename / ctx.workspaces.delete。
  * 未分组桶（ungrouped，无 workspaceId）在列表里匹配不到，自然不弹菜单。
  */

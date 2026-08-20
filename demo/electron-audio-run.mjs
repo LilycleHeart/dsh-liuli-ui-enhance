@@ -59,7 +59,7 @@ async function runCase(noHandler) {
       if (!ready) await sleep(250)
     }
     if (!ready) throw new Error('page script not ready')
-    // 用户手势 + 启动测试(复刻点击按钮)
+    // 用户手势 + 启动测试(实现点击按钮)
     await send('Runtime.evaluate', { expression: 'window.__startTest()', userGesture: true, awaitPromise: false, returnByValue: true })
     // 轮询结果
     let result = null

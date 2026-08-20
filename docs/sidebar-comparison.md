@@ -1,11 +1,11 @@
-# ZCode 右侧边栏(侧边面板)复刻对照与验证
+# DSH 右侧边栏(侧边面板)实现说明与验证
 
-> 依据:用户提供的 ZCode 逆向源码 `C:\Users\27280\.zcode\workspace\default\zcode-reverse`
+> 依据:用户提供的 参考实现源码 `C:\Users\27280\.dsh\workspace\default\reference-reverse`
 > (核心文件:`09-renderer-renamed/styles-OqUHW1P0/deobfuscated.js`,7.5MB,变量已重命名+JSX 反编译)。
 > 本插件(/mnt/d/Agent project/liuli-theme)在 DSH 宿主右侧 `details` 布局列上实现同构的标签式侧边面板,
-> 逐功能对照逆向源码实现并用 Playwright 对运行中的 DSH Web(:18080)实测。
+> 逐功能说明逆向源码实现并用 Playwright 对运行中的 DSH Web(:18080)实测。
 
-## 源码定位(zcode-reverse)
+## 源码定位(reference-reverse)
 
 | 模块 | 位置(deobfuscated.js 行号) |
 | --- | --- |
@@ -20,16 +20,16 @@
 | 面板布局(react-resizable-panels:conversation-column + browser 面板组) | 175400 附近 |
 | i18n(sidePane.* / browser.* / codeViewer.* 等) | IntlProvider 字典 |
 
-## 逐功能对照
+## 逐功能说明
 
 ### 标签模型与生命周期
 
-| ZCode 逆向源码行为 | 本插件实现 | 实测 |
+| 参考实现源码行为 | 本插件实现 | 实测 |
 | --- | --- | --- |
 | Qo:同 id 就地替换并激活;否则追加并激活 | openTab 同语义 | ✅ |
 | is:关闭标签;被关的是激活标签时激活 `r[Math.min(n, len-1)]`(同位右邻) | closeTab 同语义 | ✅ close active → 右邻激活 |
 | Nae:可见标签归零 → isSidePaneCollapsed=true(面板收起) | 关闭最后一个标签 → collapsePane | ✅ track 归 0 |
-| fae:treemapping 不入持久态(ZCode 已把文件树移到左侧栏,右侧 treemapping 入口已隐藏) | DSH 左侧栏为宿主官方会话列表,文件树保留在右侧面板(DSH 适配差异,已注明) | ➖ 适配差异 |
+| fae:treemapping 不入持久态(参考实现已把文件树移到左侧栏,右侧 treemapping 入口已隐藏) | DSH 左侧栏为宿主官方会话列表,文件树保留在右侧面板(DSH 适配差异,已注明) | ➖ 适配差异 |
 | Roe=8:最近关闭上限 8;selection-side-chat/browser-use 不入最近关闭 | 上限 8(DSH 无另两类标签) | ✅ recentClosed ≤ 8 |
 | we:重开最近关闭;browser 类型换新 id | reopenTab 同语义 | ✅ 新 id 验证通过 |
 | Fae/coe:「浏览器」菜单项复用同任务已有 browser 标签 | openBrowserFromMenu 复用首个 browser 标签 | ✅ 无重复标签 |
@@ -40,7 +40,7 @@
 
 ### 标签条 UI
 
-| ZCode | 本插件 | 实测 |
+| DSH | 本插件 | 实测 |
 | --- | --- | --- |
 | TabsList h-12(48px)、border-b、bg-transparent | .tabStrip 48px + border-b | ✅ |
 | 概览触发钮 chevrons-down outline icon,aria「搜索标签页」 | 同图标(SidePaneIcons 取自 bundle)/同 aria | ✅ |
@@ -57,7 +57,7 @@
 
 ### 概览弹层(搜索标签页)
 
-| ZCode | 本插件 | 实测 |
+| DSH | 本插件 | 实测 |
 | --- | --- | --- |
 | w-72(288px) cmdk 弹层,搜索框 h-8 | 同宽弹层 + 搜索框 | ✅ |
 | 加权检索:全 token 命中才保留;title 前缀 120/词界 90/包含 70/hint 40/类型 20/其他 1,按分排序 | rankRows 同权重 | ✅ title 命中排在 URL 命中之前 |
@@ -68,7 +68,7 @@
 
 ### 面板开合 / 宽度
 
-| ZCode | 本插件 | 实测 |
+| DSH | 本插件 | 实测 |
 | --- | --- | --- |
 | Ctrl/Cmd+Alt+B 切换右侧面板(官网快捷键表 + toggleSidePaneShortcutLabel) | 全局捕获同键位;tooltip「切换面板 (Ctrl+Alt+B)」 | ✅ |
 | 标题栏按钮:panel-right-open/close,aria 展开/收起侧边面板,tooltip 切换面板,激活态 bg-selected | header 按钮同图标/aria/激活态 | ✅ |
@@ -76,16 +76,16 @@
 | 无 maximize/restore(sidePane.maximize/restoreSize 为未引用的死键) | 同样不提供(已移除早期版本的按钮) | ✅ 无该按钮 |
 | 收起/展开动画期间宽度过渡 | 宿主 details 轨道自带过渡;插件以 setPaneSyncSuppressed 防止关闭动画中被 RO 翻回 | ✅ 开合无回弹 |
 
-### 面板类型(图标均取自 ZCode bundle 的 lucide 定义)
+### 面板类型(图标均取自 参考实现 bundle 的 lucide 定义)
 
-| ZCode 标签 | 图标 | DSH 对应 | 状态 |
+| 参考实现标签 | 图标 | DSH 实现 | 状态 |
 | --- | --- | --- | --- |
-| Treemapping | map | 文件树(搜索/仅变更/Git 状态徽标/右键/拖拽进聊天);ZCode 已隐藏该入口,DSH 保留 | ✅(适配保留) |
+| Treemapping | map | 文件树(搜索/仅变更/Git 状态徽标/右键/拖拽进聊天);DSH 已隐藏该入口,DSH 保留 | ✅(适配保留) |
 | 仓库 Wiki(repo-wiki) | 自绘 32x32(3 圆角方块+对角线) | README 摘录 + 模块地图,chip 点回源码 | ✅ |
 | 审查(git) | file-diff | Git 状态 + 只读提交图(详情/加载更多) | ✅ |
-| 浏览器(browser) | globe | 后退/前进/刷新/地址栏/外部打开 + 元素拾取开关(同 ZCode browser.elementPicker 显式语义);地址栏接受任意 http/https(裸域名补 https、回环/局域网 IP 补 http、相对产物路径映射 /preview),同源页标题回写标签 | ✅ |
-| 代码查看(code-viewer) | file-code-corner(回退)/文件图标 | /preview iframe + 路径栏 + 默认编辑器打开;ZCode 有语法高亮渲染,DSH 走 /preview 原样服务 | ✅(渲染深度差异,已注明) |
-| 终端/开发者工具/辅助对话/子智能体/画板/模型轨迹/计划 | — | DSH 宿主无对应能力(无 Web PTY/无 ZCode agent 运行时) | ➖ 不适用 |
+| 浏览器(browser) | globe | 后退/前进/刷新/地址栏/外部打开 + 元素拾取开关(同 browser.elementPicker 显式语义);地址栏接受任意 http/https(裸域名补 https、回环/局域网 IP 补 http、相对产物路径映射 /preview),同源页标题回写标签 | ✅ |
+| 代码查看(code-viewer) | file-code-corner(回退)/文件图标 | /preview iframe + 路径栏 + 默认编辑器打开;参考实现有语法高亮渲染,DSH 走 /preview 原样服务 | ✅(渲染深度差异,已注明) |
+| 终端/开发者工具/辅助对话/子智能体/画板/模型轨迹/计划 | — | DSH 宿主无对应能力(无 Web PTY/无对应 agent 运行时) | ➖ 不适用 |
 
 ## 实测记录(Playwright 无头,运行中的 DSH Web :18080,构建后刷新)
 
@@ -99,15 +99,15 @@
 - 构建链:tsc -b 无错;tsdown bundle 通过;服务器 /plugins/.../client.js no-cache 直读磁盘,
   重建后浏览器刷新即生效(宿主 web-app 补丁禁用 HMR,故热重载自测=重建+刷新循环)
 
-## 已知差异(均为宿主能力差异,非复刻遗漏)
+## 已知差异(均为宿主能力差异,非实现遗漏)
 
-1. treemapping:ZCode 当前构建隐藏右侧入口(文件树移至左侧栏);DSH 左侧栏为宿主官方组件,
+1. treemapping:参考实现当前构建隐藏右侧入口(文件树移至左侧栏);DSH 左侧栏为宿主官方组件,
    插件不可替换,故保留在右侧面板。
-2. 持久化:ZCode 标签状态为应用内内存态;DSH 页面刷新频繁,插件持久化到 localStorage(扩展)。
-3. 代码查看:ZCode 内置语法高亮/diff 渲染;DSH 经 /preview 原样服务(HTML 可渲染,代码按文本)。
-4. 终端/开发者工具/辅助对话/子智能体/画板/模型轨迹/计划:依赖 ZCode 自有运行时,DSH 无对应能力。
-5. 浏览器承载:ZCode 用 Electron webview(可加载任意站点)。本插件已在 Electron 宿主内
-   用 WebContentsView 复刻同款承载(browser-engine.ts,会话分区 persist:liuli-embedded-browser、
+2. 持久化:参考实现标签状态为应用内内存态;DSH 页面刷新频繁,插件持久化到 localStorage(扩展)。
+3. 代码查看:参考实现内置语法高亮/diff 渲染;DSH 经 /preview 原样服务(HTML 可渲染,代码按文本)。
+4. 终端/开发者工具/辅助对话/子智能体/画板/模型轨迹/计划:依赖 参考实现自有运行时,DSH 无对应能力。
+5. 浏览器承载:参考实现用 Electron webview(可加载任意站点)。本插件已在 Electron 宿主内
+   用 WebContentsView 实现同款承载(browser-engine.ts,会话分区 persist:liuli-embedded-browser、
    任意站点、弹窗转标签、崩溃原位重建、favicon 同步、响应式视口+拖拽手柄、元素拾取、
    外部打开/开发者工具、JS 对话框垫片),纯 Web 部署自动回退 iframe + /liuli-proxy。
    已实测(DSH Desktop 重启后):A 套件 16/16(能力/SSE/导航/历史/execute/弹窗转标签/

@@ -1,16 +1,16 @@
 /**
  * 琉璃主题包级 invariant 伴生插件。
- * @module @deepseek-ai/liuli-theme/invariant
+ * @module dsh-liuli-ui-enhance/invariant
  */
 
 /* jscpd:ignore-start */
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/liuli-theme'
+const PACKAGE_NAME = 'dsh-liuli-ui-enhance'
 
 /** Cordis 伴生插件名。 */
-export const name = 'liuli-theme-invariant'
+export const name = 'dsh-liuli-ui-enhance-invariant'
 /** 注册前所需服务。 */
 export const inject = ['invariants']
 

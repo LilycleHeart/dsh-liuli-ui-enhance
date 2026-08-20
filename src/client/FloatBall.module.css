@@ -30,7 +30,7 @@
     radial-gradient(120% 120% at 30% 25%, color-mix(in srgb, var(--dsw-alias-brand-primary) 88%, #fff) 0%, var(--dsw-alias-brand-primary) 62%, color-mix(in srgb, var(--dsw-alias-brand-primary) 72%, #000) 100%);
   border: 1px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 55%, #fff 20%);
   box-shadow:
-    var(--denpa-glow-brand),
+    var(--liuli-glow-brand),
     0 4px 14px rgb(0 0 0 / 0.35);
   transition: filter 160ms var(--ds-ease-in-out), transform 160ms var(--ds-ease-in-out);
 }
@@ -78,12 +78,12 @@
   margin-left: 10px;
   padding: 6px;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: var(--denpa-radius-sm, 10px);
-  background-color: rgba(var(--denpa-acrylic-rgb), 0.92);
-  background-image: var(--denpa-noise);
-  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow);
-  backdrop-filter: var(--denpa-material-blur);
-  -webkit-backdrop-filter: var(--denpa-material-blur);
+  border-radius: var(--liuli-radius-sm, 10px);
+  background-color: rgba(var(--liuli-acrylic-rgb), 0.92);
+  background-image: var(--liuli-noise);
+  box-shadow: var(--liuli-glow-brand), var(--liuli-shadow);
+  backdrop-filter: var(--liuli-material-blur);
+  -webkit-backdrop-filter: var(--liuli-material-blur);
   flex: none;
 }
 
@@ -131,9 +131,9 @@
   padding: 5px 10px;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
-  background-color: rgba(var(--denpa-acrylic-rgb), 0.95);
-  background-image: var(--denpa-noise);
-  box-shadow: var(--denpa-shadow);
+  background-color: rgba(var(--liuli-acrylic-rgb), 0.95);
+  background-image: var(--liuli-noise);
+  box-shadow: var(--liuli-shadow);
   font-family: var(--ds-font-family-code);
   font-size: 11px;
   line-height: 16px;
@@ -153,12 +153,12 @@
   width: 300px;
   padding: 12px 14px;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: var(--denpa-radius-sm, 10px);
-  background-color: rgba(var(--denpa-acrylic-rgb), 0.97);
-  background-image: var(--denpa-noise);
-  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow);
-  backdrop-filter: var(--denpa-material-blur);
-  -webkit-backdrop-filter: var(--denpa-material-blur);
+  border-radius: var(--liuli-radius-sm, 10px);
+  background-color: rgba(var(--liuli-acrylic-rgb), 0.97);
+  background-image: var(--liuli-noise);
+  box-shadow: var(--liuli-glow-brand), var(--liuli-shadow);
+  backdrop-filter: var(--liuli-material-blur);
+  -webkit-backdrop-filter: var(--liuli-material-blur);
   color: var(--dsw-alias-label-primary);
   font-size: 12px;
   line-height: 18px;
@@ -267,7 +267,7 @@
   padding: 6px 10px;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
-  background: rgba(var(--denpa-acrylic-rgb), 0.7);
+  background: rgba(var(--liuli-acrylic-rgb), 0.7);
   color: var(--dsw-alias-label-primary);
   font-size: 12px;
   line-height: 16px;
@@ -287,7 +287,7 @@
   padding: 1px 5px;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 5px;
-  background: rgba(var(--denpa-acrylic-rgb), 0.5);
+  background: rgba(var(--liuli-acrylic-rgb), 0.5);
   color: var(--dsw-alias-label-tertiary);
   font-family: var(--ds-font-family-code);
   font-size: 9px;

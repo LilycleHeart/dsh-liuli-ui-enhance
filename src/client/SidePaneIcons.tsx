@@ -1,6 +1,6 @@
 /**
  * 右侧边栏图标：统一使用 Material Design 风格图标（24x24 viewBox，fill currentColor）。
- * 与 ZCode 右侧面板 tab / 工具栏图标语义一一对应。
+ * 与 DSH 右侧面板 tab / 工具栏图标语义一一对应。
  */
 
 export interface IconProps {

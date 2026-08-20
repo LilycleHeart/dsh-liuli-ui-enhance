@@ -1,5 +1,5 @@
-/* 右侧边栏（ZCode 侧边面板复刻）：宿主右侧 details 列 + 标签式面板切换。
-   结构对照 ZCode app.asar：48px 标签条（概览触发 + 标签 + 新增标签），
+/* 右侧边栏（DSH 侧边面板实现）：宿主右侧 details 列 + 标签式面板切换。
+   结构说明 参考实现 app.asar：48px 标签条（概览触发 + 标签 + 新增标签），
    内容区各标签面板常驻挂载（inactive 隐藏，保留 iframe 状态）。 */
 
 .panel {
@@ -11,10 +11,10 @@
   min-width: 0;
   /* 描边与侧栏/会话区卡片一致（1px solid border-l1） */
   border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.15));
-  border-radius: var(--denpa-radius, 14px) 0 0 var(--denpa-radius, 14px);
+  border-radius: var(--liuli-radius, 14px) 0 0 var(--liuli-radius, 14px);
   background-color: transparent;
   background-image: none;
-  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow);
+  box-shadow: var(--liuli-glow-brand), var(--liuli-shadow);
   overflow: hidden;
 }
 
@@ -24,10 +24,10 @@
   inset: 0;
   z-index: -1;
   border-radius: inherit;
-  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity, 0.55));
-  background-image: var(--denpa-noise);
-  -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
-  backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55));
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
   pointer-events: none;
 }
 
@@ -36,7 +36,7 @@
   display: none !important;
 }
 
-/* ── 标签条（ZCode: !h-12 border-b） ── */
+/* ── 标签条（DSH: !h-12 border-b） ── */
 
 .tabStrip {
   flex: none;
@@ -99,7 +99,7 @@
   padding: 0 12px 0 8px;
 }
 
-/* ── 单个标签（ZCode: h-7，flex 1 1 9.75rem，min 60 max 156，rounded-lg） ── */
+/* ── 单个标签（DSH: h-7，flex 1 1 9.75rem，min 60 max 156，rounded-lg） ── */
 
 .tab {
   position: relative;
@@ -134,15 +134,15 @@
 .tabActive,
 .tabActive:hover {
   border-color: var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.25));
-  background: var(--dsw-specific-card-major, rgba(var(--denpa-acrylic-rgb), 0.85));
+  background: var(--dsw-specific-card-major, rgba(var(--liuli-acrylic-rgb), 0.85));
   color: var(--dsw-alias-label-primary, inherit);
-  box-shadow: var(--denpa-shadow-subtle, 0 1px 3px rgba(0, 0, 0, 0.08));
+  box-shadow: var(--liuli-shadow-subtle, 0 1px 3px rgba(0, 0, 0, 0.08));
 }
 
 .tabDragging {
   opacity: 0.85;
   cursor: grabbing;
-  box-shadow: var(--denpa-shadow, 0 4px 14px rgba(0, 0, 0, 0.18));
+  box-shadow: var(--liuli-shadow, 0 4px 14px rgba(0, 0, 0, 0.18));
 }
 
 .tabIcon {
@@ -161,7 +161,7 @@
   text-overflow: ellipsis;
 }
 
-/* 关闭按钮：右侧渐隐底 + ghost x，常驻显示（ZCode: w-2 渐变 + w-6 容器，size-3 x）。 */
+/* 关闭按钮：右侧渐隐底 + ghost x，常驻显示（DSH: w-2 渐变 + w-6 容器，size-3 x）。 */
 .tabCloseZone {
   pointer-events: auto;
   display: flex;
@@ -171,7 +171,7 @@
   height: 100%;
   width: 22px;
   margin-right: -6px;
-  background: linear-gradient(to right, transparent, var(--dsw-specific-card-major, rgba(var(--denpa-acrylic-rgb), 0.9)) 55%);
+  background: linear-gradient(to right, transparent, var(--dsw-specific-card-major, rgba(var(--liuli-acrylic-rgb), 0.9)) 55%);
 }
 
 .tabClose {
@@ -242,7 +242,7 @@
   display: none;
 }
 
-/* ── 空状态（ZCode: 打开标签页 卡片，h-12 rounded-xl bg-surface 按钮） ── */
+/* ── 空状态（DSH: 打开标签页 卡片，h-12 rounded-xl bg-surface 按钮） ── */
 
 .emptyShell {
   display: flex;
@@ -299,7 +299,7 @@
   min-width: 0;
   border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.12));
   border-radius: 12px;
-  background: rgba(var(--denpa-acrylic-rgb), 0.5);
+  background: rgba(var(--liuli-acrylic-rgb), 0.5);
   padding: 0 12px;
   font-size: 13px;
   font-weight: 500;
@@ -333,17 +333,17 @@
   position: fixed;
   z-index: 1400;
   min-width: 0;
-  border-radius: var(--denpa-radius, 12px);
+  border-radius: var(--liuli-radius, 12px);
   border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.15));
-  background: rgba(var(--denpa-acrylic-rgb), calc(var(--denpa-material-opacity, 0.55) + 0.3));
-  background-image: var(--denpa-noise);
-  -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
-  backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
-  box-shadow: var(--denpa-shadow, 0 10px 30px rgba(0, 0, 0, 0.22));
+  background: rgba(var(--liuli-acrylic-rgb), calc(var(--liuli-material-opacity, 0.55) + 0.3));
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  box-shadow: var(--liuli-shadow, 0 10px 30px rgba(0, 0, 0, 0.22));
   overflow: hidden;
 }
 
-/* 新增标签下拉（ZCode: w-48 = 192px，icon size-4 + 文案）。 */
+/* 新增标签下拉（DSH: w-48 = 192px，icon size-4 + 文案）。 */
 .addMenu {
   width: 192px;
   padding: 4px;
@@ -352,7 +352,7 @@
   gap: 2px;
 }
 
-/* 标签右键菜单（ZCode: w-44 = 176px）。 */
+/* 标签右键菜单（DSH: w-44 = 176px）。 */
 .tabMenu {
   width: 176px;
   padding: 4px;
@@ -398,7 +398,7 @@
   background: var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.15));
 }
 
-/* ── 标签概览弹层（ZCode: w-72 cmdk：搜索框 + 打开的标签页 / 最近关闭的标签页） ── */
+/* ── 标签概览弹层（DSH: w-72 cmdk：搜索框 + 打开的标签页 / 最近关闭的标签页） ── */
 
 .overviewCard {
   width: 288px;
@@ -513,13 +513,13 @@
   width: min(560px, 90vw);
   display: flex;
   flex-direction: column;
-  border-radius: var(--denpa-radius, 12px);
+  border-radius: var(--liuli-radius, 12px);
   border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.15));
-  background: rgba(var(--denpa-acrylic-rgb), calc(var(--denpa-material-opacity, 0.55) + 0.35));
-  background-image: var(--denpa-noise);
-  -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
-  backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
-  box-shadow: var(--denpa-shadow, 0 16px 44px rgba(0, 0, 0, 0.28));
+  background: rgba(var(--liuli-acrylic-rgb), calc(var(--liuli-material-opacity, 0.55) + 0.35));
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  box-shadow: var(--liuli-shadow, 0 16px 44px rgba(0, 0, 0, 0.28));
   overflow: hidden;
 }
 
@@ -594,8 +594,8 @@
   gap: 6px;
   padding: 8px 10px;
   border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.15));
-  background: rgba(var(--denpa-acrylic-rgb-low), 0.35);
-  background-image: var(--denpa-noise);
+  background: rgba(var(--liuli-acrylic-rgb-low), 0.35);
+  background-image: var(--liuli-noise);
   flex: none;
 }
 
@@ -635,7 +635,7 @@
   min-width: 0;
   padding: 5px 10px;
   border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.2));
-  border-radius: var(--denpa-radius-sm, 10px);
+  border-radius: var(--liuli-radius-sm, 10px);
   background: var(--dsw-specific-input-major, rgba(255, 255, 255, 0.5));
   color: var(--dsw-alias-label-primary, inherit);
   font-size: 12px;
@@ -658,7 +658,7 @@
   gap: 8px;
   padding: 7px 10px;
   border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.15));
-  background: rgba(var(--denpa-acrylic-rgb-low), 0.35);
+  background: rgba(var(--liuli-acrylic-rgb-low), 0.35);
   flex: none;
   min-width: 0;
 }
@@ -775,7 +775,7 @@
   flex: none;
   padding: 3px 10px;
   border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.2));
-  border-radius: var(--denpa-radius-sm, 8px);
+  border-radius: var(--liuli-radius-sm, 8px);
   background: var(--dsw-specific-input-major, rgba(255, 255, 255, 0.5));
   color: var(--dsw-alias-label-primary, inherit);
   font-size: 12px;
@@ -825,7 +825,7 @@
   min-width: 190px;
   padding: 5px;
   border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.2));
-  border-radius: var(--denpa-radius-sm, 10px);
+  border-radius: var(--liuli-radius-sm, 10px);
   background: var(--dsw-specific-popover-major, rgba(255, 255, 255, 0.92));
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.16);
 }
@@ -862,7 +862,7 @@
   gap: 10px;
   padding: 6px 10px;
   border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.15));
-  background: rgba(var(--denpa-acrylic-rgb-low), 0.28);
+  background: rgba(var(--liuli-acrylic-rgb-low), 0.28);
   font-size: 12px;
   color: var(--dsw-alias-label-secondary, inherit);
 }
@@ -977,7 +977,7 @@
 }
 
 
-/* ── 响应式视口：缩放框 + 拖拽手柄（ZCode browser-responsive-* 对应） ── */
+/* ── 响应式视口：缩放框 + 拖拽手柄（browser-responsive-* 对应） ── */
 
 .resizeWarning {
   position: absolute;
@@ -1048,7 +1048,7 @@
 }
 
 
-/* ── webview 对话框垫片提示（ZCode embeddedBrowserJavaScriptDialog 可见性对应） ── */
+/* ── webview 对话框垫片提示（DSH embeddedBrowserJavaScriptDialog 可见性对应） ── */
 
 .dialogToast {
   position: absolute;

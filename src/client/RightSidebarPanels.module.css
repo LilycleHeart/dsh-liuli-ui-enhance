@@ -30,7 +30,7 @@
 .panelEmpty {
   padding: 14px;
   border: 1px dashed var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.25));
-  border-radius: var(--denpa-radius-sm, 10px);
+  border-radius: var(--liuli-radius-sm, 10px);
   color: var(--dsw-alias-label-tertiary, #888);
   font-size: 12px;
   line-height: 18px;
@@ -45,8 +45,8 @@
   gap: 6px;
   padding: 4px 8px;
   border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.2));
-  border-radius: var(--denpa-radius-sm, 10px);
-  background: rgba(var(--denpa-acrylic-rgb), 0.45);
+  border-radius: var(--liuli-radius-sm, 10px);
+  background: rgba(var(--liuli-acrylic-rgb), 0.45);
   color: var(--dsw-alias-label-secondary, inherit);
 }
 
@@ -68,7 +68,7 @@
   gap: 4px;
   padding: 4px 8px;
   border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.2));
-  border-radius: var(--denpa-radius-sm, 10px);
+  border-radius: var(--liuli-radius-sm, 10px);
   font-size: 12px;
   line-height: 16px;
   color: var(--dsw-alias-label-secondary, inherit);
@@ -129,7 +129,7 @@
   width: 100%;
   padding: 5px 8px;
   border: none;
-  border-radius: var(--denpa-radius-sm, 10px);
+  border-radius: var(--liuli-radius-sm, 10px);
   background: transparent;
   color: var(--dsw-alias-label-primary, inherit);
   font-size: 13px;
@@ -266,8 +266,8 @@
   margin: 0;
   padding: 10px;
   border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.18));
-  border-radius: var(--denpa-radius-sm, 10px);
-  background: rgba(var(--denpa-acrylic-rgb), 0.35);
+  border-radius: var(--liuli-radius-sm, 10px);
+  background: rgba(var(--liuli-acrylic-rgb), 0.35);
   color: var(--dsw-alias-label-primary, inherit);
   font-size: 11px;
   line-height: 16px;
@@ -304,8 +304,8 @@
 .wikiModule {
   padding: 6px 8px;
   border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.18));
-  border-radius: var(--denpa-radius-sm, 10px);
-  background: rgba(var(--denpa-acrylic-rgb), 0.35);
+  border-radius: var(--liuli-radius-sm, 10px);
+  background: rgba(var(--liuli-acrylic-rgb), 0.35);
 }
 
 .wikiModuleName {
@@ -338,12 +338,12 @@
 
 .commandCard {
   width: min(560px, calc(100vw - 32px));
-  border-radius: var(--denpa-radius, 14px);
-  background-color: rgba(var(--denpa-acrylic-rgb), 0.92);
-  background-image: var(--denpa-noise);
-  -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
-  backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
-  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow);
+  border-radius: var(--liuli-radius, 14px);
+  background-color: rgba(var(--liuli-acrylic-rgb), 0.92);
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  box-shadow: var(--liuli-glow-brand), var(--liuli-shadow);
   overflow: hidden;
 }
 
@@ -439,7 +439,7 @@
   padding: 2px 7px;
   border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.25));
   border-radius: 7px;
-  background: rgba(var(--denpa-acrylic-rgb), 0.5);
+  background: rgba(var(--liuli-acrylic-rgb), 0.5);
   color: var(--dsw-alias-label-secondary, inherit);
   font-family: var(--ds-font-family-code, ui-monospace, monospace);
   font-size: 11px;
@@ -462,7 +462,7 @@
   gap: 8px;
   padding: 5px 8px;
   border: none;
-  border-radius: var(--denpa-radius-sm, 10px);
+  border-radius: var(--liuli-radius-sm, 10px);
   background: transparent;
   color: var(--dsw-alias-label-primary, inherit);
   font-size: 12px;
@@ -497,8 +497,8 @@
   gap: 4px;
   padding: 8px;
   border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.18));
-  border-radius: var(--denpa-radius-sm, 10px);
-  background: rgba(var(--denpa-acrylic-rgb), 0.35);
+  border-radius: var(--liuli-radius-sm, 10px);
+  background: rgba(var(--liuli-acrylic-rgb), 0.35);
   font-size: 12px;
   line-height: 18px;
 }
@@ -546,8 +546,8 @@
   flex: none;
   padding: 6px 10px;
   border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.2));
-  border-radius: var(--denpa-radius-sm, 10px);
-  background: rgba(var(--denpa-acrylic-rgb), 0.45);
+  border-radius: var(--liuli-radius-sm, 10px);
+  background: rgba(var(--liuli-acrylic-rgb), 0.45);
   color: var(--dsw-alias-label-secondary, inherit);
   font-size: 12px;
   line-height: 18px;

@@ -1,13 +1,13 @@
-/** 琉璃主题样式 —— denpa.css 的字符串化拷贝（运行时注入 <style>，幂等）。 */
-export const denpaCss = `
+/** 琉璃主题样式 —— liuli.css 的字符串化拷贝（运行时注入 <style>，幂等）。 */
+export const liuliCss = `
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
 @import url('https://cdn-font.hyperos.mi.com/font/css?family=MiSans:100,200,300,400,450,500,600,650,700,900:Chinese_Simplify,Latin&display=swap');
 
 /* ============================================================
- * DenpaPush 风格覆盖层 (DeepSeek Harness 复刻)
+ * 琉璃 风格覆盖层 (DeepSeek Harness 实现)
  * ------------------------------------------------------------
  * 在 design-platform.css 之后加载，整体替换 --dsw-* 语义令牌为
- * 电波推送 DenpaPush 的 M3 配色（亮/暗双主题），并注入字体、
+ * 电波推送 琉璃 的 M3 配色（亮/暗双主题），并注入字体、
  * 圆角、材质、泛光等外观令牌与全局铬色样式。
  * 源色 = Twitter 蓝 #1d9bf0 (M3 light/dark 派生)。
  * ============================================================ */
@@ -20,29 +20,29 @@ export const denpaCss = `
     "Liberation Mono", Menlo, "PingFang SC", "Microsoft YaHei";
   --dsw-font-family-display: "MiSans", "Space Grotesk", "Segoe UI", system-ui, sans-serif;
 
-  /* DenpaPush 外观令牌（供模块 CSS 引用；运行时按设置覆盖） */
-  --denpa-radius: 14px;
-  --denpa-radius-sm: 10px;
-  --denpa-glow-strength: 0.15;
-  --denpa-shadow-strength: 0.6;
-  --denpa-material-opacity: 0.55;
-  --denpa-material-blur: blur(18px) saturate(1.6);
-  --denpa-acrylic-rgb: 221, 229, 237;
-  --denpa-acrylic-rgb-low: 232, 238, 244;
-  --denpa-acrylic-rgb-high: 200, 212, 223;
-  --denpa-control-rgb: 210, 220, 230;
-  --denpa-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.045'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
-  --denpa-text-depth: 0 1px 1px rgba(17, 20, 28, 0.14);
+  /* 琉璃 外观令牌（供模块 CSS 引用；运行时按设置覆盖） */
+  --liuli-radius: 14px;
+  --liuli-radius-sm: 10px;
+  --liuli-glow-strength: 0.15;
+  --liuli-shadow-strength: 0.6;
+  --liuli-material-opacity: 0.55;
+  --liuli-material-blur: blur(18px) saturate(1.6);
+  --liuli-acrylic-rgb: 221, 229, 237;
+  --liuli-acrylic-rgb-low: 232, 238, 244;
+  --liuli-acrylic-rgb-high: 200, 212, 223;
+  --liuli-control-rgb: 210, 220, 230;
+  --liuli-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.045'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+  --liuli-text-depth: 0 1px 1px rgba(17, 20, 28, 0.14);
 }
 
 /* ════════════════════════════════════════════════════════════
- * 亮色主题 — DenpaPush M3 light (#1d9bf0 派生)
+ * 亮色主题 — 琉璃 M3 light (#1d9bf0 派生)
  * ════════════════════════════════════════════════════════════ */
 body {
   /* 泛光/阴影（引用 body 级品牌令牌，必须在 body 上定义才能解析） */
-  --denpa-glow-brand: 0 0 10px color-mix(in srgb, var(--dsw-alias-brand-primary) calc(var(--denpa-glow-strength) * 100%), transparent);
-  --denpa-glow-brand-strong: 0 0 14px color-mix(in srgb, var(--dsw-alias-brand-primary) calc(var(--denpa-glow-strength) * 165%), transparent);
-  --denpa-shadow: 0 2px 10px rgba(0, 0, 0, calc(0.4 * var(--denpa-shadow-strength)));
+  --liuli-glow-brand: 0 0 10px color-mix(in srgb, var(--dsw-alias-brand-primary) calc(var(--liuli-glow-strength) * 100%), transparent);
+  --liuli-glow-brand-strong: 0 0 14px color-mix(in srgb, var(--dsw-alias-brand-primary) calc(var(--liuli-glow-strength) * 165%), transparent);
+  --liuli-shadow: 0 2px 10px rgba(0, 0, 0, calc(0.4 * var(--liuli-shadow-strength)));
 
   /* 背景 */
   --dsw-alias-bg-base: #f8f9fa;
@@ -146,27 +146,27 @@ body {
   --dsw-specific-bubble-highlight: #c4e2ff;
   --dsw-specific-bubble: #d0e8ff;
   --dsw-specific-bubble-fg: #001d33;
-  --dsw-specific-input-major: rgba(var(--denpa-acrylic-rgb), 0.22);
+  --dsw-specific-input-major: rgba(var(--liuli-acrylic-rgb), 0.22);
   --dsw-specific-login-input: #f8f9fa;
   --dsw-specific-menu: var(--dsw-alias-bg-layer-3);
   --dsw-specific-selector: #eef2f6;
-  --dsw-specific-sidebar-fill: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity));
+  --dsw-specific-sidebar-fill: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
   --dsw-specific-sidebar-nav-item-active-accent: #001d33;
   --dsw-specific-sidebar-nav-item-active: #d0e8ff;
   --dsw-specific-sidebar-nav-item-hover: rgba(0, 121, 191, 0.08);
-  --dsw-specific-tip: rgba(var(--denpa-acrylic-rgb), 0.5);
+  --dsw-specific-tip: rgba(var(--liuli-acrylic-rgb), 0.5);
 
-  --denpa-acrylic-rgb: 221, 229, 237;
-  --denpa-acrylic-rgb-low: 232, 238, 244;
-  --denpa-acrylic-rgb-high: 200, 212, 223;
-  --denpa-control-rgb: 210, 220, 230;
-  --denpa-material-opacity: 0.55;
-  --denpa-text-depth: 0 1px 1px rgba(17, 20, 28, 0.14);
+  --liuli-acrylic-rgb: 221, 229, 237;
+  --liuli-acrylic-rgb-low: 232, 238, 244;
+  --liuli-acrylic-rgb-high: 200, 212, 223;
+  --liuli-control-rgb: 210, 220, 230;
+  --liuli-material-opacity: 0.55;
+  --liuli-text-depth: 0 1px 1px rgba(17, 20, 28, 0.14);
   color-scheme: light;
 }
 
 /* ════════════════════════════════════════════════════════════
- * 暗色主题 — DenpaPush M3 dark (#1d9bf0 派生)
+ * 暗色主题 — 琉璃 M3 dark (#1d9bf0 派生)
  * ════════════════════════════════════════════════════════════ */
 body[data-ds-dark-theme] {
   /* 背景 */
@@ -269,22 +269,22 @@ body[data-ds-dark-theme] {
   --dsw-specific-bubble-highlight: #005477;
   --dsw-specific-bubble: #004a73;
   --dsw-specific-bubble-fg: #d0e8ff;
-  --dsw-specific-input-major: rgba(var(--denpa-acrylic-rgb), 0.22);
+  --dsw-specific-input-major: rgba(var(--liuli-acrylic-rgb), 0.22);
   --dsw-specific-login-input: #121316;
   --dsw-specific-menu: var(--dsw-alias-bg-layer-3);
   --dsw-specific-selector: #283040;
-  --dsw-specific-sidebar-fill: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity));
+  --dsw-specific-sidebar-fill: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
   --dsw-specific-sidebar-nav-item-active-accent: #d0e8ff;
   --dsw-specific-sidebar-nav-item-active: #004a73;
   --dsw-specific-sidebar-nav-item-hover: rgba(142, 205, 248, 0.08);
-  --dsw-specific-tip: rgba(var(--denpa-acrylic-rgb), 0.5);
+  --dsw-specific-tip: rgba(var(--liuli-acrylic-rgb), 0.5);
 
-  --denpa-acrylic-rgb: 30, 37, 48;
-  --denpa-acrylic-rgb-low: 26, 32, 42;
-  --denpa-acrylic-rgb-high: 63, 74, 92;
-  --denpa-control-rgb: 51, 61, 78;
-  --denpa-material-opacity: 0.5;
-  --denpa-text-depth: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --liuli-acrylic-rgb: 30, 37, 48;
+  --liuli-acrylic-rgb-low: 26, 32, 42;
+  --liuli-acrylic-rgb-high: 63, 74, 92;
+  --liuli-control-rgb: 51, 61, 78;
+  --liuli-material-opacity: 0.5;
+  --liuli-text-depth: 0 1px 2px rgba(0, 0, 0, 0.45);
   color-scheme: dark;
 }
 
@@ -297,7 +297,7 @@ body[data-ds-dark-theme] {
   background: color-mix(in srgb, var(--dsw-alias-brand-primary) 24%, transparent);
 }
 
-/* 焦点环：品牌描边（与 DenpaPush --focus-ring 一致） */
+/* 焦点环：品牌描边（与 琉璃 --focus-ring 一致） */
 :focus-visible {
   outline: 2px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 70%, transparent);
   outline-offset: 1px;
@@ -324,7 +324,7 @@ body[data-ds-dark-theme] {
   border: 2px solid transparent;
 }
 
-/* 正文渲染细节：与 DenpaPush 一致的字重与文本阴影 */
+/* 正文渲染细节：与 琉璃 一致的字重与文本阴影 */
 body {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -332,8 +332,8 @@ body {
 }
 
 /* 品牌高亮微泛光（用于侧栏活动项、主按钮等，按需挂类） */
-.denpa-glow {
-  box-shadow: var(--denpa-glow-brand);
+.liuli-glow {
+  box-shadow: var(--liuli-glow-brand);
 }
 
 /* TodoPanel 完成状态：跟随主题色而非成功绿 */
@@ -342,7 +342,7 @@ body {
 }
 
 /* 壁纸暗色遮罩：只在暗色主题叠加（原项目 [data-theme="dark"] 选择器语义） */
-[data-denpa-bg]::before {
+[data-liuli-bg]::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -350,12 +350,12 @@ body {
   pointer-events: none;
 }
 
-body[data-ds-dark-theme] [data-denpa-bg]::before {
-  background: rgba(0, 0, 0, var(--denpa-scrim, 0.4));
+body[data-ds-dark-theme] [data-liuli-bg]::before {
+  background: rgba(0, 0, 0, var(--liuli-scrim, 0.4));
 }
 
 /* ════════════════════════════════════════════════════════════
- * 主题切换圆形遮罩（照搬 DenpaPush ::view-transition）
+ * 主题切换圆形遮罩（照搬 琉璃 ::view-transition）
  * ════════════════════════════════════════════════════════════ */
 ::view-transition-old(root) {
   animation: none;
@@ -364,10 +364,10 @@ body[data-ds-dark-theme] [data-denpa-bg]::before {
 
 ::view-transition-new(root) {
   z-index: 2;
-  animation: denpa-vt-circle-reveal 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: liuli-vt-circle-reveal 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
-@keyframes denpa-vt-circle-reveal {
+@keyframes liuli-vt-circle-reveal {
   from { clip-path: circle(0px at var(--vt-x, 50%) var(--vt-y, 50%)); }
   to   { clip-path: circle(var(--vt-r, 150%) at var(--vt-x, 50%) var(--vt-y, 50%)); }
 }
@@ -413,7 +413,7 @@ div[data-phase]::before {
 div[data-phase]:not([data-phase='active'])::before {
   -webkit-mask-image: none !important;
   mask-image: none !important;
-  clip-path: inset(0 round var(--denpa-radius, 14px));
+  clip-path: inset(0 round var(--liuli-radius, 14px));
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -423,8 +423,8 @@ div[data-phase]:not([data-phase='active'])::before {
  * ════════════════════════════════════════════════════════════ */
 [data-question-key] > section,
 [data-plan-review-key] > section {
-  -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
-  backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -438,9 +438,9 @@ div[aria-label][class*="_card"],
 [role="dialog"][class*="_dialog"],
 [role="dialog"][class*="_panel"] {
   background-color: var(--dsw-specific-input-major);
-  background-image: var(--denpa-noise);
-  -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
-  backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
 }
 
 /* 菜单/树菜单需要更强背景对比度：浮动卡片统一的 22% 透明（input-major）
@@ -449,10 +449,10 @@ div[aria-label][class*="_card"],
 div[role="menu"],
 div[class*="_menu"],
 ul[class*="_menu"] {
-  background-color: rgba(var(--denpa-acrylic-rgb), 0.7);
-  background-image: var(--denpa-noise);
-  -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
-  backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+  background-color: rgba(var(--liuli-acrylic-rgb), 0.7);
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -462,8 +462,8 @@ ul[class*="_menu"] {
 [class*="_menu"] [class*="_groupTitle"],
 div[role="menu"] [class*="_groupTitle"] {
   border-radius: 8px;
-  background-color: rgba(var(--denpa-acrylic-rgb), 0.7);
-  background-image: var(--denpa-noise);
+  background-color: rgba(var(--liuli-acrylic-rgb), 0.7);
+  background-image: var(--liuli-noise);
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -486,9 +486,9 @@ div[role="menu"] [class*="_groupTitle"] {
   z-index: -1;
   border-radius: inherit;
   background-color: var(--dsw-specific-input-major);
-  background-image: var(--denpa-noise);
-  -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
-  backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
   pointer-events: none;
 }
 
@@ -503,15 +503,15 @@ div[role="menu"] [class*="_groupTitle"] {
    从实色容器改为与卡片一致的亚克力表面。 */
 [data-composer-card] button[class*="_add"] {
   background-color: var(--dsw-specific-input-major) !important;
-  background-image: var(--denpa-noise) !important;
+  background-image: var(--liuli-noise) !important;
 }
 
 /* “回到底部”按钮额外加磨砂模糊，和卡片材质一致。 */
 button[class*="_toBottom"] {
   background-color: var(--dsw-specific-input-major) !important;
-  background-image: var(--denpa-noise) !important;
-  -webkit-backdrop-filter: var(--denpa-material-blur) !important;
-  backdrop-filter: var(--denpa-material-blur) !important;
+  background-image: var(--liuli-noise) !important;
+  -webkit-backdrop-filter: var(--liuli-material-blur) !important;
+  backdrop-filter: var(--liuli-material-blur) !important;
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -521,9 +521,9 @@ button[class*="_toBottom"] {
 [data-variant="others"]:not([data-tool]) {
   border-radius: 12px;
   background-color: var(--dsw-specific-input-major);
-  background-image: var(--denpa-noise);
-  -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
-  backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -534,10 +534,10 @@ button[class*="_toBottom"] {
 li[class*="rowCard"],
 li[class*="setupCard"],
 div[class*="addCard"] {
-  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity)) !important;
-  background-image: var(--denpa-noise) !important;
-  -webkit-backdrop-filter: var(--denpa-material-blur) !important;
-  backdrop-filter: var(--denpa-material-blur) !important;
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity)) !important;
+  background-image: var(--liuli-noise) !important;
+  -webkit-backdrop-filter: var(--liuli-material-blur) !important;
+  backdrop-filter: var(--liuli-material-blur) !important;
 }
 
 /* 内嵌编辑器（editor）：子容器比父卡更实（+0.15），层次分得开。
@@ -547,10 +547,10 @@ div[class*="addCard"] {
 li[class*="rowCard"] div[class$="_editor"],
 div[class*="addCard"] div[class$="_editor"],
 li[class*="setupCard"] div[class$="_editor"] {
-  background-color: rgba(var(--denpa-acrylic-rgb), calc(var(--denpa-material-opacity) + 0.15)) !important;
-  background-image: var(--denpa-noise) !important;
-  -webkit-backdrop-filter: var(--denpa-material-blur) !important;
-  backdrop-filter: var(--denpa-material-blur) !important;
+  background-color: rgba(var(--liuli-acrylic-rgb), calc(var(--liuli-material-opacity) + 0.15)) !important;
+  background-image: var(--liuli-noise) !important;
+  -webkit-backdrop-filter: var(--liuli-material-blur) !important;
+  backdrop-filter: var(--liuli-material-blur) !important;
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -559,9 +559,9 @@ li[class*="setupCard"] div[class$="_editor"] {
 div[class*="ioCard"],
 div[class*="instructionsCard"] {
   background-color: var(--dsw-specific-input-major);
-  background-image: var(--denpa-noise);
-  -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
-  backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -569,19 +569,19 @@ div[class*="instructionsCard"] {
  * ════════════════════════════════════════════════════════════ */
 div[class*="hoverCard"] {
   background-color: var(--dsw-specific-input-major);
-  background-image: var(--denpa-noise);
-  -webkit-backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
-  backdrop-filter: var(--denpa-material-blur-strong, var(--denpa-material-blur));
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
 }
 
 /* ════════════════════════════════════════════════════════════
- * DenpaPush 侧边栏会话选中样式（从 astrbot_plugin_twitter_monitor 移植）
+ * 琉璃 侧边栏会话选中样式（从 astrbot_plugin_twitter_monitor 移植）
  * 选中会话/搜索结果行使用品牌 surface 底、accent 文字与左侧指示条，
- * 并带 DenpaPush 辉光/阴影。
+ * 并带 琉璃 辉光/阴影。
  * ════════════════════════════════════════════════════════════ */
 [role="treeitem"][aria-selected="true"] {
   background-color: var(--dsw-specific-sidebar-nav-item-active);
-  /* 左侧短指示条：与 DenpaPush 的 ::before 3px 圆角条等价，避免和拖拽 marker 伪元素冲突 */
+  /* 左侧短指示条：与 琉璃 的 ::before 3px 圆角条等价，避免和拖拽 marker 伪元素冲突 */
   background-image: linear-gradient(
     var(--dsw-specific-sidebar-nav-item-active-accent),
     var(--dsw-specific-sidebar-nav-item-active-accent)
@@ -590,7 +590,7 @@ div[class*="hoverCard"] {
   background-position: left center;
   background-size: 3px 18px;
   color: var(--dsw-specific-sidebar-nav-item-active-accent);
-  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow);
+  box-shadow: var(--liuli-glow-brand), var(--liuli-shadow);
 }
 
 /* 选中行内文字统一走 accent；StateDot 自身状态色因更高优先级保持。 */
@@ -650,17 +650,17 @@ div[class*="hoverCard"] {
 /* ════════════════════════════════════════════════════════════
  * 官方 harness 观感还原（用户 WIP 曾在宿主 module.css 中实现，
  * 现由插件全局样式承担）：浮动卡片布局 —— frame 背景消费
- * --denpa-frame-bg*（壁纸/渐变/自定义由 denpa-runtime 写入），
+ * --liuli-frame-bg*（壁纸/渐变/自定义由 liuli-runtime 写入），
  * 侧栏/会话列留白，header 与正文滚动区各自成卡。
  * 选择器用 [class$=] 后缀命中构建产物的哈希类名（形如 <hash>_<local>），
  * 加 !important 压过宿主同特异性规则。
  * ════════════════════════════════════════════════════════════ */
 
-/* 帧背景：壁纸/品牌渐变/自定义（denpa-runtime 写入变量） */
+/* 帧背景：壁纸/品牌渐变/自定义（liuli-runtime 写入变量） */
 [class*="_frame"] {
-  background-color: var(--denpa-frame-bg, var(--dsw-alias-bg-base)) !important;
-  background-image: var(--denpa-frame-bg-image, none) !important;
-  background-size: var(--denpa-frame-bg-size, auto) !important;
+  background-color: var(--liuli-frame-bg, var(--dsw-alias-bg-base)) !important;
+  background-image: var(--liuli-frame-bg-image, none) !important;
+  background-size: var(--liuli-frame-bg-size, auto) !important;
   background-position: center !important;
   background-repeat: no-repeat !important;
 }
@@ -704,7 +704,7 @@ div[data-phase] > div > header {
   margin-bottom: 12px !important;
   padding: 12px 28px 0 20px !important;
   border: 1px solid var(--dsw-alias-border-l1) !important;
-  border-radius: var(--denpa-radius, 14px) !important;
+  border-radius: var(--liuli-radius, 14px) !important;
 }
 
 /* 官方 header 底部 1px 分隔线会与卡片圆角冲突，去掉 */
@@ -815,7 +815,7 @@ div[data-phase] > div > header [class*="_tabs"] [class*="_tab"]::after,
    卡片一旦成为定位上下文，absolute 会随滚动内容滚动、rail 滚出视口。 */
 [data-conversation-scroll] {
   border: 1px solid var(--dsw-alias-border-l1) !important;
-  border-radius: var(--denpa-radius, 14px) !important;
+  border-radius: var(--liuli-radius, 14px) !important;
 }
 
 /* 琉璃：正文卡片底部直切、向下延伸到窗口边缘（WIP ConversationRoot
@@ -833,9 +833,9 @@ div[data-phase='active'] [data-conversation-scroll] {
 div[data-phase] > header,
 div[data-phase] > div > header,
 [data-conversation-scroll] {
-  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity)) !important;
-  background-image: var(--denpa-noise) !important;
-  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow) !important;
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity)) !important;
+  background-image: var(--liuli-noise) !important;
+  box-shadow: var(--liuli-glow-brand), var(--liuli-shadow) !important;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
@@ -853,8 +853,8 @@ div[data-phase]::before {
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  -webkit-backdrop-filter: var(--denpa-material-blur);
-  backdrop-filter: var(--denpa-material-blur);
+  -webkit-backdrop-filter: var(--liuli-material-blur);
+  backdrop-filter: var(--liuli-material-blur);
 }
 
 /* active 态正文卡片下缘贴窗口底边（scrollBody margin-bottom:-16px），
@@ -878,12 +878,12 @@ div[data-phase='active'] {
   overflow: visible !important;
 }
 
-/* 英雄区（空状态欢迎页）：品牌辉光标题 + 副标题（DenpaPush 风格） */
+/* 英雄区（空状态欢迎页）：品牌辉光标题 + 副标题（琉璃 风格） */
 [class*="_headline"] {
   font-family: var(--dsw-font-family-display) !important;
   letter-spacing: -0.5px !important;
   color: var(--dsw-alias-label-primary) !important;
-  text-shadow: var(--denpa-text-depth),
+  text-shadow: var(--liuli-text-depth),
     0 0 14px color-mix(in srgb, var(--dsw-alias-brand-primary) 22%, transparent) !important;
 }
 
@@ -896,7 +896,7 @@ div[data-phase='active'] {
 }
 
 /* ════════════════════════════════════════════════════════════
- * 侧栏悬浮亚克力面板（DenpaPush 配方）：左贴边直角、右侧圆角，
+ * 侧栏悬浮亚克力面板（琉璃 配方）：左贴边直角、右侧圆角，
  * 半透明 + 噪声 + 磨砂 + 辉光/阴影。
  *
  * 磨砂必须由 ::before 独立背景层承担，根元素自身不能持有
@@ -919,10 +919,10 @@ div[data-phase='active'] {
   z-index: 1 !important;
   /* 描边与会话区卡片 [data-conversation-scroll] 一致（1px solid border-l1） */
   border: 1px solid var(--dsw-alias-border-l1) !important;
-  border-radius: 0 var(--denpa-radius, 14px) var(--denpa-radius, 14px) 0 !important;
+  border-radius: 0 var(--liuli-radius, 14px) var(--liuli-radius, 14px) 0 !important;
   background-color: transparent !important;
   background-image: none !important;
-  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow) !important;
+  box-shadow: var(--liuli-glow-brand), var(--liuli-shadow) !important;
   overflow: hidden !important;
 }
 
@@ -932,14 +932,14 @@ div[data-phase='active'] {
   inset: 0;
   z-index: -1;
   border-radius: inherit;
-  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity));
-  background-image: var(--denpa-noise);
-  -webkit-backdrop-filter: var(--denpa-material-blur);
-  backdrop-filter: var(--denpa-material-blur);
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur);
+  backdrop-filter: var(--liuli-material-blur);
   pointer-events: none;
 }
 
-/* 品牌头部留白（DenpaPush sidebar-header 配方） */
+/* 品牌头部留白（琉璃 sidebar-header 配方） */
 [class*="_sidebarCol"] [class*="_logoRow"] {
   padding: 8px 2px 8px 4px !important;
   margin-bottom: 4px !important;
@@ -996,21 +996,21 @@ div[data-phase='active'] {
   display: none !important;
 }
 
-/* 新建会话主按钮（DenpaPush 主按钮：品牌色实底 + 深色前景 + 品牌辉光，
+/* 新建会话主按钮（琉璃 主按钮：品牌色实底 + 深色前景 + 品牌辉光，
    WIP 配方完整移植；官方背景是中性 elevated-fill，非主题色）。
    :not([class*="_newSessionLabel"]) 排除按钮内的文字 span
    （class="_newSessionLabel" 也含 "_newSession" 子串）。 */
 [class*="_sidebarCol"] [class*="_newSession"]:not([class*="_newSessionLabel"]) {
-  border-radius: var(--denpa-radius-sm, 10px) !important;
+  border-radius: var(--liuli-radius-sm, 10px) !important;
   border-color: transparent !important;
   background: var(--dsw-alias-button-primary-fill) !important;
   color: var(--dsw-alias-label-primary-foreground) !important;
-  box-shadow: var(--denpa-glow-brand) !important;
+  box-shadow: var(--liuli-glow-brand) !important;
 }
 
 [class*="_sidebarCol"] [class*="_newSession"]:not([class*="_newSessionLabel"]):hover {
   background: var(--dsw-alias-button-primary-hover) !important;
-  box-shadow: var(--denpa-glow-brand-strong) !important;
+  box-shadow: var(--liuli-glow-brand-strong) !important;
 }
 
 /* 收起态退为透明底图标钮：前景回普通文本色（onBrand 两向俱错） */
@@ -1032,7 +1032,7 @@ div[data-phase='active'] {
 [class*="_bubble"]:not([role="tooltip"]) {
   color: var(--dsw-specific-bubble-fg, var(--dsw-alias-label-primary)) !important;
   /* 对话消息气泡圆角跟随“圆角大小”设置 */
-  border-radius: var(--denpa-radius, 22px) !important;
+  border-radius: var(--liuli-radius, 22px) !important;
 }
 
 /* 回合状态 shimmer（"Deep diving..."）：官方渐变用静态 deepseek-500/200
@@ -1065,7 +1065,7 @@ div[data-phase='active'] {
 /* 输入卡：官方已读 --dsw-specific-input-major（插件半透明变量），补辉光/
    阴影；磨砂已由插件 [data-composer-card]::before 独立层承担。 */
 [data-composer-card] {
-  box-shadow: var(--dsw-shadow-lv2, none), var(--denpa-glow-brand), var(--denpa-shadow) !important;
+  box-shadow: var(--dsw-shadow-lv2, none), var(--liuli-glow-brand), var(--liuli-shadow) !important;
 }
 
 /* 引用 chip：缩放标签与底色观感（chip 本体是官方元素，类后缀命中） */
@@ -1076,8 +1076,8 @@ div[data-phase='active'] {
 /* 输入框里的引用 chip 也做成更精致的“小卡片”：亚克力底 + 描边 + 品牌辉光，
    不引入 border/padding，避免破坏 U+FFFC 与 textarea 的对齐。 */
 [class*="_chip"][data-decoration="chip"]:not([data-invalid]) {
-  background: rgba(var(--denpa-acrylic-rgb), 0.9) !important;
-  box-shadow: 0 0 0 1px var(--dsw-alias-border-l2), var(--denpa-glow-brand);
+  background: rgba(var(--liuli-acrylic-rgb), 0.9) !important;
+  box-shadow: 0 0 0 1px var(--dsw-alias-border-l2), var(--liuli-glow-brand);
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -1090,10 +1090,10 @@ div[data-phase='active'] {
   margin: 4px 0;
   padding: 4px 10px;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: var(--denpa-radius, 999px);
-  background-color: rgba(var(--denpa-acrylic-rgb), 0.92);
-  background-image: var(--denpa-noise);
-  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow);
+  border-radius: var(--liuli-radius, 999px);
+  background-color: rgba(var(--liuli-acrylic-rgb), 0.92);
+  background-image: var(--liuli-noise);
+  box-shadow: var(--liuli-glow-brand), var(--liuli-shadow);
   color: var(--dsw-alias-label-primary);
   font-size: 12px;
   line-height: 18px;
@@ -1120,9 +1120,9 @@ div[data-phase='active'] {
   padding: 8px 10px;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
-  background-color: rgba(var(--denpa-acrylic-rgb), 0.97);
-  background-image: var(--denpa-noise);
-  box-shadow: var(--denpa-shadow), var(--denpa-glow-brand);
+  background-color: rgba(var(--liuli-acrylic-rgb), 0.97);
+  background-image: var(--liuli-noise);
+  box-shadow: var(--liuli-shadow), var(--liuli-glow-brand);
   color: var(--dsw-alias-label-primary);
 }
 
@@ -1177,8 +1177,8 @@ div[data-phase='active'] {
   height: 48px;
   background: linear-gradient(
     to top,
-    rgba(var(--denpa-acrylic-rgb), 0.6),
-    rgba(var(--denpa-acrylic-rgb), 0.25) 40%,
+    rgba(var(--liuli-acrylic-rgb), 0.6),
+    rgba(var(--liuli-acrylic-rgb), 0.25) 40%,
     transparent
   );
   -webkit-backdrop-filter: blur(5px);
@@ -1187,7 +1187,7 @@ div[data-phase='active'] {
 }
 
 /* ════════════════════════════════════════════════════════════
- * 剩余小件观感（原宿主 module.css 差异，全部为 DenpaPush 配方）：
+ * 剩余小件观感（原宿主 module.css 差异，全部为 琉璃 配方）：
  * dock 卡磨砂/辉光、状态点动态取色、详情列去分割线、底部淡出层移除、
  * 设置对话框辉光。
  * ════════════════════════════════════════════════════════════ */
@@ -1207,10 +1207,10 @@ div[data-phase='active'] {
    的每个节点 root（构建产物的类后缀太常见）。 */
 [data-testid="todo-panel"],
 [data-goal-bar] {
-  background-image: var(--denpa-noise) !important;
-  -webkit-backdrop-filter: var(--denpa-material-blur) !important;
-  backdrop-filter: var(--denpa-material-blur) !important;
-  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow) !important;
+  background-image: var(--liuli-noise) !important;
+  -webkit-backdrop-filter: var(--liuli-material-blur) !important;
+  backdrop-filter: var(--liuli-material-blur) !important;
+  box-shadow: var(--liuli-glow-brand), var(--liuli-shadow) !important;
 }
 
 /* 排队面板（QueueDock 内部 .panel）：WIP 配方 —— 磨砂 + 辉光/阴影
@@ -1218,9 +1218,9 @@ div[data-phase='active'] {
    用户要求去外层遮罩、但面板本身要有与 composer 卡一致的磨砂）。
    面板无 fixed 后代，无包含块陷阱。 */
 [data-queue-dock] [class*="_panel"] {
-  -webkit-backdrop-filter: var(--denpa-material-blur) !important;
-  backdrop-filter: var(--denpa-material-blur) !important;
-  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow) !important;
+  -webkit-backdrop-filter: var(--liuli-material-blur) !important;
+  backdrop-filter: var(--liuli-material-blur) !important;
+  box-shadow: var(--liuli-glow-brand), var(--liuli-shadow) !important;
 }
 
 /* 外层 dock 容器自身：清掉官方/漏到 wrapper 上的辉光、阴影与磨砂模糊。
@@ -1235,12 +1235,12 @@ div[data-phase='active'] {
 
 /* dock 内 bar：补品牌辉光 + 阴影 + 磨砂模糊，与面板/输入卡一致。 */
 [class*="_composerStack"] > div:nth-of-type(1) > [class*="_dock"] > [class*="_bar"] {
-  -webkit-backdrop-filter: var(--denpa-material-blur) !important;
-  backdrop-filter: var(--denpa-material-blur) !important;
-  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow) !important;
+  -webkit-backdrop-filter: var(--liuli-material-blur) !important;
+  backdrop-filter: var(--liuli-material-blur) !important;
+  box-shadow: var(--liuli-glow-brand), var(--liuli-shadow) !important;
 }
 
-/* 详情列：去左侧分割线（DenpaPush 复刻）。列内 _root 唯一（面板根），
+/* 详情列：去左侧分割线（琉璃 实现）。列内 _root 唯一（面板根），
    与侧栏不同没有树/列表子 root，宽匹配安全。 */
 [class*="_detailsCol"] [class*="_root"] {
   border-left: none !important;
@@ -1273,10 +1273,10 @@ div[data-phase='active'] {
 [class*="_detailsCol"] [data-preview-panel] {
   position: relative !important;
   z-index: 1 !important;
-  border-radius: var(--denpa-radius, 14px) 0 0 var(--denpa-radius, 14px) !important;
+  border-radius: var(--liuli-radius, 14px) 0 0 var(--liuli-radius, 14px) !important;
   background-color: transparent !important;
   background-image: none !important;
-  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow) !important;
+  box-shadow: var(--liuli-glow-brand), var(--liuli-shadow) !important;
   overflow: hidden !important;
 }
 
@@ -1286,10 +1286,10 @@ div[data-phase='active'] {
   inset: 0;
   z-index: -1;
   border-radius: inherit;
-  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity));
-  background-image: var(--denpa-noise);
-  -webkit-backdrop-filter: var(--denpa-material-blur);
-  backdrop-filter: var(--denpa-material-blur);
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur);
+  backdrop-filter: var(--liuli-material-blur);
   pointer-events: none;
 }
 /* 工作区树底部淡出层：WIP 已移除该元素，插件隐藏官方残留层 */
@@ -1300,7 +1300,7 @@ div[data-phase='active'] {
 /* 设置对话框/面板：辉光阴影（磨砂已由通用对话框规则覆盖） */
 [role="dialog"][class*="_panel"],
 [role="dialog"][class*="_dialog"] {
-  box-shadow: var(--denpa-glow-brand), var(--denpa-shadow) !important;
+  box-shadow: var(--liuli-glow-brand), var(--liuli-shadow) !important;
 }
 
 /* 设置页去掉重复且无功能的“插件”导航项（保留官方第一个） */
@@ -1324,19 +1324,19 @@ div[data-phase='active'] {
 [role="dialog"] [class*="_row"] button:not([class*="_toggle"]):not([class*="Button"]),
 [role="dialog"] [class*="_row"] select,
 [role="dialog"] [class*="_row"] input {
-  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity)) !important;
-  background-image: var(--denpa-noise) !important;
-  -webkit-backdrop-filter: var(--denpa-material-blur) !important;
-  backdrop-filter: var(--denpa-material-blur) !important;
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity)) !important;
+  background-image: var(--liuli-noise) !important;
+  -webkit-backdrop-filter: var(--liuli-material-blur) !important;
+  backdrop-filter: var(--liuli-material-blur) !important;
 }
 
 /* 设置对话框输入框（插件配置 fields 等）：官方 bg-layer-3 实色浅灰，
    视觉像硬编码 —— 统一亚克力配方，与设置其他控件一致。 */
 [role="dialog"] input {
-  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity)) !important;
-  background-image: var(--denpa-noise) !important;
-  -webkit-backdrop-filter: var(--denpa-material-blur) !important;
-  backdrop-filter: var(--denpa-material-blur) !important;
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity)) !important;
+  background-image: var(--liuli-noise) !important;
+  -webkit-backdrop-filter: var(--liuli-material-blur) !important;
+  backdrop-filter: var(--liuli-material-blur) !important;
 }
 
 /* 插件卡保存按钮：官方用 label-primary 反转（深底浅字，视觉像硬编码），
@@ -1356,10 +1356,10 @@ div[data-phase='active'] {
    避免命中 card 内部的 cardMain/cardHead 等子类（它们应保持透明）。 */
 [role="dialog"] [class*="_cards"] > [class*="_card"],
 [role="dialog"] [class*="_cards"] > div > [class*="_card"] {
-  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity)) !important;
-  background-image: var(--denpa-noise) !important;
-  -webkit-backdrop-filter: var(--denpa-material-blur) !important;
-  backdrop-filter: var(--denpa-material-blur) !important;
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity)) !important;
+  background-image: var(--liuli-noise) !important;
+  -webkit-backdrop-filter: var(--liuli-material-blur) !important;
+  backdrop-filter: var(--liuli-material-blur) !important;
 }
 
 /* 展开/激活卡：比基础卡更实（WIP：opacity + 0.15） */
@@ -1369,7 +1369,7 @@ div[data-phase='active'] {
 [role="dialog"] [class*="_cards"] > div > [class*="_card"][class*="Open"],
 [role="dialog"] [class*="_cards"] > [class*="_card"][class*="Active"],
 [role="dialog"] [class*="_cards"] > div > [class*="_card"][class*="Active"] {
-  background-color: rgba(var(--denpa-acrylic-rgb), calc(var(--denpa-material-opacity) + 0.15)) !important;
+  background-color: rgba(var(--liuli-acrylic-rgb), calc(var(--liuli-material-opacity) + 0.15)) !important;
 }
 
 /* preset 卡 ID（<code>）：官方用 label-dimmed（中性灰，不随品牌色变），
@@ -1379,69 +1379,69 @@ div[data-phase='active'] {
 }
 
 /* ════════════════════════════════════════════════════════════
- * 会话切换/新消息入场动画（denpa-transition.ts 挂类）
+ * 会话切换/新消息入场动画（liuli-transition.ts 挂类）
  * 长属性写法：animation 简写里嵌 var()（级联延迟）在个别引擎上有解析
  * 风险，拆开后每条规则独立解析，延迟变量绝对可靠。
  * ════════════════════════════════════════════════════════════ */
-.denpa-enter {
+.liuli-enter {
   animation-duration: 200ms;
   animation-timing-function: var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1));
-  animation-delay: var(--denpa-enter-delay, 0ms);
+  animation-delay: var(--liuli-enter-delay, 0ms);
   animation-fill-mode: backwards;
 }
 
-.denpa-enter-fade { animation-name: denpa-enter-fade; }
-.denpa-enter-rise { animation-name: denpa-enter-rise; }
-.denpa-enter-drop { animation-name: denpa-enter-drop; }
-.denpa-enter-slide { animation-name: denpa-enter-slide; }
-.denpa-enter-zoom { animation-name: denpa-enter-zoom; }
-.denpa-enter-blur { animation-name: denpa-enter-blur; }
-.denpa-enter-spring { animation-name: denpa-enter-spring; }
+.liuli-enter-fade { animation-name: liuli-enter-fade; }
+.liuli-enter-rise { animation-name: liuli-enter-rise; }
+.liuli-enter-drop { animation-name: liuli-enter-drop; }
+.liuli-enter-slide { animation-name: liuli-enter-slide; }
+.liuli-enter-zoom { animation-name: liuli-enter-zoom; }
+.liuli-enter-blur { animation-name: liuli-enter-blur; }
+.liuli-enter-spring { animation-name: liuli-enter-spring; }
 
-/* 级联：同批多条按 --denpa-enter-delay 递增入场（fade/rise 变体） */
-.denpa-enter-stagger { animation-name: denpa-enter-fade; animation-duration: 180ms; }
-.denpa-enter-staggerRise { animation-name: denpa-enter-rise; animation-duration: 180ms; }
+/* 级联：同批多条按 --liuli-enter-delay 递增入场（fade/rise 变体） */
+.liuli-enter-stagger { animation-name: liuli-enter-fade; animation-duration: 180ms; }
+.liuli-enter-staggerRise { animation-name: liuli-enter-rise; animation-duration: 180ms; }
 
-@keyframes denpa-enter-fade {
+@keyframes liuli-enter-fade {
   from { opacity: 0; }
 }
 
-@keyframes denpa-enter-rise {
+@keyframes liuli-enter-rise {
   from {
     opacity: 0;
     transform: translateY(6px);
   }
 }
 
-@keyframes denpa-enter-drop {
+@keyframes liuli-enter-drop {
   from {
     opacity: 0;
     transform: translateY(-8px);
   }
 }
 
-@keyframes denpa-enter-slide {
+@keyframes liuli-enter-slide {
   from {
     opacity: 0;
     transform: translateX(12px);
   }
 }
 
-@keyframes denpa-enter-zoom {
+@keyframes liuli-enter-zoom {
   from {
     opacity: 0;
     transform: scale(0.97);
   }
 }
 
-@keyframes denpa-enter-blur {
+@keyframes liuli-enter-blur {
   from {
     opacity: 0;
     filter: blur(5px);
   }
 }
 
-@keyframes denpa-enter-spring {
+@keyframes liuli-enter-spring {
   0% {
     opacity: 0;
     transform: translateY(10px);
@@ -1457,7 +1457,7 @@ div[data-phase='active'] {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .denpa-enter {
+  .liuli-enter {
     animation: none;
   }
 }

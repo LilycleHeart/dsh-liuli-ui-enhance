@@ -1,4 +1,4 @@
-/** DenpaPush M3 动态取色：源色 → M3 调色板 → DSH 令牌覆盖（照搬 dashboard app.js）。 */
+/** 琉璃 M3 动态取色：源色 → M3 调色板 → DSH 令牌覆盖（照搬 dashboard app.js）。 */
 
 import {
   argbFromHex,
@@ -7,7 +7,7 @@ import {
 } from '../vendor/material-color-utilities.js'
 
 /** 默认源色 = Twitter 蓝 */
-export const DENPA_DEFAULT_SOURCE = '#1d9bf0'
+export const LIULI_DEFAULT_SOURCE = '#1d9bf0'
 
 const SURFACE_TONES = {
   light: { appBg: 98, low: 96, mid: 94, high: 92, highest: 90 },
@@ -15,7 +15,7 @@ const SURFACE_TONES = {
 }
 const SCRIM = { low: 0.05, mid: 0.08, high: 0.11, highest: 0.14 }
 
-const paletteCache: Record<string, DenpaPalette> = {}
+const paletteCache: Record<string, LiuliPalette> = {}
 
 function rgbStr(hex: string): string {
   const h = hex.replace('#', '')
@@ -34,7 +34,7 @@ function alphaComposite(fg: string, bg: string, a: number): string {
 }
 
 /** 一张 M3 派生调色板（与 dashboard derivePalette 同构）。 */
-export interface DenpaPalette {
+export interface LiuliPalette {
   brand: string
   onBrand: string
   surface: string
@@ -72,8 +72,8 @@ export interface DenpaPalette {
 }
 
 /** 从源色派生 M3 调色板（按明暗缓存）。 */
-export function denpaDerivePalette(sourceHex: string | undefined, isDark: boolean): DenpaPalette {
-  const hex = sourceHex || DENPA_DEFAULT_SOURCE
+export function liuliDerivePalette(sourceHex: string | undefined, isDark: boolean): LiuliPalette {
+  const hex = sourceHex || LIULI_DEFAULT_SOURCE
   const key = hex.toLowerCase() + (isDark ? ':d' : ':l')
   const cached = paletteCache[key]
   if (cached) return cached
@@ -87,7 +87,7 @@ export function denpaDerivePalette(sourceHex: string | undefined, isDark: boolea
   const sc = (t: number): string => hexFromArgb(neutral.tone(t))
   const primaryHex = hexFromArgb(s.primary)
   const cLow = sc(st.low), cMid = sc(st.mid), cHigh = sc(st.high), cHighest = sc(st.highest)
-  const pal: DenpaPalette = {
+  const pal: LiuliPalette = {
     brand: primaryHex,
     onBrand: hexFromArgb(s.onPrimary),
     surface: hexFromArgb(s.primaryContainer),
@@ -127,16 +127,16 @@ export function denpaDerivePalette(sourceHex: string | undefined, isDark: boolea
   return pal
 }
 
-/** 把 M3 调色板映射为 DSH 令牌（body 内联变量，覆盖静态 denpa.css）。 */
-export function denpaApplyBrand(pal: DenpaPalette, isDark: boolean, sourceHex?: string): void {
+/** 把 M3 调色板映射为 DSH 令牌（body 内联变量，覆盖静态 liuli.css）。 */
+export function liuliApplyBrand(pal: LiuliPalette, isDark: boolean, sourceHex?: string): void {
   const body = document.body
   const set = (k: string, v: string): void => { body.style.setProperty(k, v) }
   const unset = (k: string): void => { body.style.removeProperty(k) }
   const mix = (color: string, pct: number): string => `color-mix(in srgb, ${color} ${pct}%, transparent)`
   // 用户气泡：明暗互换 —— 亮色主题用暗色面（深青气泡 + 浅字），
   // 暗色主题用亮色面（亮青气泡 + 深字）。sourceHex 缺省时回退默认源。
-  const lightPal = denpaDerivePalette(sourceHex ?? DENPA_DEFAULT_SOURCE, false)
-  const darkPal = denpaDerivePalette(sourceHex ?? DENPA_DEFAULT_SOURCE, true)
+  const lightPal = liuliDerivePalette(sourceHex ?? LIULI_DEFAULT_SOURCE, false)
+  const darkPal = liuliDerivePalette(sourceHex ?? LIULI_DEFAULT_SOURCE, true)
   const bubblePal = isDark ? lightPal : darkPal
 
   // 品牌
@@ -161,24 +161,24 @@ export function denpaApplyBrand(pal: DenpaPalette, isDark: boolean, sourceHex?: 
 
   // MCU 多角色色板：primary / secondary / tertiary / surface 全量暴露，
   // 供 TurnRail 等组件按角色使用不同颜色，而不是全部套同一个 brand。
-  set('--denpa-mcu-primary', pal.brand)
-  set('--denpa-mcu-on-primary', pal.onBrand)
-  set('--denpa-mcu-primary-container', pal.surface)
-  set('--denpa-mcu-on-primary-container', pal.onSurface)
-  set('--denpa-mcu-secondary', pal.secondary)
-  set('--denpa-mcu-on-secondary', pal.onSecondary)
-  set('--denpa-mcu-secondary-container', pal.secondaryContainer)
-  set('--denpa-mcu-on-secondary-container', pal.onSecondaryContainer)
-  set('--denpa-mcu-tertiary', pal.tertiary)
-  set('--denpa-mcu-tertiary-container', pal.tertiaryContainer)
-  set('--denpa-mcu-on-tertiary-container', pal.onTertiaryContainer)
-  set('--denpa-mcu-surface', pal.appBg)
-  set('--denpa-mcu-surface-container', pal.popupBg)
-  set('--denpa-mcu-surface-container-high', pal.bg4)
-  set('--denpa-mcu-on-surface', pal.fg1)
-  set('--denpa-mcu-on-surface-variant', pal.fg2)
-  set('--denpa-mcu-outline', pal.stroke1)
-  set('--denpa-mcu-outline-variant', pal.stroke2)
+  set('--liuli-mcu-primary', pal.brand)
+  set('--liuli-mcu-on-primary', pal.onBrand)
+  set('--liuli-mcu-primary-container', pal.surface)
+  set('--liuli-mcu-on-primary-container', pal.onSurface)
+  set('--liuli-mcu-secondary', pal.secondary)
+  set('--liuli-mcu-on-secondary', pal.onSecondary)
+  set('--liuli-mcu-secondary-container', pal.secondaryContainer)
+  set('--liuli-mcu-on-secondary-container', pal.onSecondaryContainer)
+  set('--liuli-mcu-tertiary', pal.tertiary)
+  set('--liuli-mcu-tertiary-container', pal.tertiaryContainer)
+  set('--liuli-mcu-on-tertiary-container', pal.onTertiaryContainer)
+  set('--liuli-mcu-surface', pal.appBg)
+  set('--liuli-mcu-surface-container', pal.popupBg)
+  set('--liuli-mcu-surface-container-high', pal.bg4)
+  set('--liuli-mcu-on-surface', pal.fg1)
+  set('--liuli-mcu-on-surface-variant', pal.fg2)
+  set('--liuli-mcu-outline', pal.stroke1)
+  set('--liuli-mcu-outline-variant', pal.stroke2)
 
 
   // 背景
@@ -191,8 +191,8 @@ export function denpaApplyBrand(pal: DenpaPalette, isDark: boolean, sourceHex?: 
   set('--dsw-alias-bg-multi-select', pal.bg2)
   set('--dsw-alias-bg-skeleton', isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)')
   set('--dsw-specific-selector', pal.bg2)
-  set('--dsw-specific-tip', 'rgba(var(--denpa-acrylic-rgb), 0.5)')
-  set('--dsw-specific-input-major', 'rgba(var(--denpa-acrylic-rgb), 0.22)')
+  set('--dsw-specific-tip', 'rgba(var(--liuli-acrylic-rgb), 0.5)')
+  set('--dsw-specific-input-major', 'rgba(var(--liuli-acrylic-rgb), 0.22)')
   set('--dsw-specific-login-input', pal.appBg)
 
   // 描边
@@ -251,15 +251,15 @@ export function denpaApplyBrand(pal: DenpaPalette, isDark: boolean, sourceHex?: 
   set('--dsw-alias-state-error-secondary', pal.errorFg)
 
   // 亚克力 RGB（随 M3 表面色动态变化）
-  set('--denpa-acrylic-rgb', rgbStr(pal.bg2))
-  set('--denpa-acrylic-rgb-low', rgbStr(pal.bg1))
-  set('--denpa-acrylic-rgb-high', rgbStr(pal.bg4))
-  set('--denpa-control-rgb', rgbStr(pal.bg3))
+  set('--liuli-acrylic-rgb', rgbStr(pal.bg2))
+  set('--liuli-acrylic-rgb-low', rgbStr(pal.bg1))
+  set('--liuli-acrylic-rgb-high', rgbStr(pal.bg4))
+  set('--liuli-control-rgb', rgbStr(pal.bg3))
   void unset
 }
 
-/** 清空品牌覆盖（回到 denpa.css 静态令牌）。 */
-export function denpaClearBrand(): void {
+/** 清空品牌覆盖（回到 liuli.css 静态令牌）。 */
+export function liuliClearBrand(): void {
   const names = [
     '--dsw-alias-brand-primary', '--dsw-alias-brand-primary-new-colorprimary-new-color',
     '--dsw-alias-button-primary-fill', '--dsw-alias-button-primary-hover', '--dsw-alias-button-primary-dimmed',
@@ -286,7 +286,7 @@ export function denpaClearBrand(): void {
     '--dsw-alias-markdown-code-segment-selected', '--dsw-alias-markdown-code-segment-unselected',
     '--dsw-alias-scrollbar-bg-l1', '--dsw-alias-scrollbar-bg-l2', '--dsw-alias-scrollbar-hover-l1',
     '--dsw-alias-scrollbar-hover-l2', '--dsw-alias-state-error-primary', '--dsw-alias-state-error-secondary',
-    '--denpa-acrylic-rgb', '--denpa-acrylic-rgb-low', '--denpa-acrylic-rgb-high', '--denpa-control-rgb',
+    '--liuli-acrylic-rgb', '--liuli-acrylic-rgb-low', '--liuli-acrylic-rgb-high', '--liuli-control-rgb',
   ]
   for (const name of names) document.body.style.removeProperty(name)
 }

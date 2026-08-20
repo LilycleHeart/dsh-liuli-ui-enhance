@@ -1,14 +1,14 @@
 /**
- * liuli-theme 嵌入式浏览器引擎（Host 半，复刻 ZCode Desktop IAB）。
+ * dsh-liuli-ui-enhance 嵌入式浏览器引擎（Host 半，实现 DSH Desktop IAB）。
  *
- * ZCode 桌面端用 Electron <webview>（09-renderer-renamed styles-OqUHW1P0
- * _Component491：partition persist:zcode-embedded-browser、allowpopups、
+ * 参考实现桌面端用 Electron <webview>（09-renderer-renamed styles-OqUHW1P0
+ * _Component491：partition persist:embedded-browser、allowpopups、
  * did-start-loading/did-stop-loading/did-navigate/did-navigate-in-page/
  * page-title-updated/did-fail-load/render-process-gone 全套事件同步；
  * 新窗口请求转右侧浏览器标签）。DSH 宿主窗口未开 webviewTag，插件不能
  * 改宿主窗口构造参数，因此本引擎在 Electron 主进程内直接用 WebContentsView
  * 承载页面：独立会话分区、任意站点（无 X-Frame-Options 限制）、弹窗转标签、
- * 崩溃原位重建，语义与 ZCode webview 一致；渲染端把面板几何上报过来，
+ * 崩溃原位重建，语义与 webview 一致；渲染端把面板几何上报过来，
  * 视图精确贴合侧边栏浏览器面板区域（data-testid browser-webview 的承载位）。
  *
  * 纯 Web 部署（无 Electron）时 createBrowserEngine 返回 undefined，
@@ -85,15 +85,15 @@ type BrowserEvent =
   | { type: 'dialog'; tabId: string; kind: 'alert' | 'confirm' | 'prompt'; message: string }
   | { type: 'closed'; tabId: string }
 
-/** ZCode webview 的会话分区对应物（persist: 前缀保留 cookie/storage 跨重启）。 */
+/** webview 的会话分区实现（persist: 前缀保留 cookie/storage 跨重启）。 */
 const PARTITION = 'persist:liuli-embedded-browser'
-/** 视口硬限制（ZCode BROWSER_VIEWPORT_LIMITS：320..3840 / 320..2160）。 */
+/** 视口硬限制（BROWSER_VIEWPORT_LIMITS：320..3840 / 320..2160）。 */
 const VIEWPORT_MIN = 320
 const VIEWPORT_MAX_W = 3840
 const VIEWPORT_MAX_H = 2160
 
 /**
- * 客户页 JS 对话框垫片（ZCode embeddedBrowserJavaScriptDialog 预加载的轻量对应物）。
+ * 客户页 JS 对话框垫片（DSH embeddedBrowserJavaScriptDialog 预加载的轻量实现）。
  * 真实 webview 里 alert/confirm/prompt 默认弹原生模态框并阻塞自动化；垫片改为
  * 自动应答（confirm 接受、prompt 返回默认值）并经 console.info 上报，Host 侧
  * 用 console-message 事件转发为 SSE dialog 事件供渲染端提示。
@@ -118,9 +118,9 @@ interface EngineTab {
   viewport: { width: number; height: number; scale: number } | null
   /** 最近上报的承载位几何。 */
   geometry: { x: number; y: number; width: number; height: number; visible: boolean }
-  /** 崩溃重建计数（ZCode webviewGeneration 对应）。 */
+  /** 崩溃重建计数（webviewGeneration 对应）。 */
   generation: number
-  /** 恢复用最近 URL（ZCode render-process-gone 原位重建语义）。 */
+  /** 恢复用最近 URL（DSH render-process-gone 原位重建语义）。 */
   lastRequestedUrl: string
 }
 
@@ -229,7 +229,7 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
     const vp = tab.viewport
     if (vp !== null) {
       // 响应式模式：客户机视口固定 vp.width×vp.height，zoom=scale 视觉缩放
-      // （等效 ZCode CSS transform scale 的 webview 呈现）。
+      // （等效 DSH CSS transform scale 的 webview 呈现）。
       const width = Math.max(1, Math.round(vp.width * vp.scale))
       const height = Math.max(1, Math.round(vp.height * vp.scale))
       const x = Math.round(geo.x + Math.max(0, (geo.width - width) / 2))
@@ -258,7 +258,7 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
     } catch { /* 窗口已销毁等场景忽略 */ }
   }
 
-  /** webContents 事件 → 状态镜像 + SSE（ZCode did-* 监听一一对应）。 */
+  /** webContents 事件 → 状态镜像 + SSE（did-* 监听一一对应）。 */
   const wireEvents = (tab: EngineTab): void => {
     const wc = tab.view.webContents
     wc.on('did-start-loading', () => {
@@ -293,7 +293,7 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
       }
     })
     wc.on('page-favicon-updated', (...args: unknown[]) => {
-      // ZCode page-favicon-updated → faviconUrl（标签条图标）。
+      // DSH page-favicon-updated → faviconUrl（标签条图标）。
       const favicons = args[1]
       tab.state.favicon = Array.isArray(favicons) && typeof favicons[0] === 'string' ? favicons[0] : null
       pushState(tab)
@@ -317,20 +317,20 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
       // 第一个参数是事件对象；errorCode 起才是载荷。
       const [, errorCode, errorDescription, validatedURL, isMainFrame] = args as [unknown, number, string, string, boolean]
       if (isMainFrame === false) return
-      if (errorCode === -3) return // ERR_ABORTED：被新导航打断，非错误（ZCode 同语义）
+      if (errorCode === -3) return // ERR_ABORTED：被新导航打断，非错误（DSH 同语义）
       tab.state.loading = false
       tab.state.error = `${errorDescription} (${String(errorCode)})`
       if (typeof validatedURL === 'string' && validatedURL !== '') tab.state.url = validatedURL
       pushState(tab)
     })
     wc.on('render-process-gone', () => {
-      // ZCode：guest renderer 异常退出 → 原位重建并恢复最近 URL。
+      // DSH：guest renderer 异常退出 → 原位重建并恢复最近 URL。
       if (disposed || !tabs.has(tab.id)) return
       const restoreUrl = tab.lastRequestedUrl !== '' ? tab.lastRequestedUrl : tab.state.url
       rebuildTab(tab, restoreUrl)
     })
     wc.setWindowOpenHandler((details) => {
-      // ZCode：[App] webview 请求打开右侧浏览器 tab（一律转侧边栏新标签）。
+      // DSH：[App] webview 请求打开右侧浏览器 tab（一律转侧边栏新标签）。
       broadcast({ type: 'new-tab', sourceTabId: tab.id, url: details.url, disposition: details.disposition })
       return { action: 'deny' }
     })

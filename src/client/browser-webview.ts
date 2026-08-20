@@ -1,12 +1,12 @@
 /**
  * 嵌入式浏览器（webview 引擎）渲染端桥接。
  *
- * Host 半在 Electron 主进程内用 WebContentsView 承载页面（ZCode Desktop IAB
- * 的 webview 对应物），本模块提供渲染端三件事：
+ * Host 半在 Electron 主进程内用 WebContentsView 承载页面（DSH Desktop IAB
+ * 的 webview 实现），本模块提供渲染端三件事：
  * 1. 能力探测：/liuli-browser/capabilities（纯 Web 部署无此路由 → null →
  *    BrowserPanel 回退 iframe）；
  * 2. SSE 事件总线：/liuli-browser/events 单连接，hello/state/new-tab/closed
- *    按 tabId 分发（ZCode webview did-* 事件同步的镜像）；
+ *    按 tabId 分发（webview did-* 事件同步的镜像）；
  * 3. 动作 API：tabs/geometry/viewport/action/execute/open-external 等。
  *
  * 几何上报用 ResizeObserver + scroll 捕获 + 心跳，carrier 区域与原生视图
@@ -216,7 +216,7 @@ export function reportGeometryLoop(
     void webviewBrowser.geometry(tabId, { x, y, width, height }, visible).finally(() => { pending -= 1 })
   }
 
-  // 心跳兜底：祖先 transform/位移不经 RO/scroll 冒泡（ZCode 用 rAF 循环，这里 300ms 足够省）。
+  // 心跳兜底：祖先 transform/位移不经 RO/scroll 冒泡（参考实现用 rAF 循环，这里 300ms 足够省）。
   const heartbeat = window.setInterval(() => { if (pending < 4) send() }, 300)
   const onScrollResize = (): void => { send() }
   window.addEventListener('resize', onScrollResize)

@@ -1,6 +1,6 @@
-/** 琉璃主题文案字典（denpa-appearance 命名空间）。 */
+/** 琉璃主题文案字典（liuli-appearance 命名空间）。 */
 
-/** `denpa-appearance` 字典（键相对命名空间）。 */
+/** `liuli-appearance` 字典（键相对命名空间）。 */
 export const zh = {
   'nav': '界面',
   'colorMode': '取色模式',
@@ -87,8 +87,8 @@ export const zh = {
   'reset': '恢复默认',
 } satisfies Record<string, string>
 
-/** The denpa-appearance namespace key union. */
-export type DenpaAppearanceKey = keyof typeof zh
+/** The liuli-appearance namespace key union. */
+export type LiuliAppearanceKey = keyof typeof zh
 
 /** English dictionary, checked complete against the zh key set. */
 export const en = {

@@ -16,11 +16,11 @@
   padding: 5px 6px;
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 12px;
-  background-color: rgba(var(--denpa-acrylic-rgb), var(--denpa-material-opacity));
-  background-image: var(--denpa-noise);
-  -webkit-backdrop-filter: var(--denpa-material-blur);
-  backdrop-filter: var(--denpa-material-blur);
-  box-shadow: var(--denpa-shadow);
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur);
+  backdrop-filter: var(--liuli-material-blur);
+  box-shadow: var(--liuli-shadow);
   -webkit-app-region: drag;
   /* 智能避让：遮挡交互元素时淡出隐藏（悬停右上角唤出） */
   transition: opacity 140ms var(--ds-ease-in-out);
@@ -34,7 +34,9 @@
 
 /* 收起提示条：胶囊避让隐藏时，在右上角顶部（胶囊正上方/触发区位置）显示
    一条小横条，提示"鼠标移向此处唤出三大金刚键"。纯提示：pointer-events
-   none 不拦截点击；z-index 59 低于胶囊（60），胶囊出现时在其下方。 */
+   none 不拦截点击。
+   注意：颜色用 label-primary（最高对比）+ 阴影，避免与壁纸同色而看不见
+   （此前用 label-tertiary 灰色，与壁纸融为一体被误判为"不显示"）。 */
 .hint {
   position: fixed;
   top: 4px;
@@ -42,10 +44,11 @@
   width: 28px;
   height: 4px;
   border-radius: 2px;
-  background: var(--dsw-alias-label-tertiary);
-  opacity: 0.55;
+  background: var(--dsw-alias-label-primary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  opacity: 0.85;
   pointer-events: none;
-  z-index: 59;
+  z-index: 61;
   transition: opacity 140ms var(--ds-ease-in-out);
 }
 

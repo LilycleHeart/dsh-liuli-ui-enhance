@@ -1,6 +1,6 @@
 /**
  * 侧边面板扩展标签：终端 / 开发者工具 / 模型调用轨迹 / 画板 / 计划 / 子智能体 / 辅助对话。
- * ZCode 对应面板在 DSH 内的可行实现：
+ * DSH 实现面板在 DSH 内的可行实现：
  * - 终端：插件 node 半 /liuli-terminal WebSocket 升级路由 + piped shell（行模式）；
  * - 开发者工具：会话/投影(contextPressure/contextBreakdown/plan)/后台作业/存储诊断；
  * - 模型调用轨迹：当前会话 ConversationSnapshot 的工具调用时间线（含子调用）；
@@ -77,14 +77,14 @@ const TERMINAL_SHELL_OPTIONS = [
   { id: 'bash', label: 'Git Bash' },
 ]
 
-/** WebSocket 终端：行模式 piped shell（ZCode 终端面板的 DSH 对应物）。 */
+/** WebSocket 终端：行模式 piped shell（DSH 终端面板的 DSH 实现）。 */
 export function TerminalPanel({ sessionId, title }: TerminalPanelProps) {
   const [output, setOutput] = useState('')
   const [status, setStatus] = useState<'connecting' | 'open' | 'closed' | 'error'>('connecting')
   const [input, setInput] = useState('')
   const [epoch, setEpoch] = useState(0)
   const [shell, setShell] = useState<string>(() => {
-    try { return localStorage.getItem('denpa:terminal-shell') ?? '' } catch { return '' }
+    try { return localStorage.getItem('liuli:terminal-shell') ?? '' } catch { return '' }
   })
   const wsRef = useRef<WebSocket | null>(null)
   const outRef = useRef<HTMLDivElement | null>(null)
@@ -158,7 +158,7 @@ export function TerminalPanel({ sessionId, title }: TerminalPanelProps) {
     const next = e.target.value
     setShell(next)
     setOutput('')
-    try { localStorage.setItem('denpa:terminal-shell', next) } catch { /* ignore */ }
+    try { localStorage.setItem('liuli:terminal-shell', next) } catch { /* ignore */ }
   }
 
   return (
@@ -207,7 +207,7 @@ export interface DeveloperToolsPanelProps {
   host: SidePaneHostAccess
 }
 
-/** 开发者工具：会话/投影/作业/存储诊断（ZCode developer-tools 的 DSH 对应物）。 */
+/** 开发者工具：会话/投影/作业/存储诊断（DSH developer-tools 的 DSH 实现）。 */
 export function DeveloperToolsPanel({ sessionId, host }: DeveloperToolsPanelProps) {
   const list = useSnapshot(host.sessionList)
   const face = sessionId === undefined ? undefined : host.getSessionFace(sessionId)
@@ -226,7 +226,7 @@ export function DeveloperToolsPanel({ sessionId, host }: DeveloperToolsPanelProp
       for (let i = 0; i < localStorage.length; i += 1) {
         const key = localStorage.key(i)
         if (key === null) continue
-        if (!key.startsWith('denpa:') && !key.startsWith('liuli:')) continue
+        if (!key.startsWith('liuli:')) continue
         rows.push({ key, bytes: (localStorage.getItem(key) ?? '').length * 2 })
       }
     } catch { /* ignore */ }
@@ -365,7 +365,7 @@ function collectCalls(snap: ConversationSnapshot): TrajectoryRow[] {
   return rows
 }
 
-/** 模型调用轨迹：当前会话工具调用时间线（ZCode model-trajectory 的 DSH 对应物）。 */
+/** 模型调用轨迹：当前会话工具调用时间线（DSH model-trajectory 的 DSH 实现）。 */
 export function TrajectoryPanel({ sessionId, host }: TrajectoryPanelProps) {
   const face = sessionId === undefined ? undefined : host.getSessionFace(sessionId)
   const snap = useSnapshot(face)
@@ -458,7 +458,7 @@ function saveStrokes(boardId: string, strokes: Stroke[]): void {
   try { localStorage.setItem(boardKey(boardId), JSON.stringify(strokes.slice(-500))) } catch { /* ignore */ }
 }
 
-/** 画板：本地 canvas 涂鸦板（ZCode whiteboard 的 DSH 对应物）。 */
+/** 画板：本地 canvas 涂鸦板（DSH whiteboard 的 DSH 实现）。 */
 export function WhiteboardPanel({ boardId }: WhiteboardPanelProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const wrapRef = useRef<HTMLDivElement | null>(null)
@@ -635,7 +635,7 @@ export interface PlanPanelProps {
   host: SidePaneHostAccess
 }
 
-/** 计划：会话 plan / todos / goal 投影（ZCode plan-detail 的 DSH 对应物）。 */
+/** 计划：会话 plan / todos / goal 投影（DSH plan-detail 的 DSH 实现）。 */
 export function PlanPanel({ sessionId, host }: PlanPanelProps) {
   const face = sessionId === undefined ? undefined : host.getSessionFace(sessionId)
   const plan = useSnapshot(face?.projections.faceOf('plan')) as
@@ -694,7 +694,7 @@ export interface SubagentPanelProps {
   host: SidePaneHostAccess
 }
 
-/** 子智能体目录：当前会话派生的子会话列表（ZCode subagent-directory 的 DSH 对应物）。 */
+/** 子智能体目录：当前会话派生的子会话列表（DSH subagent-directory 的 DSH 实现）。 */
 export function SubagentPanel({ sessionId, host }: SubagentPanelProps) {
   const list = useSnapshot(host.sessionList)
 
@@ -755,7 +755,7 @@ function nodeText(content: readonly unknown[], max: number): string {
   return text.slice(0, max)
 }
 
-/** 辅助对话：fork 当前会话生成子会话，面板内收发消息（ZCode selection-side-chat 的 DSH 对应物）。 */
+/** 辅助对话：fork 当前会话生成子会话，面板内收发消息（DSH selection-side-chat 的 DSH 实现）。 */
 export function SideChatPanel({ sessionId, host, childSessionId, onChildCreated, title }: SideChatPanelProps) {
   const [draft, setDraft] = useState('')
   const [forkError, setForkError] = useState<string | null>(null)

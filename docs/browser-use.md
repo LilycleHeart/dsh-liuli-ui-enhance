@@ -1,14 +1,14 @@
-# liuli-theme 嵌入式浏览器（webview 引擎）
+# dsh-liuli-ui-enhance 嵌入式浏览器（webview 引擎）
 
-> ZCode Desktop IAB（In-App Browser）+ browser-use 插件的 DSH 复刻，
-> 仅修改 liuli-theme 插件实现。
+> DSH Desktop IAB（In-App Browser）+ browser-use 插件的 DSH 实现，
+> 仅修改 dsh-liuli-ui-enhance 插件实现。
 
 ## 架构
 
 - **Host 半（Electron 主进程）**：`src/browser-engine.ts` 用
   `WebContentsView` 承载页面（DSH 宿主窗口未开 webviewTag，`<webview>` 标签
   不可用；WebContentsView 是同进程等价物）。会话分区
-  `persist:liuli-embedded-browser`（ZCode `persist:zcode-embedded-browser` 对应），
+  `persist:liuli-embedded-browser`（DSH `persist:embedded-browser` 对应），
   cookie/storage 跨重启保留。
 - **路由**：`/liuli-browser/capabilities|events|tabs|tabs/action|tabs/geometry|
   tabs/viewport|tabs/state|tabs/screenshot|tabs/execute|open-external`，
@@ -17,11 +17,11 @@
   + `PreviewPanel.tsx` 的 NativeBrowserPanel（工具条与 carrier）。纯 Web 部署
   探测失败自动回退 iframe + /liuli-proxy。
 
-## ZCode 行为对照
+## DSH 行为说明
 
-| ZCode（09-renderer-renamed styles-OqUHW1P0） | 本插件 |
+| 参考实现（09-renderer-renamed styles-OqUHW1P0） | 本插件 |
 | --- | --- |
-| `<webview partition="persist:zcode-embedded-browser" allowpopups>` | WebContentsView + persist 分区 |
+| `<webview partition="persist:embedded-browser" allowpopups>` | WebContentsView + persist 分区 |
 | did-start/stop-loading, did-navigate(-in-page), page-title-updated | webContents 同名事件 → SSE state |
 | did-fail-load（ERR_ABORTED=-3 忽略） | 同 |
 | render-process-gone → webviewGeneration++ 原位重建恢复 URL | rebuildTab/generation |

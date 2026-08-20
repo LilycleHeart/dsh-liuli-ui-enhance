@@ -1,5 +1,5 @@
 /**
- * 琉璃主题 · 对话轮次刻度侧边栏（DenpaPush 时间线风格）。
+ * 琉璃主题 · 对话轮次刻度侧边栏（琉璃 时间线风格）。
  *
  * 挂在 `conversation.session.header.utilities` slot（仅作挂载点，官方版本
  * 没有 header.tabs），随后把真正的

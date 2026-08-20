@@ -2,36 +2,36 @@
  * 琉璃主题 · 会话 header 效果包。
  *
  * 通过 `conversation.session.header.*` slots 注入四件 chrome：
- *   - header.actions   → DenpaHeaderVoiceprint：声纹 canvas 铺满 header 卡片背景；
- *   - header.utilities → DenpaHeaderChrome：系统音频监听按钮 + 日/夜主题切换；
- *   - header.utilities → DenpaHeaderResizer：header 垂直拉伸手柄（布局记忆）。
+ *   - header.actions   → LiuliHeaderVoiceprint：声纹 canvas 铺满 header 卡片背景；
+ *   - header.utilities → LiuliHeaderChrome：系统音频监听按钮 + 日/夜主题切换；
+ *   - header.utilities → LiuliHeaderResizer：header 垂直拉伸手柄（布局记忆）。
  *
  * 声纹 canvas 与监听按钮分属不同 slot 渲染树（无法共享 React context），
  * 二者经模块级单例引擎 VoiceprintEngine 协作：canvas 的 rAF 循环直接读取
  * 引擎快照，按钮通过 useSyncExternalStore 订阅 listening/error 状态。
  *
- * 复刻自 denpa_echo Waveform：品牌色单源派生、暗/亮差异化着色、shadowBlur
+ * 实现自 liuli_echo Waveform：品牌色单源派生、暗/亮差异化着色、shadowBlur
  * 泛光、IntersectionObserver 视口外暂停、ResizeObserver + dpr 自适应。
  */
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
-import { DENPA_LS_KEY, DENPA_SETTINGS_DEFAULTS, type DenpaSettings } from '../denpa-settings.ts'
+import { LIULI_LS_KEY, LIULI_SETTINGS_DEFAULTS, type LiuliSettings } from '../liuli-settings.ts'
 import css from './HeaderEffects.module.css'
 
 /** 声纹响应运行时参数（设置页可调；每次保存经 liuli:vp-params 事件重载）。 */
 const vpParams = {
-  sensitivity: DENPA_SETTINGS_DEFAULTS.vp_sensitivity, // 参考响度（越小越灵敏）
-  beatGain: DENPA_SETTINGS_DEFAULTS.vp_beat_gain,      // 鼓点强度
-  beatDecay: DENPA_SETTINGS_DEFAULTS.vp_beat_decay,    // 脉冲长度
-  beatMult: DENPA_SETTINGS_DEFAULTS.vp_beat_mult,      // 节拍触发灵敏度
-  pulseMult: DENPA_SETTINGS_DEFAULTS.vp_pulse_mult,    // 低频脉冲灵敏度
+  sensitivity: LIULI_SETTINGS_DEFAULTS.vp_sensitivity, // 参考响度（越小越灵敏）
+  beatGain: LIULI_SETTINGS_DEFAULTS.vp_beat_gain,      // 鼓点强度
+  beatDecay: LIULI_SETTINGS_DEFAULTS.vp_beat_decay,    // 脉冲长度
+  beatMult: LIULI_SETTINGS_DEFAULTS.vp_beat_mult,      // 节拍触发灵敏度
+  pulseMult: LIULI_SETTINGS_DEFAULTS.vp_pulse_mult,    // 低频脉冲灵敏度
   weights: [0.4, 0.35, 0.25],                          // 低/中/高频段权重（0-1）
-  beatCooldown: DENPA_SETTINGS_DEFAULTS.vp_beat_cooldown,
-  pulseCooldown: DENPA_SETTINGS_DEFAULTS.vp_pulse_cooldown,
+  beatCooldown: LIULI_SETTINGS_DEFAULTS.vp_beat_cooldown,
+  pulseCooldown: LIULI_SETTINGS_DEFAULTS.vp_pulse_cooldown,
   envAttack: 0.3,                                      // 频段包络攻速（env_speed 映射）
   envRelease: 0.05,                                    // 频段包络释放（attack/6）
-  specSmooth: DENPA_SETTINGS_DEFAULTS.vp_spec_smooth,  // 频谱平滑
-  noiseGate: DENPA_SETTINGS_DEFAULTS.vp_noise_gate,    // 静音门限
+  specSmooth: LIULI_SETTINGS_DEFAULTS.vp_spec_smooth,  // 频谱平滑
+  noiseGate: LIULI_SETTINGS_DEFAULTS.vp_noise_gate,    // 静音门限
 }
 
 /** 运行时安全范围（UI 数字框可越界输入，这里兜底防除零/NaN/反向衰减）。 */
@@ -41,10 +41,10 @@ function clampVp(v: number, lo: number, hi: number): number {
 
 function loadVpParams(): void {
   try {
-    const raw = localStorage.getItem(DENPA_LS_KEY)
+    const raw = localStorage.getItem(LIULI_LS_KEY)
     if (!raw) return
-    const s = JSON.parse(raw) as Partial<DenpaSettings>
-    const num = (k: keyof DenpaSettings): number | undefined => (typeof s[k] === 'number' ? s[k] as number : undefined)
+    const s = JSON.parse(raw) as Partial<LiuliSettings>
+    const num = (k: keyof LiuliSettings): number | undefined => (typeof s[k] === 'number' ? s[k] as number : undefined)
     const sens = num('vp_sensitivity')
     if (sens !== undefined) vpParams.sensitivity = clampVp(sens, 0.01, 1)
     const gain = num('vp_beat_gain')
@@ -291,7 +291,7 @@ async function vpToggle(): Promise<void> {
   vpEmit()
 }
 
-/* ── 绘制工具（与 denpa_echo Waveform 同曲线） ─────────────────── */
+/* ── 绘制工具（与 liuli_echo Waveform 同曲线） ─────────────────── */
 
 type RGB = [number, number, number]
 
@@ -318,7 +318,7 @@ function lighten(c: RGB, amt: number): RGB {
   ]
 }
 
-/* DenpaPush ECG 式水平渐变：波形在绘制层面淡出 —— 左端透明快速浮现、
+/* 琉璃 ECG 式水平渐变：波形在绘制层面淡出 —— 左端透明快速浮现、
    主段全亮；右端从 80% 处开始渐隐（覆盖工具区至 session log 按钮宽度），
    到右缘完全消失（alpha 0）。 */
 function edgeGradient(ctx: CanvasRenderingContext2D, w: number, C: RGB, alpha: number): CanvasGradient {
@@ -338,7 +338,7 @@ function edgeGradient(ctx: CanvasRenderingContext2D, w: number, C: RGB, alpha: n
  * 隐藏锚点找到 <header>，再把背景层 portal 到 header 直接子节点：
  * 包含块回到 header 卡片（inset:0 铺满全高），z-index:0 低于标题行/标签行。
  */
-export function DenpaHeaderVoiceprint() {
+export function LiuliHeaderVoiceprint() {
   const anchorRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [host, setHost] = useState<HTMLElement | null>(null)
@@ -483,7 +483,7 @@ export function DenpaHeaderVoiceprint() {
         vpDraw.punch *= vpParams.beatDecay
       }
 
-      // denpa_echo 式「音频在场」包络（原参数 0.035 / 1÷600）：
+      // liuli_echo 式「音频在场」包络（原参数 0.035 / 1÷600）：
       // 进入响应（有信号）时快升，空闲时 10s 匀速归零，驱动空闲态幅度压制。
       const hasSignal = vpState.analyser !== null && freqData.some(v => v > 12)
       if (hasSignal) vpDraw.presence += (1 - vpDraw.presence) * 0.035
@@ -495,9 +495,9 @@ export function DenpaHeaderVoiceprint() {
       drawWave(freqData, C, dark)
     }
 
-    /* 流动波形（空闲态 ↔ 响应态平滑过渡；绘制公式逐字参照 denpa_echo
+    /* 流动波形（空闲态 ↔ 响应态平滑过渡；绘制公式逐字参照 liuli_echo
        Waveform：22 线 + 逐线 binVal 频谱纹理 + 三正弦主波。
-       空闲态幅度压制由 denpa_echo 式 presence 包络驱动（进入响应即压低
+       空闲态幅度压制由 liuli_echo 式 presence 包络驱动（进入响应即压低
        空闲流动，×0.8 系数原样）；低/中/高频各自产生一种视觉事件叠加在
        整幅波形上（不按线条分组）：
          bass → 冲击：低频能量让波形整体膨胀、线条变粗
@@ -527,7 +527,7 @@ export function DenpaHeaderVoiceprint() {
       // mid 事件：流速——旋律/人声能量让波形流动加快
       vpDraw.idlePhase += 0.008 * (1 + vpDraw.presence * 2) * (1 + midDrive * 1.2)
 
-      // 外层细线不设 shadowBlur：canvas 高斯模糊是每帧最大开销（同 denpa_echo）；
+      // 外层细线不设 shadowBlur：canvas 高斯模糊是每帧最大开销（同 liuli_echo）；
       // 辉光焦点保留给中央主波。
       ctx.shadowBlur = 0
 
@@ -535,7 +535,7 @@ export function DenpaHeaderVoiceprint() {
         const off = li / lines - 0.5
         const baseY = cy + off * (h * 0.38)
 
-        // 基础振幅（空闲态）：进入响应时按 denpa_echo 的 ×0.8 系数压缩，
+        // 基础振幅（空闲态）：进入响应时按 liuli_echo 的 ×0.8 系数压缩，
         // 为音频驱动振幅腾出空间
         const idleAmp = (14 + (li % 7)) * ampScale * (1 - Math.abs(off) * 1.4) * (1 - vpDraw.presence * 0.8)
         // 音频驱动：逐线取平滑频谱对应 bin 的能量映射为额外振幅
@@ -566,7 +566,7 @@ export function DenpaHeaderVoiceprint() {
         ctx.stroke()
       }
 
-      // 中央主波（辉光焦点，同 denpa_echo 参数；high 事件提升辉光亮度）
+      // 中央主波（辉光焦点，同 liuli_echo 参数；high 事件提升辉光亮度）
       ctx.shadowColor = rgba(lineC, dark ? 0.9 : 0.45)
       ctx.shadowBlur = dark ? 20 : 6
       ctx.beginPath()
@@ -656,7 +656,7 @@ export function DenpaHeaderVoiceprint() {
 /* ── 监听按钮 ───────────────────────────────────────────────────── */
 
 /** 监听按钮：渲染在 titleRow 工具区（主题切换一侧），与背景 canvas 共享引擎。 */
-export function DenpaHeaderAudioButton() {
+export function LiuliHeaderAudioButton() {
   const { listening, error } = useSyncExternalStore(vpSubscribe, vpGetState)
   return (
     <span className={css.btnWrap} title={listening ? '正在监听系统音量' : '点击监听系统音量'}>
@@ -683,10 +683,10 @@ function isDarkNow(): boolean {
 }
 
 /**
- * 主题切换按钮。点击 dispatch `denpa:toggle-theme`（带点击坐标），插件事件桥
+ * 主题切换按钮。点击 dispatch `liuli:toggle-theme`（带点击坐标），插件事件桥
  * 经 theme 服务走正式路径（持久化 + presenter），配 startViewTransition 圆形遮罩。
  */
-export function DenpaHeaderThemeToggle() {
+export function LiuliHeaderThemeToggle() {
   const dark = useSyncExternalStore(
     (listener) => {
       const mo = new MutationObserver(listener)
@@ -697,7 +697,7 @@ export function DenpaHeaderThemeToggle() {
   )
 
   const toggle = (e: React.MouseEvent<HTMLButtonElement>): void => {
-    window.dispatchEvent(new CustomEvent('denpa:toggle-theme', {
+    window.dispatchEvent(new CustomEvent('liuli:toggle-theme', {
       detail: { x: e.clientX, y: e.clientY },
     }))
   }
@@ -729,11 +729,11 @@ export function DenpaHeaderThemeToggle() {
 }
 
 /** 工具区组合：监听按钮 + 主题切换（注入 header.utilities 一个 slot 位）。 */
-export function DenpaHeaderChrome() {
+export function LiuliHeaderChrome() {
   return (
     <>
-      <DenpaHeaderAudioButton />
-      <DenpaHeaderThemeToggle />
+      <LiuliHeaderAudioButton />
+      <LiuliHeaderThemeToggle />
     </>
   )
 }
@@ -741,7 +741,7 @@ export function DenpaHeaderChrome() {
 /* ── 垂直拉伸手柄 ───────────────────────────────────────────────── */
 
 /** 布局记忆键（localStorage，随浏览器持久化）。 */
-const LS_KEY = 'denpa:header-height'
+const LS_KEY = 'liuli:header-height'
 const MIN_H = 52
 const MAX_H = 320
 
@@ -753,7 +753,7 @@ const MAX_H = 320
  * 垂直拖拽改变 header 高度（min-height，内容自然高度为下限，声纹 canvas
  * 随高度铺满）；松开后高度持久化到 localStorage，刷新/切换会话自动恢复。
  */
-export function DenpaHeaderResizer() {
+export function LiuliHeaderResizer() {
   const anchorRef = useRef<HTMLDivElement | null>(null)
   const handleRef = useRef<HTMLDivElement | null>(null)
   const [host, setHost] = useState<HTMLElement | null>(null)

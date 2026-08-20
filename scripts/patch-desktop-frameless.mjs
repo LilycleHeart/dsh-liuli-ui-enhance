@@ -33,7 +33,7 @@ const patchedCopyPath = join(resourcesDir, 'app.asar.patched');
 const runtimePath = join(resourcesDir, 'app.asar.unpacked', 'lib', 'electron-runtime-he0yaDKX.js');
 
 function fail(message) {
-  console.error(`[liuli-theme] ${message}`);
+  console.error(`[dsh-liuli-ui-enhance] ${message}`);
   process.exit(1);
 }
 
@@ -44,15 +44,15 @@ for (const file of [asarPath, runtimePath]) {
 // 1. 备份原始 app.asar
 if (!existsSync(backupPath)) {
   copyFileSync(asarPath, backupPath);
-  console.log(`[liuli-theme] 已备份原始 app.asar -> ${backupPath}`);
+  console.log(`[dsh-liuli-ui-enhance] 已备份原始 app.asar -> ${backupPath}`);
 } else {
-  console.log(`[liuli-theme] 备份已存在，跳过：${backupPath}`);
+  console.log(`[dsh-liuli-ui-enhance] 备份已存在，跳过：${backupPath}`);
 }
 
 // 2. 修改 unpacked electron runtime
 let runtime = readFileSync(runtimePath, 'utf8');
 if (runtime.includes('[liuli-theme patch]')) {
-  console.log('[liuli-theme] electron-runtime 已包含琉璃补丁，跳过文件修改');
+  console.log('[dsh-liuli-ui-enhance] electron-runtime 已包含琉璃补丁，跳过文件修改');
 } else {
   const pattern = /titleBarStyle:\s*"hidden",\s*titleBarOverlay:\s*\{[\s\S]*?\},/;
   if (!pattern.test(runtime)) {
@@ -60,13 +60,13 @@ if (runtime.includes('[liuli-theme patch]')) {
   }
   runtime = runtime.replace(pattern, [
     '// [liuli-theme patch] 无边框窗口：移除原生 titleBarOverlay 按钮，',
-    '// 最小化/最大化/关闭改由页面内按钮承担（liuli-theme 插件 /liuli-window',
+    '// 最小化/最大化/关闭改由页面内按钮承担（dsh-liuli-ui-enhance 插件 /liuli-window',
     '// 路由 + WindowControls 组件：会话 header 内 + 开始页标题条右侧兜底）。',
-    '// 注意：未安装 liuli-theme 时 advanced 模式将没有窗口按钮（Alt+F4/托盘仍可用）。',
+    '// 注意：未安装 dsh-liuli-ui-enhance 时 advanced 模式将没有窗口按钮（Alt+F4/托盘仍可用）。',
     'frame: false,',
   ].join('\n\t\t'));
   writeFileSync(runtimePath, runtime, 'utf8');
-  console.log(`[liuli-theme] 已修补 ${runtimePath}`);
+  console.log(`[dsh-liuli-ui-enhance] 已修补 ${runtimePath}`);
 }
 
 // 3. 重建 app.asar 头（同步 size / SHA256 integrity）
@@ -110,6 +110,6 @@ const newAsar = Buffer.concat([prefix, jsonBuffer, Buffer.from([0])]);
 
 writeFileSync(asarPath, newAsar);
 writeFileSync(patchedCopyPath, newAsar);
-console.log(`[liuli-theme] 已重建 ${asarPath}`);
-console.log(`[liuli-theme] 已同步 ${patchedCopyPath}`);
-console.log('[liuli-theme] 请重启 DSH Desktop 生效');
+console.log(`[dsh-liuli-ui-enhance] 已重建 ${asarPath}`);
+console.log(`[dsh-liuli-ui-enhance] 已同步 ${patchedCopyPath}`);
+console.log('[dsh-liuli-ui-enhance] 请重启 DSH Desktop 生效');

@@ -2,7 +2,7 @@
  * 会话栏右键菜单（浏览器侧覆盖层，不改官方代码）。
  *
  * 官方 ui-workspace 的会话行右键菜单是通过改官方文件实现的；本模块把它
- * 搬进 liuli-theme 插件：document 级 contextmenu 委托，右键会话行弹出自绘
+ * 搬进 dsh-liuli-ui-enhance 插件：document 级 contextmenu 委托，右键会话行弹出自绘
  * 菜单（标记 / 重命名 / 分叉 / 归档）。标记复用 session-markers.ts 的
  * localStorage store，重命名复用 session-rename.ts 的内联输入框，分叉/归档
  * 经 ctx.sessions.fork / ctx.workspaces.archiveSession。
