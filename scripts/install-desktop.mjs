@@ -57,9 +57,34 @@ function run(command, args, cwd) {
   }
 }
 
+/** 查询 npm registry 上已发布的版本；未发布时直接给出可操作的错误。 */
+function resolveNpmVersion() {
+  const command = pnpmCommand();
+  const result = process.platform === 'win32'
+    ? spawnSync(`${command} view ${pluginName} version`, {
+        cwd: repoRoot,
+        stdio: 'pipe',
+        shell: true,
+        timeout: 30000,
+      })
+    : spawnSync(command, ['view', pluginName, 'version'], {
+        cwd: repoRoot,
+        stdio: 'pipe',
+        timeout: 30000,
+      });
+  const version = String(result.stdout ?? '').split(/\r?\n/).map((s) => s.trim()).filter(Boolean).pop();
+  if (result.error !== undefined || result.status !== 0 || version === undefined) {
+    fail(
+      `${pluginName} 尚未发布到 npm（npm view 失败：${result.error?.message ?? `exit ${result.status}`}）。`
+      + '目前唯一受支持的安装路径是本仓库手动安装：请改用 pnpm install:desktop（本地 tarball）。',
+    );
+  }
+  return `^${version}`;
+}
+
 let depValue;
 if (fromNpm) {
-  depValue = `^${repoPkg.version}`;
+  depValue = resolveNpmVersion();
 } else {
   // 本地源码安装：先 pack 成 tarball，确保插件 dependencies 能装进 profile。
   const packDir = mkdtempSync(join(repoRoot, '.tmp-pack-'));
