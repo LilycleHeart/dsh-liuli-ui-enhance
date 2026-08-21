@@ -75,6 +75,10 @@ const EDGE_STRIP = 14
 const ZONE_RATIO = 0.26
 const DRAG_THRESHOLD = 5
 
+/** 非区域 dock 面板（拆出来的标签页）的最小宽/高：sash 拖到极限也不会更小。 */
+const PANE_CARD_MIN_W = 240
+const PANE_CARD_MIN_H = 160
+
 function baseName(path: string): string {
   const parts = path.split(/[\\/]/)
   return parts[parts.length - 1] ?? path
@@ -866,7 +870,13 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
           // 由此驱动；flex-basis 为 0 时保持挂载（详情收起），便于 0↔w 平滑过渡。
           const shardStyle = fixed !== undefined
             ? { flexGrow: 0, flexShrink: 0, flexBasis: String(fixed) + 'px' }
-            : { flexGrow: growSum > 0 ? (split.sizes[i] ?? 1) / growSum : 1, flexBasis: 0, flexShrink: 1 }
+            : {
+                flexGrow: growSum > 0 ? (split.sizes[i] ?? 1) / growSum : 1,
+                flexBasis: 0,
+                flexShrink: 1,
+                minWidth: split.dir === 'h' ? String(PANE_CARD_MIN_W) + 'px' : undefined,
+                minHeight: split.dir === 'v' ? String(PANE_CARD_MIN_H) + 'px' : undefined,
+              }
           // 收起态（固定宽度 0）的面板与相邻面板间不渲染 sash：官方 AppFrame 在
           // details 关闭时不渲染拖拽把手（cols.details > 0 才挂），避免窗口最右缘
           // 出现隐形的 col-resize 拖拽带。
