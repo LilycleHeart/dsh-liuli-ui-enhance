@@ -131,13 +131,28 @@ function chromaticSourceFromCanvas(c: CanvasRenderingContext2D): string {
   return rgbToHex(best.r, best.g, best.b)
 }
 
+/** 动态取色结果缓存：同一张壁纸只提取一次源色，避免主题切换/重复 apply 时反复解码图片。 */
+const dynamicSourceCache = new Map<string, Promise<string>>()
+
 /**
  * 从背景图提取 Material 源色 —— 照搬原项目逻辑：
  * 1. 缩小到 64x64（避免全分辨率量化卡顿）
  * 2. sourceColorFromImage 是 async（MCU 0.4），必须 await 它的 ARGB 结果
  * 3. 如果 MCU 给出的源色太中性，则改用缩略图里最鲜艳的颜色；两者都太灰时回退默认蓝。
+ * 结果按壁纸 src 缓存，主题切换时不再重复解码/取色。
  */
-export async function dynamicSourceFromImage(imageSrc: string): Promise<string> {
+export function dynamicSourceFromImage(imageSrc: string): Promise<string> {
+  const cached = dynamicSourceCache.get(imageSrc)
+  if (cached !== undefined) return cached
+  const promise = extractDynamicSource(imageSrc)
+  dynamicSourceCache.set(imageSrc, promise)
+  promise.catch(() => {
+    if (dynamicSourceCache.get(imageSrc) === promise) dynamicSourceCache.delete(imageSrc)
+  })
+  return promise
+}
+
+async function extractDynamicSource(imageSrc: string): Promise<string> {
   const img = await loadImage(imageSrc)
   if (img.naturalWidth > 0 && img.naturalHeight > 0) {
     currentImageRatio = img.naturalWidth / img.naturalHeight

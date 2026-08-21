@@ -295,15 +295,26 @@ async function vpToggle(): Promise<void> {
 
 type RGB = [number, number, number]
 
+/** 品牌色缓存：按主题（data-ds-dark-theme）缓存解析结果，避免每帧 getComputedStyle。 */
+let brandCache: { theme: string; rgb: RGB } | null = null
+
 /** 品牌色缓存读取（--dsw-alias-brand-primary），主题切换后失效。 */
 function brandRGB(): RGB {
+  const theme = document.body.getAttribute('data-ds-dark-theme') ?? ''
+  if (brandCache !== null && brandCache.theme === theme) return brandCache.rgb
   const v = getComputedStyle(document.body)
     .getPropertyValue('--dsw-alias-brand-primary').trim() || '#8ecdf8'
   const m = v.match(/^#?([0-9a-f]{6})$/i)
-  if (!m) return [142, 205, 248]
-  // oxlint-disable-next-line typescript/no-non-null-assertion -- the match succeeded, so the single capture group exists
-  const n = parseInt(m[1]!, 16)
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+  let rgb: RGB
+  if (m !== null) {
+    // oxlint-disable-next-line typescript/no-non-null-assertion -- the match succeeded, so the single capture group exists
+    const n = parseInt(m[1]!, 16)
+    rgb = [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+  } else {
+    rgb = [142, 205, 248]
+  }
+  brandCache = { theme, rgb }
+  return rgb
 }
 
 function rgba(c: RGB, a: number): string {

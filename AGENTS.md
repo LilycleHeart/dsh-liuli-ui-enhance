@@ -1,7 +1,7 @@
 # AGENTS.md — dsh-liuli-ui-enhance 开发指导
 
 本文件为在本仓库内工作的 AI Agent / 开发者提供上下文、命令、约定与避坑指南。
-在改动代码前先读 `README.md`，它维护了完整的功能清单、设计语言和安装说明。
+在改动代码前先读 `README.md`（项目概览）、`docs/features.md`（完整功能清单与设计语言）和 `docs/install.md`（完整安装说明）。
 
 ## 项目是什么
 
@@ -84,7 +84,9 @@ demo/
 skills/
   control-browser/SKILL.md # 控制内嵌浏览器的 agent skill
 docs/
-  browser-use.md           # 浏览器 agent 自动化用法
+  features.md            # 完整功能清单、设计语言、限制（详细文档主入口）
+  install.md             # 安装、构建、目录结构、避坑（详细文档主入口）
+  browser-use.md         # 浏览器 agent 自动化用法
   sidebar-comparison.md
 ```
 
@@ -98,7 +100,7 @@ docs/
    - Host 路由注册在 node 半，用 `/liuli-*` 前缀，避免与官方路由冲突。
 3. 不要修改宿主组件源码；能用 CSS 覆盖 / DOM 观察 / 自有 overlay 实现的就优先这样做。
 4. 新增 UI 文案必须同时维护 `locales.ts` 的 zh/en 键，保证键集完整。
-5. 新增设置项要同步 `liuli-settings.ts` 的 schema/默认值，并在 README 功能表与设置分区文案中体现。
+5. 新增设置项要同步 `liuli-settings.ts` 的 schema/默认值，并在 `docs/features.md` 功能表与 README 概览 / 设置分区文案中体现。
 6. 纯逻辑尽量抽成无副作用函数（参考 `dock-model.ts`），并在 `demo/test-dock-model.ts` 补单测；Node 直接跑 TS 即可。
 7. 改动 Dockable / dock-model 后至少跑 `node demo/test-dock-model.ts` 和相关 GUI 验证脚本。
 8. 改动内嵌浏览器能力后同步更新 `scripts/browser-client.mjs` 与 `docs/browser-use.md`，并运行 `demo/verify-webview*.mjs`。
@@ -110,6 +112,7 @@ docs/
 
 - **安装到 DSH Desktop 不要用 `pnpm link`**：link 不会安装插件自身 dependencies，会报 `Cannot find package 'iconv-lite'`。用 `pnpm install:desktop` 或 `node scripts/install-desktop.mjs`。
 - **`pnpm install:desktop` 后不需要重启 DSH Desktop**：插件安装到 profile 后刷新页面即可加载新 bundle；不要主动 kill/restart DSH Desktop，重启会让 Web 端口变化并打断运行中的调试。可验证：安装后直接刷新页面观察新样式/行为。
+- **agent 执行 `pnpm install:desktop` 后客户端可能不自动热重载，且不要用 HMR 注释 hack 强制热重载**：`install-desktop.mjs` 本身不触发 reload，HMR 只在 client bundle 内容 rev 变化时广播；若安装过程未让 DSH 的 `client-hmr` 检测到变化（或用户没手动刷新），界面仍是旧 bundle。曾用“向 profile 已安装的 `node_modules/dsh-liuli-ui-enhance/lib/client.js` 末尾追加一行注释”强制触发 `rebuilt`，实测**每次 HMR 热替换后琉璃客户端会不响应请求**，属于不安全路径。正确做法：安装后让用户手动刷新页面（或整页重载），不要改仓库 `lib/`、不要追加注释触发 HMR。
 - 只改 desktop profile 的 `cordis.patch.yml` 不够，必须同时把 `dsh-liuli-ui-enhance` 写进该 profile 的 `package.json` dependencies。
 - 隐藏原生标题栏需要额外执行 `pnpm patch:desktop`；插件只能提供页面内窗口按钮，不能从渲染进程隐藏原生标题栏。
 - DSH Desktop 每次重启 Web 端口会变，`localStorage` 按 origin 隔离；设置跨重启保留依赖 Host 端 `~/.liuli-theme/settings.json` 同步。
@@ -135,7 +138,7 @@ docs/
 1. **遇到即写**：问题解决后、提交代码前，把新坑追加到「关键避坑」。
 2. **可复现**：写明触发条件、报错关键字或验证方式，让后续 Agent 能快速判断是否已踩过。
 3. **避免重复**：先搜索「关键避坑」是否已有同类条目；已有则补充细节，不新增重复条目。
-4. **同步文档**：若该坑涉及安装流程、命令或功能行为，同时更新 `README.md` / `docs/` 对应章节。
+4. **同步文档**：若该坑涉及安装流程、命令或功能行为，同时更新 `README.md` / `docs/` 对应章节（详细内容优先更新 `docs/features.md` 或 `docs/install.md`）。
 5. **不要删历史坑**：旧坑即使暂时不适用，也保留；如确实过时，可标注“已解决/已废弃”而不是直接删除。
 
 ## 完成一项功能时的收尾清单
@@ -143,6 +146,6 @@ docs/
 - [ ] `pnpm build` 通过
 - [ ] 相关 `demo/verify-*.mjs` / `demo/test-dock-model.ts` 通过
 - [ ] `locales.ts` zh/en 键完整
-- [ ] README 功能表 / 文档已同步
+- [ ] `docs/features.md` 功能表 / README 概览 / 文档已同步
 - [ ] 本次新踩到的坑已写入 AGENTS.md「关键避坑」
 - [ ] 未提交 `lib/`、`.tmp-*` 等产物
