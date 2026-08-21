@@ -180,10 +180,10 @@
   min-height: 0;
   /* 收起/展开动画：固定宽度 shard（侧栏/详情）的 flex-basis 过渡，时长对齐
      官方 AppFrame 的 grid-template-columns 过渡（--ds-transition-duration-slow
-     = 0.3s）。会话列是 flex-grow 成员，其他 shard 宽度逐帧变化时自动平滑补位，
-     因此收起/展开时整个三列布局（含会话页）同步滑动，不跳变。 */
-  transition: flex-basis 0.3s var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1)),
-    flex-grow 0.3s var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1));
+     = 0.3s）。会话列是 flex-grow 成员，可用空间逐帧变化时由 flexbox 自动平滑
+     补位，无需对 flex-grow 做过渡；若同时过渡 flex-grow，会与详情 flex-basis
+     动画叠加成双重缓动，收起/展开出现卡顿/不跟手。 */
+  transition: flex-basis 0.3s var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1));
 }
 
 /* sash 拖拽期间禁用过渡（对齐官方 AppFrame [data-dragging] { transition: none }）：
