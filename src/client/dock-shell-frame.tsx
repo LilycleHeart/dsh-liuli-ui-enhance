@@ -567,6 +567,14 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     if (rect === undefined) return
     const total = dir === 'h' ? rect.width : rect.height
     if (total <= 0) return
+    /** 直接子级的最小像素尺寸（会话列 640，普通面板 240×160）。 */
+    const childMinPx = (child: DockNode | undefined): number => {
+      if (child === undefined) return 0
+      if (child.kind === 'tabs' && child.tabs.length === 1 && child.tabs[0]?.type === REGION_CONVERSATION) {
+        return dir === 'h' ? CONVERSATION_MIN : PANE_CARD_MIN_H
+      }
+      return dir === 'h' ? PANE_CARD_MIN_W : PANE_CARD_MIN_H
+    }
     // 固定宽度区域（侧栏/详情）的 sash 走宿主 layout 服务（原生宽度语义 + clamp），
     // 其余 sash 按 split 比例缩放。锚定边在拖拽中不动，故按下时取一次面板 rect 即可。
     const beforeChild = splitNode.children[dividerIndex - 1]
@@ -620,13 +628,6 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
           const fixedFlags = splitNode.children.map(child => childFixedWidth(child) !== undefined)
           const growSum = splitNode.sizes.reduce((acc, s, i) => acc + (fixedFlags[i] === true ? 0 : (s ?? 1)), 0)
           const sizesTotal = (splitNode.sizes[dividerIndex - 1] ?? 0.5) + (splitNode.sizes[dividerIndex] ?? 0.5)
-          const childMinPx = (child: DockNode | undefined): number => {
-            if (child === undefined) return 0
-            if (child.kind === 'tabs' && child.tabs.length === 1 && child.tabs[0]?.type === REGION_CONVERSATION) {
-              return dir === 'h' ? CONVERSATION_MIN : PANE_CARD_MIN_H
-            }
-            return dir === 'h' ? PANE_CARD_MIN_W : PANE_CARD_MIN_H
-          }
           const beforeRect = beforeEl.getBoundingClientRect()
           const afterRect = afterEl.getBoundingClientRect()
           const combined = dir === 'h' ? beforeRect.width + afterRect.width : beforeRect.height + afterRect.height
@@ -652,15 +653,26 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
         const newSize = dir === 'h'
           ? (isBefore ? ev.clientX - regionPaneRect.left : regionPaneRect.right - ev.clientX)
           : (isBefore ? ev.clientY - regionPaneRect.top : regionPaneRect.bottom - ev.clientY)
+        // 该区域增大会挤压 split 内其他子级，必须先算出「其他子级至少需要多少像素」，
+        // 否则手柄会把相邻卡片拖过最小宽/高（甚至盖上去）。
+        const regionChild = isBefore ? beforeChild : afterChild
+        const othersMin = splitNode.children.reduce((acc, child) => {
+          if (child.id === regionChild?.id) return acc
+          const fixed = childFixedWidth(child)
+          if (fixed !== undefined) return acc + fixed
+          return acc + childMinPx(child)
+        }, 0)
+        const maxSize = Math.max(0, total - othersMin)
         if (regionType === REGION_DETAILS) {
-          // 详情区域宽度由 liuli 自管（上限 = 视口 88%，且不把会话压过 480/推出视口）。
-          lastRegionSize = clampDetailsWidth(newSize, window.innerWidth, sidebarWidth)
+          // 详情区域宽度由 liuli 自管（上限 = 视口 88%，且不把会话压过 480/推出视口），
+          // 再与「其他子级最小占用」取小，保证相邻卡片不被盖住。
+          lastRegionSize = Math.min(clampDetailsWidth(newSize, window.innerWidth, sidebarWidth), maxSize)
         } else {
           // 侧栏宽度仍遵循宿主契约 264..420（onUp 经 hostLayout.setSidebar 提交），
           // 拖拽期间直写 flexBasis 也 clamp 到同范围，避免把侧栏拖成负值/超过容器。
-          lastRegionSize = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(newSize)))
+          lastRegionSize = Math.min(Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(newSize))), maxSize)
         }
-        if (regionShardEl !== null) regionShardEl.style.flexBasis = lastRegionSize + 'px'
+        if (regionShardEl !== null) regionShardEl.style.flexBasis = String(Math.max(0, lastRegionSize)) + 'px'
         return
       }
       const pos = dir === 'h' ? ev.clientX : ev.clientY
