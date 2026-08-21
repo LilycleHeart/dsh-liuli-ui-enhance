@@ -46,9 +46,13 @@ pnpm install:desktop:npm
 `pnpm patch:desktop` 会：
 
 1. 备份 `resources/app.asar` 为 `app.asar.bak-frameless`；
-2. 修改 `resources/app.asar.unpacked/lib/electron-runtime-he0yaDKX.js`；
+2. 在 `resources/app.asar.unpacked/lib/` 下动态查找 `electron-runtime-*.js`（客户端升级会换 hash 文件名）并修改；
 3. 重建 `resources/app.asar` 并同步 integrity；
 4. 写入 `resources/app.asar.patched`。
+
+> 安装目录查找顺序：`DSH_DESKTOP_DIR` 环境变量 → 正在运行的 DSH Desktop 进程路径 → 默认安装路径。
+> 若 `pnpm patch:desktop` 经 DSH Desktop 的 runtime-commands 运行（node 被解析为 Electron 内置 node），
+> 脚本会自动改由系统 node 重新执行，避免 ASAR 钩子干扰。
 
 ### 手动安装
 

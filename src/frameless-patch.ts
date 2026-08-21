@@ -14,7 +14,7 @@
  * - 已包含 [liuli-theme patch] 时跳过文件修改，只校验/重建 asar 头（幂等）。
  */
 import { createHash } from 'node:crypto'
-import { closeSync, copyFileSync, existsSync, openSync, readFileSync, readSync, writeFileSync } from 'node:fs'
+import { closeSync, copyFileSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { join as joinPath } from 'node:path'
 
 /** 补丁标记：electron-runtime 文件里出现该字符串即视为已打补丁。 */
@@ -22,6 +22,33 @@ const PATCH_MARK = '[liuli-theme patch]'
 
 /** 运行时文件里需要被替换的 win32 titleBarOverlay 片段。 */
 const TITLEBAR_PATTERN = /titleBarStyle:\s*"hidden",\s*titleBarOverlay:\s*\{[\s\S]*?\},/
+
+/** 客户端版本升级会更换 electron-runtime-<hash>.js 文件名，不能写死。
+ *  在 unpacked lib 里找包含 titleBarStyle 的 electron-runtime-*.js。 */
+function findRuntimeFile(libDir: string): string | undefined {
+  let names: string[] = []
+  try {
+    names = readdirSync(libDir)
+  } catch {
+    return undefined
+  }
+  const candidates = names.filter(name => /^electron-runtime-[A-Za-z0-9_-]+\.js$/.test(name))
+  for (const name of candidates) {
+    try {
+      if (readFileSync(joinPath(libDir, name), 'utf8').includes('titleBarStyle')) return name
+    } catch { /* 继续找下一个 */ }
+  }
+  // 兜底：取最大者（通常就是完整 runtime bundle）。
+  let best: string | undefined
+  let bestSize = -1
+  for (const name of candidates) {
+    try {
+      const size = statSync(joinPath(libDir, name)).size
+      if (size > bestSize) { best = name; bestSize = size }
+    } catch { /* ignore */ }
+  }
+  return best
+}
 
 function readAsarHeader(asarPath: string): unknown {
   const fd = openSync(asarPath, 'r')
@@ -50,10 +77,15 @@ export function applyFramelessPatch(): void {
     const asarPath = joinPath(resourcesDir, 'app.asar')
     const backupPath = joinPath(resourcesDir, 'app.asar.bak-frameless')
     const patchedCopyPath = joinPath(resourcesDir, 'app.asar.patched')
-    const runtimePath = joinPath(resourcesDir, 'app.asar.unpacked', 'lib', 'electron-runtime-he0yaDKX.js')
+    const libDir = joinPath(resourcesDir, 'app.asar.unpacked', 'lib')
+    const runtimeName = findRuntimeFile(libDir)
+    if (runtimeName === undefined) {
+      throw new Error('找不到 electron-runtime-*.js（客户端目录结构可能已变化）')
+    }
+    const runtimePath = joinPath(libDir, runtimeName)
 
-    if (!existsSync(asarPath) || !existsSync(runtimePath)) {
-      throw new Error('找不到 app.asar 或 electron-runtime-he0yaDKX.js（客户端目录结构可能已变化）')
+    if (!existsSync(asarPath)) {
+      throw new Error('找不到 app.asar（客户端目录结构可能已变化）')
     }
 
     // 1. 备份原始 app.asar（首次）。
@@ -84,7 +116,7 @@ export function applyFramelessPatch(): void {
     // 3. 重建 app.asar 头（同步 size / SHA256 integrity）。
     const header = readAsarHeader(asarPath) as { files?: Record<string, unknown> }
     let node: { files?: Record<string, unknown> } | undefined = header
-    for (const part of ['lib', 'electron-runtime-he0yaDKX.js']) {
+    for (const part of ['lib', runtimeName]) {
       const next = node?.files?.[part] as { files?: Record<string, unknown> } | undefined
       if (next === undefined) {
         throw new Error(`asar 头中缺少 ${part}（客户端版本可能不兼容）`)
