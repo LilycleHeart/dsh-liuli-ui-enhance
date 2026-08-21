@@ -1579,7 +1579,17 @@ div[data-phase='active'] {
   background: var(--dsw-alias-border-l1);
 }
 
-/* 宿主产物行「打开方式」按钮：去掉实底背景（常态与 hover 都透明） */
+/* 宿主产物行「打开方式」按钮：去掉实底背景（常态与 hover 都透明）。
+   注意：不能只清 iconBtn —— 上面的 div[class*="_menu"] 会误伤
+   menuWrap 容器（class 含 _menu），给图标套上 70% 半透明灰框。
+   这里同时把 menuWrap 容器本身也恢复透明。 */
+[class*="_fileRow"] [class*="_menuWrap"] {
+  background-color: transparent !important;
+  background-image: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
 [class*="_fileRow"] [class*="_menuWrap"] [class*="_iconBtn"] {
   background: transparent !important;
 }

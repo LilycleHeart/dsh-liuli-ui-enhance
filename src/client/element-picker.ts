@@ -117,13 +117,16 @@ export function describeElement(el: Element): PickedElement {
  * @returns a compact multiline description.
  */
 export function formatSelection(info: PickedElement): string {
+  // rect 紧跟头部、放在 selector 之前：selector 是 CSS Modules 全路径，通常
+  // 很长，若会话预览/消息气泡按行或按长度截断，rect 等短字段也不会被长
+  // selector 挤出可见范围；同时解析端按 FIELD_RE 逐行读取，不依赖字段顺序。
   const lines = [
     `[selected element] <${info.tag}>`,
+    `rect: x=${info.rect.x} y=${info.rect.y} ${info.rect.width}x${info.rect.height}`,
     `selector: ${info.selector}`,
   ]
   if (info.attributes !== '') lines.push(`attributes: ${info.attributes}`)
   if (info.text !== '') lines.push(`text: ${info.text}`)
-  lines.push(`rect: x=${info.rect.x} y=${info.rect.y} ${info.rect.width}x${info.rect.height}`)
   if (info.color !== '') lines.push(`color: ${info.color}`)
   if (info.background !== '') lines.push(`background: ${info.background}`)
   if (info.font !== '') lines.push(`font: ${info.font}`)

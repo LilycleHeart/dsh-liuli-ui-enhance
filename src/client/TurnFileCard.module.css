@@ -8,9 +8,11 @@
   padding: 10px 12px;
   border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.16));
   border-radius: var(--liuli-radius-sm, 12px);
-  background: transparent;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55));
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur);
+  backdrop-filter: var(--liuli-material-blur);
+  box-shadow: var(--liuli-shadow-subtle, 0 1px 3px rgba(0, 0, 0, 0.08));
 }
 
 .head {
@@ -45,7 +47,7 @@
 }
 
 .fileRow:hover {
-  background: transparent;
+  background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.14));
 }
 
 .fileInfo {
@@ -107,16 +109,20 @@
   padding: 2px 8px;
   border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.22));
   border-radius: 999px;
-  background: transparent;
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55));
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur);
+  backdrop-filter: var(--liuli-material-blur);
+  box-shadow: var(--liuli-shadow-subtle, 0 1px 3px rgba(0, 0, 0, 0.08));
   color: var(--dsw-alias-label-secondary, inherit);
   font-size: 11px;
   line-height: 18px;
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background-color 120ms ease, color 120ms ease;
 }
 
 .btn:hover {
-  background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.14));
+  background-color: rgba(var(--liuli-acrylic-rgb), calc(var(--liuli-material-opacity, 0.55) + 0.15));
   color: var(--dsw-alias-label-primary, inherit);
 }
 

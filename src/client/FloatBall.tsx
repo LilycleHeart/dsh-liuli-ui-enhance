@@ -25,6 +25,8 @@ const SNAP_DIST = 90
 const CLICK_SLOP = 4
 /** 位置记忆键。 */
 const LS_POS = 'liuli:floatball-pos'
+/** 工具栏默认收起：加载后只显示圆球，点击圆球才展开工具菜单。 */
+const DEFAULT_OPEN = false
 
 type Side = 'left' | 'right' | 'top' | 'bottom'
 
@@ -83,7 +85,7 @@ export function FloatBall({ insertElement, openDock, openLayoutMenu }: { insertE
   const [pos, setPos] = useState<Pos>(posRef.current)
   const [dragging, setDragging] = useState(false)
   const [snapped, setSnapped] = useState<Side | null>(null)
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(DEFAULT_OPEN)
   const [hovered, setHovered] = useState(false)
   const [picking, setPicking] = useState(false)
   const [picked, setPicked] = useState<PickedElement | null>(null)

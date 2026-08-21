@@ -22,7 +22,8 @@ import type {} from '@deepseek-ai/dsh-tools/types'
 import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-client-runtime/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { requestReviewFile } from './review-bus.ts'
-import { revealSidebarPath } from './right-sidebar-api.ts'
+import { revealSidebarPath, type SidebarGitChange } from './right-sidebar-api.ts'
+import { setLastTurnChanges } from './turn-file-store.ts'
 import css from './TurnFileCard.module.css'
 
 /** 一个 diff hunk（与宿主 FileDiff 同构：path/oldText/newText）。 */
@@ -552,6 +553,22 @@ export function RoundSummaryCard({ node, openFile, useSession, useSessions, sess
     }
     return mergeTurnFiles(records)
   }, [isLast, locations, nodes, order, turn])
+
+  // 发布给审查面板的「上一轮更改」源（ZCode last-turn 语义）。
+  const lastTurnChanges = useMemo<SidebarGitChange[]>(() => files.map(file => {
+    const stats = diffStats(file.hunks)
+    const kind: SidebarGitChange['kind'] = stats.adds > 0 && stats.dels > 0 ? 'modified' : stats.adds > 0 ? 'added' : stats.dels > 0 ? 'deleted' : 'modified'
+    return {
+      path: file.path,
+      workspaceRelativePath: file.path,
+      added: stats.adds,
+      removed: stats.dels,
+      kind,
+    }
+  }), [files])
+  useEffect(() => {
+    setLastTurnChanges(lastTurnChanges)
+  }, [lastTurnChanges])
 
   if (!isLast || files.length === 0) return null
 

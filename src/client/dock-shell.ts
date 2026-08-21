@@ -32,8 +32,9 @@ export const DETAILS_MIN = 240
 /** 详情宽度上限比例（与 PreviewPanel 的 WIDTH_MAX_RATIO 一致）。 */
 export const DETAILS_MAX_RATIO = 0.88
 
-/** 会话列最小宽度（与 index.ts DESKTOP_ADVANCED_CSS 中的 min-width 同步）。 */
-export const CONVERSATION_MIN = 480
+/** 会话列最小宽度（与 index.ts DESKTOP_ADVANCED_CSS 中的 min-width 同步；
+ *  对齐宿主 computeColumns 的 640 参考宽度，避免详情 sash 把会话压得过窄）。 */
+export const CONVERSATION_MIN = 640
 
 /* ── 区域面板类型 ── */
 

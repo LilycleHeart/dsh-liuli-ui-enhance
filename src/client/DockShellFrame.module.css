@@ -29,6 +29,119 @@
   overflow: hidden;
 }
 
+/* 非区域扩展面板（从右侧标签拖入 / 添加的 dock 面板）：与对话页 / 左侧边栏
+   卡片保持一致的亚克力材质。默认三区域仍走桌面 shell 原生表面类，保持零侵入。 */
+.paneCard {
+  z-index: 1;
+  /* 与 dshDesktopConversationSurface 的内留白对齐（同一 --liuli-dock-padding 变量），
+     让非区域卡片边缘与对话卡、侧栏卡在同一参考线上。 */
+  margin: var(--liuli-dock-padding, 8px);
+  border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.14));
+  border-radius: var(--liuli-radius, 14px);
+  background-color: transparent;
+  background-image: none;
+  box-shadow: var(--liuli-glow-brand), var(--liuli-shadow);
+}
+
+.paneCard::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55));
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  pointer-events: none;
+}
+
+/* 普通 dock 面板：默认四边留白；仅当它是上下堆叠中的下方卡片时底部触底去圆角。 */
+.paneCard.edgeBottom {
+  margin-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* ── 区域表面（侧边栏 / 详细页）按方向留白与圆角 ──
+   统一用 --liuli-dock-padding 变量，不要硬编码 16px。 */
+
+/* 侧边栏 wrapper：左边缘 = 宿主默认；右边缘 / 中间在这里补齐。 */
+:global(.dshDesktopSidebarSurface[data-edge-right] .dshDesktopUpstreamSidebar) {
+  padding-left: var(--liuli-dock-padding, 8px) !important;
+  padding-right: 0 !important;
+}
+
+:global(.dshDesktopSidebarSurface:not([data-edge-left]):not([data-edge-right]) .dshDesktopUpstreamSidebar) {
+  padding-left: var(--liuli-dock-padding, 8px) !important;
+  padding-right: var(--liuli-dock-padding, 8px) !important;
+}
+
+:global(.dshDesktopSidebarSurface[data-edge-right] .dshDesktopUpstreamSidebar > div > div[class*="root"]) {
+  border-radius: 14px 0 0 14px !important;
+  /* 侧栏在右：内部元素也按 RTL 镜像（图标靠右、文字右对齐）。 */
+  direction: rtl;
+}
+
+:global(.dshDesktopSidebarSurface:not([data-edge-left]):not([data-edge-right]) .dshDesktopUpstreamSidebar > div > div[class*="root"]) {
+  border-radius: var(--liuli-radius, 14px) !important;
+}
+
+/* 详细页 surface padding：左/右边缘贴边，中间四边留白；下方无卡片时底部触底。 */
+:global(body[data-dsh-desktop-mode="advanced"] .dshDesktopFrame .dshDesktopDetailsSurface) {
+  padding-top: var(--liuli-dock-padding, 8px) !important;
+}
+
+:global(body[data-dsh-desktop-mode="advanced"] .dshDesktopFrame:not([data-details-collapsed]) .dshDesktopDetailsSurface[data-edge-left]) {
+  padding-left: 0 !important;
+  padding-right: var(--liuli-dock-padding, 8px) !important;
+}
+
+:global(body[data-dsh-desktop-mode="advanced"] .dshDesktopFrame:not([data-details-collapsed]) .dshDesktopDetailsSurface[data-edge-right]) {
+  padding-left: var(--liuli-dock-padding, 8px) !important;
+  padding-right: 0 !important;
+}
+
+:global(body[data-dsh-desktop-mode="advanced"] .dshDesktopFrame:not([data-details-collapsed]) .dshDesktopDetailsSurface:not([data-edge-left]):not([data-edge-right])) {
+  padding-left: var(--liuli-dock-padding, 8px) !important;
+  padding-right: var(--liuli-dock-padding, 8px) !important;
+}
+
+:global(body[data-dsh-desktop-mode="advanced"] .dshDesktopFrame:not([data-details-collapsed]) .dshDesktopDetailsSurface[data-edge-bottom]) {
+  padding-bottom: 0 !important;
+}
+
+:global(body[data-dsh-desktop-mode="advanced"] .dshDesktopFrame:not([data-details-collapsed]) .dshDesktopDetailsSurface:not([data-edge-bottom])) {
+  padding-bottom: var(--liuli-dock-padding, 8px) !important;
+}
+
+/* 收起态：details shard 宽 0，surface 必须左右 0 padding，否则 content-box
+   的 16px 左右 padding 会漏出 32px 的“边”。 */
+:global(body[data-dsh-desktop-mode="advanced"] .dshDesktopFrame[data-details-collapsed] .dshDesktopDetailsSurface) {
+  padding: var(--liuli-dock-padding, 8px) 0 0 0 !important;
+}
+
+/* 详细页内卡圆角：贴边侧直角，非贴边侧圆角；底部只在下方无卡片时触底。 */
+:global(body[data-dsh-desktop-mode="advanced"] .dshDesktopFrame .dshDesktopDetailsSurface:not([data-edge-right]) [data-preview-panel]) {
+  border-top-right-radius: var(--liuli-radius, 14px) !important;
+}
+
+:global(body[data-dsh-desktop-mode="advanced"] .dshDesktopFrame .dshDesktopDetailsSurface:not([data-edge-bottom]):not([data-edge-right]) [data-preview-panel]) {
+  border-bottom-right-radius: var(--liuli-radius, 14px) !important;
+}
+
+:global(body[data-dsh-desktop-mode="advanced"] .dshDesktopFrame .dshDesktopDetailsSurface:not([data-edge-bottom]):not([data-edge-left]) [data-preview-panel]) {
+  border-bottom-left-radius: var(--liuli-radius, 14px) !important;
+}
+
+/* 对话页在上下堆叠中位于顶部/中部时，按第一条规范恢复四边留白与底部圆角
+   （全局 active 规则默认让会话卡底部触底，这里仅对下方还有卡片的会话列撤销）。 */
+:global(body[data-dsh-desktop-mode="advanced"] .dshDesktopFrame .dshDesktopConversationSurface[data-has-below] [data-conversation-scroll]) {
+  border-bottom-left-radius: var(--liuli-radius, 14px) !important;
+  border-bottom-right-radius: var(--liuli-radius, 14px) !important;
+  margin-bottom: 0 !important;
+}
+
 /* 开始页顶部窗口拖动区（仅会话 pane；默认不拦截事件，全局 CSS 在
    会话 header 隐藏时激活 -webkit-app-region: drag） */
 .paneTopDrag {
@@ -100,7 +213,7 @@
 .sashH::before {
   content: '';
   position: absolute;
-  left: 50%;
+  left: 2px;
   top: 50%;
   width: 4px;
   height: 44px;
@@ -141,7 +254,7 @@
   content: '';
   position: absolute;
   left: 50%;
-  top: 50%;
+  top: 2px;
   width: 44px;
   height: 4px;
   border-radius: 2px;
@@ -273,18 +386,19 @@
   color: var(--dsw-alias-label-primary, inherit);
 }
 
-/* ── 合并标签条（仅 ≥2 面板的标签组出现） ── */
+/* ── 合并标签条（仅 ≥2 面板的标签组出现；视觉与右侧边栏 48px 标签条对齐） ── */
 
 .tabStrip {
   flex: none;
   display: flex;
-  align-items: stretch;
-  gap: 2px;
-  padding: 4px 6px 0;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 12px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
-  border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.14));
+  border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.15));
 }
 
 .tabFiller {
@@ -293,33 +407,44 @@
 }
 
 .tabChip {
-  flex: none;
+  flex: 1 1 156px;
+  min-width: 64px;
+  max-width: 156px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  max-width: 180px;
-  padding: 4px 8px;
-  border-radius: 8px 8px 0 0;
+  padding: 0 6px 0 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
   color: var(--dsw-alias-label-secondary, #666);
-  font-size: 12px;
-  line-height: 18px;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
   cursor: grab;
   user-select: none;
   touch-action: none;
   white-space: nowrap;
+  overflow: hidden;
 }
 
 .tabChip:hover {
+  border-color: var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.2));
   color: var(--dsw-alias-label-primary, inherit);
-  background: color-mix(in srgb, var(--dsw-alias-label-primary, #333) 7%, transparent);
 }
 
-.tabChipActive {
-  color: var(--dsw-alias-brand-primary, #0079bf);
-  box-shadow: inset 0 -2px 0 var(--dsw-alias-brand-primary, #0079bf);
+.tabChipActive,
+.tabChipActive:hover {
+  border-color: var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.25));
+  background: var(--dsw-specific-card-major, rgba(var(--liuli-acrylic-rgb), 0.85));
+  color: var(--dsw-alias-label-primary, inherit);
+  box-shadow: var(--liuli-shadow-subtle, 0 1px 3px rgba(0, 0, 0, 0.08));
 }
 
 .tabLabel {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -327,13 +452,13 @@
 .tabClose,
 .tabFloat {
   flex: none;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 5px;
+  border-radius: 6px;
   background: transparent;
   color: inherit;
   font-size: 12px;
@@ -361,6 +486,12 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* 卡片面板的内容区留白：让亚克力材质从内容四周透出来 */
+.paneCard .paneBody,
+.floatWindow .paneBody {
+  padding: 10px;
 }
 
 .paneEmpty {
@@ -526,11 +657,26 @@
   z-index: 2147482400;
   display: flex;
   flex-direction: column;
+  /* 与对话页 / 左侧边栏卡片一致的材质：透明底 + ::before 亚克力磨砂 */
   border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.24));
-  border-radius: 12px;
-  background: var(--dsw-alias-bg-layer-2, rgba(255, 255, 255, 0.96));
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+  border-radius: var(--liuli-radius, 14px);
+  background-color: transparent;
+  background-image: none;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28), var(--liuli-glow-brand), var(--liuli-shadow);
   overflow: hidden;
+}
+
+.floatWindow::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55));
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  pointer-events: none;
 }
 
 .floatTitle {

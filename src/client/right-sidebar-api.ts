@@ -34,6 +34,39 @@ export interface SidebarGitCommit {
   parents: string[]
 }
 
+export type SidebarGitSourceId = 'unstaged' | 'staged' | 'branch' | 'last-turn'
+
+export interface SidebarGitSourceOption {
+  id: SidebarGitSourceId
+  disabled: boolean
+}
+
+export interface SidebarGitChange {
+  path: string
+  workspaceRelativePath: string
+  added: number
+  removed: number
+  kind: 'added' | 'deleted' | 'modified' | 'untracked' | 'renamed' | 'copied'
+}
+
+export interface SidebarGitSection {
+  id: string
+  changes: SidebarGitChange[]
+}
+
+export interface SidebarGitDataset {
+  id: SidebarGitSourceId
+  sections: SidebarGitSection[]
+  comparisonLabel?: string | null
+}
+
+export interface SidebarGitSummary {
+  isGitAvailable: boolean
+  isRepository: boolean
+  added: number
+  removed: number
+}
+
 export interface SidebarGitPayload {
   ok: boolean
   root?: string
@@ -43,6 +76,11 @@ export interface SidebarGitPayload {
   log?: string
   commits?: SidebarGitCommit[]
   hasMore?: boolean
+  sourceOptions?: SidebarGitSourceOption[]
+  datasets?: Record<SidebarGitSourceId, SidebarGitDataset>
+  summary?: SidebarGitSummary
+  loading?: boolean
+  revision?: number
   error?: string
 }
 
@@ -90,7 +128,7 @@ export interface SidebarFilePayload {
   error?: string
 }
 
-/** 单文件 git diff 载荷（审查面板「Diff」）。 */
+/** 单文件 git diff 载荷（ZCode 风格审查面板）。 */
 export interface SidebarDiffPayload {
   ok: boolean
   root?: string
@@ -100,6 +138,11 @@ export interface SidebarDiffPayload {
   x?: string
   y?: string
   untracked?: boolean
+  availability?: 'patch' | 'binary' | 'unavailable'
+  patch?: string
+  beforeContent?: string | null
+  afterContent?: string | null
+  summary?: string
   error?: string
 }
 
@@ -110,9 +153,9 @@ export async function fetchSidebarFile(sessionId: string, path: string, signal?:
   return response.json() as Promise<SidebarFilePayload>
 }
 
-/** 拉取某个文件的 git diff（相对会话 cwd 的路径）。 */
-export async function fetchSidebarDiff(sessionId: string, path: string, signal?: AbortSignal): Promise<SidebarDiffPayload> {
-  const query = new URLSearchParams({ sessionId, path })
+/** 拉取某个文件的 git diff（相对会话 cwd 的路径；source 为 unstaged/staged）。 */
+export async function fetchSidebarDiff(sessionId: string, path: string, source: SidebarGitSourceId = 'unstaged', signal?: AbortSignal): Promise<SidebarDiffPayload> {
+  const query = new URLSearchParams({ sessionId, path, source })
   const response = await fetch('/liuli-sidebar/diff?' + query.toString(), signal === undefined ? {} : { signal })
   return response.json() as Promise<SidebarDiffPayload>
 }
