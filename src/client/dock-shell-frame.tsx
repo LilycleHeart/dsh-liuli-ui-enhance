@@ -393,6 +393,47 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     toastTimer.current = setTimeout(() => { setToast(null) }, 2600)
   }, [])
 
+  /** 区域固定宽度（默认布局保真）：单区域侧栏/详情按宿主宽度语义，
+   *  让 split 的对应 shard 用精确 px，而非会跟比例打架的 flex-grow。
+   *  详情关闭时返回 0（而非 undefined）：面板常驻树中，宽度 0 保持挂载，
+   *  开合由 flex-basis 过渡驱动，会话列平滑补位。 */
+  const childFixedWidth = (child: DockNode): number | undefined => {
+    if (child.kind !== 'tabs' || child.tabs.length !== 1) return undefined
+    const only = child.tabs[0]
+    if (only === undefined) return undefined
+    if (only.type === REGION_SIDEBAR) return sidebarWidth
+    if (only.type === REGION_DETAILS) return hostPanels.details === 0 ? 0 : clampDetailsWidth(detailsWidth, window.innerWidth, sidebarWidth)
+    return undefined
+  }
+
+  /** 单区域侧栏/详情面板的区域类型（用于把 sash 缩放到宿主 layout 服务）。 */
+  const fixedRegionType = (child: DockNode): string | undefined => {
+    if (child.kind !== 'tabs' || child.tabs.length !== 1) return undefined
+    const only = child.tabs[0]
+    if (only === undefined) return undefined
+    if (only.type === REGION_SIDEBAR) return REGION_SIDEBAR
+    if (only.type === REGION_DETAILS) return REGION_DETAILS
+    return undefined
+  }
+
+  /** 节点在指定方向上的最小像素尺寸（递归聚合子级，固定宽度子级按固定 px 计）。
+   *  split 主轴 = 子级最小之和；交叉轴 = 子级最小最大值。渲染期分配与
+   *  sash 拖拽 clamp 共用，保证「最小宽度」能沿嵌套层级向上传播。 */
+  const nodeMinPx = (node: DockNode | undefined, dir: 'h' | 'v'): number => {
+    if (node === undefined) return 0
+    if (node.kind === 'tabs') {
+      const fixed = childFixedWidth(node)
+      if (fixed !== undefined) {
+        return dir === 'h' ? Math.max(fixed, 0) : childMinPx(node, dir)
+      }
+      return childMinPx(node, dir)
+    }
+    const childMins = node.children.map(child => nodeMinPx(child, dir))
+    return node.dir === dir
+      ? childMins.reduce((a, b) => a + b, 0)
+      : childMins.reduce((a, b) => Math.max(a, b), 0)
+  }
+
   /* ── 面板内容：区域 → renderSlot；扩展面板 → 注册表 ── */
 
   const openFileInDock = useCallback((path: string, rel: string): void => {
@@ -672,10 +713,10 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
             startRatio = (dir === 'h' ? beforeRect.width : beforeRect.height) / combined
           }
           const minBeforeRatio = combined > 0
-            ? childMinPx(beforeChild, dir) / combined * sizesTotal
+            ? nodeMinPx(beforeChild, dir) / combined * sizesTotal
             : MIN_SIZE * sizesTotal
           const minAfterRatio = combined > 0
-            ? childMinPx(afterChild, dir) / combined * sizesTotal
+            ? nodeMinPx(afterChild, dir) / combined * sizesTotal
             : MIN_SIZE * sizesTotal
           if (growSum > 0) variableShards = { before: beforeEl, after: afterEl, growSum, sizesTotal, minBeforeRatio, minAfterRatio }
         }
@@ -700,7 +741,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
           if (child.id === regionChild?.id) return acc
           const fixed = childFixedWidth(child)
           if (fixed !== undefined) return acc + fixed
-          return acc + childMinPx(child, dir)
+          return acc + nodeMinPx(child, dir)
         }, 0)
         const maxSize = Math.max(0, total - othersMin)
         if (regionType === REGION_DETAILS) {
@@ -751,7 +792,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
     window.addEventListener('pointercancel', onUp)
-  }, [actions, hostLayout, sidebarWidth])
+  }, [actions, hostLayout, sidebarWidth, detailsWidth, hostPanels.details])
 
   /* ── 渲染 ── */
 
@@ -858,29 +899,6 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     )
   }
 
-  /** 区域固定宽度（默认布局保真）：单区域侧栏/详情按宿主宽度语义，
-   *  让 split 的对应 shard 用精确 px，而非会跟比例打架的 flex-grow。
-   *  详情关闭时返回 0（而非 undefined）：面板常驻树中，宽度 0 保持挂载，
-   *  开合由 flex-basis 过渡驱动，会话列平滑补位。 */
-  const childFixedWidth = (child: DockNode): number | undefined => {
-    if (child.kind !== 'tabs' || child.tabs.length !== 1) return undefined
-    const only = child.tabs[0]
-    if (only === undefined) return undefined
-    if (only.type === REGION_SIDEBAR) return sidebarWidth
-    if (only.type === REGION_DETAILS) return hostPanels.details === 0 ? 0 : clampDetailsWidth(detailsWidth, window.innerWidth, sidebarWidth)
-    return undefined
-  }
-
-  /** 单区域侧栏/详情面板的区域类型（用于把 sash 缩放到宿主 layout 服务）。 */
-  const fixedRegionType = (child: DockNode): string | undefined => {
-    if (child.kind !== 'tabs' || child.tabs.length !== 1) return undefined
-    const only = child.tabs[0]
-    if (only === undefined) return undefined
-    if (only.type === REGION_SIDEBAR) return REGION_SIDEBAR
-    if (only.type === REGION_DETAILS) return REGION_DETAILS
-    return undefined
-  }
-
   /** 用 split 盒实测像素把 sizes 换算成「不会溢出的子级像素」。
    *  - 容器放得下所有最小宽/高：先满足每个子级最小像素，剩余空间按 sizes 比例分；
    *  - 容器放不下（嵌套 split 太窄/太矮）：按 sizes 比例分可用空间（允许低于最小），
@@ -892,7 +910,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     const fixedSum = split.children.reduce((acc, child, i) => acc + (fixedFlags[i] === true ? (childFixedWidth(child) ?? 0) : 0), 0)
     const available = totalPx - fixedSum
     if (available <= 0) return null
-    const mins = split.children.map((child, i) => fixedFlags[i] === true ? 0 : childMinPx(child, split.dir))
+    const mins = split.children.map((child, i) => fixedFlags[i] === true ? 0 : nodeMinPx(child, split.dir))
     const minSum = mins.reduce((a, b) => a + b, 0)
     const weights = split.children.map((_child, i) => {
       if (fixedFlags[i] === true) return 0
