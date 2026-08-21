@@ -79,6 +79,16 @@ const DRAG_THRESHOLD = 5
 const PANE_CARD_MIN_W = 240
 const PANE_CARD_MIN_H = 160
 
+/** 直接子级的最小像素尺寸（会话列 640×160，普通面板 240×160）。
+ *  渲染期换算 flexGrow 与 sash 拖拽 clamp 共用同一套最小尺寸语义。 */
+function childMinPx(child: DockNode | undefined, dir: 'h' | 'v'): number {
+  if (child === undefined) return 0
+  if (child.kind === 'tabs' && child.tabs.length === 1 && child.tabs[0]?.type === REGION_CONVERSATION) {
+    return dir === 'h' ? CONVERSATION_MIN : PANE_CARD_MIN_H
+  }
+  return dir === 'h' ? PANE_CARD_MIN_W : PANE_CARD_MIN_H
+}
+
 function baseName(path: string): string {
   const parts = path.split(/[\\/]/)
   return parts[parts.length - 1] ?? path
@@ -158,6 +168,10 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
   /** 面板贴边标记（实测几何）：key = data-dock-node，避免嵌套 split / 0 宽 shard 误判。 */
   const [edgeMap, setEdgeMap] = useState<Record<string, PaneEdgeFlags>>({})
 
+  /** 每个 split 盒主轴方向的实测像素（h→width / v→height）。
+   *  渲染期把子级最小宽高换算成 flexGrow 用，保证 shard 永不溢出盖住相邻卡片。 */
+  const [splitPxMap, setSplitPxMap] = useState<Record<string, number>>({})
+
   const recomputePaneEdges = useCallback(() => {
     const rootEl = rootRef.current
     if (rootEl === null) return
@@ -230,26 +244,55 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     })
   }, [css.shard])
 
-  // 每次渲染后同步一次贴边标记（布局树 / 开合 / 缩放都会反映到几何上）。
-  useLayoutEffect(() => {
+  /** 实测每个 split 盒主轴像素（h→width / v→height），渲染期用。 */
+  const recomputeSplitPx = useCallback(() => {
+    const rootEl = rootRef.current
+    if (rootEl === null) return
+    const next: Record<string, number> = {}
+    const splits = Array.from(rootEl.querySelectorAll<HTMLElement>('[data-dock-split]'))
+    for (const splitEl of splits) {
+      const id = splitEl.getAttribute('data-dock-split') ?? ''
+      if (id === '') continue
+      const dir: 'h' | 'v' = typeof css.splitH === 'string' && splitEl.classList.contains(css.splitH) ? 'h' : 'v'
+      const rect = splitEl.getBoundingClientRect()
+      next[id] = dir === 'h' ? rect.width : rect.height
+    }
+    setSplitPxMap(prev => {
+      if (Object.keys(prev).length !== Object.keys(next).length) return next
+      for (const id of Object.keys(next)) {
+        const a = prev[id]
+        const b = next[id]
+        if (a === undefined || b === undefined || Math.abs(a - b) > 0.5) return next
+      }
+      return prev
+    })
+  }, [css.splitH])
+
+  const recomputeGeometry = useCallback(() => {
     recomputePaneEdges()
+    recomputeSplitPx()
+  }, [recomputePaneEdges, recomputeSplitPx])
+
+  // 每次渲染后同步一次贴边标记与 split 像素（布局树 / 开合 / 缩放都会反映到几何上）。
+  useLayoutEffect(() => {
+    recomputeGeometry()
   })
 
   useEffect(() => {
     const rootEl = rootRef.current
     if (rootEl === null) return
-    const ro = new ResizeObserver(() => { recomputePaneEdges() })
+    const ro = new ResizeObserver(() => { recomputeGeometry() })
     ro.observe(rootEl)
-    window.addEventListener('resize', recomputePaneEdges)
+    window.addEventListener('resize', recomputeGeometry)
     // shard 宽度/高度有 0.3s flex-basis/flex-grow 过渡；布局树切换（导入/恢复/重置）
     // 时 root 尺寸不变，RO 不会触发，必须在过渡结束后重算一次贴边标记。
-    rootEl.addEventListener('transitionend', recomputePaneEdges)
+    rootEl.addEventListener('transitionend', recomputeGeometry)
     return () => {
       ro.disconnect()
-      window.removeEventListener('resize', recomputePaneEdges)
-      rootEl.removeEventListener('transitionend', recomputePaneEdges)
+      window.removeEventListener('resize', recomputeGeometry)
+      rootEl.removeEventListener('transitionend', recomputeGeometry)
     }
-  }, [recomputePaneEdges])
+  }, [recomputeGeometry])
 
   /* ── 自动保存 dock 树（防抖 250ms）+ 卸载前落盘 ── */
   useEffect(() => {
@@ -567,14 +610,6 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     if (rect === undefined) return
     const total = dir === 'h' ? rect.width : rect.height
     if (total <= 0) return
-    /** 直接子级的最小像素尺寸（会话列 640，普通面板 240×160）。 */
-    const childMinPx = (child: DockNode | undefined): number => {
-      if (child === undefined) return 0
-      if (child.kind === 'tabs' && child.tabs.length === 1 && child.tabs[0]?.type === REGION_CONVERSATION) {
-        return dir === 'h' ? CONVERSATION_MIN : PANE_CARD_MIN_H
-      }
-      return dir === 'h' ? PANE_CARD_MIN_W : PANE_CARD_MIN_H
-    }
     // 固定宽度区域（侧栏/详情）的 sash 走宿主 layout 服务（原生宽度语义 + clamp），
     // 其余 sash 按 split 比例缩放。锚定边在拖拽中不动，故按下时取一次面板 rect 即可。
     const beforeChild = splitNode.children[dividerIndex - 1]
@@ -595,7 +630,9 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
       }
     }
     const start = dir === 'h' ? e.clientX : e.clientY
-    const startRatio = splitNode.sizes[dividerIndex - 1] ?? 0.5
+    // 起始比例优先取 DOM 实测（渲染期做了像素 clamp，model sizes 可能与实际显示不一致），
+    // 避免按下后第一帧跳到 model 比例。
+    let startRatio = splitNode.sizes[dividerIndex - 1] ?? 0.5
     // 拖拽期间禁用 shard 宽度过渡（flex-basis 每帧变化，过渡会滞后/跟手性差），
     // 对齐官方 AppFrame 的 [data-dragging] { transition: none }。
     const rootEl = rootRef.current
@@ -631,11 +668,14 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
           const beforeRect = beforeEl.getBoundingClientRect()
           const afterRect = afterEl.getBoundingClientRect()
           const combined = dir === 'h' ? beforeRect.width + afterRect.width : beforeRect.height + afterRect.height
+          if (combined > 0) {
+            startRatio = (dir === 'h' ? beforeRect.width : beforeRect.height) / combined
+          }
           const minBeforeRatio = combined > 0
-            ? childMinPx(beforeChild) / combined * sizesTotal
+            ? childMinPx(beforeChild, dir) / combined * sizesTotal
             : MIN_SIZE * sizesTotal
           const minAfterRatio = combined > 0
-            ? childMinPx(afterChild) / combined * sizesTotal
+            ? childMinPx(afterChild, dir) / combined * sizesTotal
             : MIN_SIZE * sizesTotal
           if (growSum > 0) variableShards = { before: beforeEl, after: afterEl, growSum, sizesTotal, minBeforeRatio, minAfterRatio }
         }
@@ -660,7 +700,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
           if (child.id === regionChild?.id) return acc
           const fixed = childFixedWidth(child)
           if (fixed !== undefined) return acc + fixed
-          return acc + childMinPx(child)
+          return acc + childMinPx(child, dir)
         }, 0)
         const maxSize = Math.max(0, total - othersMin)
         if (regionType === REGION_DETAILS) {
@@ -685,6 +725,8 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
         const hi = Math.min(sizesTotal - MIN_SIZE * sizesTotal, sizesTotal - minAfterRatio)
         let na = lo <= hi ? Math.max(lo, Math.min(hi, ratio * sizesTotal)) : sizesTotal / 2
         if (!Number.isFinite(na)) na = sizesTotal / 2
+        // 提交用 lastRatio 必须与 DOM 直写一致（clamp 后的比例），否则松手回跳。
+        lastRatio = sizesTotal > 0 ? na / sizesTotal : lastRatio
         variableShards.before.style.flexGrow = String(na / growSum)
         variableShards.after.style.flexGrow = String((sizesTotal - na) / growSum)
         return
@@ -839,6 +881,47 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     return undefined
   }
 
+  /** 用 split 盒实测像素把 sizes 换算成「不会溢出的子级像素」。
+   *  - 容器放得下所有最小宽/高：先满足每个子级最小像素，剩余空间按 sizes 比例分；
+   *  - 容器放不下（嵌套 split 太窄/太矮）：按 sizes 比例分可用空间（允许低于最小），
+   *    但绝不溢出到相邻卡片（此前直接给 shard 写 minWidth/minHeight，flex 项硬性
+   *    下限会让子级溢出 split 盒，盖到隔壁卡片上）。 */
+  const splitChildPx = (split: SplitNode, totalPx: number): number[] | null => {
+    if (!Number.isFinite(totalPx) || totalPx <= 0) return null
+    const fixedFlags = split.children.map(child => childFixedWidth(child) !== undefined)
+    const fixedSum = split.children.reduce((acc, child, i) => acc + (fixedFlags[i] === true ? (childFixedWidth(child) ?? 0) : 0), 0)
+    const available = totalPx - fixedSum
+    if (available <= 0) return null
+    const mins = split.children.map((child, i) => fixedFlags[i] === true ? 0 : childMinPx(child, split.dir))
+    const minSum = mins.reduce((a, b) => a + b, 0)
+    const weights = split.children.map((_child, i) => {
+      if (fixedFlags[i] === true) return 0
+      const s = split.sizes[i]
+      return Number.isFinite(s) && s! > 0 ? s! : 1
+    })
+    const weightSum = weights.reduce((a, b) => a + b, 0)
+    const desired = weights.map(w => weightSum > 0 ? w / weightSum * available : 0)
+    if (minSum > available) {
+      // 容器太小：接受低于最小，但保持比例、和恰好等于可用空间。
+      return desired
+    }
+    // 容器足够：抬到最小值后，把多占的空间从高于最小值的子级按富余量扣回。
+    let px = desired.map((d, i) => fixedFlags[i] === true ? 0 : Math.max(mins[i]!, d))
+    for (let iter = 0; iter < 12; iter += 1) {
+      const sum = px.reduce((a, b) => a + b, 0)
+      const over = sum - available
+      if (Math.abs(over) < 0.5) break
+      const reducible = px.reduce((acc, v, i) => fixedFlags[i] !== true && v > mins[i]! ? acc + (v - mins[i]!) : acc, 0)
+      if (reducible <= 0) break
+      px = px.map((v, i) => fixedFlags[i] !== true && v > mins[i]!
+        ? v - over * ((v - mins[i]!) / reducible)
+        : v)
+    }
+    const sum = px.reduce((a, b) => a + b, 0)
+    if (sum > 0) px = px.map(v => v / sum * available)
+    return px
+  }
+
   const renderTabsNode = (node: TabsNode): ReactNode => {
     const active = node.tabs.find(p => p.id === node.activeId) ?? node.tabs[0]
     const only = node.tabs.length === 1 ? node.tabs[0] : undefined
@@ -899,6 +982,11 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     // 剩余空间。sash 作为 flex 成员恰好落在相邻面板的分界上。
     const fixedFlags = split.children.map(child => childFixedWidth(child) !== undefined)
     const growSum = split.sizes.reduce((acc, s, i) => acc + (fixedFlags[i] === true ? 0 : (s ?? 1)), 0)
+    // 渲染期像素 clamp：实测 split 盒主轴像素后，把 min 宽/高换算成 flexGrow，
+    // 避免直接给 shard 写 minWidth/minHeight 导致子级溢出 split 盒、盖住相邻卡片。
+    const totalPx = splitPxMap[split.id]
+    const effPx = totalPx !== undefined && totalPx > 0 ? splitChildPx(split, totalPx) : null
+    const effGrowTotal = effPx !== null ? effPx.reduce((a, b) => a + b, 0) : 0
     return (
       <div className={(split.dir === 'h' ? css.splitH : css.splitV) + ' ' + css.splitBox} data-dock-split={split.id}>
         {split.children.map((child, i) => {
@@ -909,11 +997,11 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
           const shardStyle = fixed !== undefined
             ? { flexGrow: 0, flexShrink: 0, flexBasis: String(fixed) + 'px' }
             : {
-                flexGrow: growSum > 0 ? (split.sizes[i] ?? 1) / growSum : 1,
+                flexGrow: effPx !== null && effGrowTotal > 0
+                  ? effPx[i]! / effGrowTotal
+                  : growSum > 0 ? (split.sizes[i] ?? 1) / growSum : 1,
                 flexBasis: 0,
                 flexShrink: 1,
-                minWidth: split.dir === 'h' ? String(PANE_CARD_MIN_W) + 'px' : undefined,
-                minHeight: split.dir === 'v' ? String(PANE_CARD_MIN_H) + 'px' : undefined,
               }
           // 收起态（固定宽度 0）的面板与相邻面板间不渲染 sash：官方 AppFrame 在
           // details 关闭时不渲染拖拽把手（cols.details > 0 才挂），避免窗口最右缘
