@@ -18,6 +18,23 @@ import {
 export const SIDEBAR_DEFAULT = 280
 export const DETAILS_DEFAULT = 360
 
+/**
+ * 侧栏宽度契约（与宿主 dsh-client-ui-layout 的 setSidebar clamp 一致；
+ * 0 语义由 toggleSidebar 处理）。dock-shell-frame 的 sash 拖拽直写
+ * flex-basis 时复用同一 clamp，避免把侧栏拖到容器外/负值。
+ */
+export const SIDEBAR_MIN = 264
+export const SIDEBAR_MAX = 420
+
+/** 详情宽度下限（琉璃 advanced 模式突破宿主 300 下限到 240；上限为视口 88%）。 */
+export const DETAILS_MIN = 240
+
+/** 详情宽度上限比例（与 PreviewPanel 的 WIDTH_MAX_RATIO 一致）。 */
+export const DETAILS_MAX_RATIO = 0.88
+
+/** 会话列最小宽度（与 index.ts DESKTOP_ADVANCED_CSS 中的 min-width 同步）。 */
+export const CONVERSATION_MIN = 480
+
 /* ── 区域面板类型 ── */
 
 export const REGION_SIDEBAR = 'region:sidebar'

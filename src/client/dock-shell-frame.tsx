@@ -29,7 +29,7 @@ import {
   createDockShellStore, exportDockJSON, findRegion, importDockJSON, isRegionPanel,
   listShellSlotNames, loadShellSlotByName, regionLabel, saveShellDock,
   saveShellSlotByName, withRegion,
-  REGION_CONVERSATION, REGION_DETAILS, REGION_SIDEBAR,
+  CONVERSATION_MIN, DETAILS_MAX_RATIO, DETAILS_MIN, REGION_CONVERSATION, REGION_DETAILS, REGION_SIDEBAR, SIDEBAR_MAX, SIDEBAR_MIN,
   type HostLayoutFace,
 } from './dock-shell.ts'
 import css from './DockShellFrame.module.css'
@@ -85,6 +85,16 @@ function platformOf(): 'win32' | 'darwin' | 'linux' {
   return p === 'darwin' || p === 'linux' ? p : 'win32'
 }
 
+/** 详情宽度 clamp：min 240；上限 = min(视口 88%, 视口 - 侧栏宽 - 会话最小宽 480)。
+ *  拖动直写 flex-basis、localStorage 恢复、渲染兜底都走这里，保证详情列永不把
+ *  会话列压过 480 或把右缘推出视口。 */
+function clampDetailsWidth(n: number, viewport: number, sidebar: number): number {
+  const maxByViewport = Math.round(viewport * DETAILS_MAX_RATIO)
+  const maxByColumns = viewport - sidebar - CONVERSATION_MIN
+  const maxW = Math.max(DETAILS_MIN, Math.min(maxByViewport, maxByColumns))
+  return Math.min(maxW, Math.max(DETAILS_MIN, Math.round(n)))
+}
+
 /** 桌面 shell 的区域表面类（样式来自桌面插件 ADVANCED_STYLES，观感与原生一致）。 */
 function surfaceClass(type: string): string {
   switch (type) {
@@ -126,31 +136,6 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const shellRef = useRef(shell)
   shellRef.current = shell
-
-  // 详情区域宽度（liuli 自管，突破 desktop shell 的 clamp 300-520；上限 = 视口 88%，
-  // 与 PreviewPanel 的 WIDTH_MAX_RATIO 一致）。宿主开合（hostPanels.details 0↔w）仍驱动折叠。
-  const [detailsWidth, setDetailsWidth] = useState<number>(() => {
-    try {
-      const raw = localStorage.getItem('liuli:details-width')
-      const n = raw === null ? 0 : Number.parseFloat(raw)
-      return Number.isFinite(n) && n > 0 ? n : 360
-    } catch { return 360 }
-  })
-  useEffect(() => {
-    try { localStorage.setItem('liuli:details-width', String(detailsWidth)) } catch { /* 配额/隐私模式则放弃 */ }
-  }, [detailsWidth])
-  // 会话切换恢复宽度时，PreviewPanel 会写 liuli:details-width 并派发本事件。
-  useEffect(() => {
-    const onWidthChange = (): void => {
-      try {
-        const raw = localStorage.getItem('liuli:details-width')
-        const n = raw === null ? 0 : Number.parseFloat(raw)
-        if (Number.isFinite(n) && n > 0) setDetailsWidth(n)
-      } catch { /* 忽略损坏值 */ }
-    }
-    window.addEventListener('liuli:details-width-change', onWidthChange)
-    return () => window.removeEventListener('liuli:details-width-change', onWidthChange)
-  }, [])
 
   /* ── 自动保存 dock 树（防抖 250ms）+ 卸载前落盘 ── */
   useEffect(() => {
@@ -215,6 +200,31 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
 
   const sidebarCollapsed = hostPanels.narrow ? !hostPanels.narrowExpanded : hostPanels.sidebar === 0
   const sidebarWidth = sidebarCollapsed ? (platform === 'darwin' ? 90 : 56) : hostPanels.sidebar
+
+  // 详情区域宽度（liuli 自管，突破 desktop shell 的 clamp 300-520；上限 = 视口 88%，
+  // 同时保证「侧栏 + 会话最小 480 + 详情」不超视口）。宿主开合（hostPanels.details 0↔w）仍驱动折叠。
+  const [detailsWidth, setDetailsWidth] = useState<number>(() => {
+    try {
+      const raw = localStorage.getItem('liuli:details-width')
+      const n = raw === null ? 0 : Number.parseFloat(raw)
+      return Number.isFinite(n) && n > 0 ? clampDetailsWidth(n, window.innerWidth, sidebarWidth) : 360
+    } catch { return 360 }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('liuli:details-width', String(detailsWidth)) } catch { /* 配额/隐私模式则放弃 */ }
+  }, [detailsWidth])
+  // 会话切换恢复宽度时，PreviewPanel 会写 liuli:details-width 并派发本事件。
+  useEffect(() => {
+    const onWidthChange = (): void => {
+      try {
+        const raw = localStorage.getItem('liuli:details-width')
+        const n = raw === null ? 0 : Number.parseFloat(raw)
+        if (Number.isFinite(n) && n > 0) setDetailsWidth(clampDetailsWidth(n, window.innerWidth, sidebarWidth))
+      } catch { /* 忽略损坏值 */ }
+    }
+    window.addEventListener('liuli:details-width-change', onWidthChange)
+    return () => window.removeEventListener('liuli:details-width-change', onWidthChange)
+  }, [sidebarWidth])
 
   const notify = useCallback((message: string) => {
     setToast(message)
@@ -500,11 +510,12 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
           ? (isBefore ? ev.clientX - regionPaneRect.left : regionPaneRect.right - ev.clientX)
           : (isBefore ? ev.clientY - regionPaneRect.top : regionPaneRect.bottom - ev.clientY)
         if (regionType === REGION_DETAILS) {
-          // 详情区域宽度由 liuli 自管（上限 = 视口 88%），不再走宿主 clamp 300-520。
-          const maxW = Math.max(240, Math.round(window.innerWidth * 0.88))
-          lastRegionSize = Math.min(maxW, Math.max(240, Math.round(newSize)))
+          // 详情区域宽度由 liuli 自管（上限 = 视口 88%，且不把会话压过 480/推出视口）。
+          lastRegionSize = clampDetailsWidth(newSize, window.innerWidth, sidebarWidth)
         } else {
-          lastRegionSize = newSize
+          // 侧栏宽度仍遵循宿主契约 264..420（onUp 经 hostLayout.setSidebar 提交），
+          // 拖拽期间直写 flexBasis 也 clamp 到同范围，避免把侧栏拖成负值/超过容器。
+          lastRegionSize = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(newSize)))
         }
         if (regionShardEl !== null) regionShardEl.style.flexBasis = lastRegionSize + 'px'
         return
@@ -541,7 +552,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
     window.addEventListener('pointercancel', onUp)
-  }, [actions, hostLayout])
+  }, [actions, hostLayout, sidebarWidth])
 
   /* ── 渲染 ── */
 
@@ -650,7 +661,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     const only = child.tabs[0]
     if (only === undefined) return undefined
     if (only.type === REGION_SIDEBAR) return sidebarWidth
-    if (only.type === REGION_DETAILS) return hostPanels.details === 0 ? 0 : detailsWidth
+    if (only.type === REGION_DETAILS) return hostPanels.details === 0 ? 0 : clampDetailsWidth(detailsWidth, window.innerWidth, sidebarWidth)
     return undefined
   }
 
@@ -733,7 +744,13 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
                 <div
                   className={split.dir === 'h' ? css.sashH : css.sashV}
                   data-testid="dock-sash"
-                  data-side={split.dir === 'h' ? 'sidebar' : 'details'}
+                  data-side={
+                    fixedRegionType(split.children[i - 1]!) === REGION_SIDEBAR || fixedRegionType(child) === REGION_SIDEBAR
+                      ? 'sidebar'
+                      : fixedRegionType(split.children[i - 1]!) === REGION_DETAILS || fixedRegionType(child) === REGION_DETAILS
+                        ? 'details'
+                        : 'split'
+                  }
                   onPointerDown={(e) => { beginSash(e, split, i, split.dir) }}
                 />
               )}

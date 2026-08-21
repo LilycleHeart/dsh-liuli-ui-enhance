@@ -50,6 +50,8 @@ export interface LiuliSettings {
   shadow_intensity: number
   /** 宽边模式：对话信息区在宽屏下撑满可用宽度（提高空间利用率）。 */
   wide_mode: boolean
+  /** 面板留白（px）：侧栏/会话/详情三列与窗口边缘之间的内边距（0-16）。 */
+  dock_padding: number
   /** 壁纸适应模式（cover 填充 / contain 适应 / stretch 拉伸）。 */
   bg_fit: LiuliBgFit
   /** 壁纸自定义选区（cover 模式下放大显示该区域，按窗口比例约束）；null 为全图。 */
@@ -103,6 +105,7 @@ export const LIULI_SETTINGS_DEFAULTS: LiuliSettings = {
   shadow_enabled: true,
   shadow_intensity: 60,
   wide_mode: false,
+  dock_padding: 8,
   bg_fit: 'cover',
   bg_area: null,
   vp_sensitivity: 0.15,
@@ -140,6 +143,7 @@ export const LiuliSettingsSchema: z<LiuliSettings> = z.object({
   shadow_enabled: z.boolean().default(true),
   shadow_intensity: z.number().default(60),
   wide_mode: z.boolean().default(false),
+  dock_padding: z.number().default(8),
   bg_fit: z.union(['cover', 'contain', 'stretch']).default('cover'),
   // bg_area 为可选对象（null 表示全图），这里用 unknown 占位避免被 schema 过滤掉。
   bg_area: z.any(),

@@ -82,7 +82,7 @@ import { DockStore } from './dock-store.ts'
 import { addPanel as addDockPanel } from './dock-model.ts'
 import { DockShellFrame, DOCK_MENU_TOGGLE_EVENT, setDockHostBridge } from './dock-shell-frame.tsx'
 import {
-  createDockShellStore, defaultShellLayout, exportDockJSON, importDockJSON,
+  CONVERSATION_MIN, createDockShellStore, defaultShellLayout, exportDockJSON, importDockJSON,
   listShellSlotNames, loadShellSlotByName, saveShellDock, saveShellSlotByName,
   type HostLayoutFace,
 } from './dock-shell.ts'
@@ -174,13 +174,14 @@ const DESKTOP_ADVANCED_CSS = [
   '/* 侧栏列去分割线：浮动卡片观感（对齐兼容模式 _sidebarCol 配方） */',
   'body[data-dsh-desktop-mode="advanced"] .dshDesktopSidebarSurface {',
   '  border-right: none !important;',
+  '  padding: 0 !important;',
   '}',
   '/* 对话页最小宽度：防止侧栏/详情展开时把会话列压得过窄 */',
   'body[data-dsh-desktop-mode="advanced"] [class*="_shard"]:has([data-region-pane="region:conversation"]) {',
-  '  min-width: 480px !important;',
+  `  min-width: ${CONVERSATION_MIN}px !important;`,
   '}',
   'body[data-dsh-desktop-mode="advanced"] .dshDesktopConversationSurface {',
-  '  min-width: 480px !important;',
+  `  min-width: ${CONVERSATION_MIN}px !important;`,
   '}',
   '/* 详情列去分割线（shell 给表面加了 border-left；对齐 _detailsCol 配方） */',
   'body[data-dsh-desktop-mode="advanced"] .dshDesktopDetailsSurface {',

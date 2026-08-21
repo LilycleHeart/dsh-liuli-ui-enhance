@@ -688,7 +688,7 @@ div[class*="hoverCard"] {
    padding 过渡：收起/展开时 sidebarCol 的 padding 16↔0 切换与
    AppFrame 轨道滑动（300ms）同步，避免收起时容器宽度瞬时跳变。 */
 [class*="_sidebarCol"] {
-  padding: 16px 16px 16px 0 !important;
+  padding: var(--liuli-dock-padding, 8px) var(--liuli-dock-padding, 8px) var(--liuli-dock-padding, 8px) 0 !important;
   background: transparent !important;
   border-right: none !important;
   /* 宿主给 sidebarCol 设了 overflow:hidden，会把侧栏卡右侧的辉光/阴影裁掉；
@@ -697,12 +697,12 @@ div[class*="hoverCard"] {
   transition: padding 300ms var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1)) !important;
 }
 
-/* 收起态（rail）：官方 56px 轨道贴边、无左右留白 —— 展开态的 16px
-   左侧 padding 会把 rail 列挤窄（56-16=40），控件溢出错位。
-   垂直保留 16px：与展开态一致，root/面板高度不因收起而变（用户要求
+/* 收起态（rail）：官方 56px 轨道贴边、无左右留白 —— 展开态的 8px
+   左侧 padding 会把 rail 列挤窄（56-8=48），控件溢出错位。
+   垂直保留 8px：与展开态一致，root/面板高度不因收起而变（用户要求
    "收起高度与展开一致"）。 */
 [class*="_sidebarCol"]:has([class*="_collapsed"]) {
-  padding: 16px 0 !important;
+  padding: var(--liuli-dock-padding, 8px) 0 !important;
 }
 
 /* 收起态统一高度到展开态（用户要求）：logoRow 保持展开态 60px
@@ -712,7 +712,7 @@ div[class*="hoverCard"] {
 }
 
 [class*="_centerCol"] {
-  padding: 16px 16px 16px 12px !important;
+  padding: var(--liuli-dock-padding, 8px) var(--liuli-dock-padding, 8px) var(--liuli-dock-padding, 8px) var(--liuli-dock-padding, 8px) !important;
 }
 
 /* 会话 header 浮动卡片：官方 header 为 <header> 标签 + 哈希类名。
@@ -1284,7 +1284,7 @@ div[data-phase='active'] {
  * 容器高度不跳变），圆角 左侧圆、右侧直（含左下），背景层走 ::before。
  * ════════════════════════════════════════════════════════════ */
 [class*="_detailsCol"] {
-  padding: 16px 0 16px 16px !important;
+  padding: var(--liuli-dock-padding, 8px) 0 var(--liuli-dock-padding, 8px) var(--liuli-dock-padding, 8px) !important;
   background: transparent !important;
   border-left: none !important;
   transition: padding 300ms var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1)) !important;
@@ -1297,7 +1297,7 @@ div[data-phase='active'] {
 }
 
 [class*="_frame"][data-details-collapsed] [class*="_detailsCol"] {
-  padding: 16px 0 !important;
+  padding: var(--liuli-dock-padding, 8px) 0 !important;
   overflow: hidden !important;
 }
 
@@ -1577,6 +1577,21 @@ div[data-phase='active'] {
   height: 1px;
   margin: 4px 2px;
   background: var(--dsw-alias-border-l1);
+}
+
+/* 宿主产物行「打开方式」按钮：去掉实底背景（常态与 hover 都透明） */
+[class*="_fileRow"] [class*="_menuWrap"] [class*="_iconBtn"] {
+  background: transparent !important;
+}
+
+[class*="_fileRow"] [class*="_menuWrap"] [class*="_iconBtn"]:hover,
+[class*="_fileRow"] [class*="_menuWrap"] [class*="_iconBtn"]:active,
+[class*="_fileRow"] [class*="_menuWrap"] [class*="_iconBtn"]:focus,
+[class*="_fileRow"] [class*="_menuWrap"] [class*="_iconBtn"]:focus-visible {
+  background: transparent !important;
+  color: var(--dsw-alias-brand-primary, #0079bf) !important;
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 `
