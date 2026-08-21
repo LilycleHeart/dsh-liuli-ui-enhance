@@ -393,8 +393,20 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     toastTimer.current = setTimeout(() => { setToast(null) }, 2600)
   }, [])
 
+  /** 读取运行时 dock 留白（与 CSS 变量 --liuli-dock-padding 一致，不硬编码 16px）。 */
+  const dockPad = ((): number => {
+    try {
+      const raw = getComputedStyle(document.documentElement).getPropertyValue('--liuli-dock-padding').trim()
+      const n = Number.parseFloat(raw)
+      return Number.isFinite(n) && n > 0 ? n : 8
+    } catch { return 8 }
+  })()
+
   /** 节点在 dir 方向上的固定像素宽度；不是固定宽则返回 undefined。
    *  - 单区域侧栏/详情：宿主宽度语义（详情关闭返回 0，保持挂载可过渡）；
+   *    侧栏收起后若不在原生左缘，表面有 dock 留白 padding，shard 要在
+   *    原生收起宽（56/90）基础上加上留白，否则内轨会被压成 40/48px，
+   *    与原生收起宽度不一致。
    *  - 同向 split 的全部子级都固定：其宽度也固定（子级之和），这样
    *    [详情, 侧栏] 这类复合列在父级里不会再按 flexGrow 吃掉多余空间、
    *    收起后也不会在右缘留大段空白。垂直方向暂无固定高度区域。 */
@@ -404,7 +416,15 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
       if (child.tabs.length !== 1) return undefined
       const only = child.tabs[0]
       if (only === undefined) return undefined
-      if (only.type === REGION_SIDEBAR) return sidebarWidth
+      if (only.type === REGION_SIDEBAR) {
+        if (sidebarCollapsed) {
+          const edges = edgeMap[child.id]
+          if (edges !== undefined && !edges.left) {
+            return sidebarWidth + (edges.right ? dockPad : dockPad * 2)
+          }
+        }
+        return sidebarWidth
+      }
       if (only.type === REGION_DETAILS) return hostPanels.details === 0 ? 0 : clampDetailsWidth(detailsWidth, window.innerWidth, sidebarWidth)
       return undefined
     }
