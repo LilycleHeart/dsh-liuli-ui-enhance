@@ -190,6 +190,7 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
   const [hoveredTurn, setHoveredTurn] = useState<number | null>(null)
   const [followTurn, setFollowTurn] = useState<number | null>(null)
   const [pillTop, setPillTop] = useState(0)
+  const [railDocked, setRailDocked] = useState(false)
   const hoverTimer = useRef<number | null>(null)
 
   const timeline = useSession(s => s.chat.timeline)
@@ -217,6 +218,32 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
     mo.observe(host, { childList: true, subtree: true })
     return () => { mo.disconnect() }
   }, [host])
+
+  // rail 响应式贴边：聊天列左缘离 rail 原位太近（空间不足）时贴到会话列最左，
+  // 空间足够时回到原位（left:16px），并带过渡，避免生硬。
+  useEffect(() => {
+    if (host === null || phaseRoot === null) return
+    const update = (): void => {
+      const column = host.querySelector<HTMLElement>('[data-chat-flow]')
+      if (column === null) return
+      const left = column.getBoundingClientRect().left - phaseRoot.getBoundingClientRect().left
+      if (!Number.isFinite(left)) return
+      // 原位 rail：left 16 + 宽 44 = 右缘 60，留 8px 间隙；聊天列左缘 < 68 就贴边。
+      setRailDocked(left < 68)
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(host)
+    ro.observe(phaseRoot)
+    const mo = new MutationObserver(update)
+    mo.observe(host, { childList: true, subtree: true })
+    window.addEventListener('resize', update)
+    return () => {
+      ro.disconnect()
+      mo.disconnect()
+      window.removeEventListener('resize', update)
+    }
+  }, [host, phaseRoot])
 
   useEffect(() => () => {
     if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current)
@@ -364,7 +391,11 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
       <div ref={anchorRef} style={{ display: 'none' }} />
       {host !== null && chatMounted && turnItems.length > 0 && createPortal(
         <>
-          <nav className={css.rail} aria-label="对话轮次导航">
+          <nav
+            className={css.rail + (railDocked ? ' ' + css.railDocked : '')}
+            style={{ left: railDocked ? -12 : 16 }}
+            aria-label="对话轮次导航"
+          >
             {turnItems.map(({ turn, index }) => (
               <svg
                 key={turn}
@@ -373,6 +404,7 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
                   + (hoveredTurn === turn ? ' ' + css.tickHover : '')
                   + (followTurn === turn ? ' ' + css.tickFollow : '')
                   + (turn === turnItems[turnItems.length - 1]?.turn ? ' ' + css.tickActive : '')}
+                style={{ transitionDelay: railDocked ? `${Math.min(index, 12) * 30}ms` : '0ms' }}
                 viewBox="0 0 24 24"
                 role="button"
                 tabIndex={0}
@@ -394,7 +426,7 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
             ))}
           </nav>
 
-          {pillItem !== undefined && (
+          {pillItem !== undefined && !railDocked && (
             <div
               className={css.capsule + ' ' + pillClass}
               style={{ left: 56, top: pillTop }}

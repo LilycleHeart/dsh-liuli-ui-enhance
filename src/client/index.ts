@@ -119,9 +119,11 @@ export const inject = ['slots', 'locale', 'theme', 'layout', 'sessions', 'worksp
 
 /** 宽边模式样式：对话信息区在宽屏下撑满可用宽度（提高左右空间利用率）。 */
 const WIDE_MODE_CSS = [
-  '/* 宽边模式：覆盖会话列的内容宽度轴（--dsh-chat-content-width 定义于会话 root） */',
+  '/* 宽边模式：覆盖会话列的内容宽度轴（--dsh-chat-content-width 定义于会话 root）',
+  '   间距随容器宽度缩放（10%，上限 160px），但最小内容宽度与官方对齐（748px），',
+  '   容器小时不会比原版显示更少信息。 */',
   'body[data-liuli-wide] [data-phase] {',
-  '  --dsh-chat-content-width: min(1280px, calc(100% - 160px));',
+  '  --dsh-chat-content-width: max(748px, min(1280px, calc(100% - min(160px, 10%))));',
   '}',
 ].join('\n')
 
@@ -172,6 +174,13 @@ const DESKTOP_ADVANCED_CSS = [
   'body[data-dsh-desktop-mode="advanced"] .dshDesktopSidebarSurface {',
   '  border-right: none !important;',
   '}',
+  '/* 对话页最小宽度：防止侧栏/详情展开时把会话列压得过窄 */',
+  'body[data-dsh-desktop-mode="advanced"] [class*="_shard"]:has([data-region-pane="region:conversation"]) {',
+  '  min-width: 480px !important;',
+  '}',
+  'body[data-dsh-desktop-mode="advanced"] .dshDesktopConversationSurface {',
+  '  min-width: 480px !important;',
+  '}',
   '/* 详情列去分割线（shell 给表面加了 border-left；对齐 _detailsCol 配方） */',
   'body[data-dsh-desktop-mode="advanced"] .dshDesktopDetailsSurface {',
   '  border-left: none !important;',
@@ -189,6 +198,15 @@ const DESKTOP_ADVANCED_CSS = [
   '   1px 描边后，左缘需覆盖上面的 border-left:none（同特异性、更靠后生效） */',
   'body[data-dsh-desktop-mode="advanced"] [class*="_detailsCol"] [data-preview-panel] {',
   '  border-left: 1px solid var(--dsw-alias-border-l1) !important;',
+  '}',
+  '/* 右侧边栏（详情列）底部触底：advanced/dock 模式下保留顶部与左侧留白，',
+  '   去掉底部 16px 空隙，让面板底边贴到窗口底部（用户要求）。 */',
+  'body[data-dsh-desktop-mode="advanced"] .dshDesktopDetailsSurface {',
+  '  padding-bottom: 0 !important;',
+  '}',
+  '/* 底部触底后不再用底部圆角：右侧边栏底边贴窗口，保持直角。 */',
+  'body[data-dsh-desktop-mode="advanced"] [class*="_detailsCol"] [data-preview-panel] {',
+  '  border-radius: var(--liuli-radius, 14px) 0 0 0 !important;',
   '}',
   '/* 侧栏根被 slot 注入内联宽度（280px 列宽），会顶掉右留白；',
   '   100% !important 收回内容盒，恢复卡片间隙（收起态 padding 0 时不受影响） */',
@@ -669,6 +687,20 @@ export function apply(ctx: ClientContext): void {
     }
   }, 'dsh-liuli-ui-enhance: header tabs offset measure')
 
+  // ── Electron 手动刷新快捷键：DSH Desktop 无边框窗口没有浏览器刷新按钮/菜单，
+  //    安装新 bundle 后可用 Ctrl/Cmd+Shift+R（或 F5）整页重载。 ──
+  ctx.effect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const wantsReload = (e.ctrlKey || e.metaKey) && e.shiftKey && e.code === 'KeyR'
+      const wantsReloadF5 = e.key === 'F5'
+      if (!wantsReload && !wantsReloadF5) return
+      e.preventDefault()
+      window.location.reload()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('keydown', onKey) }
+  }, 'dsh-liuli-ui-enhance: manual reload shortcut')
+
   // ── 设置页模态让位：设置页（侧栏根内全屏 fixed overlay）打开时，──
   // 琉璃自己的高 z-index 浮层（工作台全屏层 / advanced shell 浮动窗口）会盖住它。
   // 这里检测模态出现/消失：body 打 data-liuli-settings-open 标记（CSS 据此隐藏
@@ -979,13 +1011,15 @@ export function apply(ctx: ClientContext): void {
   void applyLiuliSettings(liuliBoot)
   // Desktop 端口每次重启会变：从 Host 端恢复上次保存的设置/壁纸。
   void loadRemoteState()
-  ctx.on('theme/change', () => { void applyLiuliSettings(readLiuliSettings()) })
+  // 跟踪最近一次琉璃设置应用，供 startViewTransition 等待调色板落地后再拍新快照。
+  let lastApplyPromise: Promise<void> = Promise.resolve()
+  ctx.on('theme/change', () => { lastApplyPromise = applyLiuliSettings(readLiuliSettings()).catch(() => {}) })
   // 启动时序兜底：boot 时 body 的 data-ds-dark-theme 可能尚未被 presenter 应用
   // （插件加载顺序不定），isDark 误判会把亮色板落到暗色主题上（气泡等颜色"对调"），
   // 且之后若无新的 theme/change 事件就无人纠正。监听 body 属性变化，一旦 presenter
   // 应用/切换主题就按最新明暗重新应用调色板（幂等，低频触发）。
   ctx.effect(() => {
-    const mo = new MutationObserver(() => { void applyLiuliSettings(readLiuliSettings()) })
+    const mo = new MutationObserver(() => { lastApplyPromise = applyLiuliSettings(readLiuliSettings()).catch(() => {}) })
     mo.observe(document.body, { attributes: true, attributeFilter: ['data-ds-dark-theme'] })
     return () => { mo.disconnect() }
   }, 'dsh-liuli-ui-enhance: body theme observer')
@@ -1053,11 +1087,16 @@ export function apply(ctx: ClientContext): void {
       root.style.setProperty('--vt-x', cx + 'px')
       root.style.setProperty('--vt-y', cy + 'px')
       root.style.setProperty('--vt-r', r + 'px')
-      const apply = (): void => { ctx.theme.setTheme(id) }
+      const apply = async (): Promise<void> => {
+        ctx.theme.setTheme(id)
+        // 等待琉璃调色板/设置落地后再让 View Transition 拍新快照，
+        // 避免圆形遮罩动画期间颜色“二次跳变”。
+        await lastApplyPromise
+      }
       if (typeof document.startViewTransition === 'function' && !reduce) {
         document.startViewTransition(apply)
       } else {
-        apply()
+        void apply()
       }
     }
     const onToggleTheme = (e: Event): void => {

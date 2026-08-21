@@ -7,6 +7,7 @@
   /* absolute 定位上下文是 [data-phase] 根（根不滚动 → rail 固定在
      卡片区域，不随消息流滚动；DOM 父容器是正文卡片，见 TurnRail.tsx）。 */
   position: absolute;
+  /* 默认原位：不贴边。空间不足时由 JS 切换 .railDocked 贴到最左。 */
   left: 16px;
   top: calc(var(--dsh-header-height, 80px) + 20px);
   bottom: 12px;
@@ -22,6 +23,20 @@
   overflow-x: visible;
   pointer-events: none;
   scrollbar-width: none;
+  /* 贴边/回位带过渡，避免生硬跳变 */
+  transition: left 180ms var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1)),
+    opacity 180ms var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+/* 贴边态（窄容器）：每个刻度依次左滑 + 渐隐，形成级联消失效果。 */
+.railDocked {
+  left: -12px;
+  pointer-events: none;
+}
+
+.railDocked .tick {
+  opacity: 0;
+  transform: translateX(-16px);
 }
 
 .rail::-webkit-scrollbar {
@@ -38,7 +53,8 @@
   pointer-events: auto;
   outline: none;
   transition: width 120ms var(--ds-ease-in-out), height 120ms var(--ds-ease-in-out),
-    color 120ms var(--ds-ease-in-out), filter 120ms var(--ds-ease-in-out);
+    color 120ms var(--ds-ease-in-out), filter 120ms var(--ds-ease-in-out),
+    opacity 180ms var(--ds-ease-in-out), transform 180ms var(--ds-ease-in-out);
 }
 
 .tick:focus,
@@ -60,7 +76,7 @@
   filter: drop-shadow(0 0 4px color-mix(in srgb, var(--liuli-mcu-primary, var(--dsw-alias-brand-primary)) 45%, transparent));
 }
 
-/* 最新一轮：常亮弱高亮（仅当它不是当前跟随轮时；跟随轮保持主题色并放大） */
+/* 最新一轮：常亮弱高亮（仅当它不是当前跟随轮时；跟随轮保持主题色并横向伸展） */
 .tickActive:not(.tickFollow) {
   width: 18px;
   height: 18px;

@@ -445,12 +445,16 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     const afterType = afterChild === undefined ? undefined : fixedRegionType(afterChild)
     const regionType = beforeType ?? afterType
     let regionPaneRect: DOMRect | undefined
+    let regionShardEl: HTMLElement | null = null
     const regionNodeId = beforeType !== undefined && beforeChild !== undefined
       ? beforeChild.id
       : afterType !== undefined && afterChild !== undefined ? afterChild.id : undefined
     if (regionNodeId !== undefined) {
       const el = document.querySelector('[data-dock-node="' + regionNodeId + '"]')
-      if (el instanceof HTMLElement) regionPaneRect = el.getBoundingClientRect()
+      if (el instanceof HTMLElement) {
+        regionPaneRect = el.getBoundingClientRect()
+        regionShardEl = el.parentElement
+      }
     }
     const start = dir === 'h' ? e.clientX : e.clientY
     const startRatio = splitNode.sizes[dividerIndex - 1] ?? 0.5
@@ -458,19 +462,25 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     // 对齐官方 AppFrame 的 [data-dragging] { transition: none }。
     const rootEl = rootRef.current
     rootEl?.setAttribute('data-resizing', '')
+    // 固定区域（侧栏/详情）拖拽时直接写 shard 的 flex-basis，避免每帧触发
+    // React 状态更新 / localStorage 写入导致的卡顿；松开后再提交最终宽度。
+    let lastRegionSize = regionPaneRect !== undefined
+      ? (dir === 'h' ? regionPaneRect.width : regionPaneRect.height)
+      : 0
     const onMove = (ev: PointerEvent): void => {
       if (regionType !== undefined && regionPaneRect !== undefined) {
         const isBefore = beforeType !== undefined
         const newSize = dir === 'h'
           ? (isBefore ? ev.clientX - regionPaneRect.left : regionPaneRect.right - ev.clientX)
           : (isBefore ? ev.clientY - regionPaneRect.top : regionPaneRect.bottom - ev.clientY)
-        if (regionType === REGION_SIDEBAR) {
-          hostLayout.setSidebar(newSize)
-        } else if (regionType === REGION_DETAILS) {
+        if (regionType === REGION_DETAILS) {
           // 详情区域宽度由 liuli 自管（上限 = 视口 88%），不再走宿主 clamp 300-520。
           const maxW = Math.max(240, Math.round(window.innerWidth * 0.88))
-          setDetailsWidth(Math.min(maxW, Math.max(240, Math.round(newSize))))
+          lastRegionSize = Math.min(maxW, Math.max(240, Math.round(newSize)))
+        } else {
+          lastRegionSize = newSize
         }
+        if (regionShardEl !== null) regionShardEl.style.flexBasis = lastRegionSize + 'px'
         return
       }
       const pos = dir === 'h' ? ev.clientX : ev.clientY
@@ -480,6 +490,11 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
       rootEl?.removeAttribute('data-resizing')
+      if (regionType === REGION_SIDEBAR) {
+        hostLayout.setSidebar(Math.round(lastRegionSize))
+      } else if (regionType === REGION_DETAILS) {
+        setDetailsWidth(Math.round(lastRegionSize))
+      }
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
