@@ -19,7 +19,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import type { PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import {
-  addPanel, collectTabsNodes, createPanel, moveFloat, movePanel, panelCount,
+  addPanel, collectTabsNodes, createPanel, MIN_SIZE, moveFloat, movePanel, panelCount,
   patchPanel, placePanel, removePanel, resizeSplitTo, setActivePanel, updateFloat,
   type DockLayout, type DockNode, type DropTarget, type FloatWindow, type PanelInstance, type SplitNode, type TabsNode,
 } from './dock-model.ts'
@@ -34,6 +34,7 @@ import {
 } from './dock-shell.ts'
 import css from './DockShellFrame.module.css'
 import { HMR_MARKER } from './hmr-marker.ts'
+import { beginResizePerf, endResizePerf } from './resize-perf.ts'
 
 /* ── ctx 能力桥（index.ts 注入；纯组件不碰 cordis） ── */
 
@@ -462,6 +463,31 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     // 对齐官方 AppFrame 的 [data-dragging] { transition: none }。
     const rootEl = rootRef.current
     rootEl?.setAttribute('data-resizing', '')
+    // 缩放性能护栏：冻结宿主产物行 RO、关闭磨砂/过渡（body[data-liuli-resizing]）。
+    beginResizePerf()
+    // 可变 split 直写路径：拖拽期间直接把比例写进相邻两 shard 的 flexGrow，
+    // 避免每帧 actions.setDock 触发整棵 dock 树重渲染；松开后一次性提交最终比例。
+    // 语义对齐 renderNode：可变 shard 的 flexGrow = sizes[i]/growSum，且 resizeSplitTo
+    // 保持两 shard 尺寸之和不变，故 growSum 拖拽中恒定，其余 shard 不受影响。
+    let variableShards: { before: HTMLElement; after: HTMLElement; growSum: number; sizesTotal: number } | undefined
+    if (regionType === undefined) {
+      const splitEl = rootEl?.querySelector('[data-dock-split="' + splitNode.id + '"]') ?? null
+      if (splitEl !== null) {
+        // 直接子级里按 shard 类过滤出有序 shard 列（收起态子级不渲染 sash，
+        // 不能用 2*i 下标推算），与 splitNode.children 一一对应。
+        const shardEls = Array.from(splitEl.children)
+          .filter((el): el is HTMLElement => el instanceof HTMLElement && css.shard !== undefined && el.classList.contains(css.shard))
+        const beforeEl = shardEls[dividerIndex - 1]
+        const afterEl = shardEls[dividerIndex]
+        if (beforeEl !== undefined && afterEl !== undefined) {
+          const fixedFlags = splitNode.children.map(child => childFixedWidth(child) !== undefined)
+          const growSum = splitNode.sizes.reduce((acc, s, i) => acc + (fixedFlags[i] === true ? 0 : (s ?? 1)), 0)
+          const sizesTotal = (splitNode.sizes[dividerIndex - 1] ?? 0.5) + (splitNode.sizes[dividerIndex] ?? 0.5)
+          if (growSum > 0) variableShards = { before: beforeEl, after: afterEl, growSum, sizesTotal }
+        }
+      }
+    }
+    let lastRatio = startRatio
     // 固定区域（侧栏/详情）拖拽时直接写 shard 的 flex-basis，避免每帧触发
     // React 状态更新 / localStorage 写入导致的卡顿；松开后再提交最终宽度。
     let lastRegionSize = regionPaneRect !== undefined
@@ -484,20 +510,37 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
         return
       }
       const pos = dir === 'h' ? ev.clientX : ev.clientY
-      actions.setDock(resizeSplitTo(shellRef.current.dock, splitNode.id, dividerIndex, startRatio + (pos - start) / total))
+      const ratio = startRatio + (pos - start) / total
+      lastRatio = ratio
+      if (variableShards !== undefined) {
+        // clamp 语义与 dock-model resizeSplitTo 完全一致。
+        const { growSum, sizesTotal } = variableShards
+        let na = Math.max(MIN_SIZE * sizesTotal, Math.min(sizesTotal - MIN_SIZE * sizesTotal, ratio * sizesTotal))
+        if (!Number.isFinite(na)) na = sizesTotal / 2
+        variableShards.before.style.flexGrow = String(na / growSum)
+        variableShards.after.style.flexGrow = String((sizesTotal - na) / growSum)
+        return
+      }
+      actions.setDock(resizeSplitTo(shellRef.current.dock, splitNode.id, dividerIndex, ratio))
     }
     const onUp = (): void => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
       rootEl?.removeAttribute('data-resizing')
+      endResizePerf()
       if (regionType === REGION_SIDEBAR) {
         hostLayout.setSidebar(Math.round(lastRegionSize))
       } else if (regionType === REGION_DETAILS) {
         setDetailsWidth(Math.round(lastRegionSize))
+      } else if (variableShards !== undefined) {
+        // 提交最终比例：重渲染写回的 flexGrow 与拖拽直写值同公式，无视觉跳变。
+        actions.setDock(resizeSplitTo(shellRef.current.dock, splitNode.id, dividerIndex, lastRatio))
       }
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
   }, [actions, hostLayout])
 
   /* ── 渲染 ── */

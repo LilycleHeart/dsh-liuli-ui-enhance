@@ -31,6 +31,28 @@
 }
 
 /* ════════════════════════════════════════════════════════════
+ * 缩放性能护栏（配套 src/client/resize-perf.ts）：sash / 窗口
+ * resize 期间 body 挂 data-liuli-resizing；磨砂由 JS 渐变归一
+ * 后再挂 data-liuli-blur-off（避免「突然消失」的生硬感）。
+ *  1) 磨砂 backdrop-filter 每帧都要重采样背景（会话列整宽 blur
+ *     尤其昂贵），缩放期降为 none；渐变过渡见 resize-perf.ts
+ *     的 fadeBlurOut/fadeBlurIn（blur 半径 + saturate 缓动到
+ *     恒等滤镜后由本规则无缝接管，结束时反向渐回）；
+ *  2) 关闭过渡，避免宽度动画滞后于指针。
+ * 宿主产物行 RO 风暴由 resize-perf.ts 冻结行宽解决（见该文件注释）。
+ * ════════════════════════════════════════════════════════════ */
+body[data-liuli-blur-off] {
+  --liuli-material-blur: none !important;
+  --liuli-material-blur-strong: none !important;
+}
+
+body[data-liuli-resizing] .dshDesktopFrame *,
+body[data-liuli-resizing] .dshDesktopFrame *::before,
+body[data-liuli-resizing] .dshDesktopFrame *::after {
+  transition: none !important;
+}
+
+/* ════════════════════════════════════════════════════════════
  * 亮色主题 — 琉璃 M3 light (#1d9bf0 派生)
  * ════════════════════════════════════════════════════════════ */
 body {
@@ -709,4 +731,13 @@ div[class$="hoverCard"] {
 [class*="_chip"][data-decoration="chip"]:not([data-invalid]) {
   background: rgba(var(--liuli-acrylic-rgb), 0.9) !important;
   box-shadow: 0 0 0 1px var(--dsw-alias-border-l2), var(--liuli-glow-brand);
+}
+
+/* 长对话渲染减负：对话流条目启用 content-visibility:auto，屏外条目跳过
+   布局/绘制（详见 liuli-css.ts 同源注释）。 */
+@supports (content-visibility: auto) {
+  [data-chat-flow] > * {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 300px;
+  }
 }

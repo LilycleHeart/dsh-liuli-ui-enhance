@@ -52,6 +52,7 @@ import { fileChangesDefinition, RoundSummaryCard } from './TurnFileCard.tsx'
 import { startEditDiffAutoExpand } from './edit-diff-autoplay.ts'
 import { startLiuliTransition } from './liuli-transition.ts'
 import { startAutoLoadHistory } from './auto-load-history.ts'
+import { installResizePerfWatcher } from './resize-perf.ts'
 import { startHeaderTabIndicator } from './header-tab-indicator.ts'
 import { startHeaderTextAnimation } from './header-text-animation.ts'
 import { disposeSupplierQuota, initSupplierQuota, refreshSupplierQuota } from './supplier-quota.ts'
@@ -471,6 +472,13 @@ export function apply(ctx: ClientContext): void {
   // ── 对话页历史自动加载：上翻到消息列顶部时自动点击“加载更早消息”，
   //    替代手动点击 older 按钮 ──
   ctx.effect(() => startAutoLoadHistory(), 'dsh-liuli-ui-enhance: auto load history on scroll top')
+
+  // ── 缩放性能护栏：sash/窗口 resize 期间冻结宿主产物行 RO、关闭磨砂/过渡，
+  //    避免长对话拖拽掉帧（详见 resize-perf.ts 注释）──
+  ctx.effect(() => {
+    installResizePerfWatcher()
+    return () => { /* 监听器随页面生命周期常驻，幂等安装无需卸载 */ }
+  }, 'dsh-liuli-ui-enhance: resize perf guard')
 
   // ── 会话 header 视图标签（对话/轨迹）滑动激活指示条：官方横条瞬间切换，
   //    这里注入独立指示条跟随激活 tab 平滑滑动（动画定义在 liuli.css）──

@@ -23,6 +23,7 @@ import type { ChatNode } from '@deepseek-ai/dsh-client-ui-conversation/client'
 // Type-only: pulls the runtime's SessionStandardProps merge (useSession/sessionId).
 import type {} from '@deepseek-ai/dsh-client-runtime/client'
 import css from './TurnRail.module.css'
+import { RESIZING_ATTR } from './resize-perf.ts'
 
 type TurnRailProps = PropsRuntime<'conversation.session.header.utilities'>
 
@@ -179,6 +180,50 @@ function findTurnRow(root: HTMLElement, keys: readonly string[]): HTMLElement | 
   return first
 }
 
+/** 锚点行索引：一次 DOM 扫描建立 key→行 映射（DOM 序号保持原始遍历顺序）。 */
+interface AnchorIndex {
+  firstByKey: Map<string, HTMLElement>
+  orderByKey: Map<string, number>
+}
+
+/**
+ * 单次扫描建立锚点索引。滚动跟随原先每轮做一次全量 querySelectorAll
+ * （O(轮数 × DOM 规模)），长对话下滚动/缩放期间持续占满主线程；改为
+ * O(DOM 规模) 单次扫描 + 每轮 O(1) 查表。
+ * 注意：这里故意不调用 getClientRects 判断可见性——数百次矩形读取本身就是
+ * 几十毫秒级开销；跟随逻辑只需要“轮次锚点行”的几何，零尺寸行
+ * （display:none 等）在 update 里按 rect 过滤。
+ */
+function buildAnchorIndex(scope: HTMLElement): AnchorIndex {
+  const firstByKey = new Map<string, HTMLElement>()
+  const orderByKey = new Map<string, number>()
+  let order = 0
+  for (const row of scope.querySelectorAll<HTMLElement>('[data-chat-anchor-key]')) {
+    const key = row.dataset.chatAnchorKey ?? ''
+    if (key === '' || firstByKey.has(key)) continue
+    firstByKey.set(key, row)
+    orderByKey.set(key, order)
+    order += 1
+  }
+  return { firstByKey, orderByKey }
+}
+
+/** 基于索引查某一轮的锚点行（多 key 取 DOM 序最早者，对齐 findTurnRow 的首选行）。 */
+function findTurnRowIndexed(index: AnchorIndex, keys: readonly string[]): HTMLElement | null {
+  let best: HTMLElement | null = null
+  let bestOrder = Number.POSITIVE_INFINITY
+  for (const key of keys) {
+    const el = index.firstByKey.get(key)
+    if (el === undefined) continue
+    const ord = index.orderByKey.get(key) ?? Number.POSITIVE_INFINITY
+    if (ord < bestOrder) {
+      bestOrder = ord
+      best = el
+    }
+  }
+  return best
+}
+
 export function TurnRail({ useSession, sessionId }: TurnRailProps) {
   const anchorRef = useRef<HTMLDivElement | null>(null)
   // host = portal 目标（正文卡片 [data-conversation-scroll]，用户要求 rail
@@ -308,13 +353,20 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
     const update = (): void => {
       // hover 胶囊时跟随暂停（胶囊展示 hover 轮）。
       if (hoveredTurn !== null) return
+      // 缩放期（sash/窗口 resize）让位：此时主线程忙于布局，且视口几何不变，
+      // 跟随结果无意义；缩放结束后下一次 scroll/RO 事件会重新计算。
+      if (document.body.hasAttribute(RESIZING_ATTR)) return
       const rect = scrollport.getBoundingClientRect()
       const centerY = rect.top + rect.height / 2
+      // 单次扫描建索引，每轮 O(1) 查表（原每轮全量 querySelectorAll）。
+      const index = buildAnchorIndex(host)
       let best: { turn: number; dist: number } | null = null
       for (const item of turnItems) {
-        const row = findTurnRow(host, locations.getTurn(item.turn))
+        const row = findTurnRowIndexed(index, locations.getTurn(item.turn))
         if (row === null) continue
         const rowRect = row.getBoundingClientRect()
+        // 零尺寸行（display:none 等）不参与跟随（原 findTurnRow 的可见性语义）。
+        if (rowRect.height <= 0) continue
         const dist = Math.abs(rowRect.top + rowRect.height / 2 - centerY)
         if (best === null || dist < best.dist) best = { turn: item.turn, dist }
       }
