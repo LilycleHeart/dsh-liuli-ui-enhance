@@ -598,7 +598,15 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     // 避免每帧 actions.setDock 触发整棵 dock 树重渲染；松开后一次性提交最终比例。
     // 语义对齐 renderNode：可变 shard 的 flexGrow = sizes[i]/growSum，且 resizeSplitTo
     // 保持两 shard 尺寸之和不变，故 growSum 拖拽中恒定，其余 shard 不受影响。
-    let variableShards: { before: HTMLElement; after: HTMLElement; growSum: number; sizesTotal: number } | undefined
+    let variableShards: {
+      before: HTMLElement
+      after: HTMLElement
+      growSum: number
+      sizesTotal: number
+      /** 相邻两个 shard 的最小尺寸换算成比例，防止把手柄拖过相邻卡片。 */
+      minBeforeRatio: number
+      minAfterRatio: number
+    } | undefined
     if (regionType === undefined) {
       const splitEl = rootEl?.querySelector('[data-dock-split="' + splitNode.id + '"]') ?? null
       if (splitEl !== null) {
@@ -612,7 +620,23 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
           const fixedFlags = splitNode.children.map(child => childFixedWidth(child) !== undefined)
           const growSum = splitNode.sizes.reduce((acc, s, i) => acc + (fixedFlags[i] === true ? 0 : (s ?? 1)), 0)
           const sizesTotal = (splitNode.sizes[dividerIndex - 1] ?? 0.5) + (splitNode.sizes[dividerIndex] ?? 0.5)
-          if (growSum > 0) variableShards = { before: beforeEl, after: afterEl, growSum, sizesTotal }
+          const childMinPx = (child: DockNode | undefined): number => {
+            if (child === undefined) return 0
+            if (child.kind === 'tabs' && child.tabs.length === 1 && child.tabs[0]?.type === REGION_CONVERSATION) {
+              return dir === 'h' ? CONVERSATION_MIN : PANE_CARD_MIN_H
+            }
+            return dir === 'h' ? PANE_CARD_MIN_W : PANE_CARD_MIN_H
+          }
+          const beforeRect = beforeEl.getBoundingClientRect()
+          const afterRect = afterEl.getBoundingClientRect()
+          const combined = dir === 'h' ? beforeRect.width + afterRect.width : beforeRect.height + afterRect.height
+          const minBeforeRatio = combined > 0
+            ? childMinPx(beforeChild) / combined * sizesTotal
+            : MIN_SIZE * sizesTotal
+          const minAfterRatio = combined > 0
+            ? childMinPx(afterChild) / combined * sizesTotal
+            : MIN_SIZE * sizesTotal
+          if (growSum > 0) variableShards = { before: beforeEl, after: afterEl, growSum, sizesTotal, minBeforeRatio, minAfterRatio }
         }
       }
     }
@@ -643,9 +667,11 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
       const ratio = startRatio + (pos - start) / total
       lastRatio = ratio
       if (variableShards !== undefined) {
-        // clamp 语义与 dock-model resizeSplitTo 完全一致。
-        const { growSum, sizesTotal } = variableShards
-        let na = Math.max(MIN_SIZE * sizesTotal, Math.min(sizesTotal - MIN_SIZE * sizesTotal, ratio * sizesTotal))
+        // 先满足 12% 比例下限，再满足相邻 shard 的像素最小宽/高（240/160，会话列 640）。
+        const { growSum, sizesTotal, minBeforeRatio, minAfterRatio } = variableShards
+        const lo = Math.max(MIN_SIZE * sizesTotal, minBeforeRatio)
+        const hi = Math.min(sizesTotal - MIN_SIZE * sizesTotal, sizesTotal - minAfterRatio)
+        let na = lo <= hi ? Math.max(lo, Math.min(hi, ratio * sizesTotal)) : sizesTotal / 2
         if (!Number.isFinite(na)) na = sizesTotal / 2
         variableShards.before.style.flexGrow = String(na / growSum)
         variableShards.after.style.flexGrow = String((sizesTotal - na) / growSum)
