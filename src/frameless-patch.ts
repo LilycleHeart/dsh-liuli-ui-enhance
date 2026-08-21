@@ -1,16 +1,17 @@
 /**
- * DSH Desktop win32 无边框宿主自动补丁。
+ * DSH Desktop win32 无边框宿主自动补丁（必装）。
  *
  * 客户端更新后 resources/app.asar 会被还原，原生标题栏会重新出现。这个模块
  * 让插件在 Electron 主进程启动时自动重打补丁，逻辑与
  * `scripts/patch-desktop-frameless.mjs` 保持一致，但安装目录由
  * `process.resourcesPath` 推导（跟随当前运行的客户端版本，不写死路径）。
  *
- * 安全：
- * - 仅 win32 + Electron 主进程执行，纯 Web / 其他平台直接跳过；
+ * 必装语义：
+ * - 仅 win32 + Electron 主进程执行，纯 Web / 其他平台直接跳过（与补丁无关）；
+ * - win32 + Electron 下补丁是强制要求：找不到补丁点 / 文件缺失 / 写入失败
+ *   都会抛出异常，让插件启动失败并在日志中给出明确原因，不再静默跳过；
  * - 首次运行备份 app.asar -> app.asar.bak-frameless；
- * - 已包含 [liuli-theme patch] 时跳过文件修改，只校验/重建 asar 头；
- * - 全部异常只记录日志，不让插件启动失败。
+ * - 已包含 [liuli-theme patch] 时跳过文件修改，只校验/重建 asar 头（幂等）。
  */
 import { createHash } from 'node:crypto'
 import { closeSync, copyFileSync, existsSync, openSync, readFileSync, readSync, writeFileSync } from 'node:fs'
@@ -36,12 +37,14 @@ function readAsarHeader(asarPath: string): unknown {
   }
 }
 
-/** 在插件启动时自动应用无边框补丁（安全、幂等、失败静默）。 */
+/** 在插件启动时应用无边框补丁（win32 + Electron 下必装，失败抛错）。 */
 export function applyFramelessPatch(): void {
   if (process.platform !== 'win32') return
   if (process.versions.electron === undefined) return
   const resourcesDir = (process as typeof process & { resourcesPath?: string }).resourcesPath
-  if (resourcesDir === undefined || resourcesDir === '') return
+  if (resourcesDir === undefined || resourcesDir === '') {
+    throw new Error('[dsh-liuli-ui-enhance] 无边框补丁（必装）失败：process.resourcesPath 为空')
+  }
 
   try {
     const asarPath = joinPath(resourcesDir, 'app.asar')
@@ -50,8 +53,7 @@ export function applyFramelessPatch(): void {
     const runtimePath = joinPath(resourcesDir, 'app.asar.unpacked', 'lib', 'electron-runtime-he0yaDKX.js')
 
     if (!existsSync(asarPath) || !existsSync(runtimePath)) {
-      console.log('[dsh-liuli-ui-enhance] 无边框自动补丁跳过：找不到 app.asar 或 electron-runtime')
-      return
+      throw new Error('找不到 app.asar 或 electron-runtime-he0yaDKX.js（客户端目录结构可能已变化）')
     }
 
     // 1. 备份原始 app.asar（首次）。
@@ -66,8 +68,7 @@ export function applyFramelessPatch(): void {
       console.log('[dsh-liuli-ui-enhance] 无边框自动补丁：electron-runtime 已包含琉璃补丁，跳过文件修改')
     } else {
       if (!TITLEBAR_PATTERN.test(runtime)) {
-        console.log('[dsh-liuli-ui-enhance] 无边框自动补丁跳过：未找到 win32 titleBarOverlay 补丁点')
-        return
+        throw new Error('未找到 win32 titleBarOverlay 补丁点（客户端版本可能不兼容，请运行 pnpm patch:desktop 或更新插件）')
       }
       runtime = runtime.replace(TITLEBAR_PATTERN, [
         '// [liuli-theme patch] 无边框窗口：移除原生 titleBarOverlay 按钮，',
@@ -86,8 +87,7 @@ export function applyFramelessPatch(): void {
     for (const part of ['lib', 'electron-runtime-he0yaDKX.js']) {
       const next = node?.files?.[part] as { files?: Record<string, unknown> } | undefined
       if (next === undefined) {
-        console.log(`[dsh-liuli-ui-enhance] 无边框自动补丁跳过：asar 头中缺少 ${part}`)
-        return
+        throw new Error(`asar 头中缺少 ${part}（客户端版本可能不兼容）`)
       }
       node = next
     }
@@ -114,6 +114,8 @@ export function applyFramelessPatch(): void {
     console.log('[dsh-liuli-ui-enhance] 无边框自动补丁：已重建 app.asar 头')
     console.log('[dsh-liuli-ui-enhance] 无边框自动补丁：重启 DSH Desktop 后生效')
   } catch (error) {
-    console.error('[dsh-liuli-ui-enhance] 无边框自动补丁失败：', error instanceof Error ? error.message : String(error))
+    const message = error instanceof Error ? error.message : String(error)
+    console.error('[dsh-liuli-ui-enhance] 无边框自动补丁失败：', message)
+    throw error instanceof Error ? error : new Error(message)
   }
 }

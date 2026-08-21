@@ -114,7 +114,7 @@ docs/
 - **`pnpm install:desktop` 后不需要重启 DSH Desktop**：插件安装到 profile 后刷新页面即可加载新 bundle；不要主动 kill/restart DSH Desktop，重启会让 Web 端口变化并打断运行中的调试。可验证：安装后直接刷新页面观察新样式/行为。
 - **agent 执行 `pnpm install:desktop` 后客户端可能不自动热重载，且不要用 HMR 注释 hack 强制热重载**：`install-desktop.mjs` 本身不触发 reload，HMR 只在 client bundle 内容 rev 变化时广播；若安装过程未让 DSH 的 `client-hmr` 检测到变化（或用户没手动刷新），界面仍是旧 bundle。曾用“向 profile 已安装的 `node_modules/dsh-liuli-ui-enhance/lib/client.js` 末尾追加一行注释”强制触发 `rebuilt`，实测**每次 HMR 热替换后琉璃客户端会不响应请求**，属于不安全路径。正确做法：安装后让用户手动刷新页面（或整页重载），不要改仓库 `lib/`、不要追加注释触发 HMR。
 - 只改 desktop profile 的 `cordis.patch.yml` 不够，必须同时把 `dsh-liuli-ui-enhance` 写进该 profile 的 `package.json` dependencies。
-- 隐藏原生标题栏需要执行 `pnpm patch:desktop`（手动脚本）；插件只能提供页面内窗口按钮，不能从渲染进程隐藏原生标题栏。客户端更新会还原 `app.asar`，因此插件现在会在启动时经 `src/frameless-patch.ts` 自动重打无边框补丁（仅 win32 + Electron、幂等、失败静默；生效需重启 DSH Desktop 一次）。
+- 隐藏原生标题栏需要执行 `pnpm patch:desktop`（手动脚本）；插件只能提供页面内窗口按钮，不能从渲染进程隐藏原生标题栏。客户端更新会还原 `app.asar`，因此插件会在启动时经 `src/frameless-patch.ts` 自动重打无边框补丁。**该补丁在 win32 + Electron 下为必装**：找不到补丁点/文件缺失/写入失败会抛错阻止插件加载，不再失败静默；幂等；生效需重启 DSH Desktop 一次。
 - DSH Desktop 每次重启 Web 端口会变，`localStorage` 按 origin 隔离；设置跨重启保留依赖 Host 端 `~/.liuli-theme/settings.json` 同步。
 - `/liuli-sidebar/*`、`/preview`、`/liuli-proxy` 等路由默认只接受 loopback / 同源 Host；局域网部署需额外配置信任域名。
 - 声纹监听只捕获系统音频：Web 端靠 `getDisplayMedia`（共享整个屏幕 + 分享系统音频）；Electron Desktop 端由 Host 安装 `setDisplayMediaRequestHandler` 直接授予 `audio: 'loopback'`（Windows-only）。

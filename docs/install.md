@@ -11,7 +11,8 @@
 >
 > 另外，全新 DSH Desktop 默认没有应用 win32 无边框宿主补丁，原生标题栏/窗口按钮
 > 不会隐藏。可以手动执行 `pnpm patch:desktop`；插件也会在 DSH Desktop 启动时自动重打
-> 该补丁（仅 win32 + Electron，幂等，客户端更新后重启一次即恢复无边框）。
+> 该补丁。**win32 + Electron 下补丁为必装**：插件启动时若找不到补丁点/写入失败会直接
+> 抛错阻止插件加载，不再静默降级；客户端更新后重启一次即恢复无边框。
 
 ### 自动安装（推荐）
 
@@ -22,7 +23,8 @@
 #    确保 iconv-lite、react 等依赖能正确装进 profile）
 pnpm install:desktop
 
-# 2. 给 DSH Desktop 打 win32 无边框宿主补丁（隐藏原生标题栏/窗口按钮）
+# 2. 给 DSH Desktop 打 win32 无边框宿主补丁（隐藏原生标题栏/窗口按钮；可选——
+#    插件启动时也会自动必装该补丁，手动执行只是提前打上，免去重启一次）
 pnpm patch:desktop
 
 # 或等发布到 npm 后，从 npm 安装：
