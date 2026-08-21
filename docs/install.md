@@ -10,7 +10,8 @@
 > `Cannot find package 'dsh-liuli-ui-enhance'`。
 >
 > 另外，全新 DSH Desktop 默认没有应用 win32 无边框宿主补丁，原生标题栏/窗口按钮
-> 不会隐藏。需要额外执行 `pnpm patch:desktop`。
+> 不会隐藏。可以手动执行 `pnpm patch:desktop`；插件也会在 DSH Desktop 启动时自动重打
+> 该补丁（仅 win32 + Electron，幂等，客户端更新后重启一次即恢复无边框）。
 
 ### 自动安装（推荐）
 
