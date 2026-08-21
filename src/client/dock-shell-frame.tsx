@@ -393,10 +393,11 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     toastTimer.current = setTimeout(() => { setToast(null) }, 2600)
   }, [])
 
-  /** 读取运行时 dock 留白（与 CSS 变量 --liuli-dock-padding 一致，不硬编码 16px）。 */
+  /** 读取运行时 dock 留白（与 CSS 变量 --liuli-dock-padding 一致，不硬编码 16px）。
+   *  注意变量由 liuli-runtime 设置在 body 上，不能读 documentElement。 */
   const dockPad = ((): number => {
     try {
-      const raw = getComputedStyle(document.documentElement).getPropertyValue('--liuli-dock-padding').trim()
+      const raw = getComputedStyle(document.body).getPropertyValue('--liuli-dock-padding').trim()
       const n = Number.parseFloat(raw)
       return Number.isFinite(n) && n > 0 ? n : 8
     } catch { return 8 }
