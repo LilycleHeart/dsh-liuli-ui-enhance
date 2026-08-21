@@ -1,43 +1,76 @@
-/* 琉璃 界面设置 section（设置页「界面」） */
+/* 琉璃 界面设置 section（设置页「界面」）
+   分组卡片 + 水平表单行：与设置页「通用」分区数字行视觉对齐（标签左、控件右）。 */
 
 .section {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   padding: 4px 2px 8px;
-  max-width: 640px;
+  max-width: 680px;
 }
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 4px 20px;
-}
-
-.row {
+/* 分组卡片：与既有壁纸/声纹卡片同款琉璃材质配方 */
+.card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px 0;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--liuli-radius, 14px);
+  border: 1px solid var(--dsw-alias-border-l1);
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur);
+  backdrop-filter: var(--liuli-material-blur);
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 表单行：标签（含可选说明）在左，控件在右；窄屏时自动换行 */
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
   min-width: 0;
 }
 
 .label {
-  font-size: 13px;
-  line-height: 18px;
-  font-weight: 500;
-  color: var(--dsw-alias-label-secondary);
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.labelText {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 400;
+  color: var(--dsw-alias-label-primary);
 }
 
 .hint {
   font-family: var(--ds-font-family-code);
   font-size: 12px;
+  line-height: 16px;
   font-weight: 400;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsw-alias-label-secondary);
 }
 
 /* 悬浮功能描述：ⓘ 图标 + portal 浮层（fixed 定位，不随容器裁剪） */
@@ -74,6 +107,7 @@
   pointer-events: none;
 }
 
+/* 滑块轨道：半透明亚克力（替代 UA 白色实底轨道） */
 .slider {
   -webkit-appearance: none;
   appearance: none;
@@ -82,9 +116,9 @@
   margin: 0;
   border-radius: 6px;
   cursor: pointer;
-  /* 半透明亚克力轨道（替代 UA 白色实底轨道） */
   background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
-  background-image: var(--liuli-noise);  -webkit-backdrop-filter: var(--liuli-material-blur);
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur);
   backdrop-filter: var(--liuli-material-blur);
 }
 
@@ -131,6 +165,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  flex: 1 1 280px;
   min-width: 0;
 }
 
@@ -140,15 +175,17 @@
 }
 
 .numInput {
-  width: 58px;
+  width: 64px;
   flex: none;
-  padding: 2px 4px;
+  box-sizing: border-box;
+  padding: 5px 8px;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 6px;
-  background: var(--dsw-alias-bg-overlay);
+  border-radius: 8px;
+  background: transparent;
   color: var(--dsw-alias-label-primary);
   font-family: var(--ds-font-family-code);
   font-size: 12px;
+  line-height: 18px;
   text-align: right;
 }
 
@@ -177,6 +214,7 @@
   border-color: var(--dsw-alias-brand-primary);
 }
 
+/* 开关：与设置页其它开关同款（圆轨道 + 圆形旋钮） */
 .toggle {
   appearance: none;
   border: none;
@@ -213,36 +251,44 @@
   transform: translateX(18px);
 }
 
+/* 颜色行：取色器 + 文本输入 */
 .colorWrap {
   display: flex;
-  gap: 8px;
   align-items: center;
+  gap: 8px;
+  flex: 1 1 240px;
+  min-width: 0;
 }
 
 .colorPicker {
   appearance: none;
+  flex: none;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: var(--liuli-radius-sm, 10px);
-  width: 36px;
-  height: 30px;
+  border-radius: 8px;
+  width: 34px;
+  height: 32px;
   padding: 2px;
   background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
   background-image: var(--liuli-noise);
   cursor: pointer;
 }
 
-/* 下拉 trigger：与通用设置的权限选择器同款（胶囊、模块平台表面） */
+.colorTextWrap {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 下拉 trigger：与设置页其它输入控件同款（8px 圆角、亚克力表面） */
 .selector {
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  width: 100%;
-  min-height: 36px;
-  padding: 0 14px;
+  width: min(280px, 100%);
+  height: 32px;
+  padding: 0 12px;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 18px;
-  /* 半透明亚克力（琉璃 配方）：无 fixed 后代，无包含块陷阱 */
+  border-radius: 8px;
   background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
   background-image: var(--liuli-noise);
   -webkit-backdrop-filter: var(--liuli-material-blur);
@@ -255,7 +301,7 @@
 }
 
 .selector:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background-color: var(--dsw-alias-interactive-bg-hover);
 }
 
 .chevron {
@@ -263,34 +309,10 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
-.colorTextWrap {
-  flex: 1;
-  min-width: 0;
-}
-
-.wallpaperBlock {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  border-radius: var(--liuli-radius, 14px);
-  border: 1px solid var(--dsw-alias-border-l1);
-  /* 半透明亚克力（琉璃 配方） */
-  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
-  background-image: var(--liuli-noise);
-  /* 磨砂跟随"模糊强度"滑条（与其它卡片一致） */
-  -webkit-backdrop-filter: var(--liuli-material-blur);
-  backdrop-filter: var(--liuli-material-blur);
-}
-
-.wallpaperTitle {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--dsw-alias-label-secondary);
-}
-
+/* 壁纸操作按钮行 */
 .wallpaperRow {
   display: flex;
+  align-items: center;
   gap: 8px;
   flex-wrap: wrap;
 }
@@ -391,6 +413,12 @@ body:not([data-ds-dark-theme]) .previewEffect::after {
   cursor: nesw-resize;
 }
 
+.cropHandleBr {
+  bottom: -4px;
+  right: -4px;
+  cursor: nwse-resize;
+}
+
 /* 上下文容器：宽度同窗口预览，高度按选区动态增减（上下补出完整壁纸，全部在容器内） */
 .previewContext {
   position: relative;
@@ -409,12 +437,6 @@ body:not([data-ds-dark-theme]) .previewEffect::after {
   background-repeat: no-repeat;
 }
 
-.cropHandleBr {
-  bottom: -4px;
-  right: -4px;
-  cursor: nwse-resize;
-}
-
 .previewActions {
   display: flex;
   align-items: center;
@@ -427,7 +449,6 @@ body:not([data-ds-dark-theme]) .previewEffect::after {
   line-height: 18px;
   color: var(--dsw-alias-state-warn-primary);
 }
-
 
 .footer {
   display: flex;

@@ -21,6 +21,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
 import { createBrowserEngine } from './browser-engine.ts'
+import { applyFramelessPatch } from './frameless-patch.ts'
 import { windowControlRoute } from './host-window.ts'
 import { audioCaptureRoute, installSystemAudioCapture } from './host-audio.ts'
 
@@ -636,6 +637,10 @@ async function queryQuota(ctx: Context, provider: string): Promise<QuotaPayload>
 
 /** 宿主插件体：注册 /liuli-quota 与 /preview 本地路由。 */
 export function apply(ctx: Context): void {
+  // 客户端更新会还原 app.asar，无边框补丁需要在插件启动时自动重打。
+  // 该函数幂等且只在 win32 + Electron 主进程生效；纯 Web / 其他平台自动跳过。
+  void applyFramelessPatch()
+
   const route: WebRoute = {
     kind: 'prefix',
     path: '/liuli-quota',

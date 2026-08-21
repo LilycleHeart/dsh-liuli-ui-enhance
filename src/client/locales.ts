@@ -3,6 +3,10 @@
 /** `liuli-appearance` 字典（键相对命名空间）。 */
 export const zh = {
   'nav': '界面',
+  'group.appearance': '外观与背景',
+  'group.material': '材质与字体',
+  'group.layout': '布局与圆角',
+  'group.effects': '光影与过渡',
   'colorMode': '取色模式',
   'colorMode.dynamic': '动态（壁纸 Material 取色）',
   'colorMode.static': '静态（自定义颜色）',
@@ -95,6 +99,10 @@ export type LiuliAppearanceKey = keyof typeof zh
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
   'nav': 'Liuli UI',
+  'group.appearance': 'Appearance & background',
+  'group.material': 'Material & font',
+  'group.layout': 'Layout & radius',
+  'group.effects': 'Glow, shadow & transition',
   'colorMode': 'Accent mode',
   'colorMode.dynamic': 'Dynamic (Material from wallpaper)',
   'colorMode.static': 'Static (custom color)',
