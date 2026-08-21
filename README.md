@@ -42,8 +42,11 @@ DeepSeek Harness 的 **Material Design 3 × Fluent 2 融合主题**插件：动�
 
 ```bash
 pnpm install:desktop
-pnpm patch:desktop  # 必装：win32 无边框补丁
+pnpm patch:desktop  # 推荐：win32 无边框补丁（自动补丁失败不阻断插件）
 ```
+
+> 插件尚未发布到 npm，DSH 内置市场也不接受 GitHub 安装目标；请使用本仓库的
+> `pnpm install:desktop` 手动安装。
 
 详见 [docs/install.md](docs/install.md)。
 

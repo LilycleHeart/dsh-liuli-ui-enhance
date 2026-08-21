@@ -21,7 +21,7 @@
 | 模块 | 说明 |
 | --- | --- |
 | 🎨 M3 动态取色 | 从壁纸提取 Material 3 调色板（vendored material-color-utilities@0.4），映射为 `--dsw-alias-*` 令牌；亮/暗双主题独立派生，用户气泡明暗互换 |
-| 🖼️ 壁纸背景 | 上传图片 → 压缩为 JPEG dataURL 持久化到 localStorage；适应模式（Cover / Contain / Stretch）+ 自定义选区（拖拽框选，Cover 下放大该区域）；暗色遮罩随主题即时叠加 |
+| 🖼️ 壁纸背景 | 上传图片 → 压缩为 JPEG dataURL 持久化到 localStorage；适应模式（Cover / Contain / Stretch）+ 自定义选区（拖拽框选，Cover 下放大该区域；已有选区可再次编辑/拉伸）；暗色遮罩随主题即时叠加 |
 | 🪟 磨砂材质 | 亚克力 / 云母两种 Fluent 材质，透明度、模糊强度可调；含强磨砂档（滑条值 ×4，供对话框等嵌套 backdrop 采样衰减的场景） |
 | 🔊 声纹可视化 | 会话 header 背景 canvas：空闲态品牌色流动波形；点击按钮经 `getDisplayMedia` 授权捕获系统扬声器输出（Web 端：共享「整个屏幕」并勾选「分享系统音频」；DSH Desktop 端：Host 半在 Electron 主进程安装 `setDisplayMediaRequestHandler`，直接授予系统回环音频 `audio:'loopback'`，点击即监听、无选择器）；只监听系统音量，不降级麦克风；检测完全移植官方 Nanoleaf Desktop 音乐可视化（Energetic）：能量包络对比节拍检测（Σx² vs 0.7s 滑动平均 + 200ms 冷却）+ 50-350Hz 低频脉冲（0.8×均值 + 220ms 冷却），两级强度（节拍 100%/脉冲 30%）叠加于三频段连续能量响应之上，波形绘制逐字参照 liuli_echo；失败给出「分享系统音频」勾选提示/授权/非安全上下文诊断 |
 | 🌗 日/夜切换 | header 圆形按钮 + 设置页外观行，`startViewTransition` 圆形遮罩过渡（带坐标） |
@@ -46,7 +46,7 @@
 
 全部设置随浏览器持久化（`liuli:settings` / `liuli:wallpaper` / `liuli:header-height`）；DSH Desktop 因每次重启 Web 端口会变（localStorage 按 origin 隔离），还会额外同步到 Host 端 `~/.liuli-theme/settings.json`，跨重启不丢失。
 
-> **页面内窗口按钮（无边框模式）**：系统最小化/最大化/关闭三按钮移入页面——会话 header 最右端常驻、开始页兜底为标题拖拽条右上角的磨砂胶囊；动作经 Host `/liuli-window` 路由直驱 Electron 窗口（close 收进托盘，与原生同语义）。依赖对 DSH Desktop 的窗口参数补丁（`resources/app.asar.unpacked/lib/electron-runtime-*.js` 的 win32 advanced 分支：`titleBarStyle: "hidden" + titleBarOverlay` → `frame: false`），应用重启后生效；未打补丁时原生覆盖按钮仍在，页面内按钮与其并存。macOS 保持原生红绿灯不动。
+> **页面内窗口按钮（无边框模式）**：系统最小化/最大化/关闭三按钮移入页面——会话 header 最右端常驻、开始页兜底为标题拖拽条右上角的磨砂胶囊；动作经 Host `/liuli-window` 路由直驱 Electron 窗口（close 收进托盘，与原生同语义）。依赖对 DSH Desktop 的窗口参数补丁（`resources/app.asar.unpacked/lib/electron-runtime-*.js` 的 win32 advanced 分支：`titleBarStyle: "hidden" + titleBarOverlay` → `frame: false`），应用重启后生效；未打补丁时原生覆盖按钮仍在，页面内按钮与其并存。自动补丁为尽力而为：失败仅告警、不阻断插件加载。macOS 保持原生红绿灯不动。
 
 ### 供应商额度凭据
 

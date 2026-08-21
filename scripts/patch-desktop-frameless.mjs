@@ -3,7 +3,7 @@
 //
 // 作用：全新 DSH Desktop 没有应用 frameless 补丁时，原生标题栏/窗口按钮
 // 无法隐藏。本脚本修改安装目录里的：
-//   resources/app.asar.unpacked/lib/electron-runtime-he0yaDKX.js
+//   resources/app.asar.unpacked/lib/electron-runtime-*.js（动态查找，客户端升级会换 hash 文件名）
 // 和
 //   resources/app.asar
 // 把 win32 advanced 分支从 titleBarStyle: "hidden" + titleBarOverlay
@@ -17,9 +17,11 @@
 // 安全：
 //   - 首次运行会把 resources/app.asar 备份为 app.asar.bak-frameless。
 //   - 已包含 [liuli-theme patch] 时跳过文件修改，只校验/重建 asar 头。
+//   - 重建 asar 头时保留头之后的原始字节（DSH 当前全 unpacked，通常没有尾部；
+//     若未来版本出现打包文件也不会被截断）。
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readSync, readdirSync, openSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, statSync, unlinkSync, writeFileSync, writeSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -49,6 +51,10 @@ if (process.versions.electron !== undefined) {
     process.exit(1);
   }
 }
+
+// 兜底：若仍运行在带 ASAR 钩子的 node 里（如未来的 Electron 变体），关闭钩子
+// 才能直接读写 .asar 归档文件本身。普通 node 下这个属性无副作用。
+process.noAsar = true;
 
 /** 从正在运行的 DSH Desktop 进程推导安装目录（客户端装在非默认路径时用）。 */
 function findRunningDesktopDir() {
@@ -80,6 +86,26 @@ const libDir = join(resourcesDir, 'app.asar.unpacked', 'lib');
 function fail(message) {
   console.error(`[dsh-liuli-ui-enhance] ${message}`);
   process.exit(1);
+}
+
+function readFullySync(fd, length, position) {
+  const buffer = Buffer.alloc(length);
+  let offset = 0;
+  while (offset < length) {
+    const bytesRead = readSync(fd, buffer, offset, length - offset, position + offset);
+    if (bytesRead <= 0) throw new Error(`读取不完整：期望 ${length} 字节，实际 ${offset} 字节`);
+    offset += bytesRead;
+  }
+  return buffer;
+}
+
+function writeFullySync(fd, buffer) {
+  let offset = 0;
+  while (offset < buffer.length) {
+    const bytesWritten = writeSync(fd, buffer, offset, buffer.length - offset);
+    if (bytesWritten <= 0) throw new Error('写入不完整');
+    offset += bytesWritten;
+  }
 }
 
 /** 客户端升级会换 electron-runtime-<hash>.js 文件名，动态找一个包含 titleBarStyle 的。 */
@@ -143,23 +169,60 @@ if (runtime.includes('[liuli-theme patch]')) {
   console.log(`[dsh-liuli-ui-enhance] 已修补 ${runtimePath}`);
 }
 
-// 3. 重建 app.asar 头（同步 size / SHA256 integrity）
+// 3. 重建 app.asar 头（同步 size / SHA256 integrity），并保留头之后的原始字节。
 function readAsarHeader(path) {
   const fd = openSync(path, 'r');
   try {
-    const size = statSync(path).size;
-    const prefix = Buffer.alloc(16);
-    readSync(fd, prefix, 0, 16, 0);
+    const prefix = readFullySync(fd, 16, 0);
+    if (prefix.readUInt32LE(0) !== 4) {
+      fail('app.asar 头格式无法识别（不是标准 asar）');
+    }
     const jsonLength = prefix.readUInt32LE(12);
-    const jsonBuffer = Buffer.alloc(jsonLength);
-    readSync(fd, jsonBuffer, 0, jsonLength, 16);
-    return JSON.parse(jsonBuffer.toString('utf8'));
+    const pad = prefix.readUInt32LE(8) - jsonLength - 4;
+    if (pad < 0) {
+      fail('app.asar 头格式无法识别（padding 非法）');
+    }
+    const jsonBuffer = readFullySync(fd, jsonLength, 16);
+    return { header: JSON.parse(jsonBuffer.toString('utf8')), contentStart: 16 + jsonLength + pad };
   } finally {
-    // fd closed implicitly by process; no closeSync import needed
+    closeSync(fd);
   }
 }
 
-const header = readAsarHeader(asarPath);
+function buildAsarHeader(header) {
+  const jsonBuffer = Buffer.from(JSON.stringify(header), 'utf8');
+  const pad = (4 - (jsonBuffer.length % 4)) % 4;
+  const prefix = Buffer.alloc(16);
+  prefix.writeUInt32LE(4, 0);
+  prefix.writeUInt32LE(jsonBuffer.length + 8 + pad, 4);
+  prefix.writeUInt32LE(jsonBuffer.length + 4 + pad, 8);
+  prefix.writeUInt32LE(jsonBuffer.length, 12);
+  return Buffer.concat([prefix, jsonBuffer, Buffer.alloc(pad)]);
+}
+
+function writePatchedAsar(sourcePath, destPath, newHeader, contentStart) {
+  const srcFd = openSync(sourcePath, 'r');
+  const destFd = openSync(destPath, 'w');
+  try {
+    writeFullySync(destFd, newHeader);
+    const sourceSize = statSync(sourcePath).size;
+    if (sourceSize <= contentStart) return;
+    const chunkSize = 4 * 1024 * 1024;
+    const buffer = Buffer.alloc(chunkSize);
+    let position = contentStart;
+    while (position < sourceSize) {
+      const bytesRead = readSync(srcFd, buffer, 0, Math.min(chunkSize, sourceSize - position), position);
+      if (bytesRead <= 0) break;
+      writeFullySync(destFd, buffer.subarray(0, bytesRead));
+      position += bytesRead;
+    }
+  } finally {
+    closeSync(srcFd);
+    closeSync(destFd);
+  }
+}
+
+const { header, contentStart } = readAsarHeader(asarPath);
 let node = header;
 for (const part of ['lib', runtimeName]) {
   if (node?.files?.[part] === undefined) fail(`asar 头中缺少 ${part}`);
@@ -173,17 +236,15 @@ node.integrity ??= { algorithm: 'SHA256', blockSize: 4194304, blocks: [] };
 node.integrity.hash = hash;
 node.integrity.blocks = [hash];
 
-const json = JSON.stringify(header);
-const jsonBuffer = Buffer.from(json, 'utf8');
-const prefix = Buffer.alloc(16);
-prefix.writeUInt32LE(4, 0);
-prefix.writeUInt32LE(jsonBuffer.length + 9, 4);
-prefix.writeUInt32LE(jsonBuffer.length + 5, 8);
-prefix.writeUInt32LE(jsonBuffer.length, 12);
-const newAsar = Buffer.concat([prefix, jsonBuffer, Buffer.from([0])]);
-
-writeFileSync(asarPath, newAsar);
-writeFileSync(patchedCopyPath, newAsar);
+const newHeader = buildAsarHeader(header);
+const tmpPath = join(resourcesDir, `app.asar.liuli-patch-${process.pid}.tmp`);
+try {
+  writePatchedAsar(asarPath, tmpPath, newHeader, contentStart);
+  copyFileSync(tmpPath, asarPath);
+  copyFileSync(tmpPath, patchedCopyPath);
+} finally {
+  try { unlinkSync(tmpPath); } catch { /* ignore */ }
+}
 console.log(`[dsh-liuli-ui-enhance] 已重建 ${asarPath}`);
 console.log(`[dsh-liuli-ui-enhance] 已同步 ${patchedCopyPath}`);
 console.log('[dsh-liuli-ui-enhance] 请重启 DSH Desktop 生效');

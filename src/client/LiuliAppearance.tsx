@@ -331,32 +331,60 @@ function WallpaperPreview(props: {
     return { x: (1 - maxW) / 2, y: (1 - maxH) / 2, w: maxW, h: maxH }
   }
 
-  // 每次重新框选都默认框为当前实际窗口大小（不再沿用上一次保存的选区），
-  // 用户再拖角/拖动微调出想要的区域。
+  // 已有选区时从当前生效的视口选区进入编辑（所见即所得），用户可直接拖角拉伸/拖动微调；
+  // 没有选区时默认框为当前实际窗口大小。
   const startSelect = (): void => {
-    setSelBox(windowArea())
+    const saved = displayArea !== null && displayArea.w > 0.04 && displayArea.h > 0.04
+      ? normalizeAreaToRatio(displayArea, cropRatio)
+      : null
+    setSelBox(saved ?? windowArea())
     setSelectMode(true)
   }
 
   const onDown = (e: React.PointerEvent): void => {
     e.preventDefault()
     if (imgRatio === null) return
+    const el = stageRef.current
+    if (el === null) return
+    const r = el.getBoundingClientRect()
+    if (r.width < 2 || r.height < 2) return
     const p0 = norm(e)
     if (p0 === null) return
     const box = selBox
-    if (box !== null && box.w > 0 && p0.x >= box.x && p0.x <= box.x + box.w && p0.y >= box.y && p0.y <= box.y + box.h) {
-      const edge = 0.03
-      const nearLeft = Math.abs(p0.x - box.x) < edge
-      const nearRight = Math.abs(p0.x - (box.x + box.w)) < edge
-      const nearTop = Math.abs(p0.y - box.y) < edge
-      const nearBottom = Math.abs(p0.y - (box.y + box.h)) < edge
-      if ((nearLeft || nearRight) && (nearTop || nearBottom)) {
-        const corner = `${nearLeft ? 'l' : 'r'}${nearTop ? 't' : 'b'}` as 'tl' | 'tr' | 'bl' | 'br'
+    if (box !== null && box.w > 0) {
+      // 角手柄是 8px 方块，且有一半伸出选框外；用像素级命中判定（手柄 + 4px 容差），
+      // 避免点到手柄外侧时被当成“在选框外按下”而清空选框（现象：一拉伸选框就消失）。
+      const handleHitPx = 12
+      const borderHitPx = 6
+      const leftPx = box.x * r.width
+      const topPx = box.y * r.height
+      const rightPx = (box.x + box.w) * r.width
+      const bottomPx = (box.y + box.h) * r.height
+      const distLeft = Math.abs(e.clientX - r.left - leftPx)
+      const distRight = Math.abs(e.clientX - r.left - rightPx)
+      const distTop = Math.abs(e.clientY - r.top - topPx)
+      const distBottom = Math.abs(e.clientY - r.top - bottomPx)
+      const nearLeft = distLeft < handleHitPx
+      const nearRight = distRight < handleHitPx
+      const nearTop = distTop < handleHitPx
+      const nearBottom = distBottom < handleHitPx
+      const nearCorner = (nearLeft || nearRight) && (nearTop || nearBottom)
+      // 边框/角手柄本身有 1.5px 描边且可点区域略大于选框；把靠近选框边缘的按下也视为
+      // 对当前选框的操作（移动），只有离选框明显更远时才新建选区，避免选框被误清空。
+      const nearBox = p0.x >= box.x - borderHitPx / r.width && p0.x <= box.x + box.w + borderHitPx / r.width
+        && p0.y >= box.y - borderHitPx / r.height && p0.y <= box.y + box.h + borderHitPx / r.height
+      if (nearCorner) {
+        const corner = `${distTop <= distBottom ? 't' : 'b'}${distLeft <= distRight ? 'l' : 'r'}` as 'tl' | 'tr' | 'bl' | 'br'
         drag.current = { mode: 'resize', box, corner }
+      } else if (nearBox) {
+        // 框内/边框附近拖动一律为移动（整窗默认框无法移动时自然无操作，属标准裁剪行为）；
+        // 缩小整窗默认框请拖角手柄。offset 夹在框内，避免从边框外按下时选框跳动。
+        const offsetX = clamp(p0.x - box.x, 0, box.w)
+        const offsetY = clamp(p0.y - box.y, 0, box.h)
+        drag.current = { mode: 'move', offsetX, offsetY, box }
       } else {
-        // 框内拖动一律为移动（整窗默认框无法移动时自然无操作，属标准裁剪行为）；
-        // 缩小整窗默认框请拖角手柄。
-        drag.current = { mode: 'move', offsetX: p0.x - box.x, offsetY: p0.y - box.y, box }
+        drag.current = { mode: 'create', start: p0, prev: box }
+        setSelBox({ x: p0.x, y: p0.y, w: 0, h: 0 })
       }
     } else {
       drag.current = { mode: 'create', start: p0, prev: box }
@@ -450,7 +478,7 @@ function WallpaperPreview(props: {
             <Button variant="ghost" size="sm" disabled={props.fit !== 'cover' || imgRatio === null}
               onClick={startSelect}
             >
-              {props.t('area.reselect')}
+              {props.t(displayArea !== null ? 'area.edit' : 'area.reselect')}
             </Button>
             {displayArea !== null && (
               <Button variant="ghost" size="sm" onClick={() => { setDisplayArea(null); props.onClearArea() }}>
