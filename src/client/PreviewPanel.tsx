@@ -2630,7 +2630,7 @@ function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitle
   )
 }
 
-interface BrowserPanelRouterProps {
+export interface BrowserPanelRouterProps {
   tabId: string
   sessionId?: string | undefined
   url: string
@@ -2643,7 +2643,7 @@ interface BrowserPanelRouterProps {
 }
 
 /** 浏览器面板路由：webview 引擎（Electron 宿主）→ 原生视图承载；纯 Web → iframe。 */
-function BrowserPanel({ tabId, active, ...rest }: BrowserPanelRouterProps) {
+export function BrowserPanel({ tabId, active, ...rest }: BrowserPanelRouterProps) {
   const engine = useBrowserEngineKind()
   if (engine === 'webview') {
     return (

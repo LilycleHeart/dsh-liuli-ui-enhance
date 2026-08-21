@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { FileTreePanel, WikiPanel } from './RightSidebarPanels.tsx'
 import { TerminalPanel, WhiteboardPanel } from './SidePaneExtraPanels.tsx'
-import { CodeViewerPanel, normalizeBrowserUrl } from './PreviewPanel.tsx'
+import { BrowserPanel, CodeViewerPanel } from './PreviewPanel.tsx'
 import { FileReviewPanel } from './FileReviewPanel.tsx'
 import type { PanelInstance } from './dock-model.ts'
 import css from './dock-panels.module.css'
@@ -74,48 +74,21 @@ function PreviewArtifactsPanel({ panel, host }: DockPanelRenderProps) {
   )
 }
 
-/** 内嵌浏览：地址栏 + /liuli-proxy iframe（纯 Web 部署的降级浏览通道）。 */
-function BrowserLitePanel({ panel, host, onStatePatch }: DockPanelRenderProps) {
-  void host
-  const [draft, setDraft] = useState(() => typeof panel.state?.url === 'string' ? panel.state.url : '')
-  const [current, setCurrent] = useState(() => typeof panel.state?.url === 'string' ? panel.state.url : '')
-  const [tick, setTick] = useState(0)
-  const navigate = (raw: string): void => {
-    const url = normalizeBrowserUrl(raw)
-    if (url === undefined) return
-    setCurrent(url)
-    setDraft(url)
-    onStatePatch({ url })
-  }
-  const src = current === '' ? 'about:blank' : '/liuli-proxy?url=' + encodeURIComponent(current)
+/** 内嵌浏览：复用侧边栏 BrowserPanel（Electron webview / Web iframe 双模），
+ *  拖入布局后保持与右侧边栏浏览器一致的能力（前进/后退/刷新/响应式/元素拾取）。 */
+function DockBrowserPanel({ panel, host, onStatePatch }: DockPanelRenderProps) {
+  const url = typeof panel.state?.url === 'string' && panel.state.url !== '' ? panel.state.url : 'about:blank'
   return (
-    <div className={css.browserWrap}>
-      <form
-        className={css.browserBar}
-        onSubmit={(e) => { e.preventDefault(); navigate(draft) }}
-      >
-        <button
-          type="button"
-          className={css.browserBtn}
-          aria-label="重新加载"
-          data-testid="dock-browser-reload"
-          onClick={() => { setTick(t => t + 1) }}
-        >
-          ↻
-        </button>
-        <input
-          className={css.browserInput}
-          data-testid="dock-browser-address"
-          value={draft}
-          placeholder="输入网址，例如 example.com"
-          onChange={(e) => { setDraft(e.target.value) }}
-        />
-        <button type="submit" className={css.browserBtn} aria-label="前往">→</button>
-      </form>
-      {current === ''
-        ? <div className={css.browserEmpty}>输入任意 http/https 网址内嵌浏览（经 /liuli-proxy 代理）</div>
-        : <iframe key={current + '#' + String(tick)} className={css.frame} title={'内嵌浏览 ' + panel.id} src={src} />}
-    </div>
+    <BrowserPanel
+      tabId={panel.id}
+      sessionId={host.sessionId}
+      url={url}
+      active
+      onNavigate={(next) => { onStatePatch({ url: next }) }}
+      onTitleChange={() => { /* dock 标签标题暂不跟随页面标题，保持默认“浏览” */ }}
+      insertElement={() => { /* dock 浏览器暂无会话输入框插入通道 */ }}
+      getPaneEl={() => document.querySelector('[data-dock-node="' + panel.id + '"]')}
+    />
   )
 }
 
@@ -222,7 +195,7 @@ export const DOCK_PANEL_DEFS: DockPanelDef[] = [
     label: '内嵌浏览',
     defaultTitle: '浏览',
     icon: <Icon d={ICONS.browser} />,
-    render: props => <BrowserLitePanel {...props} />,
+    render: props => <DockBrowserPanel {...props} />,
   },
   {
     type: 'notes',

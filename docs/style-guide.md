@@ -204,8 +204,8 @@ overflow: hidden;
 - 紧凑：`2px / 4px / 6px`（列表 gap、标签内 gap）
 - 常规：`8px / 10px`（面板内留白、工具条 padding、卡片间隙）
 - 宽松：`12px / 16px / 20px`（卡片内 padding、列留白、空状态）
-- 列留白：`var(--liuli-dock-padding)`（运行时设置，默认 8px）；桌面 shell 表面卡片留白 16px。
-- 相邻卡片间隙：各 16px 留白 → 可见 32px（`DockShellFrame` 的 `paneCard` 对齐此值）。
+- 列留白：`var(--liuli-dock-padding)`（运行时设置，默认 8px；桌面 shell 表面卡片留白也走这个变量，禁止在组件里硬编码 16px）。
+- 相邻卡片间隙：相邻两卡各 `var(--liuli-dock-padding)` 留白 → 可见 2×变量值（`DockShellFrame` 的 `paneCard` 对齐此值）。
 
 ---
 
@@ -437,14 +437,16 @@ overflow: hidden;
 
 #### 6.2.1 区域大卡
 
-会话 header、正文滚动区、侧栏根、详情预览面板、dock 面板 / 浮动窗口全部走 **5.1 标准亚克力配方**，且遵循贴边规则：
+会话 header、正文滚动区、侧栏根、详情预览面板、dock 面板 / 浮动窗口全部走 **5.1 标准亚克力配方**，并按以下贴边规范留白 / 圆角：
 
-- 左贴边（详情列在左）：`margin-left: 0` 且左侧圆角归零。
-- 右贴边（侧栏在右）：`margin-right: 0` 且右侧圆角归零。
-- 下贴边：`margin-bottom: 0` 且底部圆角归零。
-- 上边缘始终保留留白与圆角（对齐 `dshDesktopConversationSurface` 顶部）。
+1. **普通 dock 面板**：默认四边留白 + 四角圆角；上下堆叠时，下方卡片底部触底去圆角（上、左、右仍留白+圆角），上方/中部卡片保持四边留白 + 四角圆角。
+2. **左侧边栏**：在左边缘 → 左侧贴边去圆角，其余三边留白+圆角；在右边缘 → 右侧贴边去圆角，其余三边留白+圆角；在中间 → 四边留白 + 四角圆角。在右时内卡 `direction: rtl` 镜像内部元素。
+3. **右侧边栏（详细页）**：在规则 2 的基础上，若下方没有卡片则底部触底去圆角；若下方有卡片则底部保留留白+圆角。
+4. **详细页拆出的标签页**：按规则 1 处理。
+5. **对话页**：上下堆叠时，顶部/中部卡片恢复四边留白 + 四角圆角（撤销全局 active 的底部触底规则）；最下方卡片仍底部触底去圆角。
+6. 详情列收起（`data-details-collapsed`）时，surface 左右 padding 归零，避免 `content-box` 下 32px 空边。
 
-CSS Modules 内用 `edgeLeft / edgeRight / edgeBottom` 类；区域表面镜像用 `:global` + `!important` 覆盖宿主 surface padding（见 `DockShellFrame.module.css` 83–97 行）。
+CSS Modules 内普通面板只用 `edgeBottom` 类；区域表面镜像用 `:global` + `!important` 覆盖宿主 surface padding（见 `DockShellFrame.module.css` 90–140 行）。
 
 #### 6.2.2 内嵌小卡
 
