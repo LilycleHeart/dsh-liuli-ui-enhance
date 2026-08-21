@@ -48,6 +48,9 @@ const originalWidths = new Map<HTMLElement, string>()
 let failsafe: ReturnType<typeof setTimeout> | null = null
 let windowWatcherInstalled = false
 let windowSettle: ReturnType<typeof setTimeout> | null = null
+/** 窗口 resize 护栏是否已进入：resize 事件会突发连发，begin/end 必须幂等配对，
+ *  否则 depth 只增不减、data-liuli-resizing 卡住不放（过渡被杀、级联动画消失）。 */
+let windowResizeActive = false
 /** 解冻分批令牌：新一轮冻结使进行中的解冻作废。 */
 let thawToken = 0
 /** 磨砂渐变状态：拖拽前捕获的原始值（内联值 + 生效值）。 */
@@ -239,11 +242,18 @@ export function installResizePerfWatcher(): void {
   if (typeof window === 'undefined' || windowWatcherInstalled) return
   windowWatcherInstalled = true
   window.addEventListener('resize', () => {
-    beginResizePerf()
+    // resize 突发连发：只在首次进入时 begin 一次，settle 后 end 一次（幂等配对）。
+    if (!windowResizeActive) {
+      windowResizeActive = true
+      beginResizePerf()
+    }
     if (windowSettle !== null) clearTimeout(windowSettle)
     windowSettle = setTimeout(() => {
       windowSettle = null
-      endResizePerf()
+      if (windowResizeActive) {
+        windowResizeActive = false
+        endResizePerf()
+      }
     }, WINDOW_SETTLE_MS)
   })
   // 宿主桌面壳自带的缩放手柄（advanced 壳的 dshDesktopResizeHandle 等）：
