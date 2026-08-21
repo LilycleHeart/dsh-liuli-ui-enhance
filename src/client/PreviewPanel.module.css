@@ -31,8 +31,9 @@
   pointer-events: none;
 }
 
-/* 宿主的 details 拖拽手柄由插件自己的手柄取代（宽度走插件持久化）。 */
-:global(div[data-side="details"]) {
+/* 宿主的 details 拖拽手柄由插件自己的手柄取代（宽度走插件持久化）。
+   只隐藏宿主 .dshDesktopResizeHandle[data-side="details"]，不要误伤 dock-shell 的 sash。 */
+:global(.dshDesktopResizeHandle[data-side="details"]) {
   display: none !important;
 }
 

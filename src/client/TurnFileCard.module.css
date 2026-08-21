@@ -8,9 +8,9 @@
   padding: 10px 12px;
   border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.16));
   border-radius: var(--liuli-radius-sm, 12px);
-  background: rgba(var(--liuli-acrylic-rgb), 0.5);
-  -webkit-backdrop-filter: var(--liuli-material-blur, blur(18px) saturate(1.4));
-  backdrop-filter: var(--liuli-material-blur, blur(18px) saturate(1.4));
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 .head {
@@ -45,7 +45,7 @@
 }
 
 .fileRow:hover {
-  background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.1));
+  background: transparent;
 }
 
 .fileInfo {
@@ -140,15 +140,20 @@
 }
 
 .iconBtn:hover {
-  background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.14));
-  color: var(--dsw-alias-label-primary, inherit);
+  background: transparent;
+  color: var(--dsw-alias-brand-primary, #0079bf);
+}
+
+.iconBtn:focus,
+.iconBtn:focus-visible {
+  background: transparent;
+  outline: none;
+  box-shadow: none;
 }
 
 .menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 4px);
-  z-index: 60;
+  position: fixed;
+  z-index: 2147482500;
   min-width: 168px;
   padding: 5px;
   display: flex;

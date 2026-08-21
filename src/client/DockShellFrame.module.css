@@ -85,24 +85,86 @@
   }
 }
 
-/* sash：作为 split 的 flex 成员恰好落在相邻面板分界上（负外边距使其
-   不占净宽、像原生 dshDesktopResizeHandle 一样骑在边界上的隐形拖拽带）。 */
+/* sash：不占布局宽度（flex-basis 0），左右容器紧贴，常态没有缝。
+   透明 ::after 只提供约 8px 命中区（骑在分界上，透明不可见），拖拽仍然好抓。 */
 .sashH {
   position: relative;
-  flex: 0 0 8px;
-  margin: 0 -4px;
+  flex: 0 0 0;
+  width: 0;
+  margin: 0;
   z-index: 30;
   cursor: col-resize;
   touch-action: none;
 }
 
+.sashH::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4px;
+  height: 44px;
+  border-radius: 2px;
+  background: var(--dsw-alias-border-l2);
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  transition: opacity 120ms var(--ds-ease-in-out), background 120ms var(--ds-ease-in-out);
+  pointer-events: none;
+}
+
+.sashH:hover::before,
+.sashH:active::before {
+  opacity: 1;
+  background: var(--dsw-alias-brand-primary);
+}
+
+.sashH::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  right: -4px;
+}
+
 .sashV {
   position: relative;
-  flex: 0 0 8px;
-  margin: -4px 0;
+  flex: 0 0 0;
+  height: 0;
+  margin: 0;
   z-index: 30;
   cursor: row-resize;
   touch-action: none;
+}
+
+.sashV::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--dsw-alias-border-l2);
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  transition: opacity 120ms var(--ds-ease-in-out), background 120ms var(--ds-ease-in-out);
+  pointer-events: none;
+}
+
+.sashV:hover::before,
+.sashV:active::before {
+  opacity: 1;
+  background: var(--dsw-alias-brand-primary);
+}
+
+.sashV::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -4px;
+  bottom: -4px;
 }
 
 /* ── 悬停抓握簇：单区域面板顶部居中的隐藏入口（横条拖拽 + ⧉ 一键浮动）。

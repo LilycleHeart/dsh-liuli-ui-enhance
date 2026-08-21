@@ -341,8 +341,10 @@ export async function applyLiuliSettings(settings: LiuliSettings): Promise<void>
   if (cfg.wide_mode === true) body.dataset.liuliWide = '1'
   else delete body.dataset.liuliWide
 
-  // ── 圆角 / 泛光 / 阴影 ──
+  // ── 圆角 / 泛光 / 阴影 / 面板留白 ──
   const radius = Math.max(0, Math.min(40, Number(cfg.corner_radius ?? 14)))
+  const dockPadding = Math.max(0, Math.min(16, Number(cfg.dock_padding ?? 8)))
+  set('--liuli-dock-padding', dockPadding + 'px')
   set('--liuli-radius', radius + 'px')
   set('--liuli-radius-sm', Math.min(radius, 10) + 'px')
   set('--liuli-glow-strength', (cfg.glow_enabled ? (cfg.glow_intensity ?? 15) : 0) / 100 + '')

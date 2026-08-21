@@ -679,6 +679,13 @@ export function LiuliAppearanceSection({
           onChange={(v) => { set({ corner_radius: v }) }}
         />
 
+        <SliderRow
+          label={t('dockPadding')} value={s.dock_padding} suffix="px" min={0} max={16}
+          defaultValue={LIULI_SETTINGS_DEFAULTS.dock_padding}
+          tip={t('dockPadding.tip')}
+          onChange={(v) => { set({ dock_padding: v }) }}
+        />
+
         <ToggleRow
           label={t('glowOn')}
           checked={s.glow_enabled}

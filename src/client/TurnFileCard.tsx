@@ -13,6 +13,7 @@
  *   展开图标（打开方式：在资源管理器中打开 · 复制绝对路径 · 复制相对路径）。
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { ChatNode } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ConversationLocation, ConversationNodeContext, ConversationNodeDefinition } from '@deepseek-ai/dsh-client-runtime/client'
 // Type-only: pulls the SessionEvent augmentation that adds the code-dispatch
@@ -386,7 +387,9 @@ interface FileRowProps {
 /** 一行文件：名称 + 目录 + DIFF 数量 + 审查/打开/展开（打开方式）。 */
 function FileRow({ file, sessionId, cwd, openFile }: FileRowProps) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [menuPos, setMenuPos] = useState<{ right: number; top: number } | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const menuPanelRef = useRef<HTMLDivElement | null>(null)
   const abs = absOf(file.path, cwd)
   const rel = relOf(file.path, cwd)
   const stats = useMemo(() => diffStats(file.hunks), [file.hunks])
@@ -394,16 +397,22 @@ function FileRow({ file, sessionId, cwd, openFile }: FileRowProps) {
   useEffect(() => {
     if (!menuOpen) return
     const onDown = (e: MouseEvent): void => {
-      if (menuRef.current !== null && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
+      const target = e.target as Node
+      if (menuRef.current !== null && menuRef.current.contains(target)) return
+      if (menuPanelRef.current !== null && menuPanelRef.current.contains(target)) return
+      setMenuOpen(false)
     }
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') setMenuOpen(false)
     }
+    const onResize = (): void => { setMenuOpen(false) }
     document.addEventListener('mousedown', onDown, true)
     document.addEventListener('keydown', onKey, true)
+    window.addEventListener('resize', onResize)
     return () => {
       document.removeEventListener('mousedown', onDown, true)
       document.removeEventListener('keydown', onKey, true)
+      window.removeEventListener('resize', onResize)
     }
   }, [menuOpen])
 
@@ -441,12 +450,24 @@ function FileRow({ file, sessionId, cwd, openFile }: FileRowProps) {
           title="打开方式"
           aria-label="打开方式"
           aria-expanded={menuOpen}
-          onClick={() => { setMenuOpen(v => !v) }}
+          onClick={() => {
+            setMenuOpen(v => {
+              const next = !v
+              if (next && menuRef.current !== null) {
+                const r = menuRef.current.getBoundingClientRect()
+                const top = r.bottom + 4 + 108 > window.innerHeight ? Math.max(8, r.top - 4 - 108) : r.bottom + 4
+                setMenuPos({ right: Math.max(8, window.innerWidth - r.right), top })
+              } else if (!next) {
+                setMenuPos(null)
+              }
+              return next
+            })
+          }}
         >
           <ExpandIcon />
         </button>
-        {menuOpen && (
-          <div className={css.menu} role="menu">
+        {menuOpen && createPortal(
+          <div ref={menuPanelRef} className={css.menu} role="menu" style={{ right: menuPos?.right ?? 0, top: menuPos?.top ?? 0 }}>
             <button
               type="button"
               role="menuitem"
@@ -471,7 +492,8 @@ function FileRow({ file, sessionId, cwd, openFile }: FileRowProps) {
             >
               复制相对路径
             </button>
-          </div>
+          </div>,
+          document.body,
         )}
       </div>
     </div>
