@@ -576,180 +576,163 @@ export function LiuliAppearanceSection({
 
   return (
     <div className={css.section}>
-      {/* 外观与背景 */}
-      <GroupCard title={t('group.appearance')}>
-        <div className={css.rows}>
-          <SelectRow
-            label={t('colorMode')}
-            value={s.color_mode}
-            options={[
-              { value: 'dynamic', label: t('colorMode.dynamic') },
-              { value: 'static', label: t('colorMode.static') },
-            ]}
-            onChange={(v) => { set({ color_mode: v as LiuliSettings['color_mode'] }) }}
-          />
+      <div className={css.grid}>
+        <ToggleRow
+          label={t('wideMode')}
+          checked={s.wide_mode}
+          onChange={(v) => { set({ wide_mode: v }) }}
+        />
 
-          {s.color_mode === 'static' && (
+        <SelectRow
+          label={t('colorMode')}
+          value={s.color_mode}
+          options={[
+            { value: 'dynamic', label: t('colorMode.dynamic') },
+            { value: 'static', label: t('colorMode.static') },
+          ]}
+          onChange={(v) => { set({ color_mode: v as LiuliSettings['color_mode'] }) }}
+        />
+
+        {s.color_mode === 'static' && (
+          <ColorRow
+            label={t('brandColor')}
+            value={s.brand_color}
+            onChange={(v) => { set({ brand_color: v }) }}
+          />
+        )}
+
+        <SelectRow
+          label={t('bgMode')}
+          value={s.background_mode}
+          options={[
+            { value: 'theme', label: t('bgMode.theme') },
+            { value: 'brand_gradient', label: t('bgMode.gradient') },
+            { value: 'custom', label: t('bgMode.custom') },
+            { value: 'image', label: t('bgMode.image') },
+          ]}
+          onChange={(v) => { set({ background_mode: v as LiuliSettings['background_mode'] }) }}
+        />
+
+        {s.background_mode === 'image' && (
+          <SliderRow
+            label={t('scrim')} value={s.bg_scrim} suffix="%" min={0} max={80}
+            onChange={(v) => { set({ bg_scrim: v }) }}
+          />
+        )}
+
+        {s.background_mode === 'custom' && (
+          <>
             <ColorRow
-              label={t('brandColor')}
-              value={s.brand_color}
-              onChange={(v) => { set({ brand_color: v }) }}
+              label={t('customBg')}
+              value={s.custom_background}
+              onChange={(v) => { set({ custom_background: v }) }}
             />
-          )}
+            <ColorRow
+              label={t('customBgDark')}
+              value={s.custom_background_dark}
+              onChange={(v) => { set({ custom_background_dark: v }) }}
+            />
+          </>
+        )}
 
-          <SelectRow
-            label={t('bgMode')}
-            value={s.background_mode}
-            options={[
-              { value: 'theme', label: t('bgMode.theme') },
-              { value: 'brand_gradient', label: t('bgMode.gradient') },
-              { value: 'custom', label: t('bgMode.custom') },
-              { value: 'image', label: t('bgMode.image') },
-            ]}
-            onChange={(v) => { set({ background_mode: v as LiuliSettings['background_mode'] }) }}
-          />
+        <SelectRow
+          label={t('materialType')}
+          value={s.material_type}
+          options={[
+            { value: 'acrylic', label: t('materialType.acrylic') },
+            { value: 'mica', label: t('materialType.mica') },
+          ]}
+          onChange={(v) => { set({ material_type: v as LiuliSettings['material_type'] }) }}
+        />
 
-          {s.background_mode === 'image' && (
+        <ToggleRow
+          label={t('materialOn')}
+          checked={s.acrylic_enabled}
+          onChange={(v) => { set({ acrylic_enabled: v }) }}
+        />
+
+        {s.acrylic_enabled && (
+          <>
             <SliderRow
-              label={t('scrim')} value={s.bg_scrim} suffix="%" min={0} max={80}
-              onChange={(v) => { set({ bg_scrim: v }) }}
+              label={t('materialOpacity')} value={s.material_opacity} suffix="%" min={20} max={100}
+              onChange={(v) => { set({ material_opacity: v }) }}
             />
-          )}
+            <SliderRow
+              label={t('materialBlur')} value={s.material_blur} suffix="px" min={0} max={100}
+              onChange={(v) => { set({ material_blur: v }) }}
+            />
+          </>
+        )}
 
-          {s.background_mode === 'custom' && (
-            <>
-              <ColorRow
-                label={t('customBg')}
-                value={s.custom_background}
-                onChange={(v) => { set({ custom_background: v }) }}
-              />
-              <ColorRow
-                label={t('customBgDark')}
-                value={s.custom_background_dark}
-                onChange={(v) => { set({ custom_background_dark: v }) }}
-              />
-            </>
-          )}
-        </div>
-      </GroupCard>
+        <SelectRow
+          label={t('fontMode')}
+          value={s.font_mode}
+          options={[
+            { value: 'misans', label: t('fontMode.misans') },
+            { value: 'builtin', label: t('fontMode.builtin') },
+          ]}
+          onChange={(v) => { set({ font_mode: v as LiuliSettings['font_mode'] }) }}
+        />
 
-      {/* 材质与字体 */}
-      <GroupCard title={t('group.material')}>
-        <div className={css.rows}>
-          <SelectRow
-            label={t('materialType')}
-            value={s.material_type}
-            options={[
-              { value: 'acrylic', label: t('materialType.acrylic') },
-              { value: 'mica', label: t('materialType.mica') },
-            ]}
-            onChange={(v) => { set({ material_type: v as LiuliSettings['material_type'] }) }}
-          />
+        <SliderRow
+          label={t('radius')} value={s.corner_radius} suffix="px" min={0} max={40}
+          onChange={(v) => { set({ corner_radius: v }) }}
+        />
 
-          <ToggleRow
-            label={t('materialOn')}
-            checked={s.acrylic_enabled}
-            onChange={(v) => { set({ acrylic_enabled: v }) }}
-          />
+        <SliderRow
+          label={t('dockPadding')} value={s.dock_padding} suffix="px" min={0} max={16}
+          defaultValue={LIULI_SETTINGS_DEFAULTS.dock_padding}
+          tip={t('dockPadding.tip')}
+          onChange={(v) => { set({ dock_padding: v }) }}
+        />
 
-          {s.acrylic_enabled && (
-            <>
-              <SliderRow
-                label={t('materialOpacity')} value={s.material_opacity} suffix="%" min={20} max={100}
-                onChange={(v) => { set({ material_opacity: v }) }}
-              />
-              <SliderRow
-                label={t('materialBlur')} value={s.material_blur} suffix="px" min={0} max={100}
-                onChange={(v) => { set({ material_blur: v }) }}
-              />
-            </>
-          )}
+        <ToggleRow
+          label={t('glowOn')}
+          checked={s.glow_enabled}
+          onChange={(v) => { set({ glow_enabled: v }) }}
+        />
 
-          <SelectRow
-            label={t('fontMode')}
-            value={s.font_mode}
-            options={[
-              { value: 'misans', label: t('fontMode.misans') },
-              { value: 'builtin', label: t('fontMode.builtin') },
-            ]}
-            onChange={(v) => { set({ font_mode: v as LiuliSettings['font_mode'] }) }}
-          />
-        </div>
-      </GroupCard>
+        <SliderRow
+          label={t('glowStrength')} value={s.glow_intensity} suffix="%" min={0} max={100}
+          disabled={!s.glow_enabled}
+          onChange={(v) => { set({ glow_intensity: v }) }}
+        />
 
-      {/* 布局与圆角 */}
-      <GroupCard title={t('group.layout')}>
-        <div className={css.rows}>
-          <ToggleRow
-            label={t('wideMode')}
-            checked={s.wide_mode}
-            onChange={(v) => { set({ wide_mode: v }) }}
-          />
+        <ToggleRow
+          label={t('shadowOn')}
+          checked={s.shadow_enabled}
+          onChange={(v) => { set({ shadow_enabled: v }) }}
+        />
 
-          <SliderRow
-            label={t('radius')} value={s.corner_radius} suffix="px" min={0} max={40}
-            onChange={(v) => { set({ corner_radius: v }) }}
-          />
+        <SliderRow
+          label={t('shadowStrength')} value={s.shadow_intensity} suffix="%" min={0} max={100}
+          disabled={!s.shadow_enabled}
+          onChange={(v) => { set({ shadow_intensity: v }) }}
+        />
 
-          <SliderRow
-            label={t('dockPadding')} value={s.dock_padding} suffix="px" min={0} max={16}
-            defaultValue={LIULI_SETTINGS_DEFAULTS.dock_padding}
-            tip={t('dockPadding.tip')}
-            onChange={(v) => { set({ dock_padding: v }) }}
-          />
-        </div>
-      </GroupCard>
-
-      {/* 光影与过渡 */}
-      <GroupCard title={t('group.effects')}>
-        <div className={css.rows}>
-          <ToggleRow
-            label={t('glowOn')}
-            checked={s.glow_enabled}
-            onChange={(v) => { set({ glow_enabled: v }) }}
-          />
-
-          <SliderRow
-            label={t('glowStrength')} value={s.glow_intensity} suffix="%" min={0} max={100}
-            disabled={!s.glow_enabled}
-            onChange={(v) => { set({ glow_intensity: v }) }}
-          />
-
-          <ToggleRow
-            label={t('shadowOn')}
-            checked={s.shadow_enabled}
-            onChange={(v) => { set({ shadow_enabled: v }) }}
-          />
-
-          <SliderRow
-            label={t('shadowStrength')} value={s.shadow_intensity} suffix="%" min={0} max={100}
-            disabled={!s.shadow_enabled}
-            onChange={(v) => { set({ shadow_intensity: v }) }}
-          />
-
-          <SelectRow
-            label={t('transition')}
-            value={s.transition_effect}
-            options={[
-              { value: 'rise', label: t('transition.rise') },
-              { value: 'fade', label: t('transition.fade') },
-              { value: 'drop', label: t('transition.drop') },
-              { value: 'slide', label: t('transition.slide') },
-              { value: 'zoom', label: t('transition.zoom') },
-              { value: 'blur', label: t('transition.blur') },
-              { value: 'spring', label: t('transition.spring') },
-              { value: 'stagger', label: t('transition.stagger') },
-              { value: 'staggerRise', label: t('transition.staggerRise') },
-              { value: 'none', label: t('transition.none') },
-            ]}
-            onChange={(v) => { set({ transition_effect: v as LiuliSettings['transition_effect'] }) }}
-          />
-        </div>
-      </GroupCard>
+        <SelectRow
+          label={t('transition')}
+          value={s.transition_effect}
+          options={[
+            { value: 'rise', label: t('transition.rise') },
+            { value: 'fade', label: t('transition.fade') },
+            { value: 'drop', label: t('transition.drop') },
+            { value: 'slide', label: t('transition.slide') },
+            { value: 'zoom', label: t('transition.zoom') },
+            { value: 'blur', label: t('transition.blur') },
+            { value: 'spring', label: t('transition.spring') },
+            { value: 'stagger', label: t('transition.stagger') },
+            { value: 'staggerRise', label: t('transition.staggerRise') },
+            { value: 'none', label: t('transition.none') },
+          ]}
+          onChange={(v) => { set({ transition_effect: v as LiuliSettings['transition_effect'] }) }}
+        />
+      </div>
 
       {/* 声纹响应（Nanoleaf Desktop 移植检测的参数，即时生效） */}
-      <GroupCard title={t('vp.title')}>
-        <div className={css.rows}>
+      <div className={css.wallpaperBlock}>
+        <div className={css.wallpaperTitle}>{t('vp.title')}</div>
+        <div className={css.grid}>
           <SliderRow
             label={t('vp.sensitivity')} value={s.vp_sensitivity} suffix="" min={0.01} max={1} step={0.01}
             defaultValue={LIULI_SETTINGS_DEFAULTS.vp_sensitivity} tip={t('vp.tip.sensitivity')}
@@ -816,10 +799,11 @@ export function LiuliAppearanceSection({
             onChange={(v) => { set({ vp_noise_gate: v }) }}
           />
         </div>
-      </GroupCard>
+      </div>
 
       {/* 壁纸 */}
-      <GroupCard title={t('wallpaper')}>
+      <div className={css.wallpaperBlock}>
+        <div className={css.wallpaperTitle}>{t('wallpaper')}</div>
         <div className={css.wallpaperRow}>
           <input
             ref={fileRef} type="file" accept=".jpg,.jpeg,.png,.webp,.gif" hidden
@@ -856,18 +840,16 @@ export function LiuliAppearanceSection({
           </Button>
         </div>
 
-        <div className={css.rows}>
-          <SelectRow
-            label={t('bgFit')}
-            value={s.bg_fit}
-            options={[
-              { value: 'cover', label: t('bgFit.cover') },
-              { value: 'contain', label: t('bgFit.contain') },
-              { value: 'stretch', label: t('bgFit.stretch') },
-            ]}
-            onChange={(v) => { set({ bg_fit: v as LiuliSettings['bg_fit'] }) }}
-          />
-        </div>
+        <SelectRow
+          label={t('bgFit')}
+          value={s.bg_fit}
+          options={[
+            { value: 'cover', label: t('bgFit.cover') },
+            { value: 'contain', label: t('bgFit.contain') },
+            { value: 'stretch', label: t('bgFit.stretch') },
+          ]}
+          onChange={(v) => { set({ bg_fit: v as LiuliSettings['bg_fit'] }) }}
+        />
 
         {wallpaper !== null && (
           <WallpaperPreview
@@ -881,7 +863,7 @@ export function LiuliAppearanceSection({
         )}
         {fileLabel !== '' && <div className={css.fileName}>{fileLabel}</div>}
         {uploadError !== '' && <div className={css.uploadError}>{uploadError}</div>}
-      </GroupCard>
+      </div>
 
       <div className={css.footer}>
         <Button variant="primary" size="md" onClick={() => { reset() }}>
