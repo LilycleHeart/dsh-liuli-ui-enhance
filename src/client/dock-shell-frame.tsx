@@ -174,10 +174,12 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
       const leftFlush = r.left - rootRect.left <= EPS
       const rightFlush = rootRect.right - r.right <= EPS
       const bottomFlush = rootRect.bottom - r.bottom <= EPS
-      const sameColumn = (a: DOMRect, b: DOMRect): boolean =>
-        Math.abs(a.left - b.left) <= EPS && Math.abs(a.right - b.right) <= EPS
-      const hasAbove = shardRects.some(o => o.id !== item.id && sameColumn(o.rect, r) && Math.abs(o.rect.bottom - r.top) <= EPS)
-      const hasBelow = shardRects.some(o => o.id !== item.id && sameColumn(o.rect, r) && Math.abs(o.rect.top - r.bottom) <= EPS)
+      const horizontalOverlap = (a: DOMRect, b: DOMRect): number =>
+        Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left))
+      // 上下相邻判断用「水平有重叠 + 边缘贴合」，不要要求同列等宽：
+      // 顶部行里的水平 split 子卡与底部整行卡的左右边缘可能不相等，但仍有上下关系。
+      const hasAbove = shardRects.some(o => o.id !== item.id && Math.abs(o.rect.bottom - r.top) <= EPS && horizontalOverlap(o.rect, r) > 0)
+      const hasBelow = shardRects.some(o => o.id !== item.id && Math.abs(o.rect.top - r.bottom) <= EPS && horizontalOverlap(o.rect, r) > 0)
       const region = panes.find(p => p.getAttribute('data-dock-node') === item.id)?.getAttribute('data-region-pane') ?? null
       if (region === 'region:sidebar') {
         // 侧边栏：只在左/右边缘时贴边；中间则四边留白。
