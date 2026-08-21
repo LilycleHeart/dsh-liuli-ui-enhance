@@ -440,7 +440,7 @@ overflow: hidden;
 会话 header、正文滚动区、侧栏根、详情预览面板、dock 面板 / 浮动窗口全部走 **5.1 标准亚克力配方**，并按以下贴边规范留白 / 圆角：
 
 1. **普通 dock 面板**：默认四边留白 + 四角圆角；上下堆叠时，下方卡片底部触底去圆角（上、左、右仍留白+圆角），上方/中部卡片保持四边留白 + 四角圆角。
-2. **左侧边栏**：在左边缘 → 左侧贴边去圆角，其余三边留白+圆角；在右边缘 → 右侧贴边去圆角，其余三边留白+圆角；在中间 → 四边留白 + 四角圆角。在右时内卡 `direction: rtl` 镜像内部元素。
+2. **左侧边栏**：在左边缘 → 左侧贴边去圆角，其余三边留白+圆角；在右边缘 → 右侧贴边去圆角，其余三边留白+圆角；在中间 → 四边留白 + 四角圆角。在右时内卡 `direction: rtl` 镜像内部元素。**收起态宽度**：非原生左缘位置有 dock 留白 padding，shard 固定宽必须在原生收起宽（56/90）基础上加对应留白（右缘 +1 份、中间 +2 份），保证收起 rail 宽度与原生一致（读 `body` 上的 `--liuli-dock-padding`，不要读 documentElement）。
 3. **右侧边栏（详细页）**：在规则 2 的基础上，若下方没有卡片则底部触底去圆角；若下方有卡片则底部保留留白+圆角。
 4. **详细页拆出的标签页**：按规则 1 处理。
 5. **对话页**：上下堆叠时，顶部/中部卡片恢复四边留白 + 四角圆角（撤销全局 active 的底部触底规则）；最下方卡片仍底部触底去圆角。
@@ -565,6 +565,7 @@ CSS Modules 内普通面板只用 `edgeBottom` 类；区域表面镜像用 `:glo
 - **拖拽屏蔽层**：`position: fixed; inset: 0; z-index: 2147482600; background: transparent; cursor: grabbing`。
 - **resize 手柄**：5px 宽命中区，hover/active 显示 1px 品牌线；`touch-action: none`。
 - 拖拽期间目标 shard 禁用过渡：`.dockBody[data-resizing] .shard { transition: none }`（只禁 shard，不禁全局）。
+- **shard 只过渡 `flex-basis`（0.3s）**：不要同时过渡 `flex-grow`。详情开合时 flex-basis 动画与 grow 子级的 flex-grow 变化叠加会形成双重缓动，造成卡顿；grow 子级由 flexbox 随可用空间逐帧自动补位即可。
 
 ### 6.10 滚动条、选中文本、焦点
 
