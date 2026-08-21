@@ -2,7 +2,7 @@
 // 运行：node demo/test-dock-model.ts
 import {
   addPanel, collectTabsNodes, createPanel, defaultLayout, emptyLayout,
-  findNode, findPanel, moveFloat, movePanel, panelCount, parseDockLayout,
+  findNode, findPanel, flattenSameDirSplits, makeTabsNode, moveFloat, movePanel, panelCount, parseDockLayout,
   placePanel, removePanel, resizeSplit, resizeSplitTo, serializeDockLayout, setActivePanel, updateFloat,
   type DockLayout, type SplitNode, type TabsNode,
 } from '../src/client/dock-model.ts'
@@ -274,6 +274,51 @@ function withPanel(type: string): DockLayout {
   // 面板不重复进入（placePanel 只放不删源——外部新面板语义）
   const total = panelCount(layout)
   check('M16g panel count consistent', total === 1)
+}
+
+// M17 同向 split 兄弟插入：目标已处于同向 split 中时，新组应成为兄弟子级，
+//     而不是再包一层嵌套 split（否则 [详情,侧栏] 会与对话页之间隔一层复合容器）。
+{
+  // 构造 h-split [files, git]
+  let layout = withPanel('files')
+  const p2 = createPanel(layout, 'git')
+  layout = addPanel(layout, p2)
+  const filesNode = (layout.root as TabsNode)
+  layout = movePanel(layout, p2.id, { kind: 'split', nodeId: filesNode.id, side: 'right' })
+  const root = layout.root
+  check('M17 setup: two h groups', root !== null && root.kind === 'split' && root.dir === 'h' && root.children.length === 2)
+
+  // 在 git 组左侧再拆一个 wiki：父 split 同向 → wiki 直接插到 git 左边，仍是 3 兄弟
+  const groups = collectTabsNodes(layout.root)
+  const git = groups.find(g => g.tabs.some(p => p.id === p2.id))!
+  const p3 = createPanel(layout, 'wiki')
+  layout = addPanel(layout, p3)
+  layout = movePanel(layout, p3.id, { kind: 'split', nodeId: git.id, side: 'left' })
+  const flat = layout.root
+  check('M17b same-dir sibling insert keeps flat split', flat !== null && flat.kind === 'split' && flat.children.length === 3)
+  if (flat !== null && flat.kind === 'split') {
+    const beforeGit = flat.children[flat.children.findIndex(c => c.id === git.id) - 1]
+    check('M17c new group is left of target', beforeGit !== undefined && beforeGit.kind === 'tabs' && beforeGit.tabs.some(p => p.id === p3.id))
+    const sum = flat.sizes.reduce((a, b) => a + b, 0)
+    check('M17d sizes total preserved', Math.abs(sum - 1) < 1e-9)
+  }
+}
+
+// M18 flattenSameDirSplits：同向嵌套 split 被拍平，恢复相邻 sash。
+{
+  const layout = emptyLayout()
+  const a = makeTabsNode(layout, [createPanel(layout, 'files')])
+  const b = makeTabsNode(layout, [createPanel(layout, 'git')])
+  const c = makeTabsNode(layout, [createPanel(layout, 'wiki')])
+  // [ [a, b], c ]
+  const nested: SplitNode = { id: 's1', kind: 'split', dir: 'h', sizes: [0.5, 0.5], children: [a, b] }
+  const root: SplitNode = { id: 's2', kind: 'split', dir: 'h', sizes: [0.5, 0.5], children: [nested, c] }
+  const flat = flattenSameDirSplits(root)
+  check('M18 same-dir nesting flattened', flat !== null && flat.kind === 'split' && flat.children.length === 3)
+  if (flat !== null && flat.kind === 'split') {
+    check('M18b children promoted', flat.children[0]?.id === a.id && flat.children[1]?.id === b.id && flat.children[2]?.id === c.id)
+    check('M18c sizes normalized', Math.abs(flat.sizes.reduce((x, y) => x + y, 0) - 1) < 1e-9)
+  }
 }
 
 console.log('SUMMARY: ' + pass + '/' + (pass + fail) + ' passed')

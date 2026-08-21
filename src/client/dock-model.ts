@@ -106,6 +106,20 @@ export function findNode(root: DockNode | null, id: string): DockNode | undefine
   return undefined
 }
 
+/** 查找 id 节点的父 split 与其子级下标（用于同向 split 的兄弟插入）。 */
+export function findParentSplit(root: DockNode | null, id: string): { parent: SplitNode; index: number } | undefined {
+  if (root === null || root.kind !== 'split') return undefined
+  for (let i = 0; i < root.children.length; i += 1) {
+    const child = root.children[i]
+    if (child !== undefined && child.id === id) return { parent: root, index: i }
+  }
+  for (const child of root.children) {
+    const hit = findParentSplit(child, id)
+    if (hit !== undefined) return hit
+  }
+  return undefined
+}
+
 export function findTabsContaining(root: DockNode | null, panelId: string): { node: TabsNode; index: number } | undefined {
   if (root === null) return undefined
   if (root.kind === 'tabs') {
@@ -139,6 +153,38 @@ export function panelCount(layout: DockLayout): number {
   visit(layout.root)
   for (const float of layout.floats) count += float.tabs.length
   return count
+}
+
+/** 递归拍平同向嵌套 split：若 split 的子级也是同向 split，则把孙级提升到当前层，
+ *  尺寸按「孙级占比 × 子级占比」重算。避免 [ [详情, 侧栏], 会话 ] 这类嵌套让
+ *  侧栏与会话之间失去直接 sash（也避免固定复合列在父级吃空白）。 */
+export function flattenSameDirSplits(node: DockNode | null): DockNode | null {
+  if (node === null || node.kind === 'tabs') return node
+  const children: DockNode[] = []
+  const sizes: number[] = []
+  node.children.forEach((child, i) => {
+    const size = Number.isFinite(node.sizes[i]) ? node.sizes[i]! : 1
+    if (child.kind === 'split' && child.dir === node.dir) {
+      const childTotal = child.sizes.reduce((a, s) => a + (Number.isFinite(s) ? s! : 1), 0)
+      child.children.forEach((grand, j) => {
+        const gs = Number.isFinite(child.sizes[j]) ? child.sizes[j]! : 1
+        const flattened = flattenSameDirSplits(grand)
+        if (flattened !== null) {
+          children.push(flattened)
+          sizes.push(size * (childTotal > 0 ? gs / childTotal : 1 / Math.max(1, child.children.length)))
+        }
+      })
+    } else {
+      const flattened = flattenSameDirSplits(child)
+      if (flattened !== null) {
+        children.push(flattened)
+        sizes.push(size)
+      }
+    }
+  })
+  if (children.length === 0) return null
+  if (children.length === 1) return children[0]!
+  return { ...node, children, sizes: normalizeSizes(sizes) }
 }
 
 /** 深度优先收集所有 TabsNode（渲染/命中注册用）。 */
@@ -321,6 +367,22 @@ function insertPanels(layout: DockLayout, panels: PanelInstance[], activeId: str
     return next
   }
   const { dir, before } = sideToSplit(target.side)
+  // 目标节点已处于同向 split 中时，把新组作为该 split 的兄弟子级插入，
+  // 而不是再包一层嵌套 split（嵌套会让相邻区域之间失去直接 sash，
+  // 例如 [ [详情, 侧栏], 对话页 ] 的侧栏与对话页之间就隔了一层复合容器）。
+  const parentHit = findParentSplit(next.root, target.nodeId)
+  if (parentHit !== undefined && parentHit.parent.dir === dir) {
+    const { parent, index } = parentHit
+    const oldSize = parent.sizes[index] ?? 0.5
+    const half = oldSize / 2
+    const insertIndex = before ? index : index + 1
+    parent.children.splice(insertIndex, 0, group)
+    parent.sizes.splice(insertIndex, 0, half)
+    // 目标原位置与插入位置各占原尺寸的一半，split 总比例保持不变。
+    parent.sizes[index] = half
+    parent.sizes[index + 1] = half
+    return next
+  }
   const replacement: SplitNode = {
     id: nextId(next, 's'),
     kind: 'split',
