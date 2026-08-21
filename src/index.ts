@@ -638,8 +638,9 @@ async function queryQuota(ctx: Context, provider: string): Promise<QuotaPayload>
 /** 宿主插件体：注册 /liuli-quota 与 /preview 本地路由。 */
 export function apply(ctx: Context): void {
   // 客户端更新会还原 app.asar，无边框补丁需要在插件启动时自动重打。
-  // 该函数幂等且只在 win32 + Electron 主进程生效；纯 Web / 其他平台自动跳过。
-  void applyFramelessPatch()
+  // 幂等；仅 win32 + Electron 主进程生效，纯 Web / 其他平台自动跳过。
+  // win32 + Electron 下补丁为必装：失败会抛错阻止插件加载，不再静默降级。
+  applyFramelessPatch()
 
   const route: WebRoute = {
     kind: 'prefix',
