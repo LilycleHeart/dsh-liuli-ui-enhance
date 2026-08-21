@@ -393,16 +393,31 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     toastTimer.current = setTimeout(() => { setToast(null) }, 2600)
   }, [])
 
-  /** 区域固定宽度（默认布局保真）：单区域侧栏/详情按宿主宽度语义，
-   *  让 split 的对应 shard 用精确 px，而非会跟比例打架的 flex-grow。
-   *  详情关闭时返回 0（而非 undefined）：面板常驻树中，宽度 0 保持挂载，
-   *  开合由 flex-basis 过渡驱动，会话列平滑补位。 */
-  const childFixedWidth = (child: DockNode): number | undefined => {
-    if (child.kind !== 'tabs' || child.tabs.length !== 1) return undefined
-    const only = child.tabs[0]
-    if (only === undefined) return undefined
-    if (only.type === REGION_SIDEBAR) return sidebarWidth
-    if (only.type === REGION_DETAILS) return hostPanels.details === 0 ? 0 : clampDetailsWidth(detailsWidth, window.innerWidth, sidebarWidth)
+  /** 节点在 dir 方向上的固定像素宽度；不是固定宽则返回 undefined。
+   *  - 单区域侧栏/详情：宿主宽度语义（详情关闭返回 0，保持挂载可过渡）；
+   *  - 同向 split 的全部子级都固定：其宽度也固定（子级之和），这样
+   *    [详情, 侧栏] 这类复合列在父级里不会再按 flexGrow 吃掉多余空间、
+   *    收起后也不会在右缘留大段空白。垂直方向暂无固定高度区域。 */
+  const childFixedWidth = (child: DockNode, dir: 'h' | 'v'): number | undefined => {
+    if (dir !== 'h') return undefined
+    if (child.kind === 'tabs') {
+      if (child.tabs.length !== 1) return undefined
+      const only = child.tabs[0]
+      if (only === undefined) return undefined
+      if (only.type === REGION_SIDEBAR) return sidebarWidth
+      if (only.type === REGION_DETAILS) return hostPanels.details === 0 ? 0 : clampDetailsWidth(detailsWidth, window.innerWidth, sidebarWidth)
+      return undefined
+    }
+    if (child.kind === 'split') {
+      if (child.dir !== dir) return undefined
+      let sum = 0
+      for (const c of child.children) {
+        const fixed = childFixedWidth(c, dir)
+        if (fixed === undefined) return undefined
+        sum += fixed
+      }
+      return sum
+    }
     return undefined
   }
 
@@ -422,7 +437,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
   const nodeMinPx = (node: DockNode | undefined, dir: 'h' | 'v'): number => {
     if (node === undefined) return 0
     if (node.kind === 'tabs') {
-      const fixed = childFixedWidth(node)
+      const fixed = childFixedWidth(node, dir)
       if (fixed !== undefined) {
         return dir === 'h' ? Math.max(fixed, 0) : childMinPx(node, dir)
       }
@@ -693,6 +708,10 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
       minBeforeRatio: number
       minAfterRatio: number
     } | undefined
+    /** 相邻任一侧是固定宽度节点（复合固定列等）时，比例拖拽无意义：固定侧
+     *  flex-basis 不变、另一侧若只有它一个 grow 子级则 flexGrow 恒为 1。
+     *  此时 sash 直接 no-op，避免把 flexGrow 写到固定 shard 上造成错乱。 */
+    let sashNoop = false
     if (regionType === undefined) {
       const splitEl = rootEl?.querySelector('[data-dock-split="' + splitNode.id + '"]') ?? null
       if (splitEl !== null) {
@@ -703,22 +722,28 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
         const beforeEl = shardEls[dividerIndex - 1]
         const afterEl = shardEls[dividerIndex]
         if (beforeEl !== undefined && afterEl !== undefined) {
-          const fixedFlags = splitNode.children.map(child => childFixedWidth(child) !== undefined)
-          const growSum = splitNode.sizes.reduce((acc, s, i) => acc + (fixedFlags[i] === true ? 0 : (s ?? 1)), 0)
-          const sizesTotal = (splitNode.sizes[dividerIndex - 1] ?? 0.5) + (splitNode.sizes[dividerIndex] ?? 0.5)
-          const beforeRect = beforeEl.getBoundingClientRect()
-          const afterRect = afterEl.getBoundingClientRect()
-          const combined = dir === 'h' ? beforeRect.width + afterRect.width : beforeRect.height + afterRect.height
-          if (combined > 0) {
-            startRatio = (dir === 'h' ? beforeRect.width : beforeRect.height) / combined
+          const fixedFlags = splitNode.children.map(child => childFixedWidth(child, dir) !== undefined)
+          const beforeFixed = fixedFlags[dividerIndex - 1] === true
+          const afterFixed = fixedFlags[dividerIndex] === true
+          if (beforeFixed || afterFixed) {
+            sashNoop = true
+          } else {
+            const growSum = splitNode.sizes.reduce((acc, s, i) => acc + (fixedFlags[i] === true ? 0 : (s ?? 1)), 0)
+            const sizesTotal = (splitNode.sizes[dividerIndex - 1] ?? 0.5) + (splitNode.sizes[dividerIndex] ?? 0.5)
+            const beforeRect = beforeEl.getBoundingClientRect()
+            const afterRect = afterEl.getBoundingClientRect()
+            const combined = dir === 'h' ? beforeRect.width + afterRect.width : beforeRect.height + afterRect.height
+            if (combined > 0) {
+              startRatio = (dir === 'h' ? beforeRect.width : beforeRect.height) / combined
+            }
+            const minBeforeRatio = combined > 0
+              ? nodeMinPx(beforeChild, dir) / combined * sizesTotal
+              : MIN_SIZE * sizesTotal
+            const minAfterRatio = combined > 0
+              ? nodeMinPx(afterChild, dir) / combined * sizesTotal
+              : MIN_SIZE * sizesTotal
+            if (growSum > 0) variableShards = { before: beforeEl, after: afterEl, growSum, sizesTotal, minBeforeRatio, minAfterRatio }
           }
-          const minBeforeRatio = combined > 0
-            ? nodeMinPx(beforeChild, dir) / combined * sizesTotal
-            : MIN_SIZE * sizesTotal
-          const minAfterRatio = combined > 0
-            ? nodeMinPx(afterChild, dir) / combined * sizesTotal
-            : MIN_SIZE * sizesTotal
-          if (growSum > 0) variableShards = { before: beforeEl, after: afterEl, growSum, sizesTotal, minBeforeRatio, minAfterRatio }
         }
       }
     }
@@ -739,7 +764,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
         const regionChild = isBefore ? beforeChild : afterChild
         const othersMin = splitNode.children.reduce((acc, child) => {
           if (child.id === regionChild?.id) return acc
-          const fixed = childFixedWidth(child)
+          const fixed = childFixedWidth(child, dir)
           if (fixed !== undefined) return acc + fixed
           return acc + nodeMinPx(child, dir)
         }, 0)
@@ -772,6 +797,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
         variableShards.after.style.flexGrow = String((sizesTotal - na) / growSum)
         return
       }
+      if (sashNoop) return
       actions.setDock(resizeSplitTo(shellRef.current.dock, splitNode.id, dividerIndex, ratio))
     }
     const onUp = (): void => {
@@ -906,8 +932,8 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
    *    下限会让子级溢出 split 盒，盖到隔壁卡片上）。 */
   const splitChildPx = (split: SplitNode, totalPx: number): number[] | null => {
     if (!Number.isFinite(totalPx) || totalPx <= 0) return null
-    const fixedFlags = split.children.map(child => childFixedWidth(child) !== undefined)
-    const fixedSum = split.children.reduce((acc, child, i) => acc + (fixedFlags[i] === true ? (childFixedWidth(child) ?? 0) : 0), 0)
+    const fixedFlags = split.children.map(child => childFixedWidth(child, split.dir) !== undefined)
+    const fixedSum = split.children.reduce((acc, child, i) => acc + (fixedFlags[i] === true ? (childFixedWidth(child, split.dir) ?? 0) : 0), 0)
     const available = totalPx - fixedSum
     if (available <= 0) return null
     const mins = split.children.map((child, i) => fixedFlags[i] === true ? 0 : nodeMinPx(child, split.dir))
@@ -998,7 +1024,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     // split 比例分配剩余空间。flex-grow 总和 < 1 时浏览器只给出 free×grow
     // （留出空隙），故把「可伸缩子级」的 sizes 归一到和为 1，既保比例又吃满
     // 剩余空间。sash 作为 flex 成员恰好落在相邻面板的分界上。
-    const fixedFlags = split.children.map(child => childFixedWidth(child) !== undefined)
+    const fixedFlags = split.children.map(child => childFixedWidth(child, split.dir) !== undefined)
     const growSum = split.sizes.reduce((acc, s, i) => acc + (fixedFlags[i] === true ? 0 : (s ?? 1)), 0)
     // 渲染期像素 clamp：实测 split 盒主轴像素后，把 min 宽/高换算成 flexGrow，
     // 避免直接给 shard 写 minWidth/minHeight 导致子级溢出 split 盒、盖住相邻卡片。
@@ -1008,7 +1034,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     return (
       <div className={(split.dir === 'h' ? css.splitH : css.splitV) + ' ' + css.splitBox} data-dock-split={split.id}>
         {split.children.map((child, i) => {
-          const fixed = fixedFlags[i] === true ? childFixedWidth(child) : undefined
+          const fixed = fixedFlags[i] === true ? childFixedWidth(child, split.dir) : undefined
           // 固定宽度 shard 用分属性（flexGrow/flexShrink/flexBasis）而非 flex 简写：
           // CSS 过渡按 flex-basis 插值（简写过渡在部分浏览器不稳定），开合动画即
           // 由此驱动；flex-basis 为 0 时保持挂载（详情收起），便于 0↔w 平滑过渡。

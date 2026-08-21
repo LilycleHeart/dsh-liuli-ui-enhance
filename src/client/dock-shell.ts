@@ -9,7 +9,7 @@
  */
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
 import {
-  createPanel, emptyLayout, makeTabsNode, nextId, parseDockLayout, removePanel,
+  createPanel, emptyLayout, flattenSameDirSplits, makeTabsNode, nextId, normalizeSizes, parseDockLayout, removePanel,
   type DockLayout, type PanelInstance,
 } from './dock-model.ts'
 
@@ -110,6 +110,15 @@ export function withRegion(layout: DockLayout, type: string, side: 'left' | 'rig
     return next
   }
   const before = side === 'left'
+  // 根已是横向 split 时直接作为兄弟插入，避免 [ [旧树], 区域 ] 的嵌套；
+  // 否则才包一层新的横向 split。
+  if (next.root.kind === 'split' && next.root.dir === 'h') {
+    const index = before ? 0 : next.root.children.length
+    next.root.children.splice(index, 0, group)
+    next.root.sizes.splice(index, 0, 0.2)
+    next.root.sizes = normalizeSizes(next.root.sizes)
+    return next
+  }
   next.root = {
     id: nextId(next, 's'),
     kind: 'split',
@@ -173,6 +182,7 @@ export function loadSavedDock(): DockLayout | undefined {
     const payload = 'dock' in parsed ? parsed.dock : parsed
     if (payload === undefined || payload === null) return undefined
     let dock = parseDockLayout(payload)
+    dock.root = flattenSameDirSplits(dock.root)
     // 会话区域必须在树里（布局恢复的保底不变量）
     if (findRegion(dock, REGION_CONVERSATION) === undefined) {
       dock = withRegion(dock, REGION_CONVERSATION, 'right')
@@ -182,6 +192,7 @@ export function loadSavedDock(): DockLayout | undefined {
     if (findRegion(dock, REGION_DETAILS) === undefined) {
       dock = withRegion(dock, REGION_DETAILS, 'right')
     }
+    dock.root = flattenSameDirSplits(dock.root)
     return dock
   } catch {
     return undefined
@@ -258,6 +269,7 @@ function parseDockSafe(raw: unknown): DockLayout | undefined {
   try {
     const layout = parseDockLayout(raw)
     if (layout.root === null && layout.floats.length === 0) return undefined
+    layout.root = flattenSameDirSplits(layout.root)
     return layout
   } catch {
     return undefined
