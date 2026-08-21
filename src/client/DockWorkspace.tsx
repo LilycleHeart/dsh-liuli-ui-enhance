@@ -10,11 +10,12 @@
  * 全部交互带 data-testid，供无头浏览器自测（demo/verify-dock-gui.mjs）。
  */
 import { Fragment, useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
-import { collectTabsNodes, findNode, panelCount, type DockLayout, type DockNode, type DropTarget, type FloatWindow, type PanelInstance, type TabsNode } from './dock-model.ts'
+import { collectTabsNodes, findNode, MIN_SIZE, panelCount, type DockLayout, type DockNode, type DropTarget, type FloatWindow, type PanelInstance, type TabsNode } from './dock-model.ts'
 import type { DockStore } from './dock-store.ts'
 import { DOCK_PANEL_DEFS, panelDef, panelTitle, type DockHostAccess } from './dock-panels.tsx'
 import { markSideTabAccepted, parseSideTab, SIDE_TAB_MIME, sideTabToDockPanel, type SideTabDockPanel } from './side-tab-dock.ts'
 import css from './DockWorkspace.module.css'
+import { beginResizePerf, endResizePerf } from './resize-perf.ts'
 
 /** 工作台开合事件（header 按钮/快捷键/FloatBall 共用）。 */
 export const DOCK_TOGGLE_EVENT = 'liuli:dock-toggle'
@@ -320,8 +321,8 @@ export function DockWorkspace({ store, sessionList, addFileToChat, openPath, onC
   const beginSash = useCallback((e: React.PointerEvent, splitId: string, dividerIndex: number, dir: 'h' | 'v'): void => {
     if (e.button !== 0) return
     e.preventDefault()
-    const pane = (e.currentTarget as HTMLElement).parentElement
-    const rect = pane?.getBoundingClientRect()
+    const splitBox = (e.currentTarget as HTMLElement).parentElement
+    const rect = splitBox?.getBoundingClientRect()
     if (rect === undefined) return
     const start = dir === 'h' ? e.clientX : e.clientY
     const total = dir === 'h' ? rect.width : rect.height
@@ -332,16 +333,49 @@ export function DockWorkspace({ store, sessionList, addFileToChat, openPath, onC
       return node !== undefined && node.kind === 'split' ? node.sizes : []
     })()
     const startRatio = startSizes[dividerIndex - 1] ?? 0.5
+    // 拖拽期间直接把比例写进相邻两 shard 的 flexGrow（renderNode 语义：
+    // flexGrow = sizes[i]），避免每帧 store 提交触发整棵工作台重渲染；
+    // 松开后再一次性提交最终比例。
+    let shards: { before: HTMLElement; after: HTMLElement; sizesTotal: number } | undefined
+    if (splitBox !== null) {
+      const shardEls = Array.from(splitBox.children)
+        .filter((el): el is HTMLElement => el instanceof HTMLElement && css.shard !== undefined && el.classList.contains(css.shard))
+      const beforeEl = shardEls[dividerIndex - 1]
+      const afterEl = shardEls[dividerIndex]
+      if (beforeEl !== undefined && afterEl !== undefined) {
+        shards = {
+          before: beforeEl,
+          after: afterEl,
+          sizesTotal: (startSizes[dividerIndex - 1] ?? 0.5) + (startSizes[dividerIndex] ?? 0.5),
+        }
+      }
+    }
+    let lastRatio = startRatio
+    beginResizePerf()
     const onMove = (ev: PointerEvent): void => {
       const pos = dir === 'h' ? ev.clientX : ev.clientY
-      store.resizeTo(splitId, dividerIndex, startRatio + (pos - start) / total)
+      const ratio = startRatio + (pos - start) / total
+      lastRatio = ratio
+      if (shards !== undefined) {
+        // clamp 语义与 dock-model resizeSplitTo 一致。
+        let na = Math.max(MIN_SIZE * shards.sizesTotal, Math.min(shards.sizesTotal - MIN_SIZE * shards.sizesTotal, ratio * shards.sizesTotal))
+        if (!Number.isFinite(na)) na = shards.sizesTotal / 2
+        shards.before.style.flexGrow = String(na)
+        shards.after.style.flexGrow = String(shards.sizesTotal - na)
+        return
+      }
+      store.resizeTo(splitId, dividerIndex, ratio)
     }
     const onUp = (): void => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+      endResizePerf()
+      if (shards !== undefined) store.resizeTo(splitId, dividerIndex, lastRatio)
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
   }, [store])
 
   /* ── 渲染辅助 ── */

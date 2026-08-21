@@ -122,6 +122,8 @@ docs/
 - vendored `src/vendor/material-color-utilities.js` 是上游库，除非有明确目的否则不要改动。
 - **项目改名后执行 `pnpm install:desktop` 会追加新注册而不是替换旧注册**：安装器只按当前包名（如 `dsh-liuli-ui-enhance`）检测 profile，旧 `id: liuli-theme` / `@deepseek-ai/liuli-theme` 不会被识别为已注册，会在 `cordis.patch.yml` 追加新 insert 块并在 `package.json` dependencies 增加新包；彻底迁移需手动删除 profile 中的旧依赖与旧 insert 块，再执行 `pnpm install`。
 - **批量清理品牌词时不要只做机械替换**：复合品牌词会被替换成生造词，参考来源词会被错误归属到宿主名；需要二次替换为「琉璃」「参考实现源码」等中性词，并在 `pnpm build` 前搜索旧词残留确认无残留。
+- **长对话拖 sash / 缩放窗口掉帧的元凶是宿主产物行 RO，不是琉璃布局代码**：`@deepseek-ai/dsh-client-ui-deliverables` 给每个产物行（`[data-produced-files-row]`）注册 ResizeObserver，回调内 `getComputedStyle`+多次 `getBoundingClientRect`+`textContent` 写入反复强制全量回流；列宽逐帧变化时每帧 O(产物行数) 次回流（实测 48 步拖拽主线程 10.2s）。正确做法：缩放开始冻结产物行宽度使宿主 RO 不触发、结束后分批解冻（`resize-perf.ts`，勿直接改宿主源码）；排查此类问题用 `demo/inspect-sash-perf.mjs`（RO 归因 + 分相位长任务）定位，勿凭猜测加 `content-visibility`。
+- **磨砂 backdrop-filter 缩放期不能直接 `none` 硬切也不能 JS 每帧改变量硬渐变**：硬切会「突然消失」被用户吐槽；但 JS 每帧改写 body 自定义属性会触发全量子树样式失效、反而在按下时新增 ~240ms 尖峰。现行折中：rAF 缓动到恒等滤镜（~140ms）即挂 `body[data-liuli-blur-off]` 让 CSS 的 `none` 无缝接管，松手反向渐回；同时磨砂层相关 RO/遮挡检测（WindowControls/TurnRail/HeaderEffects mask）在缩放期让位。
 
 ## 踩坑自动写入（强制约定）
 

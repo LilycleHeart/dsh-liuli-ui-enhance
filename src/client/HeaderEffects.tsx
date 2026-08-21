@@ -782,19 +782,42 @@ export function LiuliHeaderResizer() {
     // 并生成跟随卡片圆角的 SVG mask（--dsh-wallpaper-mask），
     // 让壁纸模糊层只在 header / 正文两张圆角卡片范围内可见。
     const root = header.closest<HTMLElement>('[data-phase]')
-    const sync = (): void => {
+    // mask 再生成本身不便宜（getComputedStyle + SVG 字符串 + data-URL 重新解码），
+    // 拖拽缩放时 RO 每帧触发 sync：纵向几何（header/模糊层/正文卡高度、阶段）
+    // 未变时跳过重建——mask 以 mask-size:100% 100% 拉伸，宽度变化自动适配，
+    // 待宽度稳定后再补一次精确重建修正圆角；body 样式变化（圆角/材质设置）
+    // 走 force 路径强制重建。
+    let lastGeomKey = ''
+    let lastMaskWidth = -1
+    let maskSettle: ReturnType<typeof setTimeout> | null = null
+    const sync = (force = false): void => {
       if (root === null) return
       const headerRect = header.getBoundingClientRect()
       // 先把 header 高度变量写入 —— TurnRail 的 top 依赖它跟随拉伸。
       // 必须放在 blur 层检查之前：官方 aria-hidden 模糊层已由本插件的
       // [data-phase]::before 伪元素替代，querySelector 会落空提前 return，
       // 导致变量从未写入、rail 拉伸不跟随（见此前 bug）。
-      root.style.setProperty('--dsh-header-height', `${headerRect.height}px`)
+      // 仅在变化时写入，避免缩放期每帧 setProperty 触发样式失效。
+      const hh = `${headerRect.height}px`
+      if (root.style.getPropertyValue('--dsh-header-height') !== hh) {
+        root.style.setProperty('--dsh-header-height', hh)
+      }
       const blur = root.querySelector<HTMLElement>(':scope > [aria-hidden="true"]:first-child')
       const blurRect = blur?.getBoundingClientRect()
       if (blurRect === undefined || blurRect.height <= 0) return
       const body = root.querySelector<HTMLElement>('[data-conversation-scroll]')
       const bodyRect = body?.getBoundingClientRect()
+      const geomKey = `${root.dataset.phase ?? ''}|${headerRect.height}|${blurRect.height}|${bodyRect?.height ?? -1}`
+      if (!force && geomKey === lastGeomKey) {
+        if (blurRect.width !== lastMaskWidth) {
+          lastMaskWidth = blurRect.width
+          if (maskSettle !== null) clearTimeout(maskSettle)
+          maskSettle = setTimeout(() => { maskSettle = null; sync(true) }, 160)
+        }
+        return
+      }
+      lastGeomKey = geomKey
+      lastMaskWidth = blurRect.width
       // 非 active 阶段（主页 hero / settling 等）不是 header + scrollBody 双卡，
       // 模糊层应按整个容器走，避免中间留缝和直角。
       if (root.dataset.phase !== 'active') {
@@ -848,17 +871,17 @@ export function LiuliHeaderResizer() {
       }
     } catch (_) { /* 存储不可用则跳过 */ }
     sync()
-    const headerObserver = new ResizeObserver(sync)
+    const headerObserver = new ResizeObserver(() => sync())
     headerObserver.observe(header)
-    const rootObserver = root !== null ? new ResizeObserver(sync) : null
+    const rootObserver = root !== null ? new ResizeObserver(() => sync()) : null
     // oxlint-disable-next-line typescript/no-non-null-assertion -- the ternary above proves root exists
     rootObserver?.observe(root!)
     const scrollBody = root?.querySelector<HTMLElement>('[data-conversation-scroll]') ?? null
-    const scrollBodyObserver = scrollBody !== null ? new ResizeObserver(sync) : null
+    const scrollBodyObserver = scrollBody !== null ? new ResizeObserver(() => sync()) : null
     // oxlint-disable-next-line typescript/no-non-null-assertion -- the ternary above proves scrollBody exists
     scrollBodyObserver?.observe(scrollBody!)
-    // 圆角/材质等设置会写 body 内联变量，变化时重新生成 mask。
-    const bodyObserver = new MutationObserver(sync)
+    // 圆角/材质等设置会写 body 内联变量，变化时强制重新生成 mask。
+    const bodyObserver = new MutationObserver(() => sync(true))
     bodyObserver.observe(document.body, { attributes: true, attributeFilter: ['style'] })
 
     let drag: { startY: number; startH: number } | null = null
@@ -890,6 +913,8 @@ export function LiuliHeaderResizer() {
     }
     el.addEventListener('pointerdown', onDown)
     return () => {
+      if (maskSettle !== null) clearTimeout(maskSettle)
+      maskSettle = null
       headerObserver.disconnect()
       rootObserver?.disconnect()
       scrollBodyObserver?.disconnect()

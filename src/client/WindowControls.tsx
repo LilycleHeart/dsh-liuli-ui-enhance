@@ -16,6 +16,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import css from './WindowControls.module.css'
+import { isResizeInProgress } from './resize-perf.ts'
 
 /** Whether the current page is the win32 frameless desktop shell. */
 export function isFramelessWin32(): boolean {
@@ -173,6 +174,8 @@ export function WindowControls() {
     const inTriggerZone = (): boolean => pointer.x > window.innerWidth - REVEAL_W && pointer.y < TRIGGER_H
     const check = (): void => {
       raf = 0
+      // 缩放期让位：elementsFromPoint + 矩形读取开销大，拖拽期间无需重评估遮挡。
+      if (isResizeInProgress()) return
       const el = rootRef.current
       if (el === null) return
       // 指针在保持区内：悬停唤出优先，暂不评估（离开保持区后由 onMove 触发重评估）
@@ -220,6 +223,8 @@ export function WindowControls() {
     const onMove = (e: PointerEvent): void => {
       pointer.x = e.clientX
       pointer.y = e.clientY
+      // 缩放期让位：只记录指针位置，不做唤出判定/遮挡检测调度。
+      if (isResizeInProgress()) return
       if (inTriggerZone()) {
         // 悬停唤出：显示胶囊（复位 last，离开保持区后能重新评估隐藏）
         if (hiddenRef.current) {

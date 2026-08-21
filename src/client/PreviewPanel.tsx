@@ -47,6 +47,7 @@ import {
   consumeSideTabAccepted, SIDE_TAB_MIME, serializeSideTab, sideTabToDockPanel,
 } from './side-tab-dock.ts'
 import css from './PreviewPanel.module.css'
+import { beginResizePerf, endResizePerf } from './resize-perf.ts'
 
 /** 打开/关闭事件名（header 按钮翻转模块状态后广播，面板同步）。 */
 export const PREVIEW_TOGGLE_EVENT = 'liuli:preview-toggle'
@@ -1131,6 +1132,8 @@ export function PreviewDetailsPanel({
   const beginWidthDrag = useCallback((startX: number, startTrack: number, draggingEl: HTMLElement | null): void => {
     resizing.current = true
     if (draggingEl !== null) draggingEl.setAttribute('data-dragging', '')
+    // 缩放性能护栏：details 列宽逐帧变化会触发会话列内宿主 RO 风暴与磨砂重采样。
+    beginResizePerf()
     const { min, max } = widthBounds()
     let last = Math.min(max, Math.max(min, startTrack))
     const onMove = (ev: PointerEvent): void => {
@@ -1143,12 +1146,15 @@ export function PreviewDetailsPanel({
         draggingEl.removeAttribute('data-dragging')
       }
       resizing.current = false
+      endResizePerf()
       patch({ width: last })
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
   }, [widthBounds, applyWidthOverride, patch])
 
   const onResizeStart = (e: ReactPointerEvent<HTMLDivElement>): void => {

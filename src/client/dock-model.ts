@@ -65,7 +65,8 @@ export type DropTarget =
   | { kind: 'edge'; side: DockSide }
   | { kind: 'float'; x: number; y: number }
 
-const MIN_SIZE = 0.12
+/** split 子级最小比例（sash 缩放 clamp 用；拖拽直写 DOM 路径需复用同一常量）。 */
+export const MIN_SIZE = 0.12
 
 /* ── 基础构造 ── */
 
