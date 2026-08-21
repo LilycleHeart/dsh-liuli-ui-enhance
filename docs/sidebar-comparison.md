@@ -82,7 +82,7 @@
 | --- | --- | --- | --- |
 | Treemapping | map | 文件树(搜索/仅变更/Git 状态徽标/右键/拖拽进聊天);DSH 已隐藏该入口,DSH 保留 | ✅(适配保留) |
 | 仓库 Wiki(repo-wiki) | 自绘 32x32(3 圆角方块+对角线) | README 摘录 + 模块地图,chip 点回源码 | ✅ |
-| 审查(git) | file-diff | Git 状态 + 只读提交图(详情/加载更多) | ✅ |
+| 审查(git) | file-diff | ZCode git pane 对齐：未暂存/已暂存/全部分支/上一轮 四源切换 + 折叠 diff（+添加/−删除）+ 右键复制/定位/文件树 | ✅ |
 | 浏览器(browser) | globe | 后退/前进/刷新/地址栏/外部打开 + 元素拾取开关(同 browser.elementPicker 显式语义);地址栏接受任意 http/https(裸域名补 https、回环/局域网 IP 补 http、相对产物路径映射 /preview),同源页标题回写标签 | ✅ |
 | 代码查看(code-viewer) | file-code-corner(回退)/文件图标 | /preview iframe + 路径栏 + 默认编辑器打开;参考实现有语法高亮渲染,DSH 走 /preview 原样服务 | ✅(渲染深度差异,已注明) |
 | 终端/开发者工具/辅助对话/子智能体/画板/模型轨迹/计划 | — | DSH 宿主无对应能力(无 Web PTY/无对应 agent 运行时) | ➖ 不适用 |

@@ -108,6 +108,251 @@ async function sidebarGitStatus(root: string): Promise<SidebarGitStatusRow[] | u
   }
 }
 
+/* ── ZCode 风格审查面板数据模型（sourceOptions / datasets / summary） ── */
+
+type SidebarGitSourceId = 'unstaged' | 'staged' | 'branch'
+
+interface SidebarGitSourceOption {
+  id: SidebarGitSourceId
+  disabled: boolean
+}
+
+interface SidebarGitChange {
+  path: string
+  workspaceRelativePath: string
+  added: number
+  removed: number
+  kind: 'added' | 'deleted' | 'modified' | 'untracked' | 'renamed' | 'copied'
+}
+
+interface SidebarGitSection {
+  id: string
+  changes: SidebarGitChange[]
+}
+
+interface SidebarGitDataset {
+  id: SidebarGitSourceId
+  sections: SidebarGitSection[]
+  comparisonLabel?: string | null
+}
+
+interface SidebarGitSummary {
+  isGitAvailable: boolean
+  isRepository: boolean
+  added: number
+  removed: number
+}
+
+interface SidebarGitState {
+  rows: SidebarGitStatusRow[]
+  sourceOptions: SidebarGitSourceOption[]
+  datasets: Record<SidebarGitSourceId, SidebarGitDataset>
+  summary: SidebarGitSummary
+  branch: string
+  revision: number
+}
+
+/** 解析 git diff --numstat 输出为 path → { added, removed }。 */
+function parseNumstat(stdout: string): Map<string, { added: number; removed: number }> {
+  const map = new Map<string, { added: number; removed: number }>()
+  for (const line of stdout.split(/\r?\n/)) {
+    if (line === '') continue
+    const tab1 = line.indexOf('\t')
+    if (tab1 <= 0) continue
+    const tab2 = line.indexOf('\t', tab1 + 1)
+    if (tab2 <= tab1) continue
+    const addedText = line.slice(0, tab1)
+    const removedText = line.slice(tab1 + 1, tab2)
+    const path = line.slice(tab2 + 1)
+    if (addedText === '-' || removedText === '-') {
+      // 二进制文件：无行数统计。
+      continue
+    }
+    const added = Math.max(0, Math.trunc(Number(addedText)) || 0)
+    const removed = Math.max(0, Math.trunc(Number(removedText)) || 0)
+    map.set(path, { added, removed })
+  }
+  return map
+}
+
+/** 统计一个文本文件的行数（未跟踪文件的新增行数用；二进制/超大文件返回 0）。 */
+async function countTextLines(root: string, rel: string): Promise<number> {
+  const target = resolveWithin(root, rel)
+  if (target === undefined) return 0
+  try {
+    const info = await stat(target)
+    if (!info.isFile() || info.size > 4 * 1024 * 1024) return 0
+    const raw = await readFile(target)
+    if (raw.includes(0)) return 0
+    const text = raw.toString('utf8')
+    return text.split(/\r?\n/).length - 1
+  } catch {
+    return 0
+  }
+}
+
+function gitChangeKind(code: string): SidebarGitChange['kind'] {
+  switch (code) {
+    case 'A': return 'added'
+    case 'D': return 'deleted'
+    case 'R': return 'renamed'
+    case 'C': return 'copied'
+    default: return 'modified'
+  }
+}
+
+/** 汇总 ZCode 风格 git state（审查面板用）。 */
+async function sidebarGitState(root: string): Promise<SidebarGitState> {
+  const empty = (): SidebarGitState => ({
+    rows: [],
+    sourceOptions: [
+      { id: 'unstaged', disabled: false },
+      { id: 'staged', disabled: false },
+      { id: 'branch', disabled: false },
+    ],
+    datasets: {
+      unstaged: { id: 'unstaged', sections: [] },
+      staged: { id: 'staged', sections: [] },
+      branch: { id: 'branch', sections: [], comparisonLabel: null },
+    },
+    summary: { isGitAvailable: false, isRepository: false, added: 0, removed: 0 },
+    branch: '',
+    revision: 0,
+  })
+
+  let rows: SidebarGitStatusRow[] = []
+  let inside = ''
+  let branch = ''
+  let trackingBranch = ''
+  let unstagedNumstat = new Map<string, { added: number; removed: number }>()
+  let stagedNumstat = new Map<string, { added: number; removed: number }>()
+  let branchNumstat = new Map<string, { added: number; removed: number }>()
+  try {
+    const [statusRows, insideResult, branchResult, trackingResult, unstaged, staged, branchDiff] = await Promise.all([
+      sidebarGitStatus(root),
+      execFile('git', ['-C', root, 'rev-parse', '--is-inside-work-tree'], {
+        timeout: 8000, maxBuffer: 1024, windowsHide: true,
+      }),
+      execFile('git', ['-C', root, 'rev-parse', '--abbrev-ref', 'HEAD'], {
+        timeout: 8000, maxBuffer: 1024, windowsHide: true,
+      }).catch(() => ({ stdout: '' })),
+      execFile('git', ['-C', root, 'rev-parse', '--abbrev-ref', '@{upstream}'], {
+        timeout: 8000, maxBuffer: 1024, windowsHide: true,
+      }).catch(() => ({ stdout: '' })),
+      execFile('git', ['-C', root, 'diff', '--numstat', '--'], {
+        timeout: 8000, maxBuffer: 4 * 1024 * 1024, windowsHide: true,
+      }).catch(() => ({ stdout: '' })),
+      execFile('git', ['-C', root, 'diff', '--cached', '--numstat', '--'], {
+        timeout: 8000, maxBuffer: 4 * 1024 * 1024, windowsHide: true,
+      }).catch(() => ({ stdout: '' })),
+      execFile('git', ['-C', root, 'diff', '--numstat', '@{upstream}...HEAD', '--'], {
+        timeout: 8000, maxBuffer: 4 * 1024 * 1024, windowsHide: true,
+      }).catch(() => ({ stdout: '' })),
+    ])
+    if (statusRows === undefined) return empty()
+    rows = statusRows
+    inside = insideResult.stdout.trim()
+    branch = branchResult.stdout.trim().split(/\r?\n/)[0] ?? ''
+    trackingBranch = trackingResult.stdout.trim().split(/\r?\n/)[0] ?? ''
+    unstagedNumstat = parseNumstat(unstaged.stdout)
+    stagedNumstat = parseNumstat(staged.stdout)
+    branchNumstat = parseNumstat(branchDiff.stdout)
+  } catch {
+    return empty()
+  }
+
+  const isRepository = inside === 'true'
+  const isGitAvailable = true
+  const stagedChanges: SidebarGitChange[] = []
+  const unstagedChanges: SidebarGitChange[] = []
+
+  const lookup = (map: Map<string, { added: number; removed: number }>, row: SidebarGitStatusRow): { added: number; removed: number } =>
+    map.get(row.path) ?? (row.oldPath !== undefined ? map.get(row.oldPath) : undefined) ?? { added: 0, removed: 0 }
+
+  // 未跟踪文件的行数统计（限制并发数量）。
+  const untrackedRows = rows.filter(row => row.x === '?' && row.y === '?')
+  const untrackedLineCounts = await Promise.all(untrackedRows.slice(0, 80).map(async row => {
+    const count = await countTextLines(root, row.path)
+    return { row, count }
+  }))
+  const untrackedCounts = new Map(untrackedLineCounts.map(({ row, count }) => [row.path, count]))
+
+  for (const row of rows) {
+    if (row.x === '?' && row.y === '?') {
+      unstagedChanges.push({
+        path: row.path,
+        workspaceRelativePath: row.path,
+        added: untrackedCounts.get(row.path) ?? 0,
+        removed: 0,
+        kind: 'untracked',
+      })
+      continue
+    }
+    if (row.x !== ' ' && row.x !== '?') {
+      const counts = lookup(stagedNumstat, row)
+      stagedChanges.push({
+        path: row.path,
+        workspaceRelativePath: row.path,
+        added: counts.added,
+        removed: counts.removed,
+        kind: gitChangeKind(row.x),
+      })
+    }
+    if (row.y !== ' ' && row.y !== '?') {
+      const counts = lookup(unstagedNumstat, row)
+      unstagedChanges.push({
+        path: row.path,
+        workspaceRelativePath: row.path,
+        added: counts.added,
+        removed: counts.removed,
+        kind: gitChangeKind(row.y),
+      })
+    }
+  }
+
+  const sortChanges = (changes: SidebarGitChange[]): SidebarGitChange[] =>
+    changes.sort((a, b) => a.workspaceRelativePath.localeCompare(b.workspaceRelativePath))
+
+  const kindFromNumstat = (added: number, removed: number): SidebarGitChange['kind'] => {
+    if (added > 0 && removed > 0) return 'modified'
+    if (added > 0) return 'added'
+    if (removed > 0) return 'deleted'
+    return 'modified'
+  }
+  const branchChanges: SidebarGitChange[] = [...branchNumstat.entries()].map(([path, counts]) => ({
+    path,
+    workspaceRelativePath: path,
+    added: counts.added,
+    removed: counts.removed,
+    kind: kindFromNumstat(counts.added, counts.removed),
+  }))
+  const branchComparisonLabel = trackingBranch === '' ? null : branch === '' ? `HEAD -> ${trackingBranch}` : `${branch} -> ${trackingBranch}`
+
+  const summary: SidebarGitSummary = {
+    isGitAvailable,
+    isRepository,
+    added: [...stagedNumstat.values(), ...unstagedNumstat.values()].reduce((sum, entry) => sum + entry.added, 0),
+    removed: [...stagedNumstat.values(), ...unstagedNumstat.values()].reduce((sum, entry) => sum + entry.removed, 0),
+  }
+
+  return {
+    rows,
+    sourceOptions: [
+      { id: 'unstaged', disabled: false },
+      { id: 'staged', disabled: false },
+      { id: 'branch', disabled: false },
+    ],
+    datasets: {
+      unstaged: { id: 'unstaged', sections: unstagedChanges.length > 0 ? [{ id: 'unstaged', changes: sortChanges(unstagedChanges) }] : [] },
+      staged: { id: 'staged', sections: stagedChanges.length > 0 ? [{ id: 'staged', changes: sortChanges(stagedChanges) }] : [] },
+      branch: { id: 'branch', sections: branchChanges.length > 0 ? [{ id: 'branch', changes: sortChanges(branchChanges) }] : [], comparisonLabel: branchComparisonLabel },
+    },
+    summary,
+    branch,
+    revision: 0,
+  }
+}
+
 /** Git 提交（结构化字段，供前端点击查看详情）。 */
 interface SidebarGitCommit {
   hash: string
@@ -834,16 +1079,21 @@ async function serveSidebar(ctx: Context, req: IncomingMessage, res: ServerRespo
     }
     if (pathname === '/liuli-sidebar/git') {
       const skip = Math.max(0, Math.trunc(Number(url.searchParams.get('skip') ?? '0')) || 0)
-      const [status, graph] = await Promise.all([sidebarGitStatus(root), sidebarGitLog(root, skip)])
+      const [state, graph] = await Promise.all([sidebarGitState(root), sidebarGitLog(root, skip)])
       json(res, 200, {
         ok: true,
         root,
-        git: status !== undefined || graph !== undefined,
-        status: status ?? [],
-        branch: graph?.branch ?? '',
+        git: state.summary.isGitAvailable || graph !== undefined,
+        status: state.rows,
+        branch: graph?.branch ?? state.branch,
         log: graph?.log ?? '',
         commits: graph?.commits ?? [],
         hasMore: graph?.hasMore ?? false,
+        sourceOptions: state.sourceOptions,
+        datasets: state.datasets,
+        summary: state.summary,
+        loading: false,
+        revision: state.revision,
       })
       return
     }
@@ -855,7 +1105,9 @@ async function serveSidebar(ctx: Context, req: IncomingMessage, res: ServerRespo
     }
     if (pathname === '/liuli-sidebar/diff') {
       const rel = url.searchParams.get('path') ?? ''
-      const payload = await sidebarFileDiff(root, rel)
+      const sourceParam = url.searchParams.get('source') ?? 'unstaged'
+      const source: SidebarGitSourceId = sourceParam === 'staged' || sourceParam === 'branch' ? sourceParam : 'unstaged'
+      const payload = await sidebarFileDiff(root, rel, source)
       json(res, 200, { ok: true, root, rel, ...payload })
       return
     }
@@ -907,23 +1159,67 @@ function wholeFileAddedDiff(content: string): string {
   return lines.map(line => '+' + line).join('\n')
 }
 
-/** 读取单个文件的 git diff（HEAD 优先，其次未暂存）；未跟踪文件合成整文件新增。 */
-async function sidebarFileDiff(root: string, rel: string): Promise<{
+/** 读取单个文件的 git diff（ZCode 风格：availability / patch / beforeContent / afterContent）。 */
+async function sidebarFileDiff(root: string, rel: string, source: SidebarGitSourceId = 'unstaged'): Promise<{
   path: string
   diff: string
   x: string
   y: string
   untracked: boolean
+  availability: 'patch' | 'binary' | 'unavailable'
+  patch?: string
+  beforeContent?: string | null
+  afterContent?: string | null
+  summary?: string
 }> {
   const target = resolveWithin(root, rel)
   if (target === undefined) throw new Error('forbidden')
   const info = await stat(target).catch(() => undefined)
   const relPath = target === undefined ? rel : relativePath(root, target)
+  const gitPath = relPath.replace(/\\/g, '/')
   let x = ' '
   let y = ' '
   let untracked = false
+
+  if (source === 'branch') {
+    let diff = ''
+    let summary: string | undefined
+    try {
+      const upstream = await execFile('git', ['-C', root, 'rev-parse', '--abbrev-ref', '@{upstream}'], {
+        timeout: 8000, maxBuffer: 1024, windowsHide: true,
+      })
+      const tracking = upstream.stdout.trim().split(/\r?\n/)[0] ?? ''
+      if (tracking === '') {
+        return { path: target ?? rel, diff: '', x, y, untracked: false, availability: 'unavailable', summary: '当前分支没有上游分支。' }
+      }
+      const result = await execFile('git', ['-C', root, 'diff', `${tracking}...HEAD`, '--', gitPath], {
+        timeout: 8000, maxBuffer: 8 * 1024 * 1024, windowsHide: true,
+      })
+      diff = result.stdout
+    } catch (error) {
+      summary = error instanceof Error ? error.message : String(error)
+    }
+    if (diff === '') {
+      return { path: target ?? rel, diff, x, y, untracked: false, availability: 'unavailable', summary: summary ?? '没有可显示的 branch diff' }
+    }
+    if (/^Binary files /m.test(diff)) {
+      return { path: target ?? rel, diff, x, y, untracked: false, availability: 'binary', summary: diff.trim() }
+    }
+    return {
+      path: target ?? rel,
+      diff,
+      x,
+      y,
+      untracked: false,
+      availability: 'patch',
+      patch: diff,
+      beforeContent: null,
+      afterContent: null,
+    }
+  }
+
   try {
-    const { stdout } = await execFile('git', ['-C', root, 'status', '--porcelain=v1', '--', relPath], {
+    const { stdout } = await execFile('git', ['-C', root, 'status', '--porcelain=v1', '--', gitPath], {
       timeout: 8000,
       maxBuffer: 1024 * 1024,
       windowsHide: true,
@@ -939,35 +1235,60 @@ async function sidebarFileDiff(root: string, rel: string): Promise<{
   }
   if (untracked) {
     if (target !== undefined && info?.isFile() === true) {
-      const content = await readFile(target, 'utf8')
-      return { path: target, diff: wholeFileAddedDiff(content), x, y, untracked: true }
+      try {
+        const raw = await readFile(target)
+        if (raw.includes(0)) {
+          return { path: target, diff: '', x, y, untracked: true, availability: 'binary', summary: '二进制文件' }
+        }
+        const content = raw.toString('utf8')
+        return {
+          path: target,
+          diff: wholeFileAddedDiff(content),
+          x,
+          y,
+          untracked: true,
+          availability: 'patch',
+          patch: wholeFileAddedDiff(content),
+          beforeContent: null,
+          afterContent: content,
+        }
+      } catch {
+        return { path: target, diff: '', x, y, untracked: true, availability: 'unavailable', summary: '无法读取文件' }
+      }
     }
-    return { path: target ?? rel, diff: '', x, y, untracked: true }
+    return { path: target ?? rel, diff: '', x, y, untracked: true, availability: 'unavailable', summary: '文件不存在' }
   }
   let diff = ''
   try {
-    const { stdout } = await execFile('git', ['-C', root, 'diff', 'HEAD', '--', relPath], {
+    const args = source === 'staged'
+      ? ['-C', root, 'diff', '--cached', '--', gitPath]
+      : ['-C', root, 'diff', '--', gitPath]
+    const { stdout } = await execFile('git', args, {
       timeout: 8000,
       maxBuffer: 8 * 1024 * 1024,
       windowsHide: true,
     })
     diff = stdout
   } catch {
-    // HEAD 不存在（无提交）时回退未暂存 diff。
+    // 非 git 仓库或无 HEAD：无 diff。
   }
   if (diff === '') {
-    try {
-      const { stdout } = await execFile('git', ['-C', root, 'diff', '--', relPath], {
-        timeout: 8000,
-        maxBuffer: 8 * 1024 * 1024,
-        windowsHide: true,
-      })
-      diff = stdout
-    } catch {
-      // 非 git 仓库：无 diff。
-    }
+    return { path: target ?? rel, diff, x, y, untracked: false, availability: 'unavailable', summary: '没有可显示的 diff' }
   }
-  return { path: target ?? rel, diff, x, y, untracked: false }
+  if (/^Binary files /m.test(diff)) {
+    return { path: target ?? rel, diff, x, y, untracked: false, availability: 'binary', summary: diff.trim() }
+  }
+  return {
+    path: target ?? rel,
+    diff,
+    x,
+    y,
+    untracked: false,
+    availability: 'patch',
+    patch: diff,
+    beforeContent: null,
+    afterContent: null,
+  }
 }
 
 /* ── /liuli-reveal：在系统文件管理器中显示文件（审查「在资源管理器中打开」） ── */

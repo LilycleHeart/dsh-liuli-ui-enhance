@@ -101,6 +101,9 @@ export function buildElementCard(info: PickedElement): HTMLElement {
   details.className = 'liuli-element-card-details'
   const tagRow = row('tag', `<${info.tag}>`)
   if (tagRow !== null) details.appendChild(tagRow)
+  // rect 紧随 tag，和 formatSelection 的字段顺序保持一致（短字段先于长 selector）。
+  const rectRow = row('rect', `x=${info.rect.x} y=${info.rect.y} ${info.rect.width}x${info.rect.height}`)
+  if (rectRow !== null) details.appendChild(rectRow)
   if (info.selector !== '') {
     const selectorRow = row('selector', info.selector)
     if (selectorRow !== null) details.appendChild(selectorRow)
@@ -108,7 +111,6 @@ export function buildElementCard(info: PickedElement): HTMLElement {
   for (const [label, value] of [
     ['attributes', info.attributes],
     ['text', info.text],
-    ['rect', `x=${info.rect.x} y=${info.rect.y} ${info.rect.width}x${info.rect.height}`],
     ['color', info.color],
     ['background', info.background],
     ['font', info.font],

@@ -16,7 +16,7 @@
  * 边缘/面板内停靠、浮动窗口、标签页合并、sash 缩放；详情开合与宿主
  * layout 服务双向联动；dock 树自动保存/恢复（localStorage + 命名槽位 + 导出导入）。
  */
-import { Fragment, useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import type { PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   addPanel, collectTabsNodes, createPanel, MIN_SIZE, moveFloat, movePanel, panelCount,
@@ -95,6 +95,18 @@ function clampDetailsWidth(n: number, viewport: number, sidebar: number): number
   return Math.min(maxW, Math.max(DETAILS_MIN, Math.round(n)))
 }
 
+/** 面板贴边标记（由渲染后实测几何得出，避免嵌套 split / 0 宽 shard 误判）。 */
+interface PaneEdgeFlags {
+  left: boolean
+  right: boolean
+  top: boolean
+  bottom: boolean
+  /** shard 是横向行（宽 ≥ 高）还是纵向列；上下贴边规则只对横向行生效。 */
+  row: boolean
+  /** 同一列下方还有相邻卡片（用于对话页等区域表面判断是否处于堆叠顶部/中部）。 */
+  hasBelow: boolean
+}
+
 /** 桌面 shell 的区域表面类（样式来自桌面插件 ADVANCED_STYLES，观感与原生一致）。 */
 function surfaceClass(type: string): string {
   switch (type) {
@@ -136,6 +148,102 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const shellRef = useRef(shell)
   shellRef.current = shell
+  /** 用户把详情区域面板拖离原列（浮动/挪到其他位置）后，抑制宿主 openDetails 的自动补挂。 */
+  const detailsTornOut = useRef(false)
+
+  /** 面板贴边标记（实测几何）：key = data-dock-node，避免嵌套 split / 0 宽 shard 误判。 */
+  const [edgeMap, setEdgeMap] = useState<Record<string, PaneEdgeFlags>>({})
+
+  const recomputePaneEdges = useCallback(() => {
+    const rootEl = rootRef.current
+    if (rootEl === null) return
+    const rootRect = rootEl.getBoundingClientRect()
+    const next: Record<string, PaneEdgeFlags> = {}
+    const EPS = 0.5
+    const panes = Array.from(rootEl.querySelectorAll<HTMLElement>('[data-dock-node]'))
+    const shardRects: Array<{ id: string; rect: DOMRect }> = []
+    for (const pane of panes) {
+      const id = pane.getAttribute('data-dock-node') ?? ''
+      if (id === '') continue
+      const shard = pane.parentElement
+      const target = shard !== null && typeof css.shard === 'string' && shard.classList.contains(css.shard) ? shard : pane
+      shardRects.push({ id, rect: target.getBoundingClientRect() })
+    }
+    for (const item of shardRects) {
+      const r = item.rect
+      const leftFlush = r.left - rootRect.left <= EPS
+      const rightFlush = rootRect.right - r.right <= EPS
+      const bottomFlush = rootRect.bottom - r.bottom <= EPS
+      const sameColumn = (a: DOMRect, b: DOMRect): boolean =>
+        Math.abs(a.left - b.left) <= EPS && Math.abs(a.right - b.right) <= EPS
+      const hasAbove = shardRects.some(o => o.id !== item.id && sameColumn(o.rect, r) && Math.abs(o.rect.bottom - r.top) <= EPS)
+      const hasBelow = shardRects.some(o => o.id !== item.id && sameColumn(o.rect, r) && Math.abs(o.rect.top - r.bottom) <= EPS)
+      const region = panes.find(p => p.getAttribute('data-dock-node') === item.id)?.getAttribute('data-region-pane') ?? null
+      if (region === 'region:sidebar') {
+        // 侧边栏：只在左/右边缘时贴边；中间则四边留白。
+        next[item.id] = {
+          left: leftFlush && !rightFlush,
+          right: rightFlush && !leftFlush,
+          top: false,
+          bottom: false,
+          row: r.width >= r.height,
+          hasBelow,
+        }
+      } else if (region === 'region:details') {
+        // 详细页：同侧边栏左右规则；下方没有卡片时底部触底。
+        next[item.id] = {
+          left: leftFlush && !rightFlush,
+          right: rightFlush && !leftFlush,
+          top: false,
+          bottom: bottomFlush && !hasBelow,
+          row: r.width >= r.height,
+          hasBelow,
+        }
+      } else if (region === 'region:conversation') {
+        next[item.id] = { left: false, right: false, top: false, bottom: false, row: r.width >= r.height, hasBelow }
+      } else {
+        // 普通 dock 面板：上下堆叠时，下方卡片底部触底；其余三边留白。左右不贴边。
+        next[item.id] = {
+          left: false,
+          right: false,
+          top: false,
+          bottom: bottomFlush && hasAbove,
+          row: r.width >= r.height,
+          hasBelow,
+        }
+      }
+    }
+    setEdgeMap(prev => {
+      if (Object.keys(prev).length !== Object.keys(next).length) return next
+      for (const id of Object.keys(next)) {
+        const a = prev[id]
+        const b = next[id] as PaneEdgeFlags
+        if (a === undefined || a.left !== b.left || a.right !== b.right || a.top !== b.top || a.bottom !== b.bottom || a.row !== b.row || a.hasBelow !== b.hasBelow) return next
+      }
+      return prev
+    })
+  }, [css.shard])
+
+  // 每次渲染后同步一次贴边标记（布局树 / 开合 / 缩放都会反映到几何上）。
+  useLayoutEffect(() => {
+    recomputePaneEdges()
+  })
+
+  useEffect(() => {
+    const rootEl = rootRef.current
+    if (rootEl === null) return
+    const ro = new ResizeObserver(() => { recomputePaneEdges() })
+    ro.observe(rootEl)
+    window.addEventListener('resize', recomputePaneEdges)
+    // shard 宽度/高度有 0.3s flex-basis/flex-grow 过渡；布局树切换（导入/恢复/重置）
+    // 时 root 尺寸不变，RO 不会触发，必须在过渡结束后重算一次贴边标记。
+    rootEl.addEventListener('transitionend', recomputePaneEdges)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', recomputePaneEdges)
+      rootEl.removeEventListener('transitionend', recomputePaneEdges)
+    }
+  }, [recomputePaneEdges])
 
   /* ── 自动保存 dock 树（防抖 250ms）+ 卸载前落盘 ── */
   useEffect(() => {
@@ -174,7 +282,11 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
   useEffect(() => {
     const prev = prevDetails.current
     prevDetails.current = hostPanels.details
+    // 用户主动把详情区域拖走（浮动/挪到其他位置）后，不再自动补挂到右缘；
+    // 关闭宿主 details 列时清除标记，之后重新 openDetails 仍可补挂。
+    if (hostPanels.details === 0) detailsTornOut.current = false
     if (prev === 0 && hostPanels.details > 0) {
+      if (detailsTornOut.current) return
       const current = shellRef.current.dock
       if (findRegion(current, REGION_DETAILS) === undefined) {
         actions.setDock(withRegion(current, REGION_DETAILS, 'right'))
@@ -420,6 +532,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
       })
       const current = shellRef.current.dock
       if (info.source.kind === 'node' && info.source.panelId !== undefined) {
+        markDetailsTornOut(info.source.panelId)
         actions.setDock(movePanel(current, info.source.panelId, target ?? floatAt()))
       } else if (info.source.kind === 'float') {
         actions.setDock(moveFloat(current, info.source.containerId, target ?? floatAt(), info.source.panelId))
@@ -619,9 +732,16 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
   /** 悬停抓握点：单区域面板的唯一拖拽入口（平时隐藏，hover 显形）。 */
   /** 一键浮动：无边框改造移除了 caption 拖拽悬浮区，单标签面板的抓握簇（⧉）
    *  与多标签 chip（⧉）都走这里——点击即把面板抽出为居中浮动窗口。 */
+  const markDetailsTornOut = (panelId: string): void => {
+    if (findRegion(shellRef.current.dock, REGION_DETAILS)?.id === panelId) {
+      detailsTornOut.current = true
+    }
+  }
+
   const floatPanelCentered = (panelId: string): void => {
     const x = Math.max(8, Math.round((window.innerWidth - 480) / 2))
     const y = Math.max(44, Math.round((window.innerHeight - 360) / 3))
+    markDetailsTornOut(panelId)
     actions.setDock(movePanel(shellRef.current.dock, panelId, { kind: 'float', x, y }))
   }
 
@@ -682,12 +802,19 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     const surface = regionType !== undefined ? surfaceClass(regionType) : ''
     // 单区域 = 原生表面直出（无附加 chrome）；多标签 = 表面 + 细标签条
     if (only !== undefined && regionType !== undefined) {
+      const regionEdges = edgeMap[node.id] ?? { left: false, right: false, top: false, bottom: false, row: false, hasBelow: false }
       return (
         <div
           className={surface + ' ' + css.pane}
           data-dock-node={node.id}
           data-testid="dock-pane"
           data-region-pane={regionType}
+          data-edge-left={regionEdges.left || undefined}
+          data-edge-right={regionEdges.right || undefined}
+          data-edge-top={regionEdges.top || undefined}
+          data-edge-bottom={regionEdges.bottom || undefined}
+          data-row={regionEdges.row || undefined}
+          data-has-below={regionEdges.hasBelow || undefined}
         >
           {regionType === REGION_SIDEBAR
             ? <div className="dshDesktopUpstreamSidebar">{renderPanelBody(only)}</div>
@@ -698,9 +825,13 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
         </div>
       )
     }
+    const edges = edgeMap[node.id] ?? { left: false, right: false, top: false, bottom: false, row: false, hasBelow: false }
+    const paneCardClass = css.pane
+      + ' ' + css.paneCard
+      + (edges.bottom ? ' ' + css.edgeBottom : '')
     return (
       <div
-        className={css.pane + (surface !== '' ? ' ' + surface : '')}
+        className={paneCardClass}
         data-dock-node={node.id}
         data-testid="dock-pane"
       >

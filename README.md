@@ -50,6 +50,7 @@ pnpm patch:desktop  # 可选：win32 无边框补丁
 ## 文档
 
 - [功能详解](docs/features.md)
+- [样式规范](docs/style-guide.md)
 - [安装与构建](docs/install.md)
 - [浏览器自动化](docs/browser-use.md)
 
