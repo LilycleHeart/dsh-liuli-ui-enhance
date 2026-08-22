@@ -193,3 +193,12 @@
 .menuItem:hover {
   background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.14));
 }
+
+.menuItem:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.menuItem:disabled:hover {
+  background: transparent;
+}

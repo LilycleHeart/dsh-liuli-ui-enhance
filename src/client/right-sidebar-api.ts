@@ -160,9 +160,43 @@ export async function fetchSidebarDiff(sessionId: string, path: string, source: 
   return response.json() as Promise<SidebarDiffPayload>
 }
 
-/** 在系统文件管理器中定位文件（fire-and-forget；Host 半负责 platform 命令）。 */
-export function revealSidebarPath(sessionId: string, path: string): void {
+/** 页内诊断 toast：不依赖 alert（Electron 渲染进程可能禁用原生对话框）。 */
+export function revealToast(message: string, kind: 'info' | 'error' = 'info'): void {
+  try {
+    const id = 'liuli-reveal-toast'
+    document.getElementById(id)?.remove()
+    const el = document.createElement('div')
+    el.id = id
+    el.textContent = message
+    el.style.cssText = [
+      'position:fixed', 'left:50%', 'bottom:32px', 'transform:translateX(-50%)',
+      'z-index:2147483647', 'padding:10px 14px', 'border-radius:10px',
+      'font-size:13px', 'line-height:1.5', 'max-width:70vw', 'pointer-events:none',
+      'box-shadow:0 8px 24px rgba(0,0,0,0.35)',
+      kind === 'error'
+        ? 'background:#b3261e;color:#fff'
+        : 'background:rgba(32,32,32,0.96);color:#fff',
+    ].join(';')
+    document.body.appendChild(el)
+    window.setTimeout(() => { el.remove() }, kind === 'error' ? 6000 : 2500)
+  } catch { /* 诊断提示不应影响主流程 */ }
+}
+
+/** 在系统文件管理器中定位文件（Host 半负责 platform 命令）。 */
+export async function revealSidebarPath(sessionId: string, path: string): Promise<boolean> {
   const query = new URLSearchParams({ sessionId, path })
-  void fetch('/liuli-reveal?' + query.toString()).catch(() => {})
+  revealToast('正在打开资源管理器…', 'info')
+  try {
+    const response = await fetch('/liuli-reveal?' + query.toString())
+    if (response.ok) return true
+    const detail = await response.text().catch(() => '')
+    console.warn(`[liuli] /liuli-reveal failed: ${response.status} ${detail}`)
+    revealToast(`在资源管理器中打开失败：${response.status} ${detail}`, 'error')
+    return false
+  } catch (error) {
+    console.warn('[liuli] /liuli-reveal unavailable:', error)
+    revealToast(`在资源管理器中打开失败：${error instanceof Error ? error.message : String(error)}`, 'error')
+    return false
+  }
 }
 

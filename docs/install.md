@@ -51,7 +51,9 @@ pnpm install:desktop:npm
 `pnpm patch:desktop` 会：
 
 1. 备份 `resources/app.asar` 为 `app.asar.bak-frameless`；
-2. 在 `resources/app.asar.unpacked/lib/` 下动态查找 `electron-runtime-*.js`（客户端升级会换 hash 文件名）并修改；
+2. 在 `resources/app.asar.unpacked/lib/` 下动态查找 `electron-runtime-*.js`（客户端升级会换 hash 文件名）并修改：
+   - win32 无边框：把 advanced 窗口的 `titleBarStyle: "hidden"` + `titleBarOverlay` 改为 `frame: false`；
+   - 浏览器 webviewTag：把 advanced/compatibility 主窗口 `webPreferences` 补上 `webviewTag: true`（内嵌浏览器用 `<webview>` DOM 标签承载，拉伸时由 CSS `overflow:hidden` 裁剪，不溢出容器）；
 3. 重建 `resources/app.asar` 并同步 integrity；
 4. 写入 `resources/app.asar.patched`。
 
@@ -181,7 +183,7 @@ src/
   browser-engine.ts        # 内嵌浏览器引擎（CDP / Electron / Web 回退）
   host-audio.ts            # Electron 系统回环音频授权
   host-window.ts           # Electron 窗口控制（最小化/最大化/关闭/托盘）
-  liuli-settings.ts        # 20 项设置 schema 与默认值
+  liuli-settings.ts        # 21 项设置 schema 与默认值
   invariant.ts             # 包级 invariant 伴生（无运行时检查）
   vendor/                  # vendored material-color-utilities（勿随意改动）
   client/

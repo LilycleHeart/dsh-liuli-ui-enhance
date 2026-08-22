@@ -8,6 +8,7 @@
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import { resolveSessionId, locateTitleSpan } from './session-rename.ts'
+import { ICONS } from './menu-icons.ts'
 
 export type SessionMarker = 'in-progress' | 'todo' | 'done'
 
@@ -21,16 +22,17 @@ export const MARKER_LABEL: Record<SessionMarker, string> = {
   'done': '已完成',
 }
 
-const MARKER_COLOR: Record<SessionMarker, string> = {
-  'in-progress': 'var(--dsw-alias-state-business-primary)',
-  'todo': 'var(--dsw-alias-state-warn-primary)',
-  'done': 'var(--dsw-alias-state-success-primary)',
+export const MARKER_COLOR: Record<SessionMarker, string> = {
+  'in-progress': 'var(--dsw-alias-brand-primary)',
+  'todo': 'var(--dsw-alias-brand-primary)',
+  'done': 'var(--dsw-alias-brand-primary)',
 }
 
-const MARKER_SVG: Record<SessionMarker, string> = {
-  'in-progress': '<svg viewBox="0 -960 960 960" width="14" height="14" fill="none" aria-hidden="true"><path d="m620.78-284.74 54.61-53.48-156.17-157.3v-195.22h-72.44v224.75l174 181.25ZM480.08-65.87q-85.47 0-160.94-32.55-75.48-32.56-131.81-88.87T98.44-319.04q-32.57-75.44-32.57-160.9 0-85.45 32.68-160.99 32.67-75.53 88.83-131.69t131.64-89.12Q394.5-894.7 480-894.7q85.5 0 160.98 32.96 75.48 32.96 131.64 89.12 56.16 56.16 89.12 131.64Q894.7-565.5 894.7-480q0 85.5-32.96 160.98-32.96 75.48-89.12 131.64-56.16 56.16-131.61 88.83-75.46 32.68-160.93 32.68ZM480-480Zm-.29 334.91q138.03 0 236.62-98.02 98.58-98.02 98.58-236.61 0-138.58-98.51-236.89-98.51-98.3-236.39-98.3-138.31 0-236.62 98.23-98.3 98.24-98.3 236.68 0 138.87 98.3 236.89 98.3 98.02 236.32 98.02Z" fill="currentColor"/></svg>',
-  'todo': '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true"><rect x="3" y="3" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M5.5 8l1.5 1.5L10.5 6.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  'done': '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="currentColor"/><path d="M5.2 8.2l1.8 1.8 3.8-4" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+/** 菜单与行内装饰共用同一套图标，避免右键菜单预览与添加后的实际样式不一致。 */
+export const MARKER_ICON: Record<SessionMarker, string> = {
+  'in-progress': ICONS.loading,
+  'todo': ICONS.checklist,
+  'done': ICONS.check,
 }
 
 // ── marker store（localStorage，非 React） ──
@@ -99,16 +101,27 @@ function applyMarkerIcon(row: HTMLElement, marker: SessionMarker | undefined, ti
   icon.setAttribute('data-liuli-marker', marker)
   icon.setAttribute('aria-label', MARKER_LABEL[marker])
   icon.title = MARKER_LABEL[marker]
+  // 时间列固定宽度后，标记插在时间左侧的位置就不会随时间文字长短变化，也不会和标题重叠。
+  const timeEl = span.nextElementSibling as HTMLElement | null
+  if (timeEl !== null) {
+    timeEl.style.minWidth = '32px'
+    timeEl.style.textAlign = 'right'
+    timeEl.style.boxSizing = 'border-box'
+  }
   Object.assign(icon.style, {
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: '6px',
+    marginRight: '4px',
     flex: 'none',
+    verticalAlign: 'middle',
     color: MARKER_COLOR[marker],
+    pointerEvents: 'none',
   } as Partial<CSSStyleDeclaration>)
-  icon.innerHTML = MARKER_SVG[marker]
-  span.after(icon)
+  icon.innerHTML = MARKER_ICON[marker]
+  if (timeEl !== null) timeEl.before(icon)
+  else span.after(icon)
 }
 
 function decorateAll(ctx: Pick<ClientContext, 'sessions'>): void {

@@ -22,7 +22,7 @@ import type {} from '@deepseek-ai/dsh-tools/types'
 import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-client-runtime/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { requestReviewFile } from './review-bus.ts'
-import { revealSidebarPath, type SidebarGitChange } from './right-sidebar-api.ts'
+import { revealSidebarPath, revealToast, type SidebarGitChange } from './right-sidebar-api.ts'
 import { setLastTurnChanges } from './turn-file-store.ts'
 import css from './TurnFileCard.module.css'
 
@@ -473,7 +473,16 @@ function FileRow({ file, sessionId, cwd, openFile }: FileRowProps) {
               type="button"
               role="menuitem"
               className={css.menuItem}
-              onClick={() => { run(() => { if (sessionId !== undefined) revealSidebarPath(sessionId, rel) }) }}
+              title="在系统文件管理器中定位该文件"
+              onClick={() => {
+                run(() => {
+                  if (sessionId === undefined) {
+                    revealToast('无会话上下文，无法定位文件', 'error')
+                  } else {
+                    void revealSidebarPath(sessionId, rel)
+                  }
+                })
+              }}
             >
               在资源管理器中打开
             </button>
@@ -527,7 +536,12 @@ export function RoundSummaryCard({ node, openFile, useSession, useSessions, sess
   const locations = useSession(state => state.chat.locations)
   const nodes = useSession(state => state.chat.nodes)
   const order = useSession(state => state.chat.order)
-  const cwd = useSessions(state => state.byId[sessionId]?.cwd)
+  // 会话回退：conversation.chat.node 的 keyed renderer 在某些渲染路径下可能
+  // 拿不到 slot 注入的 sessionId；此时从 sessions 快照取当前会话兜底，
+  // 避免「在资源管理器中打开」因 sessionId 为空而静默无操作。
+  const currentSessionId = useSessions(state => state.current)
+  const effectiveSessionId = sessionId ?? currentSessionId
+  const cwd = useSessions(state => state.byId[effectiveSessionId]?.cwd)
 
   // 轮号：code-dispatch 子调用事件没有 data.turn，从节点 location 推导。
   const turn = node.location.kind === 'turn' || node.location.kind === 'step'
@@ -580,7 +594,7 @@ export function RoundSummaryCard({ node, openFile, useSession, useSessions, sess
       </div>
       <div className={css.list}>
         {files.map(file => (
-          <FileRow key={file.path} file={file} sessionId={sessionId} cwd={cwd} openFile={openFile} />
+          <FileRow key={file.path} file={file} sessionId={effectiveSessionId} cwd={cwd} openFile={openFile} />
         ))}
       </div>
     </div>

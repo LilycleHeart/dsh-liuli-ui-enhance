@@ -6,6 +6,9 @@ export const zh = {
   'colorMode': '取色模式',
   'colorMode.dynamic': '动态（壁纸 Material 取色）',
   'colorMode.static': '静态（自定义颜色）',
+  'statusColorMode': '状态色来源',
+  'statusColorMode.hardcoded': '硬编码（内置红/绿/橙）',
+  'statusColorMode.mcu': 'MCU 取色（跟随主题色板）',
   'brandColor': '主题色',
   'bgMode': '背景模式',
   'bgMode.theme': '跟随主题',
@@ -15,9 +18,6 @@ export const zh = {
   'scrim': '壁纸暗色遮罩',
   'customBg': '自定义亮色背景',
   'customBgDark': '自定义暗色背景',
-  'materialType': '材质类型',
-  'materialType.acrylic': '亚克力（半透明模糊）',
-  'materialType.mica': '云母（低模糊）',
   'materialOn': '材质效果',
   'materialOpacity': '材质不透明度',
   'materialBlur': '模糊强度',
@@ -99,6 +99,9 @@ export const en = {
   'colorMode': 'Accent mode',
   'colorMode.dynamic': 'Dynamic (Material from wallpaper)',
   'colorMode.static': 'Static (custom color)',
+  'statusColorMode': 'Status color source',
+  'statusColorMode.hardcoded': 'Hardcoded (built-in red/green/orange)',
+  'statusColorMode.mcu': 'MCU palette (follow theme)',
   'brandColor': 'Brand color',
   'bgMode': 'Background mode',
   'bgMode.theme': 'Follow theme',
@@ -108,9 +111,6 @@ export const en = {
   'scrim': 'Wallpaper dark scrim',
   'customBg': 'Custom light background',
   'customBgDark': 'Custom dark background',
-  'materialType': 'Material type',
-  'materialType.acrylic': 'Acrylic (translucent blur)',
-  'materialType.mica': 'Mica (low blur)',
   'materialOn': 'Material effect',
   'materialOpacity': 'Material opacity',
   'materialBlur': 'Blur strength',
@@ -231,4 +231,29 @@ export const historyLoadEn = {
   'batches': 'Default batches',
   'batchesHint': 'Desired history rounds when switching sessions (one user message = one round; host baseline ~2 rounds; larger values auto-load more, 0-2 keeps default)',
   'rounds': 'rounds',
+} satisfies Record<string, string>
+
+/* ── 悬浮球开发者工具（liuli-floatball 命名空间，待接入组件文案）────────── */
+
+/** `liuli-floatball` 字典（中）。 */
+export const floatBallZh = {
+  'devtools': '开发者工具',
+  'devtools.hint': '打开/关闭 Electron 侧边开发者工具（F12 或 Alt+Shift+I）',
+  'devtools.unavailable': '当前不是 Electron 桌面版，请直接用浏览器 F12 打开开发者工具',
+  'pickerMode.insert': '插入',
+  'pickerMode.inspect': '检查',
+  'picker.inspectHint': '检查模式：点击元素在 DevTools 中定位（相当于右键→检查）',
+} satisfies Record<string, string>
+
+/** The liuli-floatball namespace key union. */
+export type FloatBallKey = keyof typeof floatBallZh
+
+/** `liuli-floatball` 字典（英，与 zh 键集对齐）。 */
+export const floatBallEn = {
+  'devtools': 'Developer tools',
+  'devtools.hint': 'Open/close the Electron side-docked developer tools (F12 or Alt+Shift+I)',
+  'devtools.unavailable': 'Not running in Electron Desktop; press F12 in your browser instead',
+  'pickerMode.insert': 'Insert',
+  'pickerMode.inspect': 'Inspect',
+  'picker.inspectHint': 'Inspect mode: click an element to reveal it in DevTools (like right-click → Inspect)',
 } satisfies Record<string, string>

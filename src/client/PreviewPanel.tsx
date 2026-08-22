@@ -22,11 +22,12 @@
  * - 元素拾取：浏览器面板工具条按钮显式开启（browser.elementPicker 语义）。
  */
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { createElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { attachElementPicker, describeElement, computedColor, type PickedElement } from './element-picker.ts'
 import {
   detectWebviewEngine, reportGeometryLoop, subscribeWebviewGlobal, subscribeWebviewTab,
-  webviewBrowser, type WebviewTabState,
+  webviewBrowser, type GeometryLoopDispose, type WebviewTabState,
 } from './browser-webview.ts'
 import {
   CommandPalette, FileTreePanel, WikiPanel, type CommandPaletteCommand,
@@ -44,10 +45,10 @@ import {
 import { FileReviewPanel } from './FileReviewPanel.tsx'
 import { REVIEW_FILE_EVENT } from './review-bus.ts'
 import {
-  consumeSideTabAccepted, SIDE_TAB_MIME, serializeSideTab, sideTabToDockPanel,
+  consumeSideTabAccepted, SIDE_TAB_MIME, SIDE_TAB_OPEN_EVENT, serializeSideTab, sideTabToDockPanel,
 } from './side-tab-dock.ts'
 import css from './PreviewPanel.module.css'
-import { beginResizePerf, endResizePerf } from './resize-perf.ts'
+import { beginResizePerf, endResizePerf, isResizeInProgress } from './resize-perf.ts'
 
 /** 打开/关闭事件名（header 按钮翻转模块状态后广播，面板同步）。 */
 export const PREVIEW_TOGGLE_EVENT = 'liuli:preview-toggle'
@@ -711,6 +712,19 @@ export function PreviewDetailsPanel({
       return next
     })
   }, [])
+
+  // dock 面板拖回详情页时恢复为 SidePane 标签（由 DockShellFrame 经
+  // SIDE_TAB_OPEN_EVENT 请求，见 side-tab-dock.ts 的 dockPanelToSideTab）。
+  useEffect(() => {
+    const onOpenSideTab = (e: Event): void => {
+      const tab = (e as CustomEvent<SidePaneTab>).detail
+      if (tab === null || typeof tab !== 'object') return
+      if (typeof tab.id !== 'string' || typeof tab.type !== 'string') return
+      openTab(tab as SidePaneTab)
+    }
+    window.addEventListener(SIDE_TAB_OPEN_EVENT, onOpenSideTab)
+    return () => { window.removeEventListener(SIDE_TAB_OPEN_EVENT, onOpenSideTab) }
+  }, [openTab])
 
   /** 收起面板（DSH：关闭最后一个标签 → isSidePaneCollapsed）。 */
   const collapsePane = useCallback((): void => {
@@ -1494,6 +1508,7 @@ export function PreviewDetailsPanel({
                   insertElement={insertElement}
                   getPaneEl={() => panelRef.current}
                   onFavicon={(favicon) => { setBrowserTabFavicon(tab.id, favicon) }}
+                  onNewWindow={(next) => { openBrowserUrl(next) }}
                 />
               )}
               {tab.type === 'code-viewer' && (
@@ -1627,6 +1642,18 @@ interface OverviewPopoverProps {
 function OverviewPopover({ anchor, tabs, closed, activeTabId, now, onActivate, onCloseTab, onReopen }: OverviewPopoverProps) {
   const [query, setQuery] = useState('')
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const cardRef = useRef<HTMLDivElement | null>(null)
+  const dragRef = useRef<{ startY: number; startH: number } | null>(null)
+  const [cardWidth, setCardWidth] = useState(288)
+  const [height, setHeight] = useState<number>(() => {
+    try {
+      const v = Number(localStorage.getItem('liuli:overview-height'))
+      if (Number.isFinite(v) && v >= 120 && v <= 800) return v
+    } catch { /* ignore */ }
+    return 320
+  })
+  const heightRef = useRef(height)
+  heightRef.current = height
 
   useEffect(() => {
     const t = window.setTimeout(() => { inputRef.current?.focus() }, 0)
@@ -1637,8 +1664,46 @@ function OverviewPopover({ anchor, tabs, closed, activeTabId, now, onActivate, o
   const openRows = useMemo(() => rankRows(tabs, tokens, tab => ({ title: tabTitle(tab), hint: tabHint(tab), typeLabel: tabTypeLabel(tab) })).map(r => r.item), [tabs, tokens])
   const closedRows = useMemo(() => rankRows(closed, tokens, entry => ({ title: tabTitle(entry.tab), hint: tabHint(entry.tab), typeLabel: tabTypeLabel(entry.tab) })).map(r => r.item), [closed, tokens])
 
+  // 宽度跟随内容动态：行内标题被 ellipsis 裁剪，行的 scrollWidth 不包含被裁
+  // 文本（overflow hidden 在 title 元素上），必须测量标题自身 scrollWidth，
+  // 再用「行宽 - 标题当前宽 + 标题完整宽」还原出行所需完整宽度。
+  useLayoutEffect(() => {
+    const card = cardRef.current
+    if (card === null) return
+    let needed = 288
+    for (const title of card.querySelectorAll<HTMLElement>('[data-overview-title]')) {
+      const row = title.parentElement
+      if (row === null) continue
+      const rowNeeded = row.offsetWidth - title.clientWidth + title.scrollWidth
+      needed = Math.max(needed, rowNeeded + 8)
+    }
+    const anchorRect = anchor.getBoundingClientRect()
+    const maxW = Math.max(288, window.innerWidth - anchorRect.left - 16)
+    setCardWidth(Math.min(480, Math.max(288, needed), maxW))
+  }, [tabs, closed, query, anchor])
+
+  const onResizeDown = (e: React.PointerEvent<HTMLDivElement>): void => {
+    e.preventDefault()
+    dragRef.current = { startY: e.clientY, startH: heightRef.current }
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch { /* ignore */ }
+  }
+  const onResizeMove = (e: React.PointerEvent<HTMLDivElement>): void => {
+    const drag = dragRef.current
+    if (drag === null) return
+    const anchorTop = anchor.getBoundingClientRect().top
+    const maxH = Math.max(120, window.innerHeight - anchorTop - 24)
+    const next = Math.min(maxH, Math.max(120, drag.startH + (e.clientY - drag.startY)))
+    heightRef.current = next
+    setHeight(next)
+  }
+  const onResizeUp = (): void => {
+    if (dragRef.current === null) return
+    dragRef.current = null
+    try { localStorage.setItem('liuli:overview-height', String(Math.round(heightRef.current))) } catch { /* ignore */ }
+  }
+
   return (
-    <div data-liuli-pane-popover="" className={css.popoverCard + ' ' + css.overviewCard} style={anchorStyle(anchor, 'left')} role="dialog" aria-label="搜索标签页">
+    <div ref={cardRef} data-liuli-pane-popover="" className={css.popoverCard + ' ' + css.overviewCard} style={{ ...anchorStyle(anchor, 'left'), width: cardWidth, height }} role="dialog" aria-label="搜索标签页">
       <div className={css.overviewInputRow}>
         <SearchGlyph size={14} />
         <input
@@ -1660,6 +1725,7 @@ function OverviewPopover({ anchor, tabs, closed, activeTabId, now, onActivate, o
             {openRows.map((tab) => (
               <div
                 key={tab.id}
+                data-overview-row=""
                 className={css.overviewRow + (tab.id === activeTabId ? ' ' + css.overviewRowActive : '')}
                 role="button"
                 tabIndex={0}
@@ -1667,7 +1733,7 @@ function OverviewPopover({ anchor, tabs, closed, activeTabId, now, onActivate, o
                 onKeyDown={(e) => { if (e.key === 'Enter') onActivate(tab.id) }}
               >
                 <span className={css.overviewRowIcon}><TabIcon tab={tab} /></span>
-                <span className={css.overviewRowTitle}>{tabTitle(tab)}</span>
+                <span className={css.overviewRowTitle} data-overview-title="">{tabTitle(tab)}</span>
                 <span className={css.overviewRowTime}>{relativeTime(tab.openedAt, now)}</span>
                 <button
                   type="button"
@@ -1688,6 +1754,7 @@ function OverviewPopover({ anchor, tabs, closed, activeTabId, now, onActivate, o
             {closedRows.map((entry) => (
               <div
                 key={entry.tab.id}
+                data-overview-row=""
                 className={css.overviewRow}
                 role="button"
                 tabIndex={0}
@@ -1695,13 +1762,21 @@ function OverviewPopover({ anchor, tabs, closed, activeTabId, now, onActivate, o
                 onKeyDown={(e) => { if (e.key === 'Enter') onReopen(entry.tab.id) }}
               >
                 <span className={css.overviewRowIcon}><TabIcon tab={entry.tab} /></span>
-                <span className={css.overviewRowTitle}>{tabTitle(entry.tab)}</span>
+                <span className={css.overviewRowTitle} data-overview-title="">{tabTitle(entry.tab)}</span>
                 <span className={css.overviewRowTime}>{relativeTime(entry.closedAt, now)}</span>
               </div>
             ))}
           </>
         )}
       </div>
+      <div
+        className={css.overviewResize}
+        aria-hidden="true"
+        onPointerDown={onResizeDown}
+        onPointerMove={onResizeMove}
+        onPointerUp={onResizeUp}
+        onPointerCancel={onResizeUp}
+      />
     </div>
   )
 }
@@ -2006,16 +2081,28 @@ function toPickedElement(info: GuestElementInfo): PickedElement {
 }
 
 /** 引擎探测缓存（全部浏览器标签共享一次能力探测）。 */
-type BrowserEngineKind = 'pending' | 'webview' | 'iframe'
+type BrowserEngineKind = 'pending' | 'webview' | 'webview-tag' | 'iframe'
 let engineKindCache: BrowserEngineKind = 'pending'
 let engineDetectStarted = false
 const engineListeners = new Set<(kind: BrowserEngineKind) => void>()
+
+/** 宿主 BrowserWindow 开启 webviewTag 后，<webview> 自定义元素才有 loadURL 等 API。 */
+function isWebviewTagSupported(): boolean {
+  try {
+    const el = document.createElement('webview') as unknown as { loadURL?: unknown }
+    return typeof el.loadURL === 'function'
+  } catch {
+    return false
+  }
+}
 
 function startEngineDetect(): void {
   if (engineDetectStarted) return
   engineDetectStarted = true
   void detectWebviewEngine().then((caps) => {
-    engineKindCache = caps === null ? 'iframe' : 'webview'
+    if (caps === null) engineKindCache = 'iframe'
+    else if (isWebviewTagSupported()) engineKindCache = 'webview-tag'
+    else engineKindCache = 'webview'
     for (const listener of engineListeners) listener(engineKindCache)
   })
 }
@@ -2038,6 +2125,100 @@ function useBrowserEngineKind(): BrowserEngineKind {
 /** 响应式模式配置（DSH HUt：fit/50/75/100/125/150/200）。 */
 const ZOOM_OPTIONS = ['fit', '50', '75', '100', '125', '150', '200'] as const
 const RESPONSIVE_LS_KEY = 'liuli:browser-responsive'
+
+function zoomLabel(zoom: string): string {
+  return zoom === 'fit' ? '适应窗口' : zoom + '%'
+}
+
+/** 浏览器响应式缩放选择器：琉璃自定义下拉（body portal + fixed 菜单），替代原生 select。 */
+function ZoomSelect({ value, onChange }: { value: string; onChange: (zoom: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState<{ left: number; top: number; width: number }>({ left: 0, top: 0, width: 180 })
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent): void => {
+      const target = e.target as Node
+      if (triggerRef.current !== null && triggerRef.current.contains(target)) return
+      if (menuRef.current !== null && menuRef.current.contains(target)) return
+      setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    const onResize = (): void => { setOpen(false) }
+    document.addEventListener('mousedown', onDown, true)
+    document.addEventListener('keydown', onKey, true)
+    window.addEventListener('resize', onResize)
+    return () => {
+      document.removeEventListener('mousedown', onDown, true)
+      document.removeEventListener('keydown', onKey, true)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [open])
+
+  const toggle = (): void => {
+    const rect = triggerRef.current?.getBoundingClientRect()
+    if (rect === undefined) return
+    const itemHeight = 30
+    const height = ZOOM_OPTIONS.length * itemHeight + 8
+    const menuWidth = Math.max(160, Math.min(Math.max(rect.width, 160), 220))
+    const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - menuWidth - 8))
+    const top = rect.bottom + 4 + height > window.innerHeight ? Math.max(8, rect.top - 4 - height) : rect.bottom + 4
+    setPos({ left, top, width: menuWidth })
+    setOpen(prev => !prev)
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        ref={triggerRef}
+        className={css.zoomSelect}
+        data-testid="browser-responsive-zoom-select"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title="选择缩放比例"
+        onClick={toggle}
+      >
+        <span className={css.zoomSelectLabel}>{zoomLabel(value)}</span>
+        <svg
+          className={`${css.zoomSelectChevron}${open ? ' ' + css.zoomSelectChevronOpen : ''}`}
+          viewBox="0 0 24 24"
+          width="12"
+          height="12"
+          aria-hidden="true"
+        >
+          <path fill="currentColor" d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z" />
+        </svg>
+      </button>
+      {open && createPortal(
+        <div ref={menuRef} className={css.zoomSelectMenu} role="menu" style={{ left: pos.left, top: pos.top, width: pos.width }}>
+          {ZOOM_OPTIONS.map(option => (
+            <button
+              key={option}
+              type="button"
+              role="menuitemradio"
+              aria-checked={option === value}
+              className={`${css.zoomSelectItem}${option === value ? ' ' + css.zoomSelectItemActive : ''}`}
+              onClick={() => { onChange(option); setOpen(false) }}
+            >
+              <span className={css.zoomSelectItemLabel}>{zoomLabel(option)}</span>
+              {option === value && (
+                <svg className={css.zoomSelectCheck} viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                  <path fill="currentColor" d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+                </svg>
+              )}
+            </button>
+          ))}
+        </div>,
+        document.body,
+      )}
+    </>
+  )
+}
 
 interface ResponsiveConfig {
   width: number
@@ -2082,13 +2263,14 @@ const BROWSER_OVERLAY_SELECTOR = [
   '[class*="_popup"]',
 ].join(', ')
 
-function isObscuredByOverlay(el: HTMLElement | null): boolean {
+function isObscuredByOverlay(el: HTMLElement | null, ignore?: HTMLElement | null): boolean {
   if (el === null) return false
   const r = el.getBoundingClientRect()
   if (r.width < 4 || r.height < 4) return false
   for (const o of document.querySelectorAll<HTMLElement>(BROWSER_OVERLAY_SELECTOR)) {
     if (getComputedStyle(o).visibility === 'hidden') continue
     if (o.contains(el)) continue
+    if (ignore !== null && ignore !== undefined && (o === ignore || ignore.contains(o) || o.contains(ignore))) continue
     const or = o.getBoundingClientRect()
     if (or.width > 0 && or.height > 0
       && r.left < or.right && r.right > or.left
@@ -2097,6 +2279,13 @@ function isObscuredByOverlay(el: HTMLElement | null): boolean {
     }
   }
   return false
+}
+
+/** 「更多」菜单定位结果：style 为 fixed 定位；coversCarrier 表示菜单覆盖原生视图区域。 */
+interface MoreMenuPlacement {
+  style: CSSProperties
+  coversCarrier: boolean
+  menuBottom: number
 }
 
 interface NativeBrowserPanelProps {
@@ -2128,6 +2317,8 @@ function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitle
   const stateRef = useRef<WebviewTabState | null>(null)
   const lastRequestedUrl = useRef<string>(url)
   const moreWrapRef = useRef<HTMLDivElement | null>(null)
+  const moreMenuRef = useRef<HTMLDivElement | null>(null)
+  const moreMenuPlacementRef = useRef<MoreMenuPlacement | undefined>(undefined)
 
   stateRef.current = state
 
@@ -2212,13 +2403,32 @@ function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitle
 
   /* ── carrier 几何上报（原生视图贴合） ── */
 
+  const geometryDisposeRef = useRef<GeometryLoopDispose | null>(null)
+
   useEffect(() => {
-    return reportGeometryLoop(
+    const dispose = reportGeometryLoop(
       tabId,
       () => carrierRef.current,
-      () => active && !isObscuredByOverlay(carrierRef.current),
+      () => active && !isResizeInProgress() && !isObscuredByOverlay(carrierRef.current, moreMenuRef.current),
+      () => {
+        const placement = moreMenuPlacementRef.current
+        const el = carrierRef.current
+        if (placement === undefined || el === null) return null
+        if (!placement.coversCarrier) return null
+        const r = el.getBoundingClientRect()
+        // 原生视图下移给向下展开的菜单让位，顶部留 4px 间隙。
+        const y = Math.min(r.bottom - 4, Math.max(r.top, placement.menuBottom + 4))
+        return { x: r.left, y, width: r.width, height: Math.max(0, r.bottom - y) }
+      },
     )
+    geometryDisposeRef.current = dispose
+    return dispose
   }, [tabId, active])
+
+  // 菜单开合时立即重报几何，避免等 300ms 心跳（菜单盖住 carrier 的瞬间原生视图必须先让位）。
+  useEffect(() => {
+    geometryDisposeRef.current?.sendNow()
+  }, [moreOpen])
 
   /* ── 响应式视口（browser.responsive：客户机固定视口 + zoom 缩放） ── */
 
@@ -2409,7 +2619,10 @@ function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitle
   useEffect(() => {
     if (!moreOpen) return
     const onDown = (e: MouseEvent): void => {
-      if (moreWrapRef.current !== null && !moreWrapRef.current.contains(e.target as Node)) setMoreOpen(false)
+      const target = e.target as Node
+      if (moreWrapRef.current !== null && moreWrapRef.current.contains(target)) return
+      if (moreMenuRef.current !== null && moreMenuRef.current.contains(target)) return
+      setMoreOpen(false)
     }
     document.addEventListener('mousedown', onDown)
     return () => { document.removeEventListener('mousedown', onDown) }
@@ -2425,6 +2638,38 @@ function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitle
   const errorMessage = localError ?? (state?.error ?? null)
   const isEmpty = !loading && errorMessage === null && (currentUrl === '' || currentUrl === 'about:blank') && draft.trim() === ''
   const isExternalReady = ready && /^https?:\/\//i.test(currentUrl)
+
+  /** 「更多」菜单定位：优先从按钮下方展开（往下开）；下方空间不足时向上回退。
+   *  菜单用 body portal + fixed，避免被 dock 面板 paneBody overflow:hidden 裁剪。
+   *  coversCarrier 为 true 表示菜单覆盖原生视图区域，geometry 上报会把原生视图
+   *  下移给菜单让位（而不是像其它浮层那样整体隐藏、露出黑底）。 */
+  const moreMenuPlacement = useMemo((): MoreMenuPlacement | undefined => {
+    if (!moreOpen) return undefined
+    const wrap = moreWrapRef.current
+    const carrier = carrierRef.current
+    const fallback: CSSProperties = { position: 'fixed', top: 8, left: 8, zIndex: 2147482500 }
+    if (wrap === null || carrier === null) return { style: fallback, coversCarrier: false, menuBottom: 8 }
+    const wr = wrap.getBoundingClientRect()
+    const cr = carrier.getBoundingClientRect()
+    const width = 190
+    const height = 74
+    const gap = 6
+    // 首选：菜单顶边 = 按钮底边 + 6，右缘与按钮右缘对齐（向下展开，不遮按钮）。
+    let top = wr.bottom + gap
+    let coversCarrier = top < cr.bottom && top + height > cr.top
+    // 下方放不下时向上回退（底边贴在按钮顶边之上）；上方也放不下则贴顶 8px。
+    if (top + height > window.innerHeight - 8) {
+      const upTop = wr.top - gap - height
+      top = upTop >= 8 ? upTop : 8
+      coversCarrier = top < cr.bottom && top + height > cr.top
+    }
+    let left = wr.right - width
+    left = Math.max(8, Math.min(left, window.innerWidth - width - 8))
+    return { style: { position: 'fixed', top, left, width, zIndex: 2147482500 }, coversCarrier, menuBottom: top + height }
+  }, [moreOpen])
+
+  moreMenuPlacementRef.current = moreMenuPlacement
+  const moreMenuStyle = moreMenuPlacement?.style
 
   return (
     <>
@@ -2487,34 +2732,35 @@ function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitle
           >
             <MoreIcon />
           </button>
-          {moreOpen && (
-            <div className={css.moreMenu} role="menu">
-              <button
-                type="button"
-                role="menuitem"
-                className={css.moreItem}
-                data-testid="browser-open-external-item"
-                disabled={!isExternalReady}
-                onClick={openExternal}
-              >
-                <ExternalIcon />
-                <span>在默认浏览器中打开</span>
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className={css.moreItem}
-                data-testid="browser-devtools-button"
-                disabled={!ready}
-                onClick={openDevTools}
-              >
-                <DevToolsIcon />
-                <span>开发者工具</span>
-              </button>
-            </div>
-          )}
         </div>
       </form>
+      {moreOpen && moreMenuStyle !== undefined && createPortal(
+        <div ref={moreMenuRef} className={css.moreMenu} role="menu" style={moreMenuStyle}>
+          <button
+            type="button"
+            role="menuitem"
+            className={css.moreItem}
+            data-testid="browser-open-external-item"
+            disabled={!isExternalReady}
+            onClick={openExternal}
+          >
+            <ExternalIcon />
+            <span>在默认浏览器中打开</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className={css.moreItem}
+            data-testid="browser-devtools-button"
+            disabled={!ready}
+            onClick={openDevTools}
+          >
+            <DevToolsIcon />
+            <span>开发者工具</span>
+          </button>
+        </div>,
+        document.body,
+      )}
       {responsiveOn && (
         <div className={css.responsiveBar} data-testid="browser-responsive-toolbar">
           <label className={css.responsiveField}>
@@ -2545,18 +2791,7 @@ function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitle
           </label>
           <label className={css.responsiveField}>
             <span>缩放</span>
-            <select
-              className={css.responsiveSelect}
-              data-testid="browser-responsive-zoom-select"
-              value={responsive.zoom}
-              onChange={(e) => { setResponsive(r => ({ ...r, zoom: e.target.value })) }}
-            >
-              {ZOOM_OPTIONS.map(option => (
-                <option key={option} value={option} data-testid="browser-responsive-zoom-option">
-                  {option === 'fit' ? '适应窗口' : option + '%'}
-                </option>
-              ))}
-            </select>
+            <ZoomSelect value={responsive.zoom} onChange={(zoom) => { setResponsive(r => ({ ...r, zoom })) }} />
           </label>
           <span className={css.responsiveHint}>{responsive.width} × {responsive.height} · {Math.round(responsiveScale * 100)}%</span>
         </div>
@@ -2630,6 +2865,474 @@ function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitle
   )
 }
 
+/* ── <webview> DOM 标签浏览器面板（webviewTag 开启时） ──
+ * zcode 参考实现用 <webview> 自定义元素承载内嵌浏览器：它是真实 DOM 节点，
+ * 自然被 .carrier 的 overflow:hidden 裁剪，拉伸面板时不会像 WebContentsView
+ * 那样溢出容器。Host 侧负责把 BrowserWindow webPreferences.webviewTag 置 true。 */
+
+interface WebviewTagElement extends HTMLElement {
+  loadURL(url: string): Promise<void>
+  getURL(): string
+  goBack(): void
+  goForward(): void
+  reload(): void
+  stop(): void
+  openDevTools(): Promise<void>
+  executeJavaScript(code: string, userGesture?: boolean): Promise<unknown>
+  canGoBack(): boolean
+  canGoForward(): boolean
+  getWebContentsId(): number
+}
+
+interface WebviewTagState {
+  url: string
+  title: string
+  favicon: string | null
+  canGoBack: boolean
+  canGoForward: boolean
+  loading: boolean
+  ready: boolean
+  error: string | null
+}
+
+interface WebviewTagBrowserPanelProps {
+  tabId: string
+  sessionId?: string | undefined
+  url: string
+  active: boolean
+  onNavigate: (url: string) => void
+  onTitleChange: (title: string) => void
+  insertElement: (info: PickedElement) => void
+  onFavicon?: ((favicon: string) => void) | undefined
+  onNewWindow?: ((url: string) => void) | undefined
+}
+
+function WebviewTagBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitleChange, insertElement, onFavicon, onNewWindow }: WebviewTagBrowserPanelProps) {
+  const [state, setState] = useState<WebviewTagState>(() => ({
+    url: url === 'about:blank' ? '' : url,
+    title: '',
+    favicon: null,
+    canGoBack: false,
+    canGoForward: false,
+    loading: url !== '' && url !== 'about:blank',
+    ready: false,
+    error: null,
+  }))
+  const [draft, setDraft] = useState(url === 'about:blank' ? '' : url)
+  const [draftFocused, setDraftFocused] = useState(false)
+  const [localError, setLocalError] = useState<string | null>(null)
+  const [pickerOn, setPickerOn] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
+  const [responsiveOn, setResponsiveOn] = useState(false)
+  const [responsive, setResponsive] = useState<ResponsiveConfig>(loadResponsiveConfig)
+  const [zoomFitScale, setZoomFitScale] = useState(1)
+  const [carrierSize, setCarrierSize] = useState({ width: 0, height: 0 })
+  const webviewRef = useRef<WebviewTagElement | null>(null)
+  const carrierRef = useRef<HTMLDivElement | null>(null)
+  const stateRef = useRef<WebviewTagState>(state)
+  const lastRequestedUrl = useRef(url)
+  const moreWrapRef = useRef<HTMLDivElement | null>(null)
+  const moreMenuRef = useRef<HTMLDivElement | null>(null)
+  const pickerGeneration = useRef(0)
+
+  stateRef.current = state
+
+  /* ── webview DOM 事件 → 状态镜像 ── */
+  useEffect(() => {
+    const wv = webviewRef.current
+    if (wv === null) return
+    const update = (patch: Partial<WebviewTagState>): void => { setState(prev => ({ ...prev, ...patch })) }
+    const syncNav = (): void => {
+      update({
+        url: wv.getURL?.() ?? stateRef.current.url,
+        canGoBack: wv.canGoBack?.() ?? false,
+        canGoForward: wv.canGoForward?.() ?? false,
+        ready: true,
+      })
+    }
+    const onStart = (): void => update({ loading: true, error: null })
+    const onStop = (): void => { update({ loading: false, ready: true }); syncNav() }
+    const onTitle = (e: Event): void => {
+      const title = (e as unknown as { title?: string }).title ?? ''
+      if (title.trim() !== '') update({ title: title.trim() })
+    }
+    const onFaviconEvent = (e: Event): void => {
+      const favicons = (e as unknown as { favicons?: string[] }).favicons
+      update({ favicon: Array.isArray(favicons) && typeof favicons[0] === 'string' ? favicons[0] : null })
+    }
+    const onFail = (e: Event): void => {
+      const ev = e as unknown as { errorCode?: number; errorDescription?: string; validatedURL?: string; isMainFrame?: boolean }
+      if (ev.isMainFrame === false) return
+      if (ev.errorCode === -3) return
+      update({ loading: false, error: `${ev.errorDescription ?? '加载失败'} (${ev.errorCode ?? ''})` })
+      if (typeof ev.validatedURL === 'string' && ev.validatedURL !== '') update({ url: ev.validatedURL })
+    }
+    const onGone = (): void => {
+      const restore = lastRequestedUrl.current !== '' ? lastRequestedUrl.current : stateRef.current.url
+      if (restore !== '' && restore !== 'about:blank') {
+        window.setTimeout(() => { wv.loadURL(restore).catch(() => {}) }, 250)
+      }
+    }
+    const onNew = (e: Event): void => {
+      const next = (e as unknown as { url?: string }).url
+      if (typeof next === 'string' && next !== '') onNewWindow?.(next)
+    }
+    wv.addEventListener('did-start-loading', onStart)
+    wv.addEventListener('did-stop-loading', onStop)
+    wv.addEventListener('did-navigate', syncNav)
+    wv.addEventListener('did-navigate-in-page', syncNav)
+    wv.addEventListener('page-title-updated', onTitle)
+    wv.addEventListener('page-favicon-updated', onFaviconEvent)
+    wv.addEventListener('did-fail-load', onFail)
+    wv.addEventListener('render-process-gone', onGone)
+    wv.addEventListener('new-window', onNew)
+    return () => {
+      wv.removeEventListener('did-start-loading', onStart)
+      wv.removeEventListener('did-stop-loading', onStop)
+      wv.removeEventListener('did-navigate', syncNav)
+      wv.removeEventListener('did-navigate-in-page', syncNav)
+      wv.removeEventListener('page-title-updated', onTitle)
+      wv.removeEventListener('page-favicon-updated', onFaviconEvent)
+      wv.removeEventListener('did-fail-load', onFail)
+      wv.removeEventListener('render-process-gone', onGone)
+      wv.removeEventListener('new-window', onNew)
+    }
+  }, [tabId, onNewWindow])
+
+  /* ── 外部 URL 变更 → webview 导航 ── */
+  useEffect(() => {
+    if (url === '' || url === 'about:blank') return
+    if (url === lastRequestedUrl.current) return
+    if (url === stateRef.current.url) return
+    lastRequestedUrl.current = url
+    webviewRef.current?.loadURL(url).catch(() => {})
+  }, [url, tabId])
+
+  /* ── 状态 → 标签条 ── */
+  useEffect(() => {
+    if (state.title.trim() !== '') onTitleChange(state.title)
+    if (state.url !== '' && state.url !== 'about:blank') onNavigate(state.url)
+    if (state.favicon !== null && state.favicon !== '') onFavicon?.(state.favicon)
+  }, [state.title, state.url, state.favicon]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── 地址栏草稿跟随当前 URL（未聚焦时） ── */
+  useEffect(() => {
+    if (draftFocused) return
+    setDraft(state.url === 'about:blank' || state.url === '' ? '' : state.url)
+  }, [state.url, draftFocused])
+
+  /* ── 响应式视口缩放 ── */
+  const responsiveScale = useMemo(() => {
+    if (responsive.zoom !== 'fit') return Number(responsive.zoom) / 100
+    return zoomFitScale
+  }, [responsive.zoom, zoomFitScale])
+
+  useEffect(() => {
+    try { localStorage.setItem(RESPONSIVE_LS_KEY, JSON.stringify(responsive)) } catch { /* 配额满忽略 */ }
+  }, [responsive])
+
+  useEffect(() => {
+    const el = carrierRef.current
+    if (el === null) return
+    const compute = (): void => {
+      const rect = el.getBoundingClientRect()
+      setCarrierSize({ width: rect.width, height: rect.height })
+      const byWidth = (Math.max(0, rect.width - 32)) / responsive.width
+      const byHeight = (Math.max(0, rect.height - 32)) / responsive.height
+      setZoomFitScale(Math.max(0.1, Math.min(1, Math.min(byWidth, byHeight))))
+    }
+    compute()
+    const ro = new ResizeObserver(compute)
+    ro.observe(el)
+    return () => { ro.disconnect() }
+  }, [responsive.width, responsive.height])
+
+  const frameGuide = useMemo(() => {
+    if (!responsiveOn) return null
+    const w = responsive.width * responsiveScale
+    const h = responsive.height * responsiveScale
+    return {
+      left: Math.max(0, (carrierSize.width - w) / 2),
+      top: Math.max(0, (carrierSize.height - h) / 2),
+      width: Math.min(w, carrierSize.width),
+      height: Math.min(h, carrierSize.height),
+    }
+  }, [responsiveOn, responsive.width, responsive.height, responsiveScale, carrierSize])
+
+  /* ── 动作 ── */
+  const submitAddress = (): void => {
+    const trimmed = draft.trim()
+    if (trimmed === '') return
+    setLocalError(null)
+    const bare = !/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) && !trimmed.startsWith('/') && !trimmed.startsWith('//')
+    if (bare && looksLikeFrontendPath(trimmed) && sessionId !== undefined && sessionId !== null) {
+      const mapped = resolvePreviewUrl(trimmed, sessionId)
+      if (mapped !== undefined) {
+        lastRequestedUrl.current = mapped
+        onNavigate(mapped)
+        webviewRef.current?.loadURL(new URL(mapped, window.location.href).href).catch(() => {})
+        return
+      }
+    }
+    const resolved = normalizeBrowserUrl(trimmed)
+    if (resolved === undefined) { setLocalError('无法识别的网址'); return }
+    if (resolved === stateRef.current.url) { webviewRef.current?.reload(); return }
+    lastRequestedUrl.current = resolved
+    onNavigate(resolved)
+    webviewRef.current?.loadURL(resolved).catch(() => {})
+  }
+
+  const goBack = (): void => { webviewRef.current?.goBack() }
+  const goForward = (): void => { webviewRef.current?.goForward() }
+  const reload = (): void => { webviewRef.current?.reload() }
+  const openDevTools = (): void => { setMoreOpen(false); void webviewRef.current?.openDevTools() }
+  const openExternal = (): void => {
+    setMoreOpen(false)
+    const target = stateRef.current?.url ?? ''
+    if (target === '' || target === 'about:blank') return
+    window.open(target, '_blank', 'noopener')
+  }
+
+  const cancelPicker = useCallback((): void => {
+    pickerGeneration.current += 1
+    setPickerOn(false)
+    void webviewRef.current?.executeJavaScript(PICKER_CANCEL_SCRIPT)
+  }, [])
+
+  const startPicker = useCallback(async (): Promise<void> => {
+    const generation = pickerGeneration.current + 1
+    pickerGeneration.current = generation
+    setPickerOn(true)
+    try {
+      const resp = await webviewRef.current?.executeJavaScript(PICKER_SCRIPT, true)
+      if (pickerGeneration.current !== generation) return
+      const value = resp as { status?: string; info?: GuestElementInfo } | null
+      if (value === null || typeof value !== 'object' || typeof value.status !== 'string') return
+      if (value.status === 'cancelled') return
+      if (value.status === 'picked' && value.info !== undefined) insertElement(toPickedElement(value.info))
+    } catch (cause) {
+      if (pickerGeneration.current !== generation) return
+      setLocalError(`网页元素选择失败：${cause instanceof Error ? cause.message : String(cause)}`)
+    } finally {
+      if (pickerGeneration.current === generation) setPickerOn(false)
+    }
+  }, [insertElement])
+
+  const togglePicker = useCallback((): void => {
+    if (pickerOn) cancelPicker()
+    else void startPicker()
+  }, [pickerOn, cancelPicker, startPicker])
+
+  /* ── 「更多」菜单（body portal + fixed，避免被面板 overflow 裁剪；<webview> 是 DOM 节点可被菜单盖住） ── */
+  const moreMenuStyle = useMemo((): CSSProperties | undefined => {
+    if (!moreOpen) return undefined
+    const wrap = moreWrapRef.current
+    const fallback: CSSProperties = { position: 'fixed', top: 8, left: 8, zIndex: 2147482500 }
+    if (wrap === null) return fallback
+    const wr = wrap.getBoundingClientRect()
+    const width = 190
+    const height = 74
+    const gap = 6
+    // 首选：菜单顶边 = 按钮底边 + 6，右缘与按钮右缘对齐（向下展开）。
+    let top = wr.bottom + gap
+    // 下方空间不足时向上回退（底边贴在按钮顶边之上）；上方也放不下则贴顶 8px。
+    if (top + height > window.innerHeight - 8) {
+      const upTop = wr.top - gap - height
+      top = upTop >= 8 ? upTop : 8
+    }
+    let left = wr.right - width
+    left = Math.max(8, Math.min(left, window.innerWidth - width - 8))
+    return { position: 'fixed', top, left, width, zIndex: 2147482500 }
+  }, [moreOpen])
+
+  useEffect(() => {
+    if (!moreOpen) return
+    const onDown = (e: MouseEvent): void => {
+      const target = e.target as Node
+      if (moreWrapRef.current !== null && moreWrapRef.current.contains(target)) return
+      if (moreMenuRef.current !== null && moreMenuRef.current.contains(target)) return
+      setMoreOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => { document.removeEventListener('mousedown', onDown) }
+  }, [moreOpen])
+
+  const currentUrl = state.url ?? ''
+  const errorMessage = localError ?? (state.error ?? null)
+  const isEmpty = !state.loading && errorMessage === null && (currentUrl === '' || currentUrl === 'about:blank') && draft.trim() === ''
+  const isExternalReady = state.ready && /^https?:\/\//i.test(currentUrl)
+  const webviewStyle: CSSProperties = responsiveOn
+    ? { width: responsive.width, height: responsive.height, background: 'transparent' }
+    : { width: '100%', height: '100%', background: 'transparent' }
+
+  const webviewNode = createElement('webview', {
+    ref: webviewRef,
+    src: url === '' ? 'about:blank' : url,
+    partition: 'persist:liuli-embedded-browser',
+    allowpopups: '',
+    allowtransparency: '',
+    style: webviewStyle,
+  } as unknown as Record<string, unknown>)
+
+  return (
+    <>
+      <form
+        className={css.browserBar}
+        onSubmit={(e) => { e.preventDefault(); submitAddress() }}
+      >
+        <button type="button" className={css.navBtn} title="后退" aria-label="后退" data-testid="browser-back-button" disabled={!state.canGoBack} onClick={goBack}>
+          <ArrowIcon dir="left" />
+        </button>
+        <button type="button" className={css.navBtn} title="前进" aria-label="前进" data-testid="browser-forward-button" disabled={!state.canGoForward} onClick={goForward}>
+          <ArrowIcon dir="right" />
+        </button>
+        <button type="button" className={css.navBtn} title="刷新" aria-label="刷新" data-testid="browser-refresh-button" disabled={!state.ready} onClick={reload}>
+          <span className={state.loading ? css.navBtnSpin : undefined}><ReloadIcon /></span>
+        </button>
+        <input
+          className={css.browserInput}
+          value={draft}
+          data-testid="browser-address-input"
+          onChange={(e) => { setDraft(e.target.value); setLocalError(null) }}
+          onFocus={() => { setDraftFocused(true) }}
+          onBlur={() => { setDraftFocused(false) }}
+          placeholder="输入网址后回车"
+          spellCheck={false}
+        />
+        <button
+          type="button"
+          className={css.navBtn + (responsiveOn ? ' ' + css.navBtnActive : '')}
+          title={responsiveOn ? '退出响应式视口' : '响应式视口'}
+          aria-label={responsiveOn ? '退出响应式视口' : '响应式视口'}
+          aria-pressed={responsiveOn}
+          data-testid="browser-responsive-button"
+          onClick={() => { setResponsiveOn(v => !v) }}
+        >
+          <ResponsiveIcon />
+        </button>
+        <button
+          type="button"
+          className={css.navBtn + (pickerOn ? ' ' + css.navBtnActive : '')}
+          title={pickerOn ? '取消网页元素选择' : '选择网页元素加入聊天'}
+          aria-label={pickerOn ? '取消网页元素选择' : '选择网页元素加入聊天'}
+          aria-pressed={pickerOn}
+          data-testid="browser-element-picker-button"
+          disabled={!state.ready}
+          onClick={togglePicker}
+        >
+          <PickerIcon />
+        </button>
+        <div className={css.moreWrap} ref={moreWrapRef}>
+          <button
+            type="button"
+            className={css.navBtn + (moreOpen ? ' ' + css.navBtnActive : '')}
+            title="更多"
+            aria-label="更多"
+            aria-haspopup="menu"
+            aria-expanded={moreOpen}
+            data-testid="browser-more-button"
+            onClick={() => { setMoreOpen(v => !v) }}
+          >
+            <MoreIcon />
+          </button>
+        </div>
+      </form>
+      {moreOpen && moreMenuStyle !== undefined && createPortal(
+        <div ref={moreMenuRef} className={css.moreMenu} role="menu" style={moreMenuStyle}>
+          <button
+            type="button"
+            role="menuitem"
+            className={css.moreItem}
+            data-testid="browser-open-external-item"
+            disabled={!isExternalReady}
+            onClick={openExternal}
+          >
+            <ExternalIcon />
+            <span>在默认浏览器中打开</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className={css.moreItem}
+            data-testid="browser-devtools-button"
+            disabled={!state.ready}
+            onClick={openDevTools}
+          >
+            <DevToolsIcon />
+            <span>开发者工具</span>
+          </button>
+        </div>,
+        document.body,
+      )}
+      {responsiveOn && (
+        <div className={css.responsiveBar} data-testid="browser-responsive-toolbar">
+          <label className={css.responsiveField}>
+            <span>宽</span>
+            <input
+              className={css.responsiveInput}
+              data-testid="browser-responsive-width-input"
+              value={String(responsive.width)}
+              inputMode="numeric"
+              onChange={(e) => {
+                const value = Number(e.target.value.replace(/[^0-9]/g, ''))
+                if (Number.isFinite(value) && value > 0) setResponsive(r => ({ ...r, width: Math.min(3840, value) }))
+              }}
+            />
+          </label>
+          <label className={css.responsiveField}>
+            <span>高</span>
+            <input
+              className={css.responsiveInput}
+              data-testid="browser-responsive-height-input"
+              value={String(responsive.height)}
+              inputMode="numeric"
+              onChange={(e) => {
+                const value = Number(e.target.value.replace(/[^0-9]/g, ''))
+                if (Number.isFinite(value) && value > 0) setResponsive(r => ({ ...r, height: Math.min(2160, value) }))
+              }}
+            />
+          </label>
+          <label className={css.responsiveField}>
+            <span>缩放</span>
+            <ZoomSelect value={responsive.zoom} onChange={(zoom) => { setResponsive(r => ({ ...r, zoom })) }} />
+          </label>
+          <span className={css.responsiveHint}>{responsive.width} × {responsive.height} · {Math.round(responsiveScale * 100)}%</span>
+        </div>
+      )}
+      {errorMessage !== null && (
+        <div className={css.errorBar} role="alert">
+          <span>页面加载失败：{errorMessage}</span>
+          <button type="button" className={css.hintBtn} onClick={reload}>重试</button>
+        </div>
+      )}
+      <div className={css.carrier} data-testid="browser-webview" ref={carrierRef} data-browser-active={active ? '' : undefined}>
+        {responsiveOn && frameGuide !== null ? (
+          <div
+            style={{
+              position: 'absolute',
+              left: frameGuide.left,
+              top: frameGuide.top,
+              width: responsive.width,
+              height: responsive.height,
+              transform: `scale(${responsiveScale})`,
+              transformOrigin: 'top left',
+            }}
+          >
+            {webviewNode}
+          </div>
+        ) : webviewNode}
+        {isEmpty && (
+          <div className={css.emptyWebview}>
+            <span className={css.emptyWebviewIcon}><GlobeIcon size={56} /></span>
+            <h3 className={css.emptyWebviewTitle}>浏览器</h3>
+            <p className={css.emptyWebviewDesc}>内嵌浏览器已就绪（独立会话分区，可打开任意站点）。在上方地址栏输入网址开始浏览。</p>
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+
 export interface BrowserPanelRouterProps {
   tabId: string
   sessionId?: string | undefined
@@ -2640,9 +3343,11 @@ export interface BrowserPanelRouterProps {
   insertElement: (info: PickedElement) => void
   getPaneEl: () => HTMLElement | null
   onFavicon?: ((favicon: string) => void) | undefined
+  onNewWindow?: ((url: string) => void) | undefined
 }
 
-/** 浏览器面板路由：webview 引擎（Electron 宿主）→ 原生视图承载；纯 Web → iframe。 */
+/** 浏览器面板路由：webviewTag 可用 → <webview> DOM 承载（CSS 可裁剪）；
+ *  否则 Electron 宿主 → WebContentsView 原生承载；纯 Web → iframe。 */
 export function BrowserPanel({ tabId, active, ...rest }: BrowserPanelRouterProps) {
   const engine = useBrowserEngineKind()
   if (engine === 'webview') {
@@ -2656,6 +3361,21 @@ export function BrowserPanel({ tabId, active, ...rest }: BrowserPanelRouterProps
         onTitleChange={rest.onTitleChange}
         insertElement={rest.insertElement}
         onFavicon={rest.onFavicon}
+      />
+    )
+  }
+  if (engine === 'webview-tag') {
+    return (
+      <WebviewTagBrowserPanel
+        tabId={tabId}
+        active={active}
+        sessionId={rest.sessionId}
+        url={rest.url}
+        onNavigate={rest.onNavigate}
+        onTitleChange={rest.onTitleChange}
+        insertElement={rest.insertElement}
+        onFavicon={rest.onFavicon}
+        onNewWindow={(next) => { rest.onNewWindow?.(next) }}
       />
     )
   }

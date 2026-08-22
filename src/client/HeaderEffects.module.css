@@ -104,6 +104,13 @@
   background: var(--dsw-alias-brand-primary);
 }
 
+/* 会话页头拆成独立 dock 面板后，页头高度由页头/正文之间的 sash 调整；
+   resizer 的职责已并入 sash，这里隐藏避免出现两个 resize 手柄。
+   header 被搬回正文面板时选择器不命中，resizer 自动恢复。 */
+:global([data-region-pane='region:conversation-header']) .resizer {
+  display: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .canvas {
     opacity: 0.85;

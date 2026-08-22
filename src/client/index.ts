@@ -55,6 +55,7 @@ import { startAutoLoadHistory } from './auto-load-history.ts'
 import { installResizePerfWatcher } from './resize-perf.ts'
 import { startHeaderTabIndicator } from './header-tab-indicator.ts'
 import { startHeaderTextAnimation } from './header-text-animation.ts'
+import { startConversationSplit } from './conversation-split.ts'
 import { disposeSupplierQuota, initSupplierQuota, refreshSupplierQuota } from './supplier-quota.ts'
 import { SupplierQuota } from './SupplierQuota.tsx'
 import { ModelRetryRow, type ModelRetryRowInjected } from './ModelRetryRow.tsx'
@@ -67,7 +68,7 @@ import { FloatBall } from './FloatBall.tsx'
 import { WindowControls, isFramelessWin32 } from './WindowControls.tsx'
 import { createRoot } from 'react-dom/client'
 import { formatSelection, type PickedElement } from './element-picker.ts'
-import { startElementCardDecoration } from './element-card.ts'
+import { rememberComposerElementInfo, startElementCardDecoration } from './element-card.ts'
 import { startSessionRename } from './session-rename.ts'
 import { startSessionMarkerDecoration } from './session-markers.ts'
 import { startSessionContextMenu } from './session-context-menu.ts'
@@ -82,7 +83,7 @@ import { DockStore } from './dock-store.ts'
 import { addPanel as addDockPanel } from './dock-model.ts'
 import { DockShellFrame, DOCK_MENU_TOGGLE_EVENT, setDockHostBridge } from './dock-shell-frame.tsx'
 import {
-  CONVERSATION_MIN, createDockShellStore, defaultShellLayout, exportDockJSON, importDockJSON,
+  createDockShellStore, defaultShellLayout, exportDockJSON, importDockJSON,
   listShellSlotNames, loadShellSlotByName, saveShellDock, saveShellSlotByName,
   type HostLayoutFace,
 } from './dock-shell.ts'
@@ -141,14 +142,15 @@ const SETTINGS_DEFER_CSS = [
   'body[data-liuli-settings-open] [data-testid="browser-webview"] {',
   '  display: none !important;',
   '}',
-  '/* header 拉伸变高后，其 -webkit-app-region: drag 拖拽区按元素几何生效、',
-  '   不受 DOM z-index/绘制层级影响：设置页全屏 overlay 虽盖在 header 之上，',
-  '   但叠在拖拽区上的按钮点击会被吞掉（表现为"没盖住却点不了"）。',
-  '   设置页打开时把琉璃的拖拽区临时置为 no-drag，让点击正常穿透。 */',
+  '/* 拖拽区（-webkit-app-region: drag）按元素几何生效、不受 DOM z-index/',
+  '   绘制层级影响：设置页全屏 overlay 虽盖在其上，但叠在拖拽区上的按钮',
+  '   点击会被吞掉（表现为"没盖住却点不了"）。设置页打开时把琉璃的拖拽区',
+  '   临时置为 no-drag，让点击正常穿透。 */',
   'body[data-liuli-settings-open] [data-region-pane="region:conversation"] header,',
   'body[data-liuli-settings-open] [data-region-pane="region:conversation-header"] header,',
   'body[data-liuli-settings-open] [data-testid="dock-tab-strip"],',
-  'body[data-liuli-settings-open] [data-liuli-pane-drag] {',
+  'body[data-liuli-settings-open] [data-liuli-pane-drag],',
+  'body[data-liuli-settings-open] [data-liuli-window-drag] {',
   '  -webkit-app-region: no-drag !important;',
   '}',
 ].join('\n')
@@ -176,9 +178,9 @@ const DESKTOP_ADVANCED_CSS = [
   '  border-right: none !important;',
   '  padding: 0 !important;',
   '}',
-  '/* 对话页最小宽度：只约束 shard（列容器）即可；surface 上的 min-width 会与 padding 叠加把表面撑得比 shard 还宽，溢出覆盖 sash */',
+  '/* 对话页最小宽度：渲染期 splitChildPx 已把 CONVERSATION_MIN 换算成 flexGrow 分配（空间足够时优先抬到最小，空间不足时按比例压缩）。这里不能再给 shard 写 min-width: 640px —— flex 项的硬性 min 下限会让「固定列 + 会话列」之和超过小视口，右缘固定面板溢出并盖住相邻卡片（窗口最大化→还原必现）。surface 的 min-width 仍置 0。 */',
   'body[data-dsh-desktop-mode="advanced"] [class*="_shard"]:has([data-region-pane="region:conversation"]) {',
-  `  min-width: ${CONVERSATION_MIN}px !important;`,
+  `  min-width: 0 !important;`,
   '}',
   'body[data-dsh-desktop-mode="advanced"] .dshDesktopConversationSurface {',
   '  min-width: 0 !important;',
@@ -192,14 +194,9 @@ const DESKTOP_ADVANCED_CSS = [
   '  padding-top: 40px !important;',
   '}',
   '/* 详情列面板根：advanced 模式哈希类为 *_panel（兼容模式是 *_root），',
-  '   补上去左线规则（镜像 [class*="_detailsCol"] [class*="_root"]） */',
+  '   去掉左缘分割线（用户确认冗余；sash 已承担分隔/缩放语义） */',
   'body[data-dsh-desktop-mode="advanced"] [class*="_detailsCol"] [class*="_panel"] {',
   '  border-left: none !important;',
-  '}',
-  '/* 详情列面板根统一描边：卡片四边与会话/侧栏一致——预览面板根补上完整',
-  '   1px 描边后，左缘需覆盖上面的 border-left:none（同特异性、更靠后生效） */',
-  'body[data-dsh-desktop-mode="advanced"] [class*="_detailsCol"] [data-preview-panel] {',
-  '  border-left: 1px solid var(--dsw-alias-border-l1) !important;',
   '}',
   '/* 右侧边栏（详情列）底部触底：advanced/dock 模式下保留顶部与左侧留白，',
   '   去掉底部 16px 空隙，让面板底边贴到窗口底部（用户要求）。 */',
@@ -219,27 +216,8 @@ const DESKTOP_ADVANCED_CSS = [
   'body[data-dsh-desktop-mode="advanced"] [class*="_sidebarCol"] > div > [class*="_root"] {',
   '  width: 100% !important;',
   '}',
-  '/* ── 无边框窗口拖动区：去掉 caption 行后，会话 header 承担窗口拖动 ── */',
-  '/* 会话页头（<header>）整体 -webkit-app-region: drag，空白处可拖动窗口 */',
-  'body[data-dsh-desktop-mode="advanced"] [data-region-pane="region:conversation"] header {',
-  '  -webkit-app-region: drag;',
-  '}',
-  '/* 页头内的交互元素保持可点击（no-drag 覆盖父级 drag） */',
-  'body[data-dsh-desktop-mode="advanced"] [data-region-pane="region:conversation"] header button,',
-  'body[data-dsh-desktop-mode="advanced"] [data-region-pane="region:conversation"] header a,',
-  'body[data-dsh-desktop-mode="advanced"] [data-region-pane="region:conversation"] header input,',
-  'body[data-dsh-desktop-mode="advanced"] [data-region-pane="region:conversation"] header select,',
-  'body[data-dsh-desktop-mode="advanced"] [data-region-pane="region:conversation"] header textarea,',
-  'body[data-dsh-desktop-mode="advanced"] [data-region-pane="region:conversation"] header label,',
-  'body[data-dsh-desktop-mode="advanced"] [data-region-pane="region:conversation"] header [role="button"],',
-  'body[data-dsh-desktop-mode="advanced"] [data-region-pane="region:conversation"] header [role="tab"],',
-  'body[data-dsh-desktop-mode="advanced"] [data-region-pane="region:conversation"] header [role="menuitem"],',
-  'body[data-dsh-desktop-mode="advanced"] [data-region-pane="region:conversation"] header [role="combobox"],',
-  'body[data-dsh-desktop-mode="advanced"] [data-region-pane="region:conversation"] header [role="listbox"],',
-  'body[data-dsh-desktop-mode="advanced"] [data-region-pane="region:conversation"] header [contenteditable],',
-  'body[data-dsh-desktop-mode="advanced"] [data-region-pane="region:conversation"] header [data-liuli-window-controls] {',
-  '  -webkit-app-region: no-drag;',
-  '}',
+  '/* ── 无边框窗口拖动区：win32 去掉 caption 行后，窗口拖拽由 desktop 顶部',
+  '   15px 透明拖动条（DockShellFrame 的 .windowTopDrag）承担，header 不再拖窗 */',
   '/* dock 合并标签条空白区（tabFiller）也可拖动窗口；标签 chip no-drag 保持可拖拽/可点 */',
   'body[data-dsh-desktop-mode="advanced"] [data-testid="dock-tab-strip"] {',
   '  -webkit-app-region: drag;',
@@ -401,6 +379,9 @@ export function apply(ctx: ClientContext): void {
   // 本插件借 ctx.slots.inject('sidebar') 等到声明落地后再注册 root 占用者，避免重复声明。
   if (new URLSearchParams(window.location.search).get('dsh-desktop-mode') === 'advanced') {
     const shellHandle = createDockShellStore().create()
+    // 对话页双容器：把 conversation 面板里的 header 槽位容器与正文滚动容器
+    // 标记为两个并列容器（CSS 驱动布局），会话切换/面板重挂时由 body 级观察补标记。
+    ctx.effect(() => startConversationSplit(), 'dsh-liuli-ui-enhance: conversation header/body split')
     // 自测钩子：无头自测脚本经此驱动宿主 layout 服务与 dock 工作台
     // （开合详情/收起侧栏/菜单开合/面板增删/布局保存恢复导出导入）。
     ctx.effect(() => {
@@ -552,6 +533,7 @@ export function apply(ctx: ClientContext): void {
     const input = ctx.conversation.input.for(actx)
     const state = input.state.getSnapshot()
     const span = { start: state.draft.length, end: state.draft.length, draftRev: state.draftRev }
+    rememberComposerElementInfo(info)
     input.insertReference({
       source: 'liuli-picker',
       ref: JSON.stringify(info),

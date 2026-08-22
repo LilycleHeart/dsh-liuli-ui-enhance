@@ -621,6 +621,16 @@ export function LiuliAppearanceSection({
           onChange={(v) => { set({ color_mode: v as LiuliSettings['color_mode'] }) }}
         />
 
+        <SelectRow
+          label={t('statusColorMode')}
+          value={s.status_color_mode}
+          options={[
+            { value: 'hardcoded', label: t('statusColorMode.hardcoded') },
+            { value: 'mcu', label: t('statusColorMode.mcu') },
+          ]}
+          onChange={(v) => { set({ status_color_mode: v as LiuliSettings['status_color_mode'] }) }}
+        />
+
         {s.color_mode === 'static' && (
           <ColorRow
             label={t('brandColor')}
@@ -663,15 +673,7 @@ export function LiuliAppearanceSection({
           </>
         )}
 
-        <SelectRow
-          label={t('materialType')}
-          value={s.material_type}
-          options={[
-            { value: 'acrylic', label: t('materialType.acrylic') },
-            { value: 'mica', label: t('materialType.mica') },
-          ]}
-          onChange={(v) => { set({ material_type: v as LiuliSettings['material_type'] }) }}
-        />
+        <div className={css.divider} />
 
         <ToggleRow
           label={t('materialOn')}
@@ -691,6 +693,8 @@ export function LiuliAppearanceSection({
             />
           </>
         )}
+
+        <div className={css.divider} />
 
         <SelectRow
           label={t('fontMode')}
@@ -713,6 +717,8 @@ export function LiuliAppearanceSection({
           tip={t('dockPadding.tip')}
           onChange={(v) => { set({ dock_padding: v }) }}
         />
+
+        <div className={css.divider} />
 
         <ToggleRow
           label={t('glowOn')}
@@ -737,6 +743,8 @@ export function LiuliAppearanceSection({
           disabled={!s.shadow_enabled}
           onChange={(v) => { set({ shadow_intensity: v }) }}
         />
+
+        <div className={css.divider} />
 
         <SelectRow
           label={t('transition')}

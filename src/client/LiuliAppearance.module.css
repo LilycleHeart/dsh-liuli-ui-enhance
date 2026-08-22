@@ -14,6 +14,14 @@
   gap: 4px 20px;
 }
 
+/* 主设置分组横线：横跨整行，把取色/背景、材质、字体/布局、光效、动画分开 */
+.divider {
+  grid-column: 1 / -1;
+  height: 1px;
+  margin: 8px 0 4px;
+  background: var(--dsw-alias-border-l2);
+}
+
 .row {
   display: flex;
   flex-direction: column;

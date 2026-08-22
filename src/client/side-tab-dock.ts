@@ -10,6 +10,13 @@ import type { SidePaneTab } from './PreviewPanel.tsx'
 
 export const SIDE_TAB_MIME = 'application/x-liuli-side-tab'
 
+/** 请求右侧标签面板打开指定标签（dock 面板拖回详情页时恢复为 SidePane 标签）。 */
+export const SIDE_TAB_OPEN_EVENT = 'liuli:side-tab-open'
+
+export function openSidePaneTab(tab: SidePaneTab): void {
+  window.dispatchEvent(new CustomEvent<SidePaneTab>(SIDE_TAB_OPEN_EVENT, { detail: tab }))
+}
+
 /** 标签拖拽是否已被布局接收（drop 成功由布局侧标记，dragend 由 SidePane 消费）。 */
 let sideTabAccepted = false
 
@@ -93,4 +100,45 @@ export function sideTabToDockPanel(tab: SidePaneTab): SideTabDockPanel | undefin
     case 'whiteboard': return { type: 'whiteboard', state: { boardId: tab.id } }
     default: return undefined
   }
+}
+
+/**
+ * dock 面板类型 → SidePane 标签（与 sideTabToDockPanel 反向）。
+ * 从详细页拆出的标签在 dock 布局里以面板形式存在；拖回详情页时需要还原成
+ * SidePane 自己的标签，而不是与 region:details 合并成 dock 标签组。
+ */
+export function dockPanelToSideTab(panel: {
+  id: string
+  type: string
+  title?: string
+  state?: Record<string, unknown>
+}): SidePaneTab | undefined {
+  const base: SidePaneTab = { id: panel.id, type: 'git', openedAt: Date.now() }
+  switch (panel.type) {
+    case 'files': base.type = 'treemapping'; break
+    case 'wiki': base.type = 'repo-wiki'; break
+    case 'git': base.type = 'git'; break
+    case 'browser':
+      base.type = 'browser'
+      base.url = typeof panel.state?.url === 'string' ? panel.state.url : ''
+      if (panel.title !== undefined && panel.title !== '') base.title = panel.title
+      break
+    case 'code':
+      base.type = 'code-viewer'
+      base.rel = typeof panel.state?.rel === 'string' ? panel.state.rel : ''
+      base.path = typeof panel.state?.path === 'string' ? panel.state.path : ''
+      if (panel.title !== undefined && panel.title !== '') base.title = panel.title
+      break
+    case 'terminal':
+      base.type = 'terminal'
+      if (panel.title !== undefined && panel.title !== '') base.title = panel.title
+      break
+    case 'whiteboard':
+      base.type = 'whiteboard'
+      if (panel.title !== undefined && panel.title !== '') base.title = panel.title
+      break
+    default:
+      return undefined
+  }
+  return base
 }

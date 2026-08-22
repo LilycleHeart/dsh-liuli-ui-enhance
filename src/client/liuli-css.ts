@@ -462,6 +462,14 @@ div[aria-label][class*="_card"],
   backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
 }
 
+/* HoverCard 可复制悬浮卡（会话 hover 预览）：宿主把文字颜色硬编码为
+   #E4E2DA 浅米色；琉璃已把该卡背景主题化为亚克力，浅色主题下浅字浅底
+   几乎不可读。这里统一改为主文字令牌，复制成功反馈同样跟随主题。 */
+div[aria-label][class*="_card"][class*="_copyable"],
+div[aria-label][class*="_card"][class*="_copyable"] * {
+  color: var(--dsw-alias-label-primary);
+}
+
 /* 菜单/树菜单需要更强背景对比度：浮动卡片统一的 22% 透明（input-major）
    在亮壁纸上会让浅色菜单文字不可读（右键/下拉菜单看起来像"消失"）。
    菜单单独提高到 70% 不透明，仍保留磨砂亚克力质感与噪声。 */
@@ -715,6 +723,41 @@ div[class*="hoverCard"] {
   padding: var(--liuli-dock-padding, 8px) var(--liuli-dock-padding, 8px) var(--liuli-dock-padding, 8px) var(--liuli-dock-padding, 8px) !important;
 }
 
+/* 开始页：官方 blank session 会给会话 header 加 aria-hidden + .headerHidden
+   （display:none）。普通三列模式兜底强制隐藏；advanced dock 模式下 header
+   被搬入独立页头面板，需连 shard 一起隐藏（只隐藏内部 pane 不够，shard 仍
+   作为 flex 成员占据顶部空间）。 */
+div[data-phase] > header[aria-hidden],
+div[data-phase] > div > header[aria-hidden] {
+  display: none !important;
+}
+
+[data-shard-region="region:conversation-header"]:has(header[aria-hidden]) {
+  display: none !important;
+}
+
+/* 页头 shard 隐藏后，其相邻 sash 仍会作为 flex 成员留在 split 顶部/底部
+   （sash 自身 0 占位，但常驻指示条会露在开始页顶部），一并隐藏。 */
+[data-shard-region="region:conversation-header"]:has(header[aria-hidden]) + [data-testid="dock-sash"] {
+  display: none !important;
+}
+
+/* 页头 shard 在会话 shard 下方时，sash 位于会话 shard 之后、页头 shard 之前。 */
+[data-testid="dock-sash"]:has(+ [data-shard-region="region:conversation-header"]:has(header[aria-hidden])) {
+  display: none !important;
+}
+
+/* 页头 shard 隐藏后，会话 shard 的 flex-grow 从 <1 变成孤立的 <1 项，
+   flexbox 对 grow 总和 <1 只分配对应比例的自由空间（表现为底部留白）。
+   这里在开始页把会话 shard 的 grow 提回 1，让正文占满整个 split。 */
+[data-shard-region="region:conversation-header"]:has(header[aria-hidden]) ~ [data-shard-region="region:conversation"] {
+  flex-grow: 1 !important;
+}
+
+[data-shard-region="region:conversation"]:has(~ [data-shard-region="region:conversation-header"]:has(header[aria-hidden])) {
+  flex-grow: 1 !important;
+}
+
 /* 会话 header 浮动卡片：官方 header 为 <header> 标签 + 哈希类名。
    只命中会话列顶部的 header，避免把问题/审批卡片内部的 <header> 也套上
    卡片背景导致上下样式不统一。 */
@@ -869,6 +912,32 @@ div[data-phase] > div > header,
   box-shadow: var(--liuli-glow-brand), var(--liuli-shadow) !important;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
+}
+
+/* ════════════════════════════════════════════════════════════
+ * advanced dock 模式：对话页拆成 header / 正文两个真正并列的容器。
+ * 官方会话根 div[data-phase] 的两个子节点本就并列，但 header 槽位
+ * 容器是 inline style="display: contents"，视觉上不构成容器。
+ * conversation-split.ts 给它们打标记，这里只做布局：
+ *  - header 槽位容器转成 flex 容器（!important 覆盖 inline contents）；
+ *  - 正文滚动容器占满剩余空间（flex:1）。
+ * 不移动 React 管理的 DOM 节点；旧版结构（header 直接作为 phase 子级）
+ * 用 :not(header) 跳过，避免把 header 内部改成 flex 布局。 */
+[data-liuli-conversation-split] {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+[data-liuli-conversation-split] > [data-liuli-conversation-header-container]:not(header) {
+  display: flex !important;
+  flex-direction: column;
+  flex: none;
+  min-width: 0;
+}
+
+[data-liuli-conversation-split] > [data-liuli-conversation-body-container] {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 /* 壁纸模糊独立层：铺满会话列、位于卡片背后（根级 stacking context 的
@@ -1111,6 +1180,7 @@ div[data-phase='active'] {
   box-shadow: 0 0 0 1px var(--dsw-alias-border-l2), var(--liuli-glow-brand);
 }
 
+
 /* ════════════════════════════════════════════════════════════
  * 用户消息里的元素引用卡片（element-picker 发送后由 element-card.ts
  * 把 [selected element] 纯文本替换为卡片 DOM）。
@@ -1121,7 +1191,7 @@ div[data-phase='active'] {
   margin: 4px 0;
   padding: 4px 10px;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: var(--liuli-radius, 999px);
+  border-radius: var(--liuli-radius, 999px) !important;
   background-color: rgba(var(--liuli-acrylic-rgb), 0.92);
   background-image: var(--liuli-noise);
   box-shadow: var(--liuli-glow-brand), var(--liuli-shadow);

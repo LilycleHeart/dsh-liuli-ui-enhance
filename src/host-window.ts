@@ -7,6 +7,8 @@
  *
  * - GET  /liuli-window              → { available, maximized, fullScreen }
  * - POST /liuli-window { action }   → action: minimize | toggleMaximize | close
+ *                                      | toggleDevTools | openDevTools | closeDevTools
+ *                                      | inspectElement {x, y}
  *
  * close 走 BrowserWindow.close()，与原生关闭按钮同语义（desktop-shell 的
  * close 处理器会把窗口收进托盘而不是退出）。纯 Web 部署没有 Electron，
@@ -28,6 +30,13 @@ interface HostBrowserWindow {
   maximize(): void
   unmaximize(): void
   close(): void
+  webContents: {
+    isDevToolsOpened(): boolean
+    openDevTools(options?: { mode: 'right' | 'bottom' | 'detach' | 'undocked' }): void
+    closeDevTools(): void
+    /** 在 DevTools Elements 面板定位到指定页面坐标的元素（DIP 坐标）。 */
+    inspectElement(x: number, y: number): void
+  }
 }
 
 interface HostElectronMain {
@@ -168,8 +177,34 @@ export function windowControlRoute(): WebRoute {
           case 'close':
             win.close()
             break
+          case 'toggleDevTools':
+            // Chrome F12 语义：已打开则关闭；否则以侧边停靠（right）打开当前渲染进程 DevTools。
+            if (win.webContents.isDevToolsOpened()) win.webContents.closeDevTools()
+            else win.webContents.openDevTools({ mode: 'right' })
+            break
+          case 'openDevTools':
+            if (!win.webContents.isDevToolsOpened()) win.webContents.openDevTools({ mode: 'right' })
+            break
+          case 'closeDevTools':
+            if (win.webContents.isDevToolsOpened()) win.webContents.closeDevTools()
+            break
+          case 'inspectElement': {
+            // 相当于浏览器右键菜单「检查」：打开 DevTools 并在 Elements 面板
+            // 定位到指定坐标的元素。坐标来自渲染进程 getBoundingClientRect
+            // 中心点（CSS 像素 ≈ DIP，页面未缩放时一致）。
+            const bodyObj = body as { x?: unknown; y?: unknown } | null
+            const x = bodyObj?.x
+            const y = bodyObj?.y
+            if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) {
+              sendJson(res, 400, { ok: false, error: 'inspectElement requires numeric x,y in body' })
+              return
+            }
+            if (!win.webContents.isDevToolsOpened()) win.webContents.openDevTools({ mode: 'right' })
+            win.webContents.inspectElement(Math.round(x), Math.round(y))
+            break
+          }
           default:
-            sendJson(res, 400, { ok: false, error: 'action must be minimize | toggleMaximize | close' })
+            sendJson(res, 400, { ok: false, error: 'action must be minimize | toggleMaximize | close | toggleDevTools | openDevTools | closeDevTools | inspectElement' })
             return
         }
         sendJson(res, 200, { ok: true, available: true, maximized: win.isMaximized() })

@@ -93,6 +93,12 @@
   order: -1;
 }
 
+.toolGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .tool {
   display: inline-flex;
   align-items: center;
@@ -110,6 +116,39 @@
     border-color 140ms var(--ds-ease-in-out);
 }
 
+/* 元素选择器模式切换小按钮（插入 / 检查） */
+.modeBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: rgba(var(--liuli-acrylic-rgb), 0.6);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10px;
+  line-height: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 140ms var(--ds-ease-in-out), background 140ms var(--ds-ease-in-out),
+    border-color 140ms var(--ds-ease-in-out), box-shadow 140ms var(--ds-ease-in-out);
+}
+
+.modeBtn:hover {
+  color: var(--dsw-alias-brand-primary);
+  border-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 40%, transparent);
+  background: var(--dsw-alias-interactive-bg-hover-accent);
+}
+
+.modeBtnActive,
+.modeBtnActive:hover {
+  color: var(--dsw-alias-brand-primary);
+  border-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 45%, transparent);
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 10%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--dsw-alias-brand-primary) 30%, transparent);
+}
+
 .tool:hover {
   color: var(--dsw-alias-brand-primary);
   background: var(--dsw-alias-interactive-bg-hover-accent);
@@ -121,6 +160,26 @@
   border-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 45%, transparent);
   background: color-mix(in srgb, var(--dsw-alias-brand-primary) 10%, transparent);
   box-shadow: 0 0 8px color-mix(in srgb, var(--dsw-alias-brand-primary) 30%, transparent);
+}
+
+/* 轻提示（body 级居中底部） */
+.notice {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 2147483200;
+  max-width: min(420px, calc(100vw - 40px));
+  padding: 8px 14px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background-color: rgba(var(--liuli-acrylic-rgb), 0.95);
+  background-image: var(--liuli-noise);
+  box-shadow: var(--liuli-shadow);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 18px;
+  pointer-events: none;
 }
 
 /* 拾取悬停信息卡（body 级跟随鼠标） */
@@ -162,6 +221,91 @@
   color: var(--dsw-alias-label-primary);
   font-size: 12px;
   line-height: 18px;
+}
+
+/* 审查元素结果卡（body 级，可滚动） */
+.inspectCard {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 2147483200;
+  width: 380px;
+  max-width: calc(100vw - 40px);
+  max-height: min(560px, calc(100vh - 40px));
+  overflow: auto;
+  padding: 12px 14px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--liuli-radius-sm, 10px);
+  background-color: rgba(var(--liuli-acrylic-rgb), 0.97);
+  background-image: var(--liuli-noise);
+  box-shadow: var(--liuli-glow-brand), var(--liuli-shadow);
+  backdrop-filter: var(--liuli-material-blur);
+  -webkit-backdrop-filter: var(--liuli-material-blur);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.inspectStyles {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) minmax(160px, 2fr);
+  gap: 1px;
+  margin-top: 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--dsw-alias-border-l2);
+}
+
+.inspectStyleRow {
+  display: contents;
+}
+
+.inspectStyleName {
+  padding: 4px 8px;
+  background: var(--dsw-alias-markdown-code-segment-unselected);
+  font-family: var(--ds-font-family-code);
+  font-size: 10px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inspectStyleValue {
+  padding: 4px 8px;
+  background: var(--dsw-alias-bg-base);
+  font-family: var(--ds-font-family-code);
+  font-size: 10px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+  word-break: break-all;
+}
+
+.inspectHtml {
+  margin-top: 10px;
+}
+
+.inspectHtmlTitle {
+  font-size: 10px;
+  color: var(--dsw-alias-label-tertiary);
+  margin-bottom: 4px;
+}
+
+.inspectHtmlCode {
+  display: block;
+  max-height: 120px;
+  overflow: auto;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--dsw-alias-markdown-code-segment-unselected);
+  font-family: var(--ds-font-family-code);
+  font-size: 10px;
+  line-height: 15px;
+  color: var(--dsw-alias-label-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 .infoHead {

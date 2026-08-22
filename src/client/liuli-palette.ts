@@ -285,7 +285,10 @@ export function liuliClearBrand(): void {
     '--dsw-alias-markdown-tag', '--dsw-alias-markdown-citation', '--dsw-alias-markdown-placeholder',
     '--dsw-alias-markdown-code-segment-selected', '--dsw-alias-markdown-code-segment-unselected',
     '--dsw-alias-scrollbar-bg-l1', '--dsw-alias-scrollbar-bg-l2', '--dsw-alias-scrollbar-hover-l1',
-    '--dsw-alias-scrollbar-hover-l2', '--dsw-alias-state-error-primary', '--dsw-alias-state-error-secondary',
+    '--dsw-alias-scrollbar-hover-l2',
+    '--dsw-alias-state-success-primary', '--dsw-alias-state-success-secondary', '--dsw-alias-state-success-tertiary',
+    '--dsw-alias-state-warn-label', '--dsw-alias-state-warn-primary', '--dsw-alias-state-warn-secondary', '--dsw-alias-state-warn-tertiary',
+    '--dsw-alias-state-error-primary', '--dsw-alias-state-error-secondary',
     '--liuli-acrylic-rgb', '--liuli-acrylic-rgb-low', '--liuli-acrylic-rgb-high', '--liuli-control-rgb',
   ]
   for (const name of names) document.body.style.removeProperty(name)

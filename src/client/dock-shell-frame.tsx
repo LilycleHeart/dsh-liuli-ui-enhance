@@ -19,21 +19,23 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import type { PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import {
-  addPanel, collectTabsNodes, createPanel, MIN_SIZE, moveFloat, movePanel, panelCount,
+  addPanel, collectTabsNodes, createPanel, findNode, findParentSplit, findTabsContaining, MIN_SIZE, moveFloat, movePanel, panelCount,
   patchPanel, placePanel, removePanel, resizeSplitTo, setActivePanel, updateFloat,
   type DockLayout, type DockNode, type DropTarget, type FloatWindow, type PanelInstance, type SplitNode, type TabsNode,
 } from './dock-model.ts'
 import { DOCK_PANEL_DEFS, panelDef, panelTitle, type DockHostAccess } from './dock-panels.tsx'
-import { markSideTabAccepted, parseSideTab, SIDE_TAB_MIME, sideTabToDockPanel, type SideTabDockPanel } from './side-tab-dock.ts'
+import { dockPanelToSideTab, markSideTabAccepted, openSidePaneTab, parseSideTab, SIDE_TAB_MIME, sideTabToDockPanel, type SideTabDockPanel } from './side-tab-dock.ts'
 import {
-  createDockShellStore, exportDockJSON, findRegion, importDockJSON, isRegionPanel,
-  listShellSlotNames, loadShellSlotByName, regionLabel, saveShellDock,
+  createDockShellStore, defaultShellLayout, exportDockJSON, findRegion, importDockJSON, isRegionPanel,
+  listShellSlotNames, loadSavedDock, loadShellSlotByName, regionLabel, saveShellDock,
   saveShellSlotByName, withRegion,
-  CONVERSATION_MIN, DETAILS_MAX_RATIO, DETAILS_MIN, REGION_CONVERSATION, REGION_DETAILS, REGION_SIDEBAR, SIDEBAR_MAX, SIDEBAR_MIN,
+  CONVERSATION_HEADER_MIN_H, CONVERSATION_MIN, DETAILS_MAX_RATIO, DETAILS_MIN, REGION_CONVERSATION, REGION_CONVERSATION_HEADER, REGION_DETAILS, REGION_SIDEBAR, SIDEBAR_MAX, SIDEBAR_MIN,
   type HostLayoutFace,
 } from './dock-shell.ts'
+import { HEADER_HEIGHT_LS_KEY, HEADER_MAX_H, HEADER_MIN_H } from './HeaderEffects.tsx'
 import css from './DockShellFrame.module.css'
 import { HMR_MARKER } from './hmr-marker.ts'
+import { tagConversationContainers } from './conversation-split.ts'
 import { beginResizePerf, endResizePerf } from './resize-perf.ts'
 
 /* ── ctx 能力桥（index.ts 注入；纯组件不碰 cordis） ── */
@@ -80,13 +82,61 @@ const PANE_CARD_MIN_W = 240
 const PANE_CARD_MIN_H = 160
 
 /** 直接子级的最小像素尺寸（会话列 640×160，普通面板 240×160）。
- *  渲染期换算 flexGrow 与 sash 拖拽 clamp 共用同一套最小尺寸语义。 */
-function childMinPx(child: DockNode | undefined, dir: 'h' | 'v'): number {
+ *  渲染期换算 flexGrow 与 sash 拖拽 clamp 共用同一套最小尺寸语义。
+ *  页头面板的 min 是 pane 卡片可视高度；shard 最小高度还需加 paneCard
+ *  上下 margin（2×dockPad），所以这里用运行时 dockPad 换算。 */
+function childMinPx(child: DockNode | undefined, dir: 'h' | 'v', dockPad: number): number {
   if (child === undefined) return 0
   if (child.kind === 'tabs' && child.tabs.length === 1 && child.tabs[0]?.type === REGION_CONVERSATION) {
     return dir === 'h' ? CONVERSATION_MIN : PANE_CARD_MIN_H
   }
+  if (child.kind === 'tabs' && child.tabs.length === 1 && child.tabs[0]?.type === REGION_CONVERSATION_HEADER) {
+    return dir === 'h' ? PANE_CARD_MIN_W : CONVERSATION_HEADER_MIN_H + dockPad * 2
+  }
   return dir === 'h' ? PANE_CARD_MIN_W : PANE_CARD_MIN_H
+}
+
+/** 把页头面板当前实际高度写入 localStorage（继承原 HeaderEffects 拉伸手柄的
+ *  高度记忆：现在由页头/正文之间的 sash 承担“拉伸 header”职责）。 */
+function saveHeaderHeightFromSplit(splitNode: SplitNode, dividerIndex: number): void {
+  const before = splitNode.children[dividerIndex - 1]
+  const after = splitNode.children[dividerIndex]
+  for (const child of [before, after]) {
+    if (child === undefined || child.kind !== 'tabs' || child.tabs.length !== 1) continue
+    if (child.tabs[0]?.type !== REGION_CONVERSATION_HEADER) continue
+    const el = document.querySelector<HTMLElement>('[data-dock-node="' + child.id + '"]')
+    if (el === null) continue
+    const h = el.getBoundingClientRect().height
+    if (!Number.isFinite(h) || h <= 0) continue
+    const clamped = Math.round(Math.max(HEADER_MIN_H, Math.min(HEADER_MAX_H, h)))
+    try { localStorage.setItem(HEADER_HEIGHT_LS_KEY, String(clamped)) } catch { /* 存储不可用则跳过 */ }
+    return
+  }
+}
+
+/** 判断节点是否单面板会话页头（用于 sash 像素 min 优先于 MIN_SIZE 比例）。 */
+function isHeaderTabs(child: DockNode | undefined): boolean {
+  return child !== undefined && child.kind === 'tabs' && child.tabs.length === 1 && child.tabs[0]?.type === REGION_CONVERSATION_HEADER
+}
+
+/** 从布局树/浮动窗口里按面板 id 找到面板实例。 */
+function findPanelById(layout: DockLayout, panelId: string): PanelInstance | undefined {
+  const hit = findTabsContaining(layout.root, panelId)
+  if (hit !== undefined) return hit.node.tabs[hit.index]
+  for (const float of layout.floats) {
+    const panel = float.tabs.find(p => p.id === panelId)
+    if (panel !== undefined) return panel
+  }
+  return undefined
+}
+
+/** 目标标签组是否是「单面板详情区域」：拖回该组应还原为 SidePane 标签，而不是合并成 dock 标签组。 */
+function isSingleDetailsTabs(layout: DockLayout, nodeId: string): boolean {
+  const node = findNode(layout.root, nodeId)
+  return node !== undefined
+    && node.kind === 'tabs'
+    && node.tabs.length === 1
+    && node.tabs[0]?.type === REGION_DETAILS
 }
 
 function baseName(path: string): string {
@@ -154,6 +204,8 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
   const [modal, setModal] = useState<null | { kind: 'export' | 'import'; text: string }>(null)
   const [toast, setToast] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement | null>(null)
+  /** 页头高度恢复只应用一次（应用后用户拖拽 sash 会重新写入 localStorage）。 */
+  const headerHeightAppliedRef = useRef(false)
   const dragRef = useRef<{ source: DragSource; title: string; sx: number; sy: number; active: boolean } | null>(null)
   /** HTML5 外部拖入（右侧标签面板标签）的落点指示。 */
   const [htmlDrop, setHtmlDrop] = useState<{ over: DropTarget | null; rect: DragState['overRect'] } | null>(null)
@@ -164,6 +216,23 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
   shellRef.current = shell
   /** 用户把详情区域面板拖离原列（浮动/挪到其他位置）后，抑制宿主 openDetails 的自动补挂。 */
   const detailsTornOut = useRef(false)
+  /** 当前会话 id 的上一次值：用于在会话切换时把旧布局写入旧会话、加载新会话布局。 */
+  const lastDockSession = useRef<string | null | undefined>(undefined)
+
+  // 按会话记忆 dock 布局：切换会话时先把当前布局写入旧会话，再加载新会话布局。
+  useLayoutEffect(() => {
+    const prev = lastDockSession.current
+    lastDockSession.current = sessionId
+    if (prev === sessionId) return
+    detailsTornOut.current = false
+    if (prev !== undefined && prev !== null && prev !== '') {
+      saveShellDock(shellRef.current.dock, prev)
+    }
+    const saved = sessionId !== undefined && sessionId !== null && sessionId !== ''
+      ? loadSavedDock(sessionId)
+      : undefined
+    actions.setDock(saved ?? defaultShellLayout())
+  }, [sessionId, actions])
 
   /** 面板贴边标记（实测几何）：key = data-dock-node，避免嵌套 split / 0 宽 shard 误判。 */
   const [edgeMap, setEdgeMap] = useState<Record<string, PaneEdgeFlags>>({})
@@ -273,10 +342,245 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     recomputeSplitPx()
   }, [recomputePaneEdges, recomputeSplitPx])
 
+  /** 运行时 dock 留白（与 CSS 变量 --liuli-dock-padding 一致，不硬编码 16px）。
+   *  变量由 liuli-runtime 异步设置在 body 上（首次渲染时可能还没写入），
+   *  所以用 state + 观察者保持同步，不能只在首次渲染时读一次。 */
+  const [dockPad, setDockPad] = useState(8)
+
+  /** 读取 body 上的 --liuli-dock-padding 并同步到 state（异步设置项就绪后重渲染）。 */
+  useLayoutEffect(() => {
+    let cancelled = false
+    let raf = 0
+    const read = (): void => {
+      if (cancelled) return
+      try {
+        const raw = getComputedStyle(document.body).getPropertyValue('--liuli-dock-padding').trim()
+        const n = Number.parseFloat(raw)
+        if (Number.isFinite(n) && n > 0) setDockPad(prev => prev === n ? prev : n)
+      } catch { /* 保持默认 8 */ }
+    }
+    read()
+    // 设置项异步加载，可能晚于首次渲染；rAF 重试 + body 属性观察双保险。
+    let tries = 0
+    const retry = (): void => {
+      if (cancelled) return
+      read()
+      tries += 1
+      if (tries < 10) raf = requestAnimationFrame(retry)
+    }
+    raf = requestAnimationFrame(retry)
+    const mo = new MutationObserver(() => read())
+    mo.observe(document.body, { attributes: true, attributeFilter: ['style'] })
+    return () => {
+      cancelled = true
+      if (raf !== 0) cancelAnimationFrame(raf)
+      mo.disconnect()
+    }
+  }, [])
+
+  /* ── 会话页头 DOM 移植：把官方 ConversationRoot 渲染出的 <header> 搬入/搬回 ── */
+  const syncConversationHeader = useCallback(() => {
+    const rootEl = rootRef.current
+    if (rootEl === null) return
+    const conversationPane = rootEl.querySelector<HTMLElement>('[data-region-pane="region:conversation"]')
+    const headerHost = rootEl.querySelector<HTMLElement>('[data-liuli-conversation-header-host]')
+    if (headerHost === null) {
+      // 没有页头面板（被拖成标签组/浮动窗口关闭）：把 header 放回会话面板的 slot 占位容器。
+      if (conversationPane === null) return
+      const slot = conversationPane.querySelector<HTMLElement>('div[data-slot="conversation.session.header"]')
+      const phase = conversationPane.querySelector<HTMLElement>('div[data-phase]')
+      for (const header of conversationPane.querySelectorAll<HTMLElement>('div[data-phase] header')) {
+        if (slot !== null && header.parentElement !== slot) slot.appendChild(header)
+        else if (slot === null && phase !== null && header.parentElement !== phase) phase.insertBefore(header, phase.firstChild)
+      }
+      // 页头回到正文面板：清除独立面板模式下写入的 0px，交还 HeaderEffects 测量写入。
+      if (phase !== null) phase.style.removeProperty('--dsh-header-height')
+      return
+    }
+    // 页头面板存在：把会话面板里的 header 全部搬入 host（保留一个，其余是 React 重建的旧节点）。
+    const headers = conversationPane !== null
+      ? Array.from(conversationPane.querySelectorAll<HTMLElement>('div[data-phase] header'))
+      : []
+    if (headers.length === 0) return
+    const first = headers[0]
+    if (first === undefined) return
+    const existing = headerHost.querySelector<HTMLElement>('header')
+    if (existing !== null && existing !== first) existing.remove()
+    if (first.parentElement !== headerHost) headerHost.appendChild(first)
+    for (let i = 1; i < headers.length; i += 1) headers[i]?.remove()
+    // 页头已独立：面板高度由 dock 布局控制，清除 HeaderEffects 旧逻辑写在
+    // header 上的内联 min-height（否则 header/canvas 不会跟随 sash 缩放，
+    // 而是被 min-height 钉住并被 host 裁剪）。
+    first.style.removeProperty('min-height')
+    // 页头已独立：正文面板内的 --dsh-header-height 归零，TurnRail/模糊 mask
+    // 不再按“正文面板内还有 header”偏移。
+    const phase = conversationPane?.querySelector<HTMLElement>('div[data-phase]')
+    if (phase !== null && phase !== undefined) phase.style.setProperty('--dsh-header-height', '0px')
+  }, [])
+
+  /* ── 恢复页头高度：继承原 HeaderEffects 拉伸手柄的 localStorage 记忆。
+     现在页头/正文是上下两个 dock 面板，页头高度由垂直 split 比例决定；
+     初始化时读取保存高度，换算成比例写回布局（只应用一次，之后由 sash
+     拖拽写回新值）。 ── */
+  useLayoutEffect(() => {
+    if (headerHeightAppliedRef.current) return
+    let cancelled = false
+    const tryApply = (attempt: number): void => {
+      if (cancelled || headerHeightAppliedRef.current) return
+      try {
+        const saved = Number.parseFloat(localStorage.getItem(HEADER_HEIGHT_LS_KEY) ?? '')
+        if (!Number.isFinite(saved) || saved < HEADER_MIN_H || saved > HEADER_MAX_H) {
+          headerHeightAppliedRef.current = true
+          return
+        }
+        const current = shellRef.current.dock
+        const headerPanel = findRegion(current, REGION_CONVERSATION_HEADER)
+        if (headerPanel === undefined || current.root === null) {
+          headerHeightAppliedRef.current = true
+          return
+        }
+        const containing = findTabsContaining(current.root, headerPanel.id)
+        if (containing === undefined) {
+          headerHeightAppliedRef.current = true
+          return
+        }
+        const parent = findParentSplit(current.root, containing.node.id)
+        if (parent === undefined || parent.parent.dir !== 'v') {
+          headerHeightAppliedRef.current = true
+          return
+        }
+        const splitEl = rootRef.current?.querySelector<HTMLElement>('[data-dock-split="' + parent.parent.id + '"]')
+        if (splitEl === null || splitEl === undefined) {
+          if (attempt < 6) { requestAnimationFrame(() => { tryApply(attempt + 1) }); return }
+          headerHeightAppliedRef.current = true
+          return
+        }
+        const total = splitEl.getBoundingClientRect().height
+        if (total <= 0) {
+          if (attempt < 6) { requestAnimationFrame(() => { tryApply(attempt + 1) }); return }
+          headerHeightAppliedRef.current = true
+          return
+        }
+        // 恢复高度依赖 dockPad；设置项异步加载，变量没就绪时等一下再应用，
+        // 否则会按 fallback 8 多压/少压留白。
+        const rawPad = getComputedStyle(document.body).getPropertyValue('--liuli-dock-padding').trim()
+        const padNow = Number.parseFloat(rawPad)
+        if (!Number.isFinite(padNow) || padNow <= 0) {
+          if (attempt < 10) { requestAnimationFrame(() => { tryApply(attempt + 1) }); return }
+        }
+        headerHeightAppliedRef.current = true
+        // saved 是页头卡片（pane）的可视高度；paneCard 上下 margin 各占 1 份
+        // --liuli-dock-padding，所以 shard 高度 = pane 高度 + 2 份留白。
+        const targetShardHeight = Math.max(HEADER_MIN_H, Math.min(HEADER_MAX_H, saved)) + (Number.isFinite(padNow) && padNow > 0 ? padNow : 8) * 2
+        const ratio = targetShardHeight / total
+        // dividerIndex 是分割线下标：header 面板在 v split 首位时是 1，
+        // 在其它位置时调整它上方的分割线。
+        const dividerIndex = parent.index === 0 ? 1 : parent.index
+        // 页头高度可能小于 12% 比例下限（如 78px 在 885px 里只占 8.8%），
+        // 必须绕过 resizeSplitTo 的 MIN_SIZE clamp 直接写 sizes，否则会被
+        // 弹回 106px。
+        const next = structuredClone(current)
+        const node = findNode(next.root, parent.parent.id)
+        if (node !== undefined && node.kind === 'split') {
+          const sizesTotal = (node.sizes[dividerIndex - 1] ?? 0.5) + (node.sizes[dividerIndex] ?? 0.5)
+          const na = Math.max(0, Math.min(sizesTotal, ratio * sizesTotal))
+          node.sizes[dividerIndex - 1] = na
+          node.sizes[dividerIndex] = sizesTotal - na
+          actions.setDock(next)
+        }
+      } catch {
+        headerHeightAppliedRef.current = true
+      }
+    }
+    tryApply(0)
+    return () => { cancelled = true }
+  }, [actions])
+
+  /* ── 页头面板内的垂直拉伸手柄（HeaderEffects resizer）在独立面板中继续工作：
+     拖拽高度通过自定义事件广播，这里实时调整 v split 比例；localStorage 仍由
+     resizer 自己写入，刷新后由上面的恢复逻辑读回。 ── */
+  const resizeHeaderPaneTo = useCallback((height: number): void => {
+    const current = shellRef.current.dock
+    const headerPanel = findRegion(current, REGION_CONVERSATION_HEADER)
+    if (headerPanel === undefined || current.root === null) return
+    const containing = findTabsContaining(current.root, headerPanel.id)
+    if (containing === undefined) return
+    const parent = findParentSplit(current.root, containing.node.id)
+    if (parent === undefined || parent.parent.dir !== 'v') return
+    const splitEl = rootRef.current?.querySelector<HTMLElement>('[data-dock-split="' + parent.parent.id + '"]')
+    if (splitEl === null || splitEl === undefined) return
+    const total = splitEl.getBoundingClientRect().height
+    if (total <= 0) return
+    const targetShardHeight = Math.max(HEADER_MIN_H, Math.min(HEADER_MAX_H, height)) + dockPad * 2
+    const ratio = targetShardHeight / total
+    const dividerIndex = parent.index === 0 ? 1 : parent.index
+    // 同恢复逻辑：页头高度可能小于 12% 比例下限，绕过 resizeSplitTo 直接写 sizes。
+    const next = structuredClone(current)
+    const node = findNode(next.root, parent.parent.id)
+    if (node !== undefined && node.kind === 'split') {
+      const sizesTotal = (node.sizes[dividerIndex - 1] ?? 0.5) + (node.sizes[dividerIndex] ?? 0.5)
+      const na = Math.max(0, Math.min(sizesTotal, ratio * sizesTotal))
+      node.sizes[dividerIndex - 1] = na
+      node.sizes[dividerIndex] = sizesTotal - na
+      actions.setDock(next)
+    }
+  }, [actions, dockPad])
+
+  useEffect(() => {
+    let raf = 0
+    const onResizeDrag = (e: Event): void => {
+      const detail = (e as CustomEvent<{ height: number }>).detail
+      const h = detail !== null && typeof detail === 'object' ? detail.height : Number.NaN
+      if (!Number.isFinite(h) || h <= 0) return
+      if (raf !== 0) return
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        resizeHeaderPaneTo(h)
+      })
+    }
+    window.addEventListener('liuli:header-resize-drag', onResizeDrag)
+    return () => {
+      window.removeEventListener('liuli:header-resize-drag', onResizeDrag)
+      if (raf !== 0) cancelAnimationFrame(raf)
+    }
+  }, [resizeHeaderPaneTo])
+
   // 每次渲染后同步一次贴边标记与 split 像素（布局树 / 开合 / 缩放都会反映到几何上）。
   useLayoutEffect(() => {
     recomputeGeometry()
   })
+
+  // 每次渲染后给 conversation 面板的会话根打双容器标记（header / 正文并列容器）。
+  useLayoutEffect(() => {
+    const rootEl = rootRef.current
+    if (rootEl !== null) tagConversationContainers(rootEl)
+  })
+
+  // 每次渲染后同步页头 DOM（绘制前完成，避免页头闪烁/重复）。
+  useLayoutEffect(() => {
+    syncConversationHeader()
+  })
+
+  // 会话切换 / 面板增删 / 官方 slot 重挂时，MutationObserver 补同步（rAF 节流）。
+  useEffect(() => {
+    const rootEl = rootRef.current
+    if (rootEl === null) return
+    let raf = 0
+    const sync = (): void => {
+      if (raf !== 0) return
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        syncConversationHeader()
+      })
+    }
+    sync()
+    const mo = new MutationObserver(sync)
+    mo.observe(rootEl, { childList: true, subtree: true })
+    return () => {
+      mo.disconnect()
+      if (raf !== 0) cancelAnimationFrame(raf)
+    }
+  }, [syncConversationHeader])
 
   useEffect(() => {
     const rootEl = rootRef.current
@@ -298,10 +602,10 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
   useEffect(() => {
     if (saveTimer.current !== null) clearTimeout(saveTimer.current)
     const snapshot = shell
-    saveTimer.current = setTimeout(() => { saveShellDock(snapshot.dock) }, 250)
+    saveTimer.current = setTimeout(() => { saveShellDock(snapshot.dock, sessionId) }, 250)
     return () => { if (saveTimer.current !== null) clearTimeout(saveTimer.current) }
-  }, [shell])
-  useEffect(() => () => { saveShellDock(shellRef.current.dock) }, [])
+  }, [shell, sessionId])
+  useEffect(() => () => { saveShellDock(shellRef.current.dock, lastDockSession.current ?? sessionId) }, [])
 
   /* ── 会话切换关闭详情（官方 AppFrame 语义，经宿主 layout 服务） ──
      · 新会话若有「展开」存档（liuli:side-pane-session:<id>.open），保持展开，
@@ -393,16 +697,6 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     toastTimer.current = setTimeout(() => { setToast(null) }, 2600)
   }, [])
 
-  /** 读取运行时 dock 留白（与 CSS 变量 --liuli-dock-padding 一致，不硬编码 16px）。
-   *  注意变量由 liuli-runtime 设置在 body 上，不能读 documentElement。 */
-  const dockPad = ((): number => {
-    try {
-      const raw = getComputedStyle(document.body).getPropertyValue('--liuli-dock-padding').trim()
-      const n = Number.parseFloat(raw)
-      return Number.isFinite(n) && n > 0 ? n : 8
-    } catch { return 8 }
-  })()
-
   /** 节点在 dir 方向上的固定像素宽度；不是固定宽则返回 undefined。
    *  - 单区域侧栏/详情：宿主宽度语义（详情关闭返回 0，保持挂载可过渡）；
    *    侧栏收起后若不在原生左缘，表面有 dock 留白 padding，shard 要在
@@ -460,9 +754,9 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     if (node.kind === 'tabs') {
       const fixed = childFixedWidth(node, dir)
       if (fixed !== undefined) {
-        return dir === 'h' ? Math.max(fixed, 0) : childMinPx(node, dir)
+        return dir === 'h' ? Math.max(fixed, 0) : childMinPx(node, dir, dockPad)
       }
-      return childMinPx(node, dir)
+      return childMinPx(node, dir, dockPad)
     }
     const childMins = node.children.map(child => nodeMinPx(child, dir))
     return node.dir === dir
@@ -501,6 +795,12 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
         return renderSlot('sidebar', { collapsed: sidebarCollapsed, width: sidebarWidth })
       case REGION_CONVERSATION:
         return renderSlot('conversation', {})
+      case REGION_CONVERSATION_HEADER:
+        // 页头面板只提供宿主容器；官方 ConversationRoot 渲染出的 <header>
+        // 由 syncConversationHeader() 在 DOM 层搬入这里（React 仍持有节点引用，
+        // 更新属性不受影响；搬入/搬回都在 useLayoutEffect + MutationObserver 中
+        // 同步，避免绘制前出现空白或重复页头）。
+        return <div className={css.conversationHeaderHost} data-liuli-conversation-header-host="" />
       case REGION_DETAILS:
         // 把会话 id 与宿主开合动作传给 details 面板（PreviewDetailsPanel），
         // 使其能感知会话切换并按会话记忆展开状态与宽度。
@@ -577,9 +877,11 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
       Array.from(e.dataTransfer?.types ?? []).includes(SIDE_TAB_MIME)
     const onDragOver = (e: DragEvent): void => {
       if (!hasSideTab(e)) return
-      // 拖到右侧标签面板自身内部（其 48px 标签条/内容区）不接管：
-      // 那里保留 SidePane 自己的内部排序语义，不触发布局落点。
-      if (e.target instanceof Element && e.target.closest('[data-liuli-side-pane]') !== null) return
+      // 只保留右侧标签面板「标签条」的内部排序语义：标签条内由 SidePane 自己的
+      // chip dragover/drop 处理排序，dock 不接管；面板内容区/边缘都允许 dock 落点，
+      // 否则从详细页标签直接拖出时，整个 side pane 矩形都被排除，无法选择
+      // 「详情上方/下方/左侧/右侧」等落点（先拆成浮动窗口才能选）。
+      if (e.target instanceof Element && e.target.closest('[data-side-pane-tabs-viewport]') !== null) return
       e.preventDefault()
       e.dataTransfer!.dropEffect = 'move'
       htmlDragActive.current = true
@@ -597,6 +899,9 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     }
     const onDrop = (e: DragEvent): void => {
       if (!hasSideTab(e)) return
+      // 与 onDragOver 同范围排除：标签条内松手走 SidePane 内部排序，
+      // 不被 dock 接管（drop 会冒泡到 root，不能只拦 dragover）。
+      if (e.target instanceof Element && e.target.closest('[data-side-pane-tabs-viewport]') !== null) return
       e.preventDefault()
       htmlDragActive.current = false
       const raw = e.dataTransfer?.getData(SIDE_TAB_MIME) ?? ''
@@ -605,6 +910,12 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
       setHtmlDrop(null)
       if (tab === undefined || mapped === undefined) return
       const { target } = computeDrop(e.clientX, e.clientY)
+      // 拖回详情页内容区（tab 目标命中单面板详情区域）＝回到 SidePane 原容器，
+      // 不再走 dock 合并；源标签仍由 SidePane 保留（不 markSideTabAccepted）。
+      if (target !== null && target.kind === 'tab' && isSingleDetailsTabs(shellRef.current.dock, target.nodeId)) {
+        openSidePaneTab(tab)
+        return
+      }
       markSideTabAccepted()
       const current = shellRef.current.dock
       const next = structuredClone(current)
@@ -657,6 +968,16 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
         y: Math.max(44, Math.min(ev.clientY - 16, (rootRect?.bottom ?? window.innerHeight) - 200)),
       })
       const current = shellRef.current.dock
+      // 从详细页拆出的标签拖回详情页（tab 目标命中单面板详情区域）时，不要
+      // 合并成 dock 标签组，而是还原为 SidePane 标签（回到原来的容器）。
+      const movingPanel = info.source.panelId !== undefined ? findPanelById(current, info.source.panelId) : undefined
+      const movingSideTab = movingPanel !== undefined ? dockPanelToSideTab(movingPanel) : undefined
+      if (movingPanel !== undefined && movingSideTab !== undefined && target !== null
+        && target.kind === 'tab' && isSingleDetailsTabs(current, target.nodeId)) {
+        actions.setDock(removePanel(current, movingPanel.id))
+        openSidePaneTab(movingSideTab)
+        return
+      }
       if (info.source.kind === 'node' && info.source.panelId !== undefined) {
         markDetailsTornOut(info.source.panelId)
         actions.setDock(movePanel(current, info.source.panelId, target ?? floatAt()))
@@ -689,10 +1010,13 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     if (total <= 0) return
     // 固定宽度区域（侧栏/详情）的 sash 走宿主 layout 服务（原生宽度语义 + clamp），
     // 其余 sash 按 split 比例缩放。锚定边在拖拽中不动，故按下时取一次面板 rect 即可。
+    // 注意：只有水平 split 才存在「固定宽度区域」语义；垂直 split 里详情/侧栏与其他
+    // 面板之间是可变高度比例，必须走下面的 variableShards 路径，否则点击垂直 sash
+    // 松手时会把面板高度当作宽度写进 setDetailsWidth/hostLayout.setSidebar，布局横跳。
     const beforeChild = splitNode.children[dividerIndex - 1]
     const afterChild = splitNode.children[dividerIndex]
-    const beforeType = beforeChild !== undefined ? fixedRegionType(beforeChild) : undefined
-    const afterType = afterChild === undefined ? undefined : fixedRegionType(afterChild)
+    const beforeType = dir === 'h' && beforeChild !== undefined ? fixedRegionType(beforeChild) : undefined
+    const afterType = dir === 'h' && afterChild !== undefined ? fixedRegionType(afterChild) : undefined
     const regionType = beforeType ?? afterType
     let regionPaneRect: DOMRect | undefined
     let regionShardEl: HTMLElement | null = null
@@ -728,6 +1052,9 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
       /** 相邻两个 shard 的最小尺寸换算成比例，防止把手柄拖过相邻卡片。 */
       minBeforeRatio: number
       minAfterRatio: number
+      /** 相邻面板是会话页头时，像素最小高度优先于 12% 比例下限。 */
+      beforeHeader: boolean
+      afterHeader: boolean
     } | undefined
     /** 相邻任一侧是固定宽度节点（复合固定列等）时，比例拖拽无意义：固定侧
      *  flex-basis 不变、另一侧若只有它一个 grow 子级则 flexGrow 恒为 1。
@@ -763,7 +1090,16 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
             const minAfterRatio = combined > 0
               ? nodeMinPx(afterChild, dir) / combined * sizesTotal
               : MIN_SIZE * sizesTotal
-            if (growSum > 0) variableShards = { before: beforeEl, after: afterEl, growSum, sizesTotal, minBeforeRatio, minAfterRatio }
+            if (growSum > 0) variableShards = {
+              before: beforeEl,
+              after: afterEl,
+              growSum,
+              sizesTotal,
+              minBeforeRatio,
+              minAfterRatio,
+              beforeHeader: isHeaderTabs(beforeChild),
+              afterHeader: isHeaderTabs(afterChild),
+            }
           }
         }
       }
@@ -806,10 +1142,12 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
       const ratio = startRatio + (pos - start) / total
       lastRatio = ratio
       if (variableShards !== undefined) {
-        // 先满足 12% 比例下限，再满足相邻 shard 的像素最小宽/高（240/160，会话列 640）。
-        const { growSum, sizesTotal, minBeforeRatio, minAfterRatio } = variableShards
-        const lo = Math.max(MIN_SIZE * sizesTotal, minBeforeRatio)
-        const hi = Math.min(sizesTotal - MIN_SIZE * sizesTotal, sizesTotal - minAfterRatio)
+        // 先满足相邻 shard 的像素最小宽/高（240/160，会话列 640，页头 80）；
+        // 普通面板再叠加 12% 比例下限。会话页头面板的像素最小高度小于 12%，
+        // 若仍用 MIN_SIZE 会把页头卡在 106px，无法缩到 tabs 按钮底部。
+        const { growSum, sizesTotal, minBeforeRatio, minAfterRatio, beforeHeader, afterHeader } = variableShards
+        const lo = beforeHeader ? minBeforeRatio : Math.max(MIN_SIZE * sizesTotal, minBeforeRatio)
+        const hi = afterHeader ? sizesTotal - minAfterRatio : Math.min(sizesTotal - MIN_SIZE * sizesTotal, sizesTotal - minAfterRatio)
         let na = lo <= hi ? Math.max(lo, Math.min(hi, ratio * sizesTotal)) : sizesTotal / 2
         if (!Number.isFinite(na)) na = sizesTotal / 2
         // 提交用 lastRatio 必须与 DOM 直写一致（clamp 后的比例），否则松手回跳。
@@ -832,14 +1170,34 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
       } else if (regionType === REGION_DETAILS) {
         setDetailsWidth(Math.round(lastRegionSize))
       } else if (variableShards !== undefined) {
-        // 提交最终比例：重渲染写回的 flexGrow 与拖拽直写值同公式，无视觉跳变。
-        actions.setDock(resizeSplitTo(shellRef.current.dock, splitNode.id, dividerIndex, lastRatio))
+        if (variableShards.beforeHeader || variableShards.afterHeader) {
+          // 会话页头面板的像素最小高度小于 12% 比例下限，resizeSplitTo 的
+          // MIN_SIZE clamp 会把页头弹回 106px。这里直接写 sizes 提交，绕过
+          // MIN_SIZE，让页头能缩到 80px（tabs 按钮底部）。
+          const next = structuredClone(shellRef.current.dock)
+          const node = findNode(next.root, splitNode.id)
+          if (node !== undefined && node.kind === 'split') {
+            const sizesTotal = (node.sizes[dividerIndex - 1] ?? 0.5) + (node.sizes[dividerIndex] ?? 0.5)
+            let na = lastRatio * sizesTotal
+            if (!Number.isFinite(na)) na = sizesTotal / 2
+            na = Math.max(0, Math.min(sizesTotal, na))
+            node.sizes[dividerIndex - 1] = na
+            node.sizes[dividerIndex] = sizesTotal - na
+            actions.setDock(next)
+          }
+        } else {
+          // 提交最终比例：重渲染写回的 flexGrow 与拖拽直写值同公式，无视觉跳变。
+          actions.setDock(resizeSplitTo(shellRef.current.dock, splitNode.id, dividerIndex, lastRatio))
+        }
       }
+      // 页头/正文之间的垂直 sash 承担原 header 拉伸手柄职责：松手时把页头面板
+      // 实际高度持久化到 liuli:header-height，刷新后恢复布局继续沿用。
+      if (dir === 'v') saveHeaderHeightFromSplit(splitNode, dividerIndex)
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
     window.addEventListener('pointercancel', onUp)
-  }, [actions, hostLayout, sidebarWidth, detailsWidth, hostPanels.details])
+  }, [actions, hostLayout, sidebarWidth, detailsWidth, hostPanels.details, dockPad])
 
   /* ── 渲染 ── */
 
@@ -880,7 +1238,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
             ⧉
           </button>
         )}
-        {panel.type !== REGION_CONVERSATION && panel.type !== REGION_SIDEBAR && (
+        {panel.type !== REGION_CONVERSATION && panel.type !== REGION_CONVERSATION_HEADER && panel.type !== REGION_SIDEBAR && (
           <button
             type="button"
             className={css.tabClose}
@@ -992,12 +1350,17 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     const only = node.tabs.length === 1 ? node.tabs[0] : undefined
     const regionType = only !== undefined && isRegionPanel(only.type) ? only.type : undefined
     const surface = regionType !== undefined ? surfaceClass(regionType) : ''
-    // 单区域 = 原生表面直出（无附加 chrome）；多标签 = 表面 + 细标签条
+    const isHeaderRegion = regionType === REGION_CONVERSATION_HEADER
+    // 单区域 = 原生表面直出（无附加 chrome）；多标签 = 表面 + 细标签条。
+    // 会话页头没有原生表面，使用与扩展面板一致的亚克力卡片材质（paneCard）。
     if (only !== undefined && regionType !== undefined) {
       const regionEdges = edgeMap[node.id] ?? { left: false, right: false, top: false, bottom: false, row: false, hasBelow: false }
+      const paneClass = isHeaderRegion
+        ? css.pane + ' ' + css.paneCard + (regionEdges.bottom ? ' ' + css.edgeBottom : '')
+        : surface + ' ' + css.pane
       return (
         <div
-          className={surface + ' ' + css.pane}
+          className={paneClass}
           data-dock-node={node.id}
           data-testid="dock-pane"
           data-region-pane={regionType}
@@ -1072,6 +1435,11 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
           // details 关闭时不渲染拖拽把手（cols.details > 0 才挂），避免窗口最右缘
           // 出现隐形的 col-resize 拖拽带。
           const collapsed = fixed !== undefined && fixed === 0
+          // shard 上标记直接包含的单区域面板类型，供全局 CSS 在开始页等
+          // 场景按区域隐藏整个 shard（只隐藏内部 pane 不够，shard 仍占 flex 空间）。
+          const childRegion = child.kind === 'tabs' && child.tabs.length === 1 && child.tabs[0] !== undefined && isRegionPanel(child.tabs[0].type)
+            ? child.tabs[0].type
+            : undefined
           return (
             <Fragment key={child.id}>
               {i > 0 && !collapsed && (
@@ -1088,7 +1456,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
                   onPointerDown={(e) => { beginSash(e, split, i, split.dir) }}
                 />
               )}
-              <div className={css.shard} style={shardStyle}>
+              <div className={css.shard} data-dock-shard="" data-shard-region={childRegion} style={shardStyle}>
                 {renderNode(child)}
               </div>
             </Fragment>
@@ -1135,9 +1503,10 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
       data-panels={String(panelCount(dock))}
     >
       {/* win32 无边框：移除 caption 行，画布从第 1 行起占满（窗口拖拽改由
-          WindowControls 承担、面板悬浮改由 grip ⧉ 按钮承担）。
+          顶部 15px 透明拖动条承担、面板悬浮改由 grip ⧉ 按钮承担）。
           macOS 保留 caption 行（红绿灯留白 + 窗口拖拽区）。 */}
       {platform === 'darwin' && <div className="dshDesktopMacCaptionRow" aria-hidden="true" />}
+      {platform !== 'darwin' && <div className={css.windowTopDrag} data-liuli-window-drag="" aria-hidden="true" />}
       <div
         className={css.dockBody}
         ref={rootRef}
@@ -1207,7 +1576,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
               <button type="button" className={css.menuBtn} data-testid="dock-save-button" onClick={() => {
                 const name = slotName.trim() === '' ? '默认布局' : slotName.trim()
                 saveShellSlotByName(name, shellRef.current.dock)
-                saveShellDock(shellRef.current.dock)
+                saveShellDock(shellRef.current.dock, sessionId)
                 setSlotsVersion(v => v + 1)
                 notify('已保存布局：' + name)
               }}>保存</button>
