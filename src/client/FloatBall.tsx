@@ -60,6 +60,16 @@ function CrosshairIcon({ size = 16 }: { size?: number }) {
   )
 }
 
+/** DevTools 图标（开发者工具）。 */
+function DevToolsIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 16 16" width={size} height={size} fill="none" aria-hidden="true">
+      <rect x="1.6" y="2.6" width="12.8" height="10.8" rx="1.6" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M5 5.4 2.9 8 5 10.6M11 5.4 13.1 8 11 10.6M9.2 4.8l-2.4 6.4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 /** 工具栏工具条目。 */
 interface Tool {
   id: string
@@ -69,6 +79,8 @@ interface Tool {
   icon: React.ReactNode
   active?: boolean
   onSelect: () => void
+  /** 可选：紧跟在工具按钮后面渲染的附属小按钮（如元素选择器的模式切换）。 */
+  extra?: React.ReactNode
 }
 
 /** 悬浮圆点 + 工具栏 + 全局元素选择器。
@@ -89,6 +101,9 @@ export function FloatBall({ insertElement, openDock, openLayoutMenu }: { insertE
   const [hovered, setHovered] = useState(false)
   const [picking, setPicking] = useState(false)
   const [picked, setPicked] = useState<PickedElement | null>(null)
+  const [pickerMode, setPickerMode] = useState<'insert' | 'inspect'>('insert')
+  const [devtoolsBusy, setDevtoolsBusy] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
 
   const applyPos = (next: Pos): void => {
     posRef.current = next
@@ -124,6 +139,27 @@ export function FloatBall({ insertElement, openDock, openLayoutMenu }: { insertE
     window.addEventListener('mousemove', onMove)
     return () => { window.removeEventListener('mousemove', onMove) }
   }, [snapped])
+  /* ── 检查模式：把元素定位到 DevTools Elements 面板（等价浏览器右键「检查」） ── */
+  const inspectElementAt = async (info: PickedElement): Promise<void> => {
+    const x = info.rect.x + Math.round(info.rect.width / 2)
+    const y = info.rect.y + Math.round(info.rect.height / 2)
+    try {
+      const resp = await fetch('/liuli-window', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'inspectElement', x, y }),
+      })
+      const body = await resp.json().catch(() => ({})) as { ok?: boolean; available?: boolean; error?: string }
+      if (body.available === false) {
+        setNotice('当前不是 Electron 桌面版，无法在 DevTools 中定位元素')
+      } else if (body.ok !== true) {
+        setNotice(typeof body.error === 'string' ? body.error : 'DevTools 定位失败')
+      }
+    } catch {
+      setNotice('DevTools 定位请求失败（Host 路由不可达）')
+    }
+  }
+
   /* ── 拾取模式生命周期 ── */
   useEffect(() => {
     if (!picking) return
@@ -155,8 +191,13 @@ export function FloatBall({ insertElement, openDock, openLayoutMenu }: { insertE
         const info = describeElement(el)
         setPicked(info)
         setPicking(false)
-        // 选择后插入到对话框（引用 chip 追加到 draft 末尾）
-        try { insertElement(info) } catch (_) { /* 无活跃会话时静默 */ }
+        if (pickerMode === 'inspect') {
+          // 检查模式：不插入聊天，改为在 DevTools 中定位元素。
+          void inspectElementAt(info)
+        } else {
+          // 插入模式：选择后插入到对话框（引用 chip 追加到 draft 末尾）。
+          try { insertElement(info) } catch (_) { /* 无活跃会话时静默 */ }
+        }
       },
     }, root)
     detachRef.current = detach
@@ -166,7 +207,35 @@ export function FloatBall({ insertElement, openDock, openLayoutMenu }: { insertE
       detachRef.current = null
       window.removeEventListener('keydown', onEsc)
     }
-  }, [picking])
+  }, [picking, pickerMode])
+  /* ── 开发者工具（Electron F12 侧边窗口）：经 Host /liuli-window 打开/关闭 ── */
+  const toggleDevTools = async (): Promise<void> => {
+    if (devtoolsBusy) return
+    setDevtoolsBusy(true)
+    try {
+      const resp = await fetch('/liuli-window', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'toggleDevTools' }),
+      })
+      const body = await resp.json().catch(() => ({})) as { ok?: boolean; available?: boolean; error?: string }
+      if (body.available === false) {
+        setNotice('当前不是 Electron 桌面版，请直接用浏览器 F12 打开开发者工具')
+      } else if (body.ok !== true) {
+        setNotice(typeof body.error === 'string' ? body.error : '开发者工具打开失败')
+      }
+    } catch {
+      setNotice('开发者工具请求失败（Host 路由不可达）')
+    } finally {
+      setDevtoolsBusy(false)
+    }
+  }
+
+  useEffect(() => {
+    if (notice === null) return
+    const timer = window.setTimeout(() => { setNotice(null) }, 2600)
+    return () => { window.clearTimeout(timer) }
+  }, [notice])
 
   /* ── 展开时把 root（球+工具栏）完整拉回窗口内 ──
      根因修复：球贴近右侧时 side='left' 工具栏向左展开，球被推向窗口外
@@ -187,9 +256,15 @@ export function FloatBall({ insertElement, openDock, openLayoutMenu }: { insertE
     if (r.top < 8) top = 8
     if (left !== p.left || top !== p.top) applyPos({ left, top })
   }, [open])
-  /* ── 工具栏热键：Alt+Shift+<首字母> 直接触发工具（并展开工具栏显示状态） ── */
+  /* ── 工具栏热键：Alt+Shift+<首字母> 直接触发工具；F12 打开侧边开发者工具 ── */
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'F12') {
+        e.preventDefault()
+        setOpen(true)
+        void toggleDevTools()
+        return
+      }
       if (!e.altKey || !e.shiftKey) return
       const k = e.key.toLowerCase()
       if (k === 'e') {
@@ -202,11 +277,15 @@ export function FloatBall({ insertElement, openDock, openLayoutMenu }: { insertE
           setPicked(null)
           setPicking(true)
         }
+      } else if (k === 'i') {
+        e.preventDefault()
+        setOpen(true)
+        void toggleDevTools()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => { window.removeEventListener('keydown', onKey) }
-  }, [picking])
+  }, [picking, toggleDevTools])
   /* ── 拖拽 / 点击 / 吸附 ── */
   const onPointerDown = (e: React.PointerEvent): void => {
     if (e.button !== 0) return
@@ -284,8 +363,10 @@ export function FloatBall({ insertElement, openDock, openLayoutMenu }: { insertE
   const tools: Tool[] = [
     {
       id: 'element-picker',
-      label: '元素选择器',
-      hint: '悬停高亮页面元素，点击拾取并查看信息（Alt+Shift+E）',
+      label: pickerMode === 'inspect' ? '元素检查' : '元素选择器',
+      hint: pickerMode === 'inspect'
+        ? '检查模式：点击元素在 DevTools 中定位（相当于右键→检查；Alt+Shift+E）'
+        : '悬停高亮页面元素，点击拾取并插入聊天（Alt+Shift+E）',
       hotkey: 'Alt+Shift+E',
       icon: <CrosshairIcon size={15} />,
       active: picking,
@@ -298,6 +379,26 @@ export function FloatBall({ insertElement, openDock, openLayoutMenu }: { insertE
         setPicked(null)
         setPicking(true)
       },
+      extra: (
+        <button
+          key="element-picker-mode"
+          type="button"
+          className={css.modeBtn + (pickerMode === 'inspect' ? ' ' + css.modeBtnActive : '')}
+          aria-pressed={pickerMode === 'inspect'}
+          title={pickerMode === 'inspect' ? '当前：检查模式（点击元素 → DevTools 定位）' : '当前：插入聊天模式（点击元素 → 插入聊天）'}
+          onClick={() => { setPickerMode(mode => mode === 'inspect' ? 'insert' : 'inspect') }}
+        >
+          {pickerMode === 'inspect' ? '检查' : '插入'}
+        </button>
+      ),
+    },
+    {
+      id: 'devtools',
+      label: '开发者工具',
+      hint: '打开/关闭 Electron 侧边开发者工具（F12 或 Alt+Shift+I）',
+      hotkey: 'F12',
+      icon: <DevToolsIcon size={15} />,
+      onSelect: () => { void toggleDevTools() },
     },
   ]
   if (openDock !== undefined) {
@@ -358,18 +459,20 @@ export function FloatBall({ insertElement, openDock, openLayoutMenu }: { insertE
         {open && (
           <div className={css.toolbar} role="toolbar" aria-label="琉璃工具">
             {tools.map(tool => (
-              <button
-                key={tool.id}
-                type="button"
-                className={css.tool + (tool.active === true ? ' ' + css.toolActive : '')}
-                title={tool.hint}
-                aria-pressed={tool.active === true}
-                onClick={tool.onSelect}
-              >
-                {tool.icon}
-                <span>{tool.label}</span>
-                {tool.hotkey !== undefined && <kbd className={css.hotkey}>{tool.hotkey}</kbd>}
-              </button>
+              <div className={css.toolGroup} key={tool.id}>
+                <button
+                  type="button"
+                  className={css.tool + (tool.active === true ? ' ' + css.toolActive : '')}
+                  title={tool.hint}
+                  aria-pressed={tool.active === true}
+                  onClick={tool.onSelect}
+                >
+                  {tool.icon}
+                  <span>{tool.label}</span>
+                  {tool.hotkey !== undefined && <kbd className={css.hotkey}>{tool.hotkey}</kbd>}
+                </button>
+                {tool.extra}
+              </div>
             ))}
           </div>
         )}
@@ -411,6 +514,12 @@ export function FloatBall({ insertElement, openDock, openLayoutMenu }: { insertE
             <button type="button" className={css.infoBtn} onClick={() => { setPicked(null) }}>完成</button>
           </div>
         </div>,
+        document.body,
+      )}
+
+      {/* 轻提示（开发者工具不可用/失败时） */}
+      {notice !== null && createPortal(
+        <div className={css.notice} role="status" data-liuli-picker-ignore="">{notice}</div>,
         document.body,
       )}
     </>

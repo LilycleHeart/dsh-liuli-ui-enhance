@@ -145,6 +145,65 @@ export function formatChipLabel(prefix: string, info: PickedElement): string {
   return `${prefix}: <${info.tag}> ${info.selector}`
 }
 
+/** One computed style entry shown by the inspector. */
+export interface InspectedStyle {
+  name: string
+  value: string
+}
+
+/** Inspector result: picked-element facts plus key computed styles and truncated outerHTML. */
+export interface InspectedElement extends PickedElement {
+  styles: InspectedStyle[]
+  outerHTML: string
+}
+
+/**
+ * Inspect one element like DevTools: augment the picked facts with the key
+ * computed styles an author needs (layout, box model, type) and a truncated
+ * outerHTML snapshot. Pure DOM reads, no React.
+ * @param el - the element to inspect.
+ * @returns structured inspector facts.
+ */
+export function inspectElement(el: Element): InspectedElement {
+  const base = describeElement(el)
+  const styles = getComputedStyle(el)
+  const get = (name: string): string => styles.getPropertyValue(name).trim()
+  const box = (prefix: string): string => {
+    const top = get(`${prefix}-top`)
+    const right = get(`${prefix}-right`)
+    const bottom = get(`${prefix}-bottom`)
+    const left = get(`${prefix}-left`)
+    return `${top} ${right} ${bottom} ${left}`.trim()
+  }
+  const borderTop = `${get('border-top-width')} ${get('border-top-style')} ${get('border-top-color')}`.trim()
+  const stylesList: InspectedStyle[] = [
+    { name: 'display', value: get('display') },
+    { name: 'position', value: get('position') },
+    { name: 'box-sizing', value: get('box-sizing') },
+    { name: 'width × height', value: `${get('width')} × ${get('height')}`.trim() },
+    { name: 'margin', value: box('margin') },
+    { name: 'padding', value: box('padding') },
+    { name: 'border', value: borderTop },
+    { name: 'border-radius', value: `${get('border-top-left-radius')} ${get('border-top-right-radius')} ${get('border-bottom-right-radius')} ${get('border-bottom-left-radius')}`.trim() },
+    { name: 'overflow', value: get('overflow') },
+    { name: 'z-index', value: get('z-index') },
+    { name: 'opacity', value: get('opacity') },
+    { name: 'cursor', value: get('cursor') },
+    { name: 'transform', value: get('transform') },
+    { name: 'transition', value: get('transition') },
+    { name: 'font', value: `${get('font-size')} ${get('font-weight')} ${get('font-family')}`.trim() },
+    { name: 'line-height', value: get('line-height') },
+    { name: 'color', value: base.color },
+    { name: 'background-color', value: base.background },
+    { name: 'background-image', value: get('background-image') },
+  ]
+  return {
+    ...base,
+    styles: stylesList.filter(item => item.value !== ''),
+    outerHTML: el.outerHTML.slice(0, 1000),
+  }
+}
+
 /** Cursor point inside the instrumented document's viewport. */
 export interface PickerPoint {
   readonly x: number

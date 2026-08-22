@@ -149,10 +149,11 @@ if (!existsSync(backupPath)) {
   console.log(`[dsh-liuli-ui-enhance] 备份已存在，跳过：${backupPath}`);
 }
 
-// 2. 修改 unpacked electron runtime
+// 2. 修改 unpacked electron runtime（无边框 + webviewTag 两项补丁独立幂等）
 let runtime = readFileSync(runtimePath, 'utf8');
+let runtimeChanged = false;
 if (runtime.includes('[liuli-theme patch]')) {
-  console.log('[dsh-liuli-ui-enhance] electron-runtime 已包含琉璃补丁，跳过文件修改');
+  console.log('[dsh-liuli-ui-enhance] electron-runtime 已包含无边框补丁，跳过该部分');
 } else {
   const pattern = /titleBarStyle:\s*"hidden",\s*titleBarOverlay:\s*\{[\s\S]*?\},/;
   if (!pattern.test(runtime)) {
@@ -165,8 +166,25 @@ if (runtime.includes('[liuli-theme patch]')) {
     '// 注意：未安装 dsh-liuli-ui-enhance 时 advanced 模式将没有窗口按钮（Alt+F4/托盘仍可用）。',
     'frame: false,',
   ].join('\n\t\t'));
+  runtimeChanged = true;
+  console.log(`[dsh-liuli-ui-enhance] 已修补 ${runtimePath} 无边框配置`);
+}
+// 启用 webviewTag：zcode 参考实现的浏览器用 <webview> DOM 标签承载，
+// 由 CSS overflow:hidden 自然裁剪，彻底避免 WebContentsView 溢出容器问题。
+if (runtime.includes('webviewTag: true')) {
+  console.log('[dsh-liuli-ui-enhance] electron-runtime 已启用 webviewTag，跳过该部分');
+} else {
+  const webviewPattern = /webPreferences:\s*\{\s*preload,\s*contextIsolation:\s*true,\s*nodeIntegration:\s*false,\s*sandbox:\s*true,\s*webSecurity:\s*true\s*\}/g;
+  if (!webviewPattern.test(runtime)) {
+    console.warn('[dsh-liuli-ui-enhance] 未找到 webPreferences 补丁点，跳过 webviewTag（浏览器面板将回退 WebContentsView）');
+  } else {
+    runtime = runtime.replace(webviewPattern, (block) => block.replace('webSecurity: true', 'webviewTag: true,\n\t\t\twebSecurity: true'));
+    runtimeChanged = true;
+    console.log('[dsh-liuli-ui-enhance] 已启用 webviewTag');
+  }
+}
+if (runtimeChanged) {
   writeFileSync(runtimePath, runtime, 'utf8');
-  console.log(`[dsh-liuli-ui-enhance] 已修补 ${runtimePath}`);
 }
 
 // 3. 重建 app.asar 头（同步 size / SHA256 integrity），并保留头之后的原始字节。

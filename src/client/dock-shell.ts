@@ -9,7 +9,7 @@
  */
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
 import {
-  createPanel, emptyLayout, flattenSameDirSplits, makeTabsNode, nextId, normalizeSizes, parseDockLayout, removePanel,
+  createPanel, emptyLayout, findParentSplit, findTabsContaining, flattenSameDirSplits, makeTabsNode, nextId, normalizeSizes, parseDockLayout, removePanel,
   type DockLayout, type PanelInstance,
 } from './dock-model.ts'
 
@@ -40,16 +40,24 @@ export const CONVERSATION_MIN = 640
 
 export const REGION_SIDEBAR = 'region:sidebar'
 export const REGION_CONVERSATION = 'region:conversation'
+export const REGION_CONVERSATION_HEADER = 'region:conversation-header'
 export const REGION_DETAILS = 'region:details'
 
+/** 会话页头面板（pane 卡片）的最小可见高度：78px（用户元素拾取实测
+ *  x=284 y=4 1257x78，tabs 按钮底部完整可见）。
+ *  shard 最小高度 = 78 + 2×dockPad（paneCard 上下 margin 各一份留白），
+ *  由 dock-shell-frame 的 childMinPx 在运行时用 --liuli-dock-padding 换算。 */
+export const CONVERSATION_HEADER_MIN_H = 78
+
 export function isRegionPanel(type: string): boolean {
-  return type === REGION_SIDEBAR || type === REGION_CONVERSATION || type === REGION_DETAILS
+  return type === REGION_SIDEBAR || type === REGION_CONVERSATION || type === REGION_CONVERSATION_HEADER || type === REGION_DETAILS
 }
 
 export function regionLabel(type: string): string {
   switch (type) {
     case REGION_SIDEBAR: return '侧边栏'
     case REGION_CONVERSATION: return '会话'
+    case REGION_CONVERSATION_HEADER: return '会话页头'
     case REGION_DETAILS: return '详情'
     default: return type
   }
@@ -84,17 +92,27 @@ export interface HostLayoutFace {
 export function defaultShellLayout(): DockLayout {
   const layout = emptyLayout()
   const sidebar = createPanel(layout, REGION_SIDEBAR)
+  const conversationHeader = createPanel(layout, REGION_CONVERSATION_HEADER)
   const conversation = createPanel(layout, REGION_CONVERSATION)
   const details = createPanel(layout, REGION_DETAILS)
   const left = makeTabsNode(layout, [sidebar])
+  const header = makeTabsNode(layout, [conversationHeader])
   const middle = makeTabsNode(layout, [conversation])
   const right = makeTabsNode(layout, [details])
+  // 会话列 = 页头 / 正文上下两个独立面板（可拖拽、停靠、浮动）。
+  const center = {
+    id: nextId(layout, 's'),
+    kind: 'split' as const,
+    dir: 'v' as const,
+    sizes: [0.16, 0.84],
+    children: [header, middle],
+  }
   layout.root = {
     id: nextId(layout, 's'),
     kind: 'split',
     dir: 'h',
     sizes: [0.2, 0.75, 0.05],
-    children: [left, middle, right],
+    children: [left, center, right],
   }
   return layout
 }
@@ -126,6 +144,54 @@ export function withRegion(layout: DockLayout, type: string, side: 'left' | 'rig
     sizes: before ? [0.2, 0.8] : [0.8, 0.2],
     children: before ? [group, next.root] : [next.root, group],
   }
+  return next
+}
+
+/**
+ * 把区域面板补挂到目标区域面板的上方（垂直堆叠）。
+ * 会话页头面板（conversation-header）缺失时用此函数补到会话面板上方；
+ * 目标父级已是纵向 split 时按同向兄弟插入（避免同向嵌套），否则包一层纵向 split。
+ */
+export function withRegionAbove(layout: DockLayout, type: string, targetType: string): DockLayout {
+  if (findRegion(layout, type) !== undefined) return layout
+  const target = findRegion(layout, targetType)
+  if (target === undefined) return layout
+  const next = structuredClone(layout)
+  const targetPanel = findRegion(next, targetType)
+  if (targetPanel === undefined) return next
+  const containing = findTabsContaining(next.root, targetPanel.id)
+  if (containing === undefined) return next
+  const panel = createPanel(next, type)
+  const group = makeTabsNode(next, [panel])
+  const parent = next.root !== null ? findParentSplit(next.root, containing.node.id) : undefined
+  if (parent === undefined) {
+    // 根就是 tabs（防御性）：包一层纵向 split。
+    next.root = {
+      id: nextId(next, 's'),
+      kind: 'split',
+      dir: 'v',
+      sizes: [0.16, 0.84],
+      children: [group, containing.node],
+    }
+    return next
+  }
+  if (parent.parent.dir === 'v') {
+    // 同向 split：兄弟插入，避免 [ [页头, 会话], … ] 同向嵌套。
+    parent.parent.children.splice(parent.index, 0, group)
+    parent.parent.sizes.splice(parent.index, 0, 0.5)
+    parent.parent.sizes = normalizeSizes(parent.parent.sizes)
+  } else {
+    // 父级是横向 split：把目标 tabs 包成纵向 split [页头, 目标]，份额由新 split 继承。
+    const stacked = {
+      id: nextId(next, 's'),
+      kind: 'split' as const,
+      dir: 'v' as const,
+      sizes: [0.16, 0.84],
+      children: [group, containing.node],
+    }
+    parent.parent.children[parent.index] = stacked
+  }
+  next.root = flattenSameDirSplits(next.root)
   return next
 }
 
@@ -173,9 +239,21 @@ type DockShellActions = {
   resetShell: (draft: DockShellState) => void
 }
 
-export function loadSavedDock(): DockLayout | undefined {
+/** 会话级 dock 布局存储 key：liuli.dockshell.v1.<sessionId>；空会话回退全局 key（兼容旧数据）。 */
+function dockStorageKey(sessionId?: string | null): string {
+  return sessionId !== undefined && sessionId !== null && sessionId !== ''
+    ? DOCK_SHELL_LS_KEY + '.' + sessionId
+    : DOCK_SHELL_LS_KEY
+}
+
+export function loadSavedDock(sessionId?: string | null): DockLayout | undefined {
   try {
-    const raw = localStorage.getItem(DOCK_SHELL_LS_KEY)
+    const key = dockStorageKey(sessionId)
+    let raw = localStorage.getItem(key)
+    // 会话没有独立布局时，回退旧版全局布局一次（迁移旧数据；之后该会话会保存成自己的布局）。
+    if (raw === null || raw === '' && key !== DOCK_SHELL_LS_KEY) {
+      raw = localStorage.getItem(DOCK_SHELL_LS_KEY)
+    }
     if (raw === null || raw === '') return undefined
     const parsed = JSON.parse(raw) as { dock?: unknown } | undefined
     if (parsed === null || typeof parsed !== 'object') return undefined
@@ -186,6 +264,10 @@ export function loadSavedDock(): DockLayout | undefined {
     // 会话区域必须在树里（布局恢复的保底不变量）
     if (findRegion(dock, REGION_CONVERSATION) === undefined) {
       dock = withRegion(dock, REGION_CONVERSATION, 'right')
+    }
+    // 会话页头面板也常驻树中（默认拆在会话上方；用户可拖走但不会被删）。
+    if (findRegion(dock, REGION_CONVERSATION_HEADER) === undefined) {
+      dock = withRegionAbove(dock, REGION_CONVERSATION_HEADER, REGION_CONVERSATION)
     }
     // 详情面板常驻树中（宽 0 隐藏）：旧布局/外部布局缺详情时补挂，
     // 保证开合始终走宽度过渡而非整组挂卸。
@@ -213,10 +295,11 @@ export function createDockShellStore(): EngineStoreHandle<DockShellState, DockSh
   })
 }
 
-/** 自动保存（帧层订阅 store 变化后调用，防抖在帧层）。 */
-export function saveShellDock(dock: DockLayout): void {
+/** 自动保存（帧层订阅 store 变化后调用，防抖在帧层）。
+ *  传入 sessionId 时写入会话级布局；否则写入全局布局（兼容旧数据/无会话场景）。 */
+export function saveShellDock(dock: DockLayout, sessionId?: string | null): void {
   try {
-    localStorage.setItem(DOCK_SHELL_LS_KEY, JSON.stringify({ v: 1, savedAt: Date.now(), dock }))
+    localStorage.setItem(dockStorageKey(sessionId), JSON.stringify({ v: 1, savedAt: Date.now(), dock }))
   } catch { /* ignore */ }
 }
 

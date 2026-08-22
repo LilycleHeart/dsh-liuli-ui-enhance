@@ -11,6 +11,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import type {
   ConversationSnapshot, ObservableSnapshot, SessionFace, SessionId, SessionListState,
 } from '@deepseek-ai/dsh-client-runtime/client'
@@ -69,13 +70,108 @@ export interface TerminalPanelProps {
   title: string
 }
 
-const TERMINAL_SHELL_OPTIONS = [
+const TERMINAL_SHELL_OPTIONS: ReadonlyArray<{ id: string; label: string }> = [
   { id: '', label: '默认' },
   { id: 'cmd', label: '命令提示符 (cmd)' },
   { id: 'powershell', label: 'Windows PowerShell' },
   { id: 'pwsh', label: 'PowerShell 7 (pwsh)' },
   { id: 'bash', label: 'Git Bash' },
 ]
+
+/** 终端 Shell 选择器：琉璃自定义下拉（body portal + fixed 菜单），替代原生 select。 */
+function ShellSelect({ value, options, onChange }: {
+  value: string
+  options: ReadonlyArray<{ id: string; label: string }>
+  onChange: (id: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState<{ left: number; top: number; width: number }>({ left: 0, top: 0, width: 200 })
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent): void => {
+      const target = e.target as Node
+      if (triggerRef.current !== null && triggerRef.current.contains(target)) return
+      if (menuRef.current !== null && menuRef.current.contains(target)) return
+      setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    const onResize = (): void => { setOpen(false) }
+    document.addEventListener('mousedown', onDown, true)
+    document.addEventListener('keydown', onKey, true)
+    window.addEventListener('resize', onResize)
+    return () => {
+      document.removeEventListener('mousedown', onDown, true)
+      document.removeEventListener('keydown', onKey, true)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [open])
+
+  const toggle = (): void => {
+    const rect = triggerRef.current?.getBoundingClientRect()
+    if (rect === undefined) return
+    const itemHeight = 30
+    const height = options.length * itemHeight + 8
+    const menuWidth = Math.max(180, Math.min(Math.max(rect.width, 180), 260))
+    const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - menuWidth - 8))
+    const top = rect.bottom + 4 + height > window.innerHeight ? Math.max(8, rect.top - 4 - height) : rect.bottom + 4
+    setPos({ left, top, width: menuWidth })
+    setOpen(prev => !prev)
+  }
+
+  const currentLabel = options.find(option => option.id === value)?.label ?? options[0]?.label ?? ''
+
+  return (
+    <>
+      <button
+        type="button"
+        ref={triggerRef}
+        className={css.termShell}
+        title="选择终端 Shell"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={toggle}
+      >
+        <span className={css.termShellLabel}>{currentLabel}</span>
+        <svg
+          className={`${css.termShellChevron}${open ? ' ' + css.termShellChevronOpen : ''}`}
+          viewBox="0 0 24 24"
+          width="12"
+          height="12"
+          aria-hidden="true"
+        >
+          <path fill="currentColor" d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z" />
+        </svg>
+      </button>
+      {open && createPortal(
+        <div ref={menuRef} className={css.termShellMenu} role="menu" style={{ left: pos.left, top: pos.top, width: pos.width }}>
+          {options.map(option => (
+            <button
+              key={option.id}
+              type="button"
+              role="menuitemradio"
+              aria-checked={option.id === value}
+              className={`${css.termShellMenuItem}${option.id === value ? ' ' + css.termShellMenuItemActive : ''}`}
+              onClick={() => { onChange(option.id); setOpen(false) }}
+            >
+              <span className={css.termShellItemLabel}>{option.label}</span>
+              {option.id === value && (
+                <svg className={css.termShellCheck} viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                  <path fill="currentColor" d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+                </svg>
+              )}
+            </button>
+          ))}
+        </div>,
+        document.body,
+      )}
+    </>
+  )
+}
 
 /** WebSocket 终端：行模式 piped shell（DSH 终端面板的 DSH 实现）。 */
 export function TerminalPanel({ sessionId, title }: TerminalPanelProps) {
@@ -88,8 +184,11 @@ export function TerminalPanel({ sessionId, title }: TerminalPanelProps) {
   })
   const wsRef = useRef<WebSocket | null>(null)
   const outRef = useRef<HTMLDivElement | null>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
   const historyRef = useRef<string[]>([])
   const histIdxRef = useRef(-1)
+  // Windows 上 cmd/PowerShell 的提示符以 > 结尾；bash 保持 $。
+  const prompt = shell === 'bash' ? '$' : '>'
 
   useEffect(() => {
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
@@ -123,6 +222,8 @@ export function TerminalPanel({ sessionId, title }: TerminalPanelProps) {
     const line = input
     if (ws === null || ws.readyState !== WebSocket.OPEN) return
     ws.send(line)
+    // 行模式 shell 不会回显输入，这里本地回显命令，让终端呈现常见终端的“提示符 + 命令 + 输出”效果。
+    setOutput(prev => (prev + `${prompt} ${line}\r\n`).slice(-200000))
     if (line.trim() !== '') {
       historyRef.current = [...historyRef.current.slice(-49), line]
     }
@@ -154,8 +255,7 @@ export function TerminalPanel({ sessionId, title }: TerminalPanelProps) {
     }
   }
 
-  const onShellChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
-    const next = e.target.value
+  const onShellChange = (next: string): void => {
     setShell(next)
     setOutput('')
     try { localStorage.setItem('liuli:terminal-shell', next) } catch { /* ignore */ }
@@ -168,34 +268,41 @@ export function TerminalPanel({ sessionId, title }: TerminalPanelProps) {
         <span className={css.termStatus} data-status={status}>
           {status === 'connecting' ? '连接中' : status === 'open' ? '已连接' : status === 'error' ? '连接失败' : '已断开'}
         </span>
-        <select
-          className={css.termShell}
+        <ShellSelect
           value={shell}
+          options={TERMINAL_SHELL_OPTIONS}
           onChange={onShellChange}
-          title="选择终端 Shell"
-        >
-          {TERMINAL_SHELL_OPTIONS.map(option => (
-            <option key={option.id} value={option.id}>{option.label}</option>
-          ))}
-        </select>
+        />
         <button type="button" className={css.termBtn} onClick={() => { setOutput('') }}>清屏</button>
         <button type="button" className={css.termBtn} onClick={() => { setEpoch(v => v + 1) }}>重连</button>
       </div>
-      <div ref={outRef} className={css.termOut}>
+      <div
+        ref={outRef}
+        className={css.termOut}
+        onClick={() => {
+          const selection = window.getSelection()
+          if (selection === null || selection.isCollapsed) inputRef.current?.focus()
+        }}
+      >
         <pre className={css.termPre}>{output}</pre>
-      </div>
-      <form className={css.termInputRow} onSubmit={(e) => { e.preventDefault(); send() }}>
-        <span className={css.termPrompt}>$</span>
+        <div className={css.termCmdLine} aria-hidden="true">
+          <span className={css.termPrompt}>{prompt}</span>
+          <span className={css.termInputText}>{input}</span>
+          <span className={css.termCursor} />
+        </div>
         <input
-          className={css.termInput}
+          ref={inputRef}
+          className={css.termHiddenInput}
           value={input}
           onChange={(e) => { setInput(e.target.value) }}
           onKeyDown={onKeyDown}
-          placeholder={status === 'open' ? '输入命令后回车' : '等待连接…'}
           disabled={status !== 'open'}
           spellCheck={false}
+          autoCapitalize="off"
+          autoCorrect="off"
+          aria-label="终端命令输入"
         />
-      </form>
+      </div>
     </div>
   )
 }

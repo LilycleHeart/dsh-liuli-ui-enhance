@@ -63,7 +63,21 @@ interface SidebarGitStatusRow {
 
 /** 会话 cwd 解析；与 /preview 共用同一 Host fence。 */
 function sidebarSessionRoot(ctx: Context, sessionId: string): string | undefined {
-  return hostSessions(ctx).get(sessionId)?.header.cwd
+  const sessions = hostSessions(ctx)
+  // 客户端 sessionId 可能是裸 UUID（如 fd9c0e13-…），而 Host sessions 服务的
+  // key 是 `session-<uuid>`；反过来也可能收到带前缀的 id。这里做双向兼容，
+  // 避免琉璃 Host 路由（/liuli-sidebar/*、/liuli-reveal、/preview）因 id
+  // 形式不匹配而整体 404。
+  const direct = sessions.get(sessionId)
+  if (direct !== undefined) return direct.header.cwd
+  if (!sessionId.startsWith('session-')) {
+    const prefixed = sessions.get('session-' + sessionId)
+    if (prefixed !== undefined) return prefixed.header.cwd
+  } else {
+    const bare = sessions.get(sessionId.slice('session-'.length))
+    if (bare !== undefined) return bare.header.cwd
+  }
+  return undefined
 }
 
 /** 读取一层目录树（目录优先，名称排序，隐藏文件保留但标记）。 */
@@ -997,8 +1011,7 @@ async function servePreview(ctx: Context, req: IncomingMessage, res: ServerRespo
     previewSendError(res, 404, 'not found')
     return
   }
-  const session = hostSessions(ctx).get(parsed.sessionId)
-  const root = session?.header.cwd
+  const root = sidebarSessionRoot(ctx, parsed.sessionId)
   if (root === undefined) {
     previewSendError(res, 404, 'not found')
     return
@@ -1302,7 +1315,10 @@ async function sidebarFileDiff(root: string, rel: string, source: SidebarGitSour
 /** 系统「在文件管理器中显示」命令（按平台）。 */
 function revealInExplorer(target: string): void {
   if (process.platform === 'win32') {
-    spawn('explorer.exe', ['/select,' + target], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
+    // 注意：1) 不能加 windowsHide:true —— 实测它会连 explorer 主窗口一起隐藏；
+    // 2) 参数必须拆成 ['/select,', target] 两个参数，合成单个 '/select,<path>'
+    // 在路径含空格时会被 explorer 解析错（打开「文档」而不是选中文件）。
+    spawn('explorer.exe', ['/select,', target], { detached: true, stdio: 'ignore' }).unref()
     return
   }
   if (process.platform === 'darwin') {

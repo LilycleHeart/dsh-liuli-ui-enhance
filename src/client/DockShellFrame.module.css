@@ -63,6 +63,53 @@
   border-bottom-right-radius: 0;
 }
 
+/* 会话页头面板宿主：官方 <header> 由 syncConversationHeader 搬入这里。 */
+.conversationHeaderHost {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 页头面板内直接承载官方 header：paneCard 已经提供卡片外观，
+   header 自身只保留内部布局，不再叠加边框/圆角/背景。
+   header 必须填满 host（flex:1），这样 sash 调面板高度时 header 元素
+   本身同步拉伸，声纹 canvas/背景跟随铺满——继承原 resizer 改
+   header.style.minHeight 的拉伸语义。 */
+:global([data-region-pane='region:conversation-header'] header) {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-bottom: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* 官方 header 元素自带 ::after 底部 1px 线（用户排查出的“黑线”），
+   独立面板中 header 与正文分离，这条分隔线不再需要，隐藏。 */
+:global([data-region-pane='region:conversation-header'] header[class*='_header']::after) {
+  display: none !important;
+}
+
+/* 会话页头面板允许官方 popover（后台任务等）溢出显示：.pane 默认
+   overflow:hidden 会把定位在 header 内、弹出面板范围的浮层裁掉。
+   声纹 wrap 自身仍有 overflow:hidden，不会受此影响。 */
+.pane[data-region-pane='region:conversation-header'] {
+  overflow: visible;
+}
+
+/* 侧栏顶部按钮浮在 30px 窗口拖拽条之上，避免 drag 区域吞掉点击 */
+:global(body[data-dsh-desktop-mode="advanced"] .dshDesktopUpstreamSidebar [class*="_logoRow"]) {
+  position: relative;
+  z-index: 201;
+}
+
 /* ── 区域表面（侧边栏 / 详细页）按方向留白与圆角 ──
    统一用 --liuli-dock-padding 变量，不要硬编码 16px。 */
 
@@ -154,6 +201,19 @@
   pointer-events: none;
 }
 
+/* win32 无边框：desktop 顶部 30px 透明窗口拖动条（替代 header 拖窗）。
+   z-index 200 盖住内容顶部。 */
+.windowTopDrag {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 30px;
+  z-index: 200;
+  -webkit-app-region: drag;
+  pointer-events: auto;
+}
+
 .splitBox {
   position: relative;
 }
@@ -213,14 +273,14 @@
 .sashH::before {
   content: '';
   position: absolute;
-  left: 2px;
+  left: 0;
   top: 50%;
   width: 4px;
   height: 44px;
   border-radius: 2px;
-  background: var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-border-l1);
   transform: translate(-50%, -50%);
-  opacity: 0;
+  opacity: 0.6;
   transition: opacity 120ms var(--ds-ease-in-out), background 120ms var(--ds-ease-in-out);
   pointer-events: none;
 }
@@ -254,13 +314,13 @@
   content: '';
   position: absolute;
   left: 50%;
-  top: 2px;
+  top: 0;
   width: 44px;
   height: 4px;
   border-radius: 2px;
-  background: var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-border-l1);
   transform: translate(-50%, -50%);
-  opacity: 0;
+  opacity: 0.6;
   transition: opacity 120ms var(--ds-ease-in-out), background 120ms var(--ds-ease-in-out);
   pointer-events: none;
 }
@@ -288,7 +348,8 @@
   top: 8px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 40;
+  /* 浮在顶部 30px 窗口拖拽条之上，避免抓握簇被 drag 区域吞掉点击 */
+  z-index: 201;
   display: flex;
   align-items: center;
   gap: 6px;

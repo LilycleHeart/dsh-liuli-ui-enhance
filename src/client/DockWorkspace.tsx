@@ -216,9 +216,11 @@ export function DockWorkspace({ store, sessionList, addFileToChat, openPath, onC
       Array.from(e.dataTransfer?.types ?? []).includes(SIDE_TAB_MIME)
     const onDragOver = (e: DragEvent): void => {
       if (!hasSideTab(e)) return
-      // 拖到右侧标签面板自身内部（其 48px 标签条/内容区）不接管：
-      // 那里保留 SidePane 自己的内部排序语义，不触发布局落点。
-      if (e.target instanceof Element && e.target.closest('[data-liuli-side-pane]') !== null) return
+      // 只保留右侧标签面板「标签条」的内部排序语义：标签条内由 SidePane 自己的
+      // chip dragover/drop 处理排序，dock 不接管；面板内容区/边缘都允许 dock 落点，
+      // 否则从详细页标签直接拖出时，整个 side pane 矩形都被排除，无法选择
+      // 「详情上方/下方/左侧/右侧」等落点（先拆成浮动窗口才能选）。
+      if (e.target instanceof Element && e.target.closest('[data-side-pane-tabs-viewport]') !== null) return
       e.preventDefault()
       e.dataTransfer!.dropEffect = 'move'
       htmlDragActive.current = true
@@ -236,6 +238,9 @@ export function DockWorkspace({ store, sessionList, addFileToChat, openPath, onC
     }
     const onDrop = (e: DragEvent): void => {
       if (!hasSideTab(e)) return
+      // 与 onDragOver 同范围排除：标签条内松手走 SidePane 内部排序，
+      // 不被 dock 接管（drop 会冒泡到 root，不能只拦 dragover）。
+      if (e.target instanceof Element && e.target.closest('[data-side-pane-tabs-viewport]') !== null) return
       e.preventDefault()
       htmlDragActive.current = false
       const raw = e.dataTransfer?.getData(SIDE_TAB_MIME) ?? ''

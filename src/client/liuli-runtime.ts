@@ -282,7 +282,7 @@ export function applyLiuliWallpaper(settings: LiuliSettings): void {
   const wallpaperSrc = cfg.background_mode === 'image' ? wallpaper : null
   if (wallpaperSrc) {
     const blurPx = cfg.acrylic_enabled === false ? 0
-      : cfg.material_type === 'mica' ? 4 : Math.max(0, Math.min(100, cfg.material_blur ?? 5))
+      : Math.max(0, Math.min(100, cfg.material_blur ?? 5))
     applyBgLayer(wallpaperSrc, blurPx, cfg.bg_fit, cfg.bg_area)
   } else {
     clearBgLayer()
@@ -334,6 +334,31 @@ export async function applyLiuliSettings(settings: LiuliSettings): Promise<void>
   const pal = liuliDerivePalette(source, isDark)
   liuliApplyBrand(pal, isDark, source)
 
+  // ── 状态色来源：hardcoded 回落到 liuli.css 静态内置色；
+  //    mcu 从 MCU 多角色色板取色（success=primary / warn=secondary / error=tertiary）。
+  if (cfg.status_color_mode === 'mcu') {
+    set('--dsw-alias-state-success-primary', 'var(--liuli-mcu-primary)')
+    set('--dsw-alias-state-success-secondary', 'var(--liuli-mcu-primary-container)')
+    set('--dsw-alias-state-success-tertiary', 'var(--liuli-mcu-primary-container)')
+    set('--dsw-alias-state-warn-primary', 'var(--liuli-mcu-secondary)')
+    set('--dsw-alias-state-warn-secondary', 'var(--liuli-mcu-secondary-container)')
+    set('--dsw-alias-state-warn-tertiary', 'var(--liuli-mcu-secondary-container)')
+    set('--dsw-alias-state-error-primary', 'var(--liuli-mcu-tertiary)')
+    set('--dsw-alias-state-error-secondary', 'var(--liuli-mcu-tertiary-container)')
+  } else {
+    unset('--dsw-alias-state-success-primary')
+    unset('--dsw-alias-state-success-secondary')
+    unset('--dsw-alias-state-success-tertiary')
+    unset('--dsw-alias-state-warn-label')
+    unset('--dsw-alias-state-warn-primary')
+    unset('--dsw-alias-state-warn-secondary')
+    unset('--dsw-alias-state-warn-tertiary')
+    // liuliApplyBrand 每次都会把 error 覆盖为 M3 error；hardcoded 模式需要清除，
+    // 让 liuli.css 的静态错误色生效。
+    unset('--dsw-alias-state-error-primary')
+    unset('--dsw-alias-state-error-secondary')
+  }
+
   // ── 字体 ──
   set('--dsw-font-family', cfg.font_mode === 'builtin' ? FONT_BUILTIN : FONT_MISANS)
 
@@ -355,14 +380,9 @@ export async function applyLiuliSettings(settings: LiuliSettings): Promise<void>
     const opacity = Math.max(0.2, Math.min(1, (cfg.material_opacity ?? 45) / 100))
     set('--liuli-material-opacity', opacity + '')
     const blur = Math.max(0, Math.min(100, cfg.material_blur ?? 5))
-    if (cfg.material_type === 'mica') {
-      set('--liuli-material-blur', 'blur(4px) saturate(1.25)')
-      set('--liuli-material-blur-px', '4')
-    } else {
-      // 模糊强度直接映射为壁纸层 blur（原项目 material_blur 单位 px）
-      set('--liuli-material-blur', `blur(${blur}px) saturate(1.6)`)
-      set('--liuli-material-blur-px', blur + '')
-    }
+    // 模糊强度直接映射为壁纸层 blur（原项目 material_blur 单位 px）
+    set('--liuli-material-blur', `blur(${blur}px) saturate(1.6)`)
+    set('--liuli-material-blur-px', blur + '')
     // 强磨砂（对话框）：滑条值 x4 —— 背后滚动文字需明显不可读
     const strong = Math.min(100, Math.round(blur * 4))
     set('--liuli-material-blur-strong', `blur(${strong}px) saturate(1.6)`)
@@ -383,7 +403,7 @@ export async function applyLiuliSettings(settings: LiuliSettings): Promise<void>
     // 壁纸移交 bg-layer（承载模糊）；frame 转透明让层透出。
     // 暗色遮罩值写入 --liuli-scrim，由 CSS 在暗色主题下叠加（亮色不遮）。
     const blurPx = cfg.acrylic_enabled === false ? 0
-      : cfg.material_type === 'mica' ? 4 : Math.max(0, Math.min(100, cfg.material_blur ?? 5))
+      : Math.max(0, Math.min(100, cfg.material_blur ?? 5))
     set('--liuli-scrim', scrim + '')
     applyBgLayer(wallpaperSrc, blurPx, cfg.bg_fit, cfg.bg_area)
     set('--liuli-frame-bg', 'transparent')

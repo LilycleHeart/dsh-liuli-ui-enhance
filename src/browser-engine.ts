@@ -118,6 +118,10 @@ interface EngineTab {
   viewport: { width: number; height: number; scale: number } | null
   /** 最近上报的承载位几何。 */
   geometry: { x: number; y: number; width: number; height: number; visible: boolean }
+  /** 最近一次应用的上报序号（渲染端并发 POST 乱序时丢弃过期几何）。 */
+  lastGeoSeq: number
+  /** 渲染端几何上报会话号（页面重载后序号从 0 重新开始，需识别并重置序号）。 */
+  lastGeoSession: string | null
   /** 崩溃重建计数（webviewGeneration 对应）。 */
   generation: number
   /** 恢复用最近 URL（DSH render-process-gone 原位重建语义）。 */
@@ -391,6 +395,8 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
       state: { url: url !== '' ? url : 'about:blank', title: '', favicon: null, canGoBack: false, canGoForward: false, loading: url !== '' && url !== 'about:blank', ready: false, error: null },
       viewport: null,
       geometry: { x: 0, y: 0, width: 0, height: 0, visible: false },
+      lastGeoSeq: 0,
+      lastGeoSession: null,
       generation: 0,
       lastRequestedUrl: url !== '' && url !== 'about:blank' ? url : '',
     }
@@ -468,6 +474,19 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
         const body = await readBody(req)
         const tab = tabs.get(asString(body?.id) ?? '')
         if (tab === undefined) { sendJson(res, 404, { ok: false, error: 'unknown tab' }); return }
+        // 渲染端并发上报可能乱序到达：同一会话内序号更旧的直接丢弃，避免旧 bounds
+        // 覆盖新 bounds 导致原生视图比 carrier 宽/高、视觉上溢出面板。页面重载后
+        // 渲染端会话号变化、序号从 0 重新开始，此时按新会话接受并重置序号。
+        const session = asString(body?.session)
+        const seq = asNumber(body?.seq)
+        if (session !== undefined && session !== tab.lastGeoSession) {
+          tab.lastGeoSession = session
+          tab.lastGeoSeq = seq === undefined ? 0 : Math.floor(seq)
+        } else if (seq !== undefined) {
+          const nextSeq = Math.floor(seq)
+          if (nextSeq < tab.lastGeoSeq) { sendJson(res, 200, { ok: true, stale: true }); return }
+          tab.lastGeoSeq = nextSeq
+        }
         tab.geometry = {
           x: asNumber(body?.x) ?? 0,
           y: asNumber(body?.y) ?? 0,

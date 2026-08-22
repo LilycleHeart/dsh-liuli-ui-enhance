@@ -431,6 +431,67 @@ div[data-phase]:not([data-phase='active']) > div[aria-hidden="true"]:first-child
 }
 
 /* ════════════════════════════════════════════════════════════
+ * 开始页：官方 blank session 会给会话 header 加 aria-hidden +
+ * .headerHidden（display:none）。普通三列模式兜底强制隐藏；
+ * advanced dock 模式下 header 被搬入独立页头面板，需连 shard
+ * 一起隐藏（只隐藏内部 pane 不够，shard 仍作为 flex 成员占据
+ * 顶部空间）。
+ * ════════════════════════════════════════════════════════════ */
+div[data-phase] > header[aria-hidden],
+div[data-phase] > div > header[aria-hidden] {
+  display: none !important;
+}
+
+[data-shard-region="region:conversation-header"]:has(header[aria-hidden]) {
+  display: none !important;
+}
+
+/* 页头 shard 隐藏后，其相邻 sash 仍会作为 flex 成员留在 split 顶部/底部
+   （sash 自身 0 占位，但常驻指示条会露在开始页顶部），一并隐藏。 */
+[data-shard-region="region:conversation-header"]:has(header[aria-hidden]) + [data-testid="dock-sash"] {
+  display: none !important;
+}
+
+/* 页头 shard 在会话 shard 下方时，sash 位于会话 shard 之后、页头 shard 之前。 */
+[data-testid="dock-sash"]:has(+ [data-shard-region="region:conversation-header"]:has(header[aria-hidden])) {
+  display: none !important;
+}
+
+/* 页头 shard 隐藏后，会话 shard 的 flex-grow 从 <1 变成孤立的 <1 项，
+   flexbox 对 grow 总和 <1 只分配对应比例的自由空间（表现为底部留白）。
+   这里在开始页把会话 shard 的 grow 提回 1，让正文占满整个 split。 */
+[data-shard-region="region:conversation-header"]:has(header[aria-hidden]) ~ [data-shard-region="region:conversation"] {
+  flex-grow: 1 !important;
+}
+
+[data-shard-region="region:conversation"]:has(~ [data-shard-region="region:conversation-header"]:has(header[aria-hidden])) {
+  flex-grow: 1 !important;
+}
+
+/* ════════════════════════════════════════════════════════════
+ * advanced dock 模式：对话页拆成 header / 正文两个真正并列的容器。
+ * 官方 header 槽位容器是 inline style="display: contents"，这里把它
+ * 转成 flex 容器并让正文容器占满剩余空间；标记由 conversation-split.ts
+ * 打上，不移动 React 管理的 DOM 节点。
+ * ════════════════════════════════════════════════════════════ */
+[data-liuli-conversation-split] {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+[data-liuli-conversation-split] > [data-liuli-conversation-header-container]:not(header) {
+  display: flex !important;
+  flex-direction: column;
+  flex: none;
+  min-width: 0;
+}
+
+[data-liuli-conversation-split] > [data-liuli-conversation-body-container] {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* ════════════════════════════════════════════════════════════
  * Agent 询问卡片磨砂：与输入框（composer）一致的亚克力效果。
  * QuestionComposer / PlanReviewPanel 都是接管输入框位置的卡片，
  * 背景沿用 --dsw-specific-input-major，但宿主 CSS 未带 backdrop-filter。
@@ -458,6 +519,14 @@ ul[class$="_menu"] {
   background-image: var(--liuli-noise);
   -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
   backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+}
+
+/* HoverCard 可复制悬浮卡（会话 hover 预览）：宿主把文字颜色硬编码为
+   #E4E2DA 浅米色；琉璃已把该卡背景主题化为亚克力，浅色主题下浅字浅底
+   几乎不可读。这里统一改为主文字令牌，复制成功反馈同样跟随主题。 */
+div[aria-label][class*="_card"][class*="_copyable"],
+div[aria-label][class*="_card"][class*="_copyable"] * {
+  color: var(--dsw-alias-label-primary);
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -729,6 +798,7 @@ div[class$="hoverCard"] {
   background: rgba(var(--liuli-acrylic-rgb), 0.9) !important;
   box-shadow: 0 0 0 1px var(--dsw-alias-border-l2), var(--liuli-glow-brand);
 }
+
 
 /* 长对话渲染减负：对话流条目启用 content-visibility:auto，屏外条目跳过
    布局/绘制（详见 liuli-css.ts 同源注释）。 */

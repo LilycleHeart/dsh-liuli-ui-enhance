@@ -274,6 +274,24 @@ export function decorateElementCards(root: ParentNode): void {
  * 启动用户气泡元素卡片装饰：初始扫描 + 监听 DOM 变化。
  * @returns disposer（插件 fiber 卸载时断开观察器）。
  */
+/**
+ * composer reference chip 卡片装饰的暂存区：元素选择器插入引用时登记最近一次
+ * 元素信息，chip 装饰层（MutationObserver）据此给官方 chip 打
+ * `data-liuli-element-chip` 标记并写入 `--liuli-chip-width`。只保留最近一条，
+ * 每次插入引用都会覆盖；读取后不消耗（同一条引用可能被多次重渲染观察）。
+ */
+let lastComposerElementInfo: PickedElement | undefined
+
+/** 登记最近一次插入 composer 的元素引用信息。 */
+export function rememberComposerElementInfo(info: PickedElement): void {
+  lastComposerElementInfo = info
+}
+
+/** 读取最近一次插入 composer 的元素引用信息（chip 装饰层用）。 */
+export function getLastComposerElementInfo(): PickedElement | undefined {
+  return lastComposerElementInfo
+}
+
 export function startElementCardDecoration(): () => void {
   let raf = 0
   const scan = (): void => {

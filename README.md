@@ -34,7 +34,8 @@ DeepSeek Harness 的 **Material Design 3 × Fluent 2 融合主题**插件：动�
 - 🌐 内嵌浏览器
 - 🎛️ 无边框窗口按钮
 - 🎯 元素选择器
-- ⚙️ 21 项界面设置（含面板留白滑条）
+- 🔍 开发者工具（悬浮球，Electron 侧边 DevTools）
+- ⚙️ 21 项界面设置（含面板留白滑条、状态色来源）
 
 完整功能见 [docs/features.md](docs/features.md)。
 

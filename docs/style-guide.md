@@ -28,7 +28,7 @@
 | 维度 | 采用 |
 | --- | --- |
 | 色彩 | M3 动态取色映射为 `--dsw-alias-*` 令牌，亮 / 暗双主题独立派生 |
-| 材质 | Fluent 亚克力 / 云母：半透明底 + 噪声 + backdrop-filter 磨砂 |
+| 材质 | Fluent 亚克力：半透明底 + 噪声 + backdrop-filter 磨砂 |
 | 形状 | M3 形状系统：14px 卡片圆角、10px 控件圆角、999px 药丸 |
 | 深度 | 材质卡 + 分层阴影：`--liuli-shadow` 与品牌辉光 `--liuli-glow-brand` 叠加 |
 | 动效 | Web `startViewTransition` 圆形遮罩 + 统一缓动曲线 |
@@ -94,6 +94,8 @@
 | 错误 / 删除行 | `var(--dsw-alias-state-error-primary)` |
 | 警告 | `var(--dsw-alias-state-warn-primary)` |
 | 业务/品牌信息 | `var(--dsw-alias-state-business-primary)` |
+
+状态色来源可在「界面设置」中切换：`hardcoded` 使用内置静态红/绿/橙；`mcu` 从 MCU 多角色色板取色（success=primary / warn=secondary / error=tertiary）。
 
 **品牌按钮**：
 

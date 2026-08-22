@@ -10,10 +10,12 @@ export const LIULI_LS_KEY = 'liuli:settings'
 
 /** 取色模式 */
 export type LiuliColorMode = 'dynamic' | 'static'
+/** 状态色模式：hardcoded=静态内置色；mcu=从 MCU 多角色色板取色 */
+export type LiuliStatusColorMode = 'hardcoded' | 'mcu'
 /** 背景模式 */
 export type LiuliBackgroundMode = 'theme' | 'brand_gradient' | 'custom' | 'image'
-/** 材质类型 */
-export type LiuliMaterialType = 'acrylic' | 'mica'
+/** 材质类型（云母已彻底移除，仅保留亚克力；schema 仍解析旧值 `mica` 但统一按亚克力渲染）。 */
+export type LiuliMaterialType = 'acrylic'
 /** 字体模式 */
 export type LiuliFontMode = 'misans' | 'builtin'
 /** 会话切换/新消息入场动画效果（none 关闭；stagger* 为级联入场）。 */
@@ -33,6 +35,8 @@ export interface LiuliBgArea {
 /** 琉璃界面设置（全部字段）。 */
 export interface LiuliSettings {
   color_mode: LiuliColorMode
+  /** 状态色来源：hardcoded 使用内置静态色；mcu 从 MCU 多角色色板取色。 */
+  status_color_mode: LiuliStatusColorMode
   brand_color: string
   background_mode: LiuliBackgroundMode
   custom_background: string
@@ -89,6 +93,7 @@ export interface LiuliSettings {
 /** 默认设置（与 琉璃 界面设置一致）。 */
 export const LIULI_SETTINGS_DEFAULTS: LiuliSettings = {
   color_mode: 'dynamic',
+  status_color_mode: 'mcu',
   brand_color: '#1d9bf0',
   background_mode: 'theme',
   custom_background: '#F5F6F8',
@@ -127,12 +132,15 @@ export const LIULI_SETTINGS_DEFAULTS: LiuliSettings = {
 /** 持久化 schema（浏览器 scope 复用同一描述）。 */
 export const LiuliSettingsSchema: z<LiuliSettings> = z.object({
   color_mode: z.union(['dynamic', 'static']).default('dynamic'),
+  status_color_mode: z.union(['hardcoded', 'mcu']).default('mcu'),
   brand_color: z.string().default('#1d9bf0'),
   background_mode: z.union(['theme', 'brand_gradient', 'custom', 'image']).default('theme'),
   custom_background: z.string().default('#F5F6F8'),
   custom_background_dark: z.string().default('#0C0E13'),
   bg_scrim: z.number().default(40),
   acrylic_enabled: z.boolean().default(true),
+  // material_type 仅保留 acrylic 作为新值；mica 保留在 union 中以便旧设置可被解析，
+  // 但运行时已不再按 mica 渲染（统一按亚克力处理）。
   material_type: z.union(['acrylic', 'mica']).default('acrylic'),
   material_opacity: z.number().default(45),
   material_blur: z.number().default(5),

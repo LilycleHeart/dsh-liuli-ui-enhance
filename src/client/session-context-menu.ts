@@ -9,16 +9,10 @@
  */
 import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import { resolveSessionId, readRowTitle, locateTitleSpan, mountEditor } from './session-rename.ts'
-import { getSessionMarker, setSessionMarker, MARKER_LABEL, type SessionMarker } from './session-markers.ts'
+import { getSessionMarker, setSessionMarker, MARKER_LABEL, MARKER_ICON, MARKER_COLOR, type SessionMarker } from './session-markers.ts'
 import { ICONS } from './menu-icons.ts'
 
 const MARKERS: readonly SessionMarker[] = ['in-progress', 'todo', 'done']
-
-const MARKER_ICON: Record<SessionMarker, string> = {
-  'in-progress': ICONS.loading,
-  'todo': ICONS.checklist,
-  'done': ICONS.check,
-}
 
 type Ctx = Pick<ClientContext, 'sessions' | 'workspaces'>
 
@@ -81,6 +75,10 @@ function renderMenu(ctx: Ctx, row: HTMLElement, id: SessionId, title: string, x:
     if (opts.active === true) btn.classList.add('liuli-menu-active')
     const iconEl = document.createElement('span')
     iconEl.className = 'liuli-menu-icon'
+    if (action.startsWith('marker:')) {
+      // 标记项颜色与行内实际标记一致，避免菜单预览和添加后颜色不一致。
+      iconEl.style.color = MARKER_COLOR[action.slice('marker:'.length) as SessionMarker]
+    }
     iconEl.innerHTML = icon
     btn.appendChild(iconEl)
     const labelEl = document.createElement('span')

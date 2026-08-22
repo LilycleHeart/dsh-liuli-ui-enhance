@@ -752,9 +752,12 @@ export function LiuliHeaderChrome() {
 /* ── 垂直拉伸手柄 ───────────────────────────────────────────────── */
 
 /** 布局记忆键（localStorage，随浏览器持久化）。 */
-const LS_KEY = 'liuli:header-height'
-const MIN_H = 52
-const MAX_H = 320
+export const HEADER_HEIGHT_LS_KEY = 'liuli:header-height'
+export const HEADER_MIN_H = 52
+export const HEADER_MAX_H = 320
+const LS_KEY = HEADER_HEIGHT_LS_KEY
+const MIN_H = HEADER_MIN_H
+const MAX_H = HEADER_MAX_H
 
 /**
  * 拉伸手柄。注入 `conversation.session.header.utilities`（官方没有 tabs
@@ -793,12 +796,16 @@ export function LiuliHeaderResizer() {
     const sync = (force = false): void => {
       if (root === null) return
       const headerRect = header.getBoundingClientRect()
+      // 页头拆成独立 dock 面板时 header 已不在 root 内：高度变量归零由
+      // DockShellFrame 维护，这里不能写 header 高度，否则 TurnRail 会按
+      // 错误偏移；mask 也只用正文卡片（headerSvg 置空）。
+      const inDockHeaderPanel = header.closest('[data-region-pane="region:conversation-header"]') !== null
       // 先把 header 高度变量写入 —— TurnRail 的 top 依赖它跟随拉伸。
       // 必须放在 blur 层检查之前：官方 aria-hidden 模糊层已由本插件的
       // [data-phase]::before 伪元素替代，querySelector 会落空提前 return，
       // 导致变量从未写入、rail 拉伸不跟随（见此前 bug）。
       // 仅在变化时写入，避免缩放期每帧 setProperty 触发样式失效。
-      const hh = `${headerRect.height}px`
+      const hh = inDockHeaderPanel ? '0px' : `${headerRect.height}px`
       if (root.style.getPropertyValue('--dsh-header-height') !== hh) {
         root.style.setProperty('--dsh-header-height', hh)
       }
@@ -837,7 +844,7 @@ export function LiuliHeaderResizer() {
         height: r.height,
       })
       const headerRadius = Number.parseFloat(getComputedStyle(header).borderTopLeftRadius) || 14
-      const headerSvg = headerRect.height > 0
+      const headerSvg = !inDockHeaderPanel && headerRect.height > 0
         ? (() => {
           const r = local(headerRect)
           return `<rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" rx="${headerRadius}"/>`
@@ -863,13 +870,19 @@ export function LiuliHeaderResizer() {
       root.style.setProperty('--dsh-wallpaper-mask', `url("data:image/svg+xml,${encodeURIComponent(svg)}")`)
     }
 
-    // 布局记忆：恢复上次拖拽高度
-    try {
-      const saved = Number.parseFloat(localStorage.getItem(LS_KEY) ?? '')
-      if (Number.isFinite(saved) && saved >= MIN_H && saved <= MAX_H) {
-        header.style.minHeight = saved + 'px'
-      }
-    } catch (_) { /* 存储不可用则跳过 */ }
+    // 布局记忆：恢复上次拖拽高度。
+    // 页头拆成独立 dock 面板时高度由 dock 布局（sash）控制，不能写内联
+    // min-height，否则 header/声纹 canvas 被钉住不跟随面板缩放。
+    if (header.closest('[data-region-pane="region:conversation-header"]') !== null) {
+      header.style.removeProperty('min-height')
+    } else {
+      try {
+        const saved = Number.parseFloat(localStorage.getItem(LS_KEY) ?? '')
+        if (Number.isFinite(saved) && saved >= MIN_H && saved <= MAX_H) {
+          header.style.minHeight = saved + 'px'
+        }
+      } catch (_) { /* 存储不可用则跳过 */ }
+    }
     sync()
     const headerObserver = new ResizeObserver(() => sync())
     headerObserver.observe(header)
@@ -887,15 +900,22 @@ export function LiuliHeaderResizer() {
     let drag: { startY: number; startH: number } | null = null
     const onMove = (e: PointerEvent): void => {
       if (drag === null) return
+      // 独立 dock 面板模式下手柄已隐藏；这里再兜底一次，避免旧逻辑改内联 min-height。
+      if (header.closest('[data-region-pane="region:conversation-header"]') !== null) return
       const h = Math.max(MIN_H, Math.min(MAX_H, drag.startH + (e.clientY - drag.startY)))
       header.style.minHeight = h + 'px'
+      // 页头独立 dock 面板模式：面板高度由 dock 布局控制，把拖拽高度广播给
+      // DockShellFrame 实时调整 v split 比例；普通模式下无监听器，零开销。
+      window.dispatchEvent(new CustomEvent('liuli:header-resize-drag', { detail: { height: h } }))
       sync()
     }
     const onUp = (e: PointerEvent): void => {
       if (drag === null) return
       drag = null
+      const h = Number.parseFloat(header.style.minHeight)
       // 存纯数字（恢复端 parseFloat，避免 "145px" 被 Number() 解析为 NaN）
-      try { localStorage.setItem(LS_KEY, String(Number.parseFloat(header.style.minHeight) || '')) } catch (_) {}
+      try { localStorage.setItem(LS_KEY, String(Number.isFinite(h) ? h : '')) } catch (_) {}
+      window.dispatchEvent(new CustomEvent('liuli:header-resize-end', { detail: { height: h } }))
       document.body.style.userSelect = ''
       document.body.style.cursor = ''
       el.releasePointerCapture?.(e.pointerId)

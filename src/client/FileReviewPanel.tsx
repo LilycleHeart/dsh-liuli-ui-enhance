@@ -10,10 +10,10 @@
  *
  * 同时订阅轮次卡片（TurnFileCard）的「审查」按钮事件：选中文件并展开。
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  fetchSidebarDiff, fetchSidebarGit, revealSidebarPath,
+  fetchSidebarDiff, fetchSidebarGit, revealSidebarPath, revealToast,
   type SidebarDiffPayload, type SidebarGitChange, type SidebarGitPayload, type SidebarGitSourceId,
 } from './right-sidebar-api.ts'
 import { consumeReviewRequest, REVIEW_FILE_EVENT } from './review-bus.ts'
@@ -35,6 +35,40 @@ export interface FileReviewPanelProps {
 }
 
 type DiffKind = 'hunk' | 'add' | 'del' | 'meta' | 'ctx'
+
+/* ── diff 容器高度记忆（跨文件/跨会话保留） ── */
+
+const DIFF_PANE_HEIGHT_KEY = 'liuli:diff-pane-height'
+const DIFF_PANE_HEIGHT_DEFAULT = 220
+const DIFF_PANE_HEIGHT_MIN = 120
+
+function diffPaneMaxHeight(): number {
+  return Math.max(DIFF_PANE_HEIGHT_MIN, Math.round(window.innerHeight * 0.65))
+}
+
+function clampDiffPaneHeight(height: number): number {
+  return Math.min(diffPaneMaxHeight(), Math.max(DIFF_PANE_HEIGHT_MIN, Math.round(height)))
+}
+
+function readDiffPaneHeight(): number {
+  try {
+    const raw = localStorage.getItem(DIFF_PANE_HEIGHT_KEY)
+    if (raw === null) return DIFF_PANE_HEIGHT_DEFAULT
+    const parsed = Number(raw)
+    if (!Number.isFinite(parsed)) return DIFF_PANE_HEIGHT_DEFAULT
+    return clampDiffPaneHeight(parsed)
+  } catch {
+    return DIFF_PANE_HEIGHT_DEFAULT
+  }
+}
+
+function saveDiffPaneHeight(height: number): void {
+  try {
+    localStorage.setItem(DIFF_PANE_HEIGHT_KEY, String(clampDiffPaneHeight(height)))
+  } catch {
+    // localStorage 不可用时静默失败。
+  }
+}
 
 /* ── 路径工具（与 TurnFileCard 一致） ── */
 
@@ -144,6 +178,44 @@ function LastTurnDiffView({ path }: { path: string }) {
         )
       })}
     </pre>
+  )
+}
+
+/** 可拖拽高度的 diff 容器：底部中央一条精致的拖拽条（隐藏原生 resize 角）。 */
+function DiffPane({ children }: { children: ReactNode }) {
+  const paneRef = useRef<HTMLDivElement | null>(null)
+  const [height, setHeight] = useState(readDiffPaneHeight)
+
+  const startResize = (e: ReactPointerEvent<HTMLDivElement>): void => {
+    e.preventDefault()
+    const el = paneRef.current
+    if (el === null) return
+    const startY = e.clientY
+    const startHeight = el.getBoundingClientRect().height
+    const minHeight = DIFF_PANE_HEIGHT_MIN
+    const maxHeight = diffPaneMaxHeight()
+    const onMove = (move: PointerEvent): void => {
+      const next = Math.min(maxHeight, Math.max(minHeight, startHeight + (move.clientY - startY)))
+      el.style.height = `${Math.round(next)}px`
+    }
+    const onUp = (): void => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      document.body.style.cursor = ''
+      const nextHeight = Math.round(el.getBoundingClientRect().height)
+      setHeight(nextHeight)
+      saveDiffPaneHeight(nextHeight)
+    }
+    document.body.style.cursor = 'ns-resize'
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
+  return (
+    <div ref={paneRef} className={css.diffPane} style={{ height: `${height}px` }}>
+      <div className={css.diffScroll}>{children}</div>
+      <div className={css.diffResizeHandle} data-testid="review-diff-resize" onPointerDown={startResize} />
+    </div>
   )
 }
 
@@ -502,7 +574,7 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
                   </span>
                 </button>
                 {isExpanded && (
-                  <div className={css.diffPane}>
+                  <DiffPane>
                     {source === 'last-turn' ? (
                       <LastTurnDiffView path={change.path} />
                     ) : (
@@ -522,7 +594,7 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
                         )}
                       </>
                     )}
-                  </div>
+                  </DiffPane>
                 )}
               </div>
             )
@@ -552,7 +624,16 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
             role="menuitem"
             className={css.menuItem}
             disabled={menu.deleted}
-            onClick={() => { runMenu(() => { if (sessionId !== undefined) revealSidebarPath(sessionId, selectedRel) }) }}
+            title="在系统文件管理器中定位该文件"
+            onClick={() => {
+              runMenu(() => {
+                if (sessionId === undefined) {
+                  revealToast('无会话上下文，无法定位文件', 'error')
+                } else {
+                  void revealSidebarPath(sessionId, selectedRel)
+                }
+              })
+            }}
           >
             在文件管理器中打开
           </button>

@@ -162,7 +162,7 @@
   text-overflow: ellipsis;
 }
 
-/* 关闭按钮：右侧渐隐底 + ghost x，常驻显示（DSH: w-2 渐变 + w-6 容器，size-3 x）。 */
+/* 关闭按钮：透明底 + ghost x，常驻显示（不再叠加右侧渐变遮罩）。 */
 .tabCloseZone {
   pointer-events: auto;
   display: flex;
@@ -172,7 +172,7 @@
   height: 100%;
   width: 22px;
   margin-right: -6px;
-  background: linear-gradient(to right, transparent, var(--dsw-specific-card-major, rgba(var(--liuli-acrylic-rgb), 0.9)) 55%);
+  background: transparent;
 }
 
 .tabClose {
@@ -403,8 +403,10 @@
 
 .overviewCard {
   width: 288px;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 .overviewInputRow {
@@ -432,9 +434,30 @@
 }
 
 .overviewBody {
-  max-height: 320px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   padding: 4px;
+}
+
+.overviewResize {
+  flex: none;
+  height: 10px;
+  cursor: ns-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-top: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.15));
+  touch-action: none;
+}
+
+.overviewResize::after {
+  content: '';
+  width: 36px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.25));
 }
 
 .overviewGroup {
@@ -449,6 +472,7 @@
   align-items: center;
   gap: 8px;
   width: 100%;
+  box-sizing: border-box;
   min-height: 32px;
   border: none;
   border-radius: 8px;
@@ -680,8 +704,8 @@
 .frame {
   flex: 1 1 auto;
   border: none;
-  /* 跟随明/暗主题：--dsw-alias-bg-base 由主题在亮/暗下分别定义 */
-  background: var(--dsw-alias-bg-base);
+  /* 透明：透出面板亚克力材质（iframe 文档自身有背景时仍以文档背景为准） */
+  background: transparent;
 }
 
 .empty {
@@ -724,6 +748,12 @@
 .resizeHandle:hover::after,
 .resizeHandle[data-dragging]::after {
   background: color-mix(in srgb, var(--dsw-alias-brand-primary) 65%, transparent);
+}
+
+/* advanced dock 模式下宽度由 DockShellFrame 的 sash 接管，左缘这条 5px
+   手柄已冗余（视觉线由 panel 左描边承担，但手柄会拦截左缘命中），隐藏。 */
+:global(body[data-dsh-desktop-mode="advanced"]) .resizeHandle {
+  display: none !important;
 }
 
 /* ── header utilities 里的开关按钮（panel-right-open/close） ── */
@@ -816,10 +846,8 @@
 }
 
 .moreMenu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 60;
+  position: fixed;
+  z-index: 2147482500;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -902,6 +930,103 @@
   outline: none;
 }
 
+.zoomSelect {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 3px 7px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.2));
+  border-radius: 7px;
+  background: var(--dsw-specific-input-major, rgba(255, 255, 255, 0.5));
+  color: var(--dsw-alias-label-primary, inherit);
+  font-size: 12px;
+  line-height: 18px;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.zoomSelect:hover {
+  border-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 45%, transparent);
+}
+
+.zoomSelectLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.zoomSelectChevron {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  color: var(--dsw-alias-label-tertiary, #888);
+  transition: transform 120ms ease;
+}
+
+.zoomSelectChevronOpen {
+  transform: rotate(180deg);
+}
+
+.zoomSelectMenu {
+  position: fixed;
+  z-index: 2147482500;
+  padding: 4px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.25));
+  border-radius: var(--liuli-radius-md, 12px);
+  background: color-mix(in srgb, var(--dsw-alias-surface-primary, #ffffff) 86%, transparent);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  display: flex;
+  flex-direction: column;
+}
+
+.zoomSelectItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary, inherit);
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.zoomSelectItem:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.14));
+}
+
+.zoomSelectItemActive {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.14));
+}
+
+.zoomSelectItemLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.zoomSelectCheck {
+  flex: none;
+  color: var(--dsw-alias-brand-primary, #0079bf);
+}
+
 .responsiveHint {
   margin-left: auto;
   font-family: var(--ds-font-family-code, ui-monospace, monospace);
@@ -936,8 +1061,8 @@
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  /* 跟随明/暗主题（原 --dsw-specific-bg-major 未定义，恒回退 #fff） */
-  background: var(--dsw-alias-bg-base);
+  /* 透明：透出面板亚克力材质；网页自身无背景时可见透明效果 */
+  background: transparent;
 }
 
 .emptyWebview {
@@ -951,8 +1076,8 @@
   gap: 4px;
   padding: 24px;
   text-align: center;
-  /* 跟随明/暗主题（原 --dsw-specific-bg-major 未定义，恒回退 #fff） */
-  background: var(--dsw-alias-bg-base);
+  /* 透明：空状态直接落在面板亚克力材质上 */
+  background: transparent;
 }
 
 .emptyWebviewIcon {

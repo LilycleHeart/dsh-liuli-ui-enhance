@@ -194,7 +194,7 @@
   font-family: var(--ds-font-family-code, ui-monospace, monospace);
   padding: 0 5px;
   border-radius: 6px;
-  background: rgba(255, 171, 0, 0.16);
+  background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 16%, transparent);
   color: var(--dsw-alias-state-warn-primary, #c77700);
 }
 
@@ -202,13 +202,13 @@
 .gitStatus[data-status='M '],
 .gitStatus[data-status='MM'],
 .gitStatus[data-status='A '] {
-  background: rgba(0, 190, 120, 0.16);
+  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 16%, transparent);
   color: var(--dsw-alias-state-success-primary, #00875a);
 }
 
 .gitStatus[data-status=' D'],
 .gitStatus[data-status='D '] {
-  background: rgba(229, 57, 53, 0.16);
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 16%, transparent);
   color: var(--dsw-alias-state-error-primary, #c62828);
 }
 

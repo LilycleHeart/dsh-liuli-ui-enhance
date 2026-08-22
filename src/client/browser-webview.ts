@@ -167,8 +167,8 @@ export const webviewBrowser = {
   destroyTab(id: string): Promise<{ [key: string]: unknown }> {
     return postJson('/liuli-browser/tabs/destroy', { id })
   },
-  geometry(id: string, rect: { x: number; y: number; width: number; height: number }, visible: boolean): Promise<void> {
-    return postJson('/liuli-browser/tabs/geometry', { id, ...rect, visible }).then(() => undefined)
+  geometry(id: string, rect: { x: number; y: number; width: number; height: number }, visible: boolean, seq?: number, session?: string): Promise<void> {
+    return postJson('/liuli-browser/tabs/geometry', { id, ...rect, visible, ...(seq === undefined ? {} : { seq }), ...(session === undefined ? {} : { session }) }).then(() => undefined)
   },
   viewport(id: string, viewport: { width: number; height: number; scale: number } | null): Promise<void> {
     return postJson('/liuli-browser/tabs/viewport', { id, ...(viewport ?? { width: 0, height: 0, scale: 1 }) }).then(() => undefined)
@@ -186,15 +186,46 @@ export const webviewBrowser = {
 
 /* ── carrier 几何上报 ─────────────────────────────────────────── */
 
+/** 每个标签的几何序号（跨 effect 重建保持递增，避免 Host 误丢新循环的上报）。 */
+const geometrySeqByTab = new Map<string, number>()
+
+function nextGeometrySeq(tabId: string): number {
+  const next = (geometrySeqByTab.get(tabId) ?? 0) + 1
+  geometrySeqByTab.set(tabId, next)
+  return next
+}
+
+/** 每次页面加载生成一个会话号：Host 用它识别「渲染端已重载、序号从头开始」。 */
+const geometrySession = ((): string => {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  } catch { /* 忽略 */ }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+})()
+
+/** 可选的几何上报矩形（不传时用 getElement 的 getBoundingClientRect）。 */
+export interface GeometryRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** 几何上报循环的清理函数，挂 sendNow 供外部立即重报（如菜单开合需要同步调整原生视图 bounds）。 */
+export type GeometryLoopDispose = (() => void) & { sendNow: () => void }
+
 /**
  * 把 carrier 元素的位置持续上报给 Host（原生视图贴合用）。
  * visible=false 或宽高 <4px 时 Host 隐藏视图。
+ * getRectOverride 可选：菜单等浮层需要在 carrier 内让位时返回裁剪后的矩形，
+ * 原生视图据此缩小/下移，而不是整体隐藏。
  */
 export function reportGeometryLoop(
   tabId: string,
   getElement: () => HTMLElement | null,
   isVisible: () => boolean,
-): () => void {
+  getRectOverride?: () => GeometryRect | null,
+): GeometryLoopDispose {
   let disposed = false
   let lastSent = ''
   let pending = 0
@@ -203,17 +234,23 @@ export function reportGeometryLoop(
     if (disposed) return
     const el = getElement()
     if (el === null) return
-    const rect = el.getBoundingClientRect()
+    const override = getRectOverride?.() ?? null
+    const rect = override ?? (() => {
+      const r = el.getBoundingClientRect()
+      return { x: r.left, y: r.top, width: r.width, height: r.height }
+    })()
     const visible = isVisible() && rect.width >= 4 && rect.height >= 4 && document.visibilityState === 'visible'
-    const x = Math.round(rect.left)
-    const y = Math.round(rect.top)
+    const x = Math.round(rect.x)
+    const y = Math.round(rect.y)
     const width = Math.round(rect.width)
     const height = Math.round(rect.height)
     const key = `${x}:${y}:${width}:${height}:${visible ? 1 : 0}`
     if (key === lastSent) return
     lastSent = key
+    // 单调递增序号：Host 侧丢弃过期上报，避免并发 POST 乱序时旧 bounds 覆盖新 bounds。
+    const currentSeq = nextGeometrySeq(tabId)
     pending += 1
-    void webviewBrowser.geometry(tabId, { x, y, width, height }, visible).finally(() => { pending -= 1 })
+    void webviewBrowser.geometry(tabId, { x, y, width, height }, visible, currentSeq, geometrySession).finally(() => { pending -= 1 })
   }
 
   // 心跳兜底：祖先 transform/位移不经 RO/scroll 冒泡（参考实现用 rAF 循环，这里 300ms 足够省）。
@@ -229,16 +266,26 @@ export function reportGeometryLoop(
     observer = new ResizeObserver(() => { send() })
     observer.observe(el)
   }
+  // 缩放护栏标记变化时立即重报：resize 开始先隐藏原生视图（原生视图异步跟随 DOM，
+  // 收缩时必然有一到两帧溢出，隐藏可避免内容跑出容器），结束再按最终几何恢复。
+  let bodyObserver: MutationObserver | undefined
+  if (typeof MutationObserver !== 'undefined') {
+    bodyObserver = new MutationObserver(() => { send() })
+    bodyObserver.observe(document.body, { attributes: true, attributeFilter: ['data-liuli-resizing'] })
+  }
   send()
 
-  return () => {
+  const dispose = (): void => {
     disposed = true
     window.clearInterval(heartbeat)
     window.removeEventListener('resize', onScrollResize)
     window.removeEventListener('scroll', onScrollResize, true)
     document.removeEventListener('visibilitychange', onScrollResize)
     observer?.disconnect()
-    // 收起/卸载时立即隐藏原生视图。
-    void webviewBrowser.geometry(tabId, { x: 0, y: 0, width: 0, height: 0 }, false)
+    bodyObserver?.disconnect()
+    // 收起/卸载时立即隐藏原生视图；seq 再递增，保证晚到隐藏请求压过所有在途的旧几何。
+    void webviewBrowser.geometry(tabId, { x: 0, y: 0, width: 0, height: 0 }, false, nextGeometrySeq(tabId), geometrySession)
   }
+  dispose.sendNow = send
+  return dispose
 }
