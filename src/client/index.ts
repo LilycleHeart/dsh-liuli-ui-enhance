@@ -899,10 +899,6 @@ export function apply(ctx: ClientContext): void {
     liuliRev += 1
     liuliBound?.syncSettings(value, liuliRev)
   }
-  // 记录上次应用选区时的窗口尺寸与选区，用于 resize 时围绕中心点按比例缩放。
-  let lastViewportWidth = window.innerWidth
-  let lastViewportHeight = window.innerHeight
-  let lastBgArea: LiuliBgArea | null = readLiuliSettings().bg_area
   // 启动后从 Host 拉取上次 Desktop 会话保存的设置/壁纸（当前端口 localStorage 为空）。
   // 如果用户已经在当前会话改过设置，则不再用远端覆盖，避免本地新修改被旧值冲掉。
   const loadRemoteState = async (): Promise<void> => {
@@ -920,9 +916,6 @@ export function apply(ctx: ClientContext): void {
       else clearWallpaper()
       liuliBound?.syncWallpaper(wallpaper)
       syncLiuli(remote)
-      lastBgArea = remote.bg_area
-      lastViewportWidth = window.innerWidth
-      lastViewportHeight = window.innerHeight
       void applyLiuliSettings(remote)
       window.dispatchEvent(new CustomEvent('liuli:vp-params'))
     } catch (_) { /* Host 路由不可用时保留 localStorage 行为 */ }
@@ -931,9 +924,6 @@ export function apply(ctx: ClientContext): void {
   const commitLiuli = (next: LiuliSettings): void => {
     writeLiuliSettings(next)
     syncLiuli(next)
-    lastBgArea = next.bg_area
-    lastViewportWidth = window.innerWidth
-    lastViewportHeight = window.innerHeight
     void applyLiuliSettings(next)
     // 声纹响应参数热载（HeaderEffects 监听后重读）
     window.dispatchEvent(new CustomEvent('liuli:vp-params'))
@@ -952,9 +942,6 @@ export function apply(ctx: ClientContext): void {
         liuliBound?.syncWallpaper(null)
         writeLiuliSettings(LIULI_SETTINGS_DEFAULTS)
         syncLiuli(LIULI_SETTINGS_DEFAULTS)
-        lastBgArea = null
-        lastViewportWidth = window.innerWidth
-        lastViewportHeight = window.innerHeight
         void applyLiuliSettings(LIULI_SETTINGS_DEFAULTS)
       },
       uploadWallpaper: async (file) => {
@@ -1019,47 +1006,19 @@ export function apply(ctx: ClientContext): void {
     return () => { mo.disconnect() }
   }, 'dsh-liuli-ui-enhance: body theme observer')
 
-  // 窗口尺寸变化后实时围绕选区中心点按窗口变化比例缩放，避免壁纸被拉伸。
+  // 窗口尺寸变化后只重新应用壁纸层：bgGeometry 会按最新窗口宽高比动态归一化选区
+  // （保持选区中心与面积、仅调整宽高比），窗口绝对像素尺寸不应改写 bg_area。
+  // bg_area 是“相对原图的绝对选区”（0..1 图片坐标），旧实现按窗口像素宽高比缩放并
+  // writeLiuliSettings 持久化它，会破坏选区宽高比、经 fit/clamp 累积中心漂移，导致
+  // “最大化→还原→最大化”后壁纸位置与上次不一致。
   ctx.effect(() => {
     let raf = 0
     const onResize = (): void => {
       if (raf !== 0) return
       raf = requestAnimationFrame(() => {
         raf = 0
-        const current = readLiuliSettings()
-        const vw = window.innerWidth
-        const vh = window.innerHeight
-        if (current.bg_area !== null && lastBgArea !== null && lastViewportWidth > 0 && lastViewportHeight > 0) {
-          const scaleX = vw / lastViewportWidth
-          const scaleY = vh / lastViewportHeight
-          const cx = lastBgArea.x + lastBgArea.w / 2
-          const cy = lastBgArea.y + lastBgArea.h / 2
-          let w = lastBgArea.w * scaleX
-          let h = lastBgArea.h * scaleY
-          const fit = Math.min(1, 1 / w, 1 / h)
-          w *= fit
-          h *= fit
-          w = Math.max(0.04, Math.min(1, w))
-          h = Math.max(0.04, Math.min(1, h))
-          const nextArea: LiuliBgArea = {
-            x: Math.min(1 - w, Math.max(0, cx - w / 2)),
-            y: Math.min(1 - h, Math.max(0, cy - h / 2)),
-            w,
-            h,
-          }
-          const next = { ...current, bg_area: nextArea }
-          // 轻量同步：只更新壁纸层，不重新跑动态取色，避免 resize 延迟。
-          writeLiuliSettings(next)
-          syncLiuli(next)
-          lastBgArea = next.bg_area
-          lastViewportWidth = vw
-          lastViewportHeight = vh
-          applyLiuliWallpaper(next)
-        } else {
-          lastViewportWidth = vw
-          lastViewportHeight = vh
-          lastBgArea = current.bg_area
-        }
+        // 轻量同步：只更新壁纸层，不重新跑动态取色，避免 resize 延迟。
+        applyLiuliWallpaper(readLiuliSettings())
       })
     }
     window.addEventListener('resize', onResize)
