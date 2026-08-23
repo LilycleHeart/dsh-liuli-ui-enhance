@@ -41,9 +41,13 @@ DeepSeek Harness 的 **Material Design 3 × Fluent 2 融合主题**插件：动�
 
 ## 安装
 
+> 前置条件：已安装 [Node.js](https://nodejs.org) 20+ 与 [pnpm](https://pnpm.io/installation)，
+> 且启动过一次 DSH Desktop（首次启动会生成 `~/.dsh/profiles/desktop`）。
+
 ```bash
+pnpm install            # 首次：安装依赖并构建 lib/（install:desktop 也会自动补这步）
 pnpm install:desktop
-pnpm patch:desktop  # 推荐：win32 无边框补丁（自动补丁失败不阻断插件）
+pnpm patch:desktop      # 推荐：win32 无边框补丁（自动补丁失败不阻断插件）
 ```
 
 > 插件尚未发布到 npm，DSH 内置市场也不接受 GitHub 安装目标；请使用本仓库的

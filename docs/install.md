@@ -21,9 +21,18 @@
 
 ### 自动安装（推荐）
 
+> **前置条件（首次安装务必确认）**：
+> 1. 已安装 [Node.js](https://nodejs.org) 20+ 与 [pnpm](https://pnpm.io/installation)；
+> 2. 已启动过一次 DSH Desktop —— 首次启动会生成 `~/.dsh/profiles/desktop`，
+>    该目录不存在时 `pnpm install:desktop` 会直接报错退出。
+
 在插件源码目录执行：
 
 ```bash
+# 0. 首次：安装依赖并构建 lib/（pnpm install 会触发 prepare=pnpm build）。
+#    install:desktop 内部检测到未构建时也会自动补这步，但显式执行更直观。
+pnpm install
+
 # 1. 安装插件到 DSH Desktop desktop profile（本地源码会先 pack 成 tarball，
 #    确保 iconv-lite、react 等依赖能正确装进 profile）
 pnpm install:desktop
@@ -96,9 +105,11 @@ pnpm add file:/tmp/liuli/dsh-liuli-ui-enhance-0.1.0.tgz
 
 2. 优先使用仓库自带安装器（推荐）
    cd <dsh-liuli-ui-enhance 源码目录>
+   pnpm install   # 首次：装依赖并构建 lib/（安装器检测到未构建时也会自动补）
    DSH_PROFILE_DIR="$DSH_HOME/profiles/desktop" node scripts/install-desktop.mjs
 
    它会自动完成：
+   - 检测构建依赖（tsc/tsdown）缺失时自动 pnpm install（全新 clone 不先 install 也能成功）
    - pnpm pack 生成 tarball
    - 写入 package.json 的 dependencies（file:<tarball>）
    - 修复 cordis.patch.yml（全新 profile 的 [] 会被替换为 insert 块）

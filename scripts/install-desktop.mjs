@@ -82,11 +82,24 @@ function resolveNpmVersion() {
   return `^${version}`;
 }
 
+/** 确保构建链就绪：pnpm pack 会触发 prepare(=pnpm build)，需要 devDependencies
+ * （tsc/tsdown）已安装。全新 clone 未先 pnpm install 时，直接 pack 会因
+ * tsc/tsdown 找不到而失败；这里自动补一次 install，避免首次安装踩坑。 */
+function ensureBuilt() {
+  const binDir = join(repoRoot, 'node_modules', '.bin');
+  const tscBin = join(binDir, process.platform === 'win32' ? 'tsc.cmd' : 'tsc');
+  const tsdownBin = join(binDir, process.platform === 'win32' ? 'tsdown.cmd' : 'tsdown');
+  if (existsSync(tscBin) && existsSync(tsdownBin)) return;
+  console.log('[dsh-liuli-ui-enhance] 首次安装：构建依赖尚未安装，先执行 pnpm install（会触发 prepare 构建 lib/）');
+  run(pnpmCommand(), ['install'], repoRoot);
+}
+
 let depValue;
 if (fromNpm) {
   depValue = resolveNpmVersion();
 } else {
   // 本地源码安装：先 pack 成 tarball，确保插件 dependencies 能装进 profile。
+  ensureBuilt();
   const packDir = mkdtempSync(join(repoRoot, '.tmp-pack-'));
   run(pnpmCommand(), ['pack', '--pack-destination', packDir], repoRoot);
   const tarball = readdirSync(packDir).find((name) => name.endsWith('.tgz'));
@@ -100,10 +113,16 @@ function fail(message) {
 }
 
 if (!existsSync(profileDir)) {
-  fail(`找不到 DSH Desktop profile 目录：${profileDir}`);
+  fail(
+    `找不到 DSH Desktop profile 目录：${profileDir}\n`
+    + '  请先启动一次 DSH Desktop（首次启动会生成 ~/.dsh/profiles/desktop），再重试安装。',
+  );
 }
 if (!existsSync(packagePath)) {
-  fail(`找不到 profile package.json：${packagePath}`);
+  fail(
+    `找不到 profile package.json：${packagePath}\n`
+    + '  请先启动一次 DSH Desktop 生成 profile 目录，再重试安装。',
+  );
 }
 
 // 1. 声明插件依赖
