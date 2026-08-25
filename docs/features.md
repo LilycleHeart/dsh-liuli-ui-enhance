@@ -43,7 +43,7 @@
 | 🧱 Dockable 布局（现有布局停靠化） | advanced 模式下把桌面 shell 的既有三列布局**本身**改造成 dockable 工作台：琉璃以更低渲染优先级接管 root slot（`dock-shell-frame.tsx`，桌面 shell 保留子 slot 声明与 layout 服务），**侧边栏/会话/详情三大区域成为可拖拽面板** —— 拖拽（pointer 命中 + 幽灵 + 落点指示器）、四向拆分、边缘/面板内停靠、浮动窗口（移动/缩放/一键回收；无边框去掉 caption 行后改由 ⧉ 一键浮动——单标签面板悬停抓握簇、多标签 chip）、标签页合并、sash 缩放（像素级 clamp：普通卡 240×160、会话列 640，手柄不越过相邻卡片）；同向拆分目标优先**兄弟插入**、旧布局同向嵌套自动拍平（`[ [详情,侧栏], 会话 ]` → `[详情,侧栏,会话]`，相邻区域保持直接 sash）；全部子级都固定的同向 split 在父级按固定宽度处理（收起后不产生空白、侧栏贴边正确）；详情区域与宿主 layout 服务双向联动（`openDetails/closeDetails` ⟷ 面板加入/移出右缘）；扩展面板（文件树/Git/Wiki/终端/白板/代码/预览/浏览/便签/开发者工具/轨迹/计划/子智能体/辅助对话）可混排，非区域面板与浮动窗口采用与对话页/左侧边栏一致的亚克力卡片材质（48px 标签条 + 卡片外框 + 内容留白；卡片留白/圆角按统一规范：普通 dock 面板默认四边留白+圆角，上下堆叠时下方卡片底部触底去圆角；侧边栏/详细页按左右方向镜像（边缘侧贴边去圆角，中间四边留白+圆角）；详细页在下方无卡片时底部触底去圆角；默认三区域保持桌面 shell 原生表面；侧栏在非原生位置收起时 shard 自动补 dock 留白，收起 rail 宽度与原生一致）；dock 布局按会话记忆（切换会话恢复各自布局）；接受**右侧标签面板标签的 HTML5 拖入**（拖拽时显示落点指示，drop 即按落点拆分/合并/停靠，源标签移动进布局）；**会话页头独立 dock 面板**：默认把会话列拆成 `region:conversation-header`（页头）与 `region:conversation`（正文）两个上下排列的 dock 面板，页头面板使用亚克力卡片材质、可像普通面板一样拖拽/四向拆分/停靠/浮动/标签合并；官方 ConversationRoot 渲染出的 `<header>` 由 `syncConversationHeader` 在 DOM 层搬入页头面板宿主（useLayoutEffect + MutationObserver 同步，绘制前完成），页头面板缺失时自动搬回正文面板；旧布局恢复时自动补挂页头面板到会话上方；**开始页（官方 blank session）自动隐藏页头面板及其相邻 sash**（官方会给 header 加 `aria-hidden`，琉璃据此把整个页头面板 display:none，避免开始页顶部出现空 header 卡片）；**Workspace 保存/恢复**：dock 树自动落 localStorage + 命名槽位 + JSON 导出/导入，刷新/HMR 重载原样恢复；GUI 自测 `demo/verify-dock-shell-gui.mjs`（S1..S16 全交互含热重载存活） |
 | 🎛️ 页面内窗口按钮 | 无边框模式三按钮（最小化/最大化·还原/关闭）移入页面：会话 header 最右端常驻 + 开始页固定窗口右上角的磨砂胶囊兜底（win32 已移除 32px caption 行，内容顶格铺满；该胶囊同时是窗口拖动区，承接原标题栏拖拽职能）；经 Host `/liuli-window` 路由直驱 Electron 窗口（close=收进托盘，与原生同语义）；Win+方向键贴边/双击拖动区最大化等系统行为保留；**窗口拖拽区 = 各贴顶卡片顶部条带**（每张卡片自己的“迷你标题栏”）：会话页头 header / 侧栏 logoRow / 详情标签条 / dock 标签条 / 开始页顶部条均可拖窗，内部交互元素 no-drag 挖洞保持可点（不依赖匹配列表，布局任意列数通用） |
 | 🔤 主题字体 | CSS `@import` 加载 MiSans / Inter / Space Grotesk / JetBrains Mono（字体族令牌早已引用，官方 harness 不注入 link，由插件自行加载） |
-| ⚙️ 设置「外观」「功能」两个分区 | 「外观」：取色/状态色来源/背景/材质/字体/圆角/面板留白/泛光/阴影/壁纸（上传/适应/自定义选区）；「功能」：宽边模式/会话切换动画/自动驱动侧边栏浏览器/声纹响应参数/模型请求重试/切换会话默认历史加载/**非官方增强（兼容其它插件）总开关 + 四组开关**。即时生效、自动保存；状态色来源支持硬编码内置红绿橙或 MCU 取色（success=primary / warn=secondary / error=tertiary） |
+| ⚙️ 设置「外观」「功能」两个分区 | 「外观」：取色/状态色来源/背景/材质/字体/圆角/面板留白/泛光/阴影/壁纸（上传/适应/自定义选区）；「功能」：宽边模式/会话切换动画/自动驱动侧边栏浏览器/声纹响应参数/模型请求重试/切换会话默认历史加载/**非官方增强（兼容其它插件）总开关 + 五组开关**。即时生效、自动保存；状态色来源支持硬编码内置红绿橙或 MCU 取色（success=primary / warn=secondary / error=tertiary） |
 | 🗂️ 对话历史加载增强 | 切换会话时按功能设置「默认加载轮数」自动补载更多历史（宿主基线约 2 轮，调大后自动点击 older 按钮）；上翻到消息列顶部自动加载更早消息，替代手动点击 |
 | 🚀 缩放性能护栏 | 长对话下 sash / 窗口缩放防掉帧（`resize-perf.ts`）：宿主 ui-deliverables 给每行「产物」注册 RO，回调内反复强制回流，列宽逐帧变化时每帧 O(产物行数) 次全量回流——缩放开始冻结产物行宽度使其 RO 不触发、结束后定时器分批解冻；磨砂 backdrop-filter 缩放期渐隐（~140ms 缓动到恒等滤镜）再由 `body[data-liuli-blur-off]` 接管 none、松手渐回，避免重采样又无生硬闪变；窗口 resize / 宿主原生手柄同样纳入护栏；配套：TurnRail 滚动跟随改单次锚点索引（O(轮数×DOM)→O(DOM)）并在缩放期让位、HeaderEffects 的 mask 仅在纵向几何变化时重建、WindowControls 遮挡检测缩放期让位、DockShell/工作台 sash 拖拽直写 shard 样式松手才提交布局、对话流条目 `content-visibility:auto`（屏外跳过布局/绘制）。实测 338 条目/6.5k 元素：48 步拖拽主线程占用 10.2s→1.2s（`demo/inspect-sash-perf.mjs`） |
 
@@ -57,9 +57,10 @@
 
 | 开关 | 覆盖范围 | 潜在冲突面 |
 | --- | --- | --- |
-| 总开关 `unofficial_enabled` | 关闭后仅保留官方扩展点功能（主题 / 声纹 / 右侧边栏 / 设置页），以下四组全部不挂载 | — |
+| 总开关 `unofficial_enabled` | 关闭后仅保留官方扩展点功能（主题 / 声纹 / 设置页），以下五组全部不挂载 | — |
 | Dockable 布局改造 `unofficial_layout` | advanced 模式接管宿主 root slot（三栏拖拽/拆分/浮动）、会话页头独立面板、conversation-split、桌面 shell 别名类、Dockable 工作台 | 抢占 root slot / 移动 React 管理的 DOM |
-| 桌面宿主补丁 `unofficial_desktop` | 自动补丁 DSH Desktop（无边框 / webviewTag）、页面内窗口按钮、系统回环音频授权 | 改写 `app.asar` / 安装全局 `setDisplayMediaRequestHandler` |
+| 桌面宿主补丁 `unofficial_desktop` | 自动补丁 DSH Desktop（无边框 / webviewTag）、页面内窗口按钮、系统回环音频授权；**关闭时自动还原已打的补丁（原生标题栏回归，需重启 DSH Desktop 生效）** | 改写 `app.asar` / 安装全局 `setDisplayMediaRequestHandler` |
+| 右侧边栏（详细页）`unofficial_sidebar` | PreviewDetailsPanel（文件树/Git 审查/Wiki/浏览器/终端/代码查看等全部标签）、header 预览按钮、详细页自动展开 | 占用宿主 details 列（替换官方工具详情列） |
 | 内嵌浏览器 `unofficial_browser` | Host 浏览器引擎（WebContentsView）、侧栏浏览器标签、模型活动自动驱动 | webviewTag 补丁 / 原生视图 |
 | DOM 观察增强 `unofficial_dom` | 悬浮球、自动展开、入场动画、会话标记/右键菜单、重命名、缩放性能护栏、/side /btw 等 | MutationObserver 观察宿主 DOM / 自有 overlay |
 
@@ -67,6 +68,7 @@
 
 - 客户端在启动时同步读取 `liuli:settings`（localStorage）决定各挂载点是否生效；关闭的组**完全不挂载**（不留观察器、不接管布局），而非仅视觉隐藏。
 - Host 半在启动时同步读取 `~/.liuli-theme/settings.json`，只门控有真实副作用的动作（frameless 补丁、音频授权 handler、浏览器引擎、/side /btw 指令注册）；各 `/liuli-*` 数据路由（额度/设置/预览/侧栏/终端/代理/窗口/音频探测）保持注册——它们是被动 HTTP 端点，不与其它插件冲突。
+- **无边框补丁还原**：`unofficial_desktop` 关闭时，插件启动会把 electron-runtime 里的补丁块还原为 DSH Desktop 的**原始窗口参数**（`titleBarStyle: "hidden"` + `titleBarOverlay: { color: "#00000000", symbolColor: "#7f858f", height: 32 }`，即 win32 advanced 分支未打补丁前的原值）并移除 webviewTag、重建 asar 头；幂等、尽力而为，失败仅告警。手动等价命令：`pnpm patch:desktop --revert`。生效需重启 DSH Desktop 一次。
 - DSH Desktop 重启后首载页面 localStorage 为空时，客户端会从 Host 拉取上次保存的设置；若其中的非官方开关与启动默认值不一致，页面自动重载一次让开关真正生效（sessionStorage 防循环）。
 
 ### 供应商额度凭据

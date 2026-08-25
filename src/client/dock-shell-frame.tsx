@@ -29,15 +29,31 @@ import { dockPanelToSideTab, markSideTabAccepted, openSidePaneTab, parseSideTab,
 import {
   createDockShellStore, defaultShellLayout, exportDockJSON, findRegion, importDockJSON, isRegionPanel,
   listShellSlotNames, loadSavedDock, loadShellSlotByName, regionLabel, saveShellDock,
-  saveShellSlotByName, withRegion,
+  saveShellSlotByName, stripRegionPanels, withRegion,
   CONVERSATION_HEADER_MIN_H, CONVERSATION_MIN, DETAILS_MAX_RATIO, DETAILS_MIN, REGION_CONVERSATION, REGION_CONVERSATION_HEADER, REGION_DETAILS, REGION_SIDEBAR, SIDEBAR_MAX, SIDEBAR_MIN,
   type HostLayoutFace,
 } from './dock-shell.ts'
 import { HEADER_HEIGHT_LS_KEY, HEADER_MAX_H, HEADER_MIN_H } from './HeaderEffects.tsx'
+import { LIULI_LS_KEY, liuliSettingsOf } from '../liuli-settings.ts'
 import css from './DockShellFrame.module.css'
 import { HMR_MARKER } from './hmr-marker.ts'
 import { tagConversationContainers } from './conversation-split.ts'
 import { beginResizePerf, endResizePerf } from './resize-perf.ts'
+
+/* ── 右侧边栏系列增强开关（与 client/index.ts 的 unofficial('sidebar') 同源） ──
+ *  client/index.ts 在启动时按「总开关 && 右侧边栏组」写入 window.__liuliSidebarEnabled__；
+ *  DockShellFrame 在其后挂载，直接读取即可；异常/降级时回退读 localStorage。
+ *  开关变更页会整页重载（loadRemoteState），本组件无需响应式更新。 */
+function isSidebarEnhancementEnabled(): boolean {
+  const w = window as unknown as { __liuliSidebarEnabled__?: boolean }
+  if (w.__liuliSidebarEnabled__ !== undefined) return w.__liuliSidebarEnabled__
+  try {
+    const raw = localStorage.getItem(LIULI_LS_KEY)
+    if (raw === null || raw === '') return true
+    const s = liuliSettingsOf(JSON.parse(raw))
+    return s.unofficial_enabled && s.unofficial_sidebar
+  } catch { return true }
+}
 
 /* ── ctx 能力桥（index.ts 注入；纯组件不碰 cordis） ── */
 
@@ -251,7 +267,11 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     const saved = sessionId !== undefined && sessionId !== null && sessionId !== ''
       ? loadSavedDock(sessionId)
       : undefined
-    actions.setDock(saved ?? defaultShellLayout())
+    const base = saved ?? defaultShellLayout()
+    // 右侧边栏系列增强关闭时，dock 布局不保留 detail 区域（详情槽位未注册，
+    // 留着只是一条空固定宽条）；默认布局里的 detail 区域一并剔除。
+    const layout = isSidebarEnhancementEnabled() ? base : stripRegionPanels(base, REGION_DETAILS)
+    actions.setDock(layout)
   }, [sessionId, actions])
 
   /** 面板贴边标记（实测几何）：key = data-dock-node，避免嵌套 split / 0 宽 shard 误判。 */
@@ -683,6 +703,8 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     if (hostPanels.details === 0) detailsTornOut.current = false
     if (prev === 0 && hostPanels.details > 0) {
       if (detailsTornOut.current) return
+      // 右侧边栏系列增强关闭时不再补挂 detail 区域（详情槽位未注册，补挂只会是空面板）。
+      if (!isSidebarEnhancementEnabled()) return
       const current = shellRef.current.dock
       if (findRegion(current, REGION_DETAILS) === undefined) {
         actions.setDock(withRegion(current, REGION_DETAILS, 'right'))

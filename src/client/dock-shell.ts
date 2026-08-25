@@ -202,6 +202,18 @@ export function withoutRegion(layout: DockLayout, type: string): DockLayout {
   return removePanel(layout, panel.id)
 }
 
+/** 从布局里彻底移除某区域面板（含浮动窗口中的；多处出现时逐次清理，
+ *  上限 8 次防御性兜底）。右侧边栏（unofficial_sidebar）关闭时，
+ *  DockShellFrame 用它把 detail 区域从加载/默认布局中剔除。 */
+export function stripRegionPanels(layout: DockLayout, type: string): DockLayout {
+  let next = layout
+  for (let i = 0; i < 8; i += 1) {
+    if (findRegion(next, type) === undefined) return next
+    next = withoutRegion(next, type)
+  }
+  return next
+}
+
 export function findRegion(layout: DockLayout, type: string): PanelInstance | undefined {
   if (layout.root !== null) {
     const hit = findRegionIn(layout.root, type)

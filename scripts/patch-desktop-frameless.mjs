@@ -10,7 +10,8 @@
 // 改为 frame: false，并同步 asar 头里的 size/integrity。
 //
 // 用法：
-//   node scripts/patch-desktop-frameless.mjs
+//   node scripts/patch-desktop-frameless.mjs            # 打补丁（无边框 + webviewTag）
+//   node scripts/patch-desktop-frameless.mjs --revert   # 还原（恢复原生标题栏，移除 webviewTag）
 //   DSH_DESKTOP_DIR="C:\Program Files\DSH Desktop" node scripts/patch-desktop-frameless.mjs
 // 安装目录查找顺序：DSH_DESKTOP_DIR 环境变量 → 正在运行的 DSH Desktop 进程路径 → 默认安装路径。
 //
@@ -141,18 +142,49 @@ for (const file of [asarPath, runtimePath]) {
   }
 }
 
-// 1. 备份原始 app.asar
-if (!existsSync(backupPath)) {
+// 1. 备份原始 app.asar（仅补丁模式；还原模式不需要备份）
+const REVERT = process.argv.includes('--revert');
+if (REVERT) {
+  console.log('[dsh-liuli-ui-enhance] 还原模式：恢复原生标题栏并移除 webviewTag 补丁');
+} else if (!existsSync(backupPath)) {
   copyFileSync(asarPath, backupPath);
   console.log(`[dsh-liuli-ui-enhance] 已备份原始 app.asar -> ${backupPath}`);
 } else {
   console.log(`[dsh-liuli-ui-enhance] 备份已存在，跳过：${backupPath}`);
 }
 
-// 2. 修改 unpacked electron runtime（无边框 + webviewTag 两项补丁独立幂等）
+// 2. 修改 unpacked electron runtime（补丁 / 还原 两个方向，各自幂等）
 let runtime = readFileSync(runtimePath, 'utf8');
 let runtimeChanged = false;
-if (runtime.includes('[liuli-theme patch]')) {
+if (REVERT) {
+  // marker 注释块 + frame:false → 逐字还原官方 win32 advanced 窗口配置
+  // （anywhere-labs/dsh-desktop 的 window-options.ts，bundler 已内联常量：
+  // titleBarStyle:"hidden" + titleBarOverlay { color:#00000000, symbolColor:#7f858f,
+  // height:32 }，原生标题栏按钮回归且配色与原版一致）。
+  const markerBlock = /\/\/ \[liuli-theme patch\] 无边框窗口：[\s\S]*?\n\s*frame: false,/;
+  const nativeRestore = [
+    'titleBarStyle: "hidden",',
+    '\t\ttitleBarOverlay: {',
+    '\t\t\tcolor: "#00000000",',
+    '\t\t\tsymbolColor: "#7f858f",',
+    '\t\t\theight: 32',
+    '\t\t},',
+  ].join('\n');
+  if (markerBlock.test(runtime)) {
+    runtime = runtime.replace(markerBlock, nativeRestore);
+    runtimeChanged = true;
+    console.log('[dsh-liuli-ui-enhance] 已还原官方原生标题栏配置');
+  } else {
+    console.log('[dsh-liuli-ui-enhance] electron-runtime 未包含无边框补丁，跳过还原');
+  }
+  if (runtime.includes('webviewTag: true')) {
+    runtime = runtime.replace(/^\s*webviewTag: true,\r?\n/mg, '');
+    runtimeChanged = true;
+    console.log('[dsh-liuli-ui-enhance] 已移除 webviewTag 补丁');
+  } else {
+    console.log('[dsh-liuli-ui-enhance] electron-runtime 未包含 webviewTag 补丁，跳过还原');
+  }
+} else if (runtime.includes('[liuli-theme patch]')) {
   console.log('[dsh-liuli-ui-enhance] electron-runtime 已包含无边框补丁，跳过该部分');
 } else {
   const pattern = /titleBarStyle:\s*"hidden",\s*titleBarOverlay:\s*\{[\s\S]*?\},/;
@@ -171,9 +203,10 @@ if (runtime.includes('[liuli-theme patch]')) {
 }
 // 启用 webviewTag：zcode 参考实现的浏览器用 <webview> DOM 标签承载，
 // 由 CSS overflow:hidden 自然裁剪，彻底避免 WebContentsView 溢出容器问题。
-if (runtime.includes('webviewTag: true')) {
+// 还原模式下已在上方移除，这里跳过补丁分支。
+if (!REVERT && runtime.includes('webviewTag: true')) {
   console.log('[dsh-liuli-ui-enhance] electron-runtime 已启用 webviewTag，跳过该部分');
-} else {
+} else if (!REVERT) {
   const webviewPattern = /webPreferences:\s*\{\s*preload,\s*contextIsolation:\s*true,\s*nodeIntegration:\s*false,\s*sandbox:\s*true,\s*webSecurity:\s*true\s*\}/g;
   if (!webviewPattern.test(runtime)) {
     console.warn('[dsh-liuli-ui-enhance] 未找到 webPreferences 补丁点，跳过 webviewTag（浏览器面板将回退 WebContentsView）');
@@ -265,4 +298,8 @@ try {
 }
 console.log(`[dsh-liuli-ui-enhance] 已重建 ${asarPath}`);
 console.log(`[dsh-liuli-ui-enhance] 已同步 ${patchedCopyPath}`);
-console.log('[dsh-liuli-ui-enhance] 请重启 DSH Desktop 生效');
+if (REVERT) {
+  console.log('[dsh-liuli-ui-enhance] 还原完成：请重启 DSH Desktop 恢复原生标题栏');
+} else {
+  console.log('[dsh-liuli-ui-enhance] 请重启 DSH Desktop 生效');
+}

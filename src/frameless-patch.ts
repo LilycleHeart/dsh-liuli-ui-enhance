@@ -289,3 +289,104 @@ export function applyFramelessPatch(): void {
     proc.noAsar = previousNoAsar
   }
 }
+
+/** 撤销无边框/webviewTag 补丁（unofficial_desktop 关闭时调用，尽力而为，失败不抛错）。
+ *  幂等：未打补丁（无 marker / 无 webviewTag）时零写入；asar 头已一致时跳过重建。
+ *  生效需重启 DSH Desktop（窗口参数在启动时读取）。 */
+export function revertFramelessPatch(): void {
+  if (process.platform !== 'win32') return
+  if (process.versions.electron === undefined) return
+  const resourcesDir = (process as typeof process & { resourcesPath?: string }).resourcesPath
+  if (resourcesDir === undefined || resourcesDir === '') {
+    console.warn('[dsh-liuli-ui-enhance] 无边框补丁还原跳过：process.resourcesPath 为空，无法定位客户端安装目录')
+    return
+  }
+
+  const asarPath = joinPath(resourcesDir, 'app.asar')
+  const patchedCopyPath = joinPath(resourcesDir, 'app.asar.patched')
+  const libDir = joinPath(resourcesDir, 'app.asar.unpacked', 'lib')
+  const tmpPath = joinPath(resourcesDir, `app.asar.liuli-revert-${process.pid}.tmp`)
+
+  // marker 注释块 + frame:false → 逐字还原官方 win32 advanced 窗口配置
+  // （来自 anywhere-labs/dsh-desktop 的 window-options.ts，bundler 已内联常量：
+  // titleBarStyle:"hidden" + titleBarOverlay { color:#00000000, symbolColor:#7f858f,
+  // height:32 }，原生标题栏按钮回归且配色与原版一致）。
+  const MARKER_BLOCK = /\/\/ \[liuli-theme patch\] 无边框窗口：[\s\S]*?\n\s*frame: false,/
+  const NATIVE_TITLEBAR_RESTORE = [
+    'titleBarStyle: "hidden",',
+    '\t\ttitleBarOverlay: {',
+    '\t\t\tcolor: "#00000000",',
+    '\t\t\tsymbolColor: "#7f858f",',
+    '\t\t\theight: 32',
+    '\t\t},',
+  ].join('\n')
+
+  const proc = process as ProcessWithNoAsar
+  const previousNoAsar = proc.noAsar
+  proc.noAsar = true
+  try {
+    const runtimeName = findRuntimeFile(libDir)
+    if (runtimeName === undefined) {
+      throw new Error('在 app.asar.unpacked/lib 下找不到 electron-runtime-*.js（客户端目录结构可能已变化）')
+    }
+    const runtimePath = joinPath(libDir, runtimeName)
+    if (!existsSync(asarPath)) {
+      throw new Error('找不到 app.asar（客户端目录结构可能已变化）')
+    }
+
+    let runtime = readFileSync(runtimePath, 'utf8')
+    let runtimeChanged = false
+    if (MARKER_BLOCK.test(runtime)) {
+      runtime = runtime.replace(MARKER_BLOCK, NATIVE_TITLEBAR_RESTORE)
+      runtimeChanged = true
+      console.log('[dsh-liuli-ui-enhance] 无边框补丁还原：已恢复官方原生标题栏配置')
+    }
+    if (runtime.includes('webviewTag: true')) {
+      runtime = runtime.replace(/^\s*webviewTag: true,\r?\n/mg, '')
+      runtimeChanged = true
+      console.log('[dsh-liuli-ui-enhance] 无边框补丁还原：已移除 webviewTag')
+    }
+    if (runtimeChanged) {
+      writeFileSync(runtimePath, runtime, 'utf8')
+      console.log('[dsh-liuli-ui-enhance] 已写入 electron-runtime 还原')
+    }
+
+    // 重建 asar 头（同步 size / SHA256 integrity），保留头之后的原始字节。
+    const { header, contentStart } = readAsarHeader(asarPath)
+    let node: { files?: Record<string, unknown> } | undefined = header
+    for (const part of ['lib', runtimeName]) {
+      const next = node?.files?.[part] as { files?: Record<string, unknown> } | undefined
+      if (next === undefined) {
+        throw new Error(`asar 头中缺少 ${part}（客户端版本可能不兼容）`)
+      }
+      node = next
+    }
+    const runtimeBuffer = readFileSync(runtimePath)
+    const hash = createHash('sha256').update(runtimeBuffer).digest('hex')
+    const target = node as unknown as { size?: number; integrity?: { algorithm?: string; blockSize?: number; blocks?: string[]; hash?: string } }
+    if (!runtimeChanged && target.size === runtimeBuffer.length && target.integrity?.hash === hash) {
+      console.log('[dsh-liuli-ui-enhance] 无边框补丁还原：asar 头已是最新，跳过重建')
+      return
+    }
+    target.size = runtimeBuffer.length
+    target.integrity ??= { algorithm: 'SHA256', blockSize: 4194304, blocks: [] }
+    target.integrity.hash = hash
+    target.integrity.blocks = [hash]
+
+    const newHeader = buildAsarHeader(header)
+    writePatchedAsar(asarPath, tmpPath, newHeader, contentStart)
+    copyFileSync(tmpPath, asarPath)
+    copyFileSync(tmpPath, patchedCopyPath)
+    console.log('[dsh-liuli-ui-enhance] 无边框补丁还原：已重建 app.asar 头')
+    console.log('[dsh-liuli-ui-enhance] 无边框补丁还原：重启 DSH Desktop 后原生标题栏恢复')
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('[dsh-liuli-ui-enhance] 无边框补丁还原未完成：', message)
+    console.warn('[dsh-liuli-ui-enhance] 可手动运行 pnpm patch:desktop --revert，或重新启用「桌面宿主补丁」开关后重启 DSH Desktop')
+  } finally {
+    try {
+      if (existsSync(tmpPath)) unlinkSync(tmpPath)
+    } catch { /* ignore */ }
+    proc.noAsar = previousNoAsar
+  }
+}

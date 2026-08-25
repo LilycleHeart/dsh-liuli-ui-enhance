@@ -91,15 +91,19 @@ export interface LiuliSettings {
   /** 自动驱动侧边栏浏览器（LLM 活动感知）：模型启动 dev server / 写前端文件时
    *  自动在右侧边栏打开浏览器标签展示页面（auto-drive-browser.ts）。 */
   auto_drive_browser: boolean
-  /** 非官方增强总开关：关闭后仅保留官方扩展点功能（主题/声纹/侧边栏/设置页），
+  /** 非官方增强总开关：关闭后仅保留官方扩展点功能（主题/声纹/设置页），
    *  全部非官方（侵入式/观察式）功能不挂载，用于与其它插件冲突时一键降级。 */
   unofficial_enabled: boolean
   /** Dockable 布局改造：advanced 模式接管宿主 root slot（三栏可拖拽/拆分/浮动）、
    *  会话页头独立面板、conversation-split、桌面 shell 别名类挂载。 */
   unofficial_layout: boolean
   /** 桌面宿主补丁：自动补丁 DSH Desktop（无边框 / 内嵌 webviewTag）、页面内窗口按钮、
-   *  /liuli-window 窗口控制路由、系统回环音频授权。 */
+   *  /liuli-window 窗口控制路由、系统回环音频授权；关闭时自动还原已打的补丁
+   *  （原生标题栏回归）。 */
   unofficial_desktop: boolean
+  /** 右侧边栏（详细页）：PreviewDetailsPanel（文件树/Git/Wiki/浏览器/终端/代码/审查等
+   *  全部标签）、header 预览按钮、详细页自动展开等附属功能。 */
+  unofficial_sidebar: boolean
   /** 内嵌浏览器：Host 浏览器引擎（WebContentsView / webview）、侧栏浏览器标签、
    *  模型活动自动驱动浏览器。 */
   unofficial_browser: boolean
@@ -149,6 +153,7 @@ export const LIULI_SETTINGS_DEFAULTS: LiuliSettings = {
   unofficial_enabled: true,
   unofficial_layout: true,
   unofficial_desktop: true,
+  unofficial_sidebar: true,
   unofficial_browser: true,
   unofficial_dom: true,
 }
@@ -200,6 +205,7 @@ export const LiuliSettingsSchema: z<LiuliSettings> = z.object({
   unofficial_enabled: z.boolean().default(true),
   unofficial_layout: z.boolean().default(true),
   unofficial_desktop: z.boolean().default(true),
+  unofficial_sidebar: z.boolean().default(true),
   unofficial_browser: z.boolean().default(true),
   unofficial_dom: z.boolean().default(true),
 }) as unknown as z<LiuliSettings>

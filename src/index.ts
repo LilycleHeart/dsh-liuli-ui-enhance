@@ -21,7 +21,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
 import { createBrowserEngine } from './browser-engine.ts'
-import { applyFramelessPatch } from './frameless-patch.ts'
+import { applyFramelessPatch, revertFramelessPatch } from './frameless-patch.ts'
 import { windowControlRoute } from './host-window.ts'
 import { audioCaptureRoute, installSystemAudioCapture } from './host-audio.ts'
 
@@ -699,9 +699,12 @@ export function apply(ctx: Context): void {
   // 客户端更新会还原 app.asar，无边框补丁需要在插件启动时自动重打。
   // 幂等；仅 win32 + Electron 主进程生效，纯 Web / 其他平台自动跳过。
   // 补丁为尽力而为：失败只告警不阻断插件加载，避免外观功能变成启动阻塞点。
-  // unofficial_desktop 关闭时不打补丁（不改写宿主文件）。
+  // unofficial_desktop 关闭时不再打补丁，并自动还原已打的补丁
+  // （原生标题栏回归；生效需重启 DSH Desktop 一次）。
   if (unofficial.desktop) {
     applyFramelessPatch()
+  } else {
+    revertFramelessPatch()
   }
 
   const route: WebRoute = {

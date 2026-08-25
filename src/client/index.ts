@@ -372,18 +372,23 @@ export function apply(ctx: ClientContext): void {
     return LIULI_SETTINGS_DEFAULTS
   })()
   /** 分组判定：总开关关闭则全部关闭；否则按分组开关。 */
-  const unofficial = (group: 'layout' | 'desktop' | 'browser' | 'dom'): boolean => {
+  const unofficial = (group: 'layout' | 'desktop' | 'sidebar' | 'browser' | 'dom'): boolean => {
     if (!bootSettings.unofficial_enabled) return false
     switch (group) {
       case 'layout': return bootSettings.unofficial_layout
       case 'desktop': return bootSettings.unofficial_desktop
+      case 'sidebar': return bootSettings.unofficial_sidebar
       case 'browser': return bootSettings.unofficial_browser
       default: return bootSettings.unofficial_dom
     }
   }
-  /** 五个开关的指纹（用于远端设置与启动生效值不一致时触发重载）。 */
+  /** 六个开关的指纹（用于远端设置与启动生效值不一致时触发重载）。 */
   const unofficialFlagsOf = (s: LiuliSettings): string =>
-    [s.unofficial_enabled, s.unofficial_layout, s.unofficial_desktop, s.unofficial_browser, s.unofficial_dom].join(',')
+    [s.unofficial_enabled, s.unofficial_layout, s.unofficial_desktop, s.unofficial_sidebar, s.unofficial_browser, s.unofficial_dom].join(',')
+
+  // 右侧边栏系列增强开关（详情列 / 预览按钮 / 自动展开）同属 unofficial_sidebar：
+  // DockShellFrame 依此决定是否把 detail 区域纳入 dock 布局（关闭时剔除 region:details）。
+  ;(window as unknown as { __liuliSidebarEnabled__?: boolean }).__liuliSidebarEnabled__ = unofficial('sidebar')
 
   // ── advanced（无边框）模式别名挂载：桌面 shell 元素补上上游结构类名，──
   // ── 让兼容模式配方（[class*="_frame"]/"_sidebarCol"/"_centerCol"/"_detailsCol"）直接命中 ──
@@ -912,33 +917,37 @@ export function apply(ctx: ClientContext): void {
     }
     window.dispatchEvent(new CustomEvent(SIDE_CHAT_OPEN_EVENT))
   }), 'dsh-liuli-ui-enhance: /side /btw command bridge')
-  ctx.slots.inject('details', () => ctx.slots.register({
-    name: 'details',
-    priority: -1,
-    inject: () => ({
-      openDetails: () => { ctx.layout.openDetails() },
-      closeDetails: () => {
-        setPaneSyncSuppressed(true)
-        setPreviewOpen(false)
-        ctx.layout.closeDetails()
-      },
-      insertElement,
-      addFileToChat: insertFileReference,
-      openPath: (path: string) => { void ctx.workspaces.openPath(path) },
-      startSession: () => { ctx.workspaces.startSession() },
-      pickDirectory: async () => {
-        const path = await ctx.workspaces.pickDirectory()
-        if (path !== null && path !== '') await ctx.workspaces.create({ path })
-      },
-      toggleTheme: () => {
-        const dark = document.body.hasAttribute('data-ds-dark-theme')
-        ctx.theme.setTheme(dark ? 'light' : 'dark')
-      },
-      prevSession: () => { stepSession(-1) },
-      nextSession: () => { stepSession(1) },
-      host: sidePaneHost,
-    }),
-  }, PreviewDetailsPanel))
+  // ── 右侧边栏（详细页）面板：占用宿主 details 列（priority -1 替换官方工具详情列）。
+  //    unofficial_sidebar 关闭时不注册，宿主 details 列还原为官方内容。 ──
+  if (unofficial('sidebar')) {
+    ctx.slots.inject('details', () => ctx.slots.register({
+      name: 'details',
+      priority: -1,
+      inject: () => ({
+        openDetails: () => { ctx.layout.openDetails() },
+        closeDetails: () => {
+          setPaneSyncSuppressed(true)
+          setPreviewOpen(false)
+          ctx.layout.closeDetails()
+        },
+        insertElement,
+        addFileToChat: insertFileReference,
+        openPath: (path: string) => { void ctx.workspaces.openPath(path) },
+        startSession: () => { ctx.workspaces.startSession() },
+        pickDirectory: async () => {
+          const path = await ctx.workspaces.pickDirectory()
+          if (path !== null && path !== '') await ctx.workspaces.create({ path })
+        },
+        toggleTheme: () => {
+          const dark = document.body.hasAttribute('data-ds-dark-theme')
+          ctx.theme.setTheme(dark ? 'light' : 'dark')
+        },
+        prevSession: () => { stepSession(-1) },
+        nextSession: () => { stepSession(1) },
+        host: sidePaneHost,
+      }),
+    }, PreviewDetailsPanel))
+  }
 
   // ── /btw 正文回答宿主（body 级 root）：fork 当前会话并发回答，
   //    回答卡片 portal 到正文消息流末尾；不打开侧边栏窗口、不改变主会话上下文。 ──
@@ -963,13 +972,16 @@ export function apply(ctx: ClientContext): void {
   // 只在「当前会话真的变了」时重置：session list 的任何其他更新（状态/流式/未读）
   // 也会触发快照变化，若在此处重置会把 previewOpen 拉偏，导致 Ctrl+Alt+B 首按失效。
   let lastCurrentSession = ctx.sessions.list.getSnapshot().current
-  ctx.effect(() => ctx.sessions.list.subscribe(() => {
-    const current = ctx.sessions.list.getSnapshot().current
-    if (current === lastCurrentSession) return
-    lastCurrentSession = current
-    setPaneSyncSuppressed(true)
-    setPreviewOpen(false)
-  }), 'dsh-liuli-ui-enhance: preview open reset on session switch')
+  ctx.effect(() => {
+    if (!unofficial('sidebar')) return () => {}
+    return ctx.sessions.list.subscribe(() => {
+      const current = ctx.sessions.list.getSnapshot().current
+      if (current === lastCurrentSession) return
+      lastCurrentSession = current
+      setPaneSyncSuppressed(true)
+      setPreviewOpen(false)
+    })
+  }, 'dsh-liuli-ui-enhance: preview open reset on session switch')
 
   // ── 会话内前端产物点击：拦截本地回环/前端文件链接，切换到预览浏览器模式 ──
   ctx.effect(() => {
@@ -1357,12 +1369,15 @@ export function apply(ctx: ClientContext): void {
     id: 'liuli-turn-rail',
     order: 20,
   }, TurnRail))
-  // 工作区预览开关：点击开合宿主右侧 details 列（不再是 overlay）
-  ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
-    name: 'conversation.session.header.utilities',
-    id: 'liuli-preview-button',
-    order: 25,
-  }, () => createElement(PreviewButton, { onToggle: togglePreview })))
+  // 工作区预览开关：点击开合宿主右侧 details 列（不再是 overlay）。
+  // unofficial_sidebar 关闭时不注册（右侧边栏整体停用，按钮无意义）。
+  if (unofficial('sidebar')) {
+    ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
+      name: 'conversation.session.header.utilities',
+      id: 'liuli-preview-button',
+      order: 25,
+    }, () => createElement(PreviewButton, { onToggle: togglePreview })))
+  }
   // ── 页面内窗口按钮（无边框模式）：不再注入 header utilities ——
   // 统一由 body 级 host 固定渲染在窗口右上角（见 'dsh-liuli-ui-enhance: window controls fixed top-right'）。
 
@@ -1386,9 +1401,10 @@ export function apply(ctx: ClientContext): void {
 
   // ── 详细页自动展开（LLM 活动感知）：模型写/改文件、执行 git 操作时
   //    自动展开右侧详细页并切到「审查文件」标签（每轮一次；用户手动收起后
-  //    本会话不再自动展开）。浏览器新标签仍走 PreviewPanel 既有导航展开。 ──
+  //    本会话不再自动展开）。浏览器新标签仍走 PreviewPanel 既有导航展开。
+  //    属于右侧边栏附属功能：unofficial_sidebar 关闭时一并停用。 ──
   ctx.effect(() => {
-    if (!unofficial('dom')) return () => {}
+    if (!unofficial('sidebar')) return () => {}
     return startAutoOpenDetails()
   }, 'dsh-liuli-ui-enhance: auto open details on llm activity')
 

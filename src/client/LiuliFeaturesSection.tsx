@@ -102,6 +102,12 @@ export function LiuliFeaturesSection({
             onChange={(v) => { set({ unofficial_desktop: v }) }}
           />
           <ToggleRow
+            label={t('unofficial.sidebar')}
+            hint={t('unofficial.sidebarHint')}
+            checked={s.unofficial_sidebar}
+            onChange={(v) => { set({ unofficial_sidebar: v }) }}
+          />
+          <ToggleRow
             label={t('unofficial.browser')}
             hint={t('unofficial.browserHint')}
             checked={s.unofficial_browser}
