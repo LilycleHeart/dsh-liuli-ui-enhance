@@ -12,9 +12,11 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { IconSendOutline14, IconPlusOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   ConversationSnapshot, ObservableSnapshot, SessionFace, SessionId, SessionListState,
 } from '@deepseek-ai/dsh-client-runtime/client'
+import { ChatFlowView, ChatFlowPartial } from './chat-flow-view.tsx'
 import css from './SidePaneExtraPanels.module.css'
 
 /** 面板可用的宿主数据面（由 index.ts 注入）。 */
@@ -27,6 +29,10 @@ export interface SidePaneHostAccess {
   forkSession: (id: string) => Promise<string>
   /** 在主视图打开会话。 */
   openSession: (id: string) => void
+  /** 归档一个会话（隐藏于会话列表；辅助对话 fork 后归档，只存在于标签页）。 */
+  archiveSession: (id: string) => Promise<void>
+  /** 归档会话 id 集合（子智能体目录据此过滤归档子会话）。 */
+  archivedSessionIds: ObservableSnapshot<readonly string[]>
 }
 
 /** 订阅一个 ObservableSnapshot（源可缺省）。 */
@@ -804,13 +810,15 @@ export interface SubagentPanelProps {
 /** 子智能体目录：当前会话派生的子会话列表（DSH subagent-directory 的 DSH 实现）。 */
 export function SubagentPanel({ sessionId, host }: SubagentPanelProps) {
   const list = useSnapshot(host.sessionList)
+  const archived = useSnapshot(host.archivedSessionIds) ?? []
 
   const children = useMemo(() => {
     if (list === undefined || sessionId === undefined) return []
+    const archivedSet = new Set(archived)
     return list.ids
       .map(id => list.byId[id])
-      .filter((s): s is NonNullable<typeof s> => s !== undefined && s.parentId === sessionId)
-  }, [list, sessionId])
+      .filter((s): s is NonNullable<typeof s> => s !== undefined && s.parentId === sessionId && !archivedSet.has(s.id))
+  }, [list, sessionId, archived])
 
   if (sessionId === undefined) return <div className={css.devEmpty}>没有活动会话</div>
 
@@ -849,25 +857,145 @@ export interface SideChatPanelProps {
   /** fork 成功后回写标签。 */
   onChildCreated: (childId: string) => void
   title: string
+  /** 首次打开时自动发送给子会话的问题（/btw 指令带出）。 */
+  initialPrompt?: string | undefined
+  /** initialPrompt 已被消费（面板回写标签清除，避免重开重复发送）。 */
+  onPromptConsumed?: (() => void) | undefined
 }
 
-/** 从会话节点里提取一段纯文本（内容块 text 拼接，限长）。 */
-function nodeText(content: readonly unknown[], max: number): string {
-  let text = ''
-  for (const block of content) {
-    const b = block as { type?: string; text?: string }
-    if (b.type === 'text' && typeof b.text === 'string') text += b.text
-    if (text.length >= max) break
-  }
-  return text.slice(0, max)
+/** fork 出的子会话默认未 open：客户端没有事件窗口、不订阅 mux 流，
+ * 快照 nodes 恒空。open()（Session 类公开方法，但刻意不在 ISession 面上）
+ * 拉取历史窗口并订阅流——幂等、不切换当前会话。 */
+function openSessionFace(face: SessionFace): Promise<void> {
+  const withOpen = face as SessionFace & { open: () => Promise<void> }
+  return typeof withOpen.open === 'function' ? withOpen.open() : Promise.resolve()
+}
+
+/** 上下文占用计量（复刻官方 ContextMeter）：环钮 + 点击展开明细面板。 */
+const METER_RADIUS = 6.2
+const METER_CIRCUMFERENCE = 2 * Math.PI * METER_RADIUS
+const METER_ROWS = [
+  { key: 'systemTokens', label: '系统', color: 'ctxSystem' },
+  { key: 'toolsTokens', label: '工具', color: 'ctxTools' },
+  { key: 'messageTokens', label: '消息', color: 'ctxMessages' },
+] as const
+
+function formatTokens(n: number): string {
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'k'
+  return String(n)
+}
+
+function ContextMeter({ face }: { face: SessionFace }) {
+  const pressureSnap = useSnapshot(face.projections.faceOf('contextPressure')) as
+    { projectedTokens?: number; pressureTokens?: number; contextWindow?: number } | undefined
+  const breakdownSnap = useSnapshot(face.projections.faceOf('contextBreakdown')) as
+    { systemTokens?: number; toolsTokens?: number; messageTokens?: number } | undefined
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLSpanElement | null>(null)
+
+  // hooks 必须无条件执行（React 规则）；不可用时的提前 return 放在所有 hooks 之后
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (e: PointerEvent): void => {
+      if (e.target instanceof Node && rootRef.current?.contains(e.target) === true) return
+      setOpen(false)
+    }
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open])
+
+  const usedTokens = pressureSnap?.projectedTokens ?? pressureSnap?.pressureTokens
+  if (usedTokens === undefined || pressureSnap?.contextWindow === undefined) return null
+  const percent = Math.min(100, Math.round(usedTokens / pressureSnap.contextWindow * 100))
+  const breakdownTotal = breakdownSnap === undefined
+    ? 0
+    : (breakdownSnap.systemTokens ?? 0) + (breakdownSnap.toolsTokens ?? 0) + (breakdownSnap.messageTokens ?? 0)
+  const segments = breakdownSnap === undefined || breakdownTotal === 0
+    ? [{ key: 'total', color: '', width: percent }]
+    : METER_ROWS.map(row => ({
+        key: row.key,
+        color: row.color,
+        width: percent * ((breakdownSnap[row.key] as number | undefined) ?? 0) / breakdownTotal,
+      })).filter(seg => seg.width > 0)
+
+  return (
+    <span ref={rootRef} className={css.ctxRoot}>
+      <button
+        type="button"
+        className={css.ctxTrigger}
+        aria-label={`上下文占用 ${percent}%`}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => { setOpen(v => !v) }}
+      >
+        <svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true">
+          <circle className={css.ctxTrack} cx="7" cy="7" r={METER_RADIUS} />
+          <circle
+            className={css.ctxFill}
+            cx="7" cy="7" r={METER_RADIUS}
+            strokeDasharray={`${METER_CIRCUMFERENCE * percent / 100} ${METER_CIRCUMFERENCE}`}
+            transform="rotate(-90 7 7)"
+          />
+        </svg>
+      </button>
+      {open && (
+        <div className={css.ctxPanel} role="dialog" aria-label="已用上下文">
+          <div className={css.ctxHeader}>
+            <span className={css.ctxHeadline}>已用上下文</span>
+            <span className={css.ctxPercent}>{percent}%</span>
+            <span className={css.ctxFigures}>~{formatTokens(usedTokens)} / {formatTokens(pressureSnap.contextWindow)}</span>
+          </div>
+          <div className={css.ctxBar}>
+            {segments.map(seg => (
+              <div
+                key={seg.key}
+                className={css.ctxSegment + (seg.color !== '' ? ' ' + css[seg.color] : '')}
+                style={{ width: `${seg.width}%` }}
+              />
+            ))}
+          </div>
+          {breakdownSnap !== undefined && (
+            <dl className={css.ctxRows}>
+              {METER_ROWS.map(row => (
+                <div key={row.key} className={css.ctxRow}>
+                  <dt>
+                    <span className={css.ctxSwatch + ' ' + css[row.color]} aria-hidden="true" />
+                    {row.label}
+                  </dt>
+                  <dd>{formatTokens((breakdownSnap[row.key] as number | undefined) ?? 0)}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </div>
+      )}
+    </span>
+  )
 }
 
 /** 辅助对话：fork 当前会话生成子会话，面板内收发消息（DSH selection-side-chat 的 DSH 实现）。 */
-export function SideChatPanel({ sessionId, host, childSessionId, onChildCreated, title }: SideChatPanelProps) {
+export function SideChatPanel({ sessionId, host, childSessionId, onChildCreated, title, initialPrompt, onPromptConsumed }: SideChatPanelProps) {
   const [draft, setDraft] = useState('')
   const [forkError, setForkError] = useState<string | null>(null)
+  const [commandMenuOpen, setCommandMenuOpen] = useState(false)
+  const composerRef = useRef<HTMLFormElement | null>(null)
   const forkingRef = useRef(false)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const initialPromptSent = useRef(false)
+
+  // 辅助对话可用命令（琉璃注册的 /side /btw；命令菜单点击后把命令文本填入 draft）
+  const commands = useMemo(() => [
+    { name: '/side', description: '在当前会话侧边栏新建一个辅助对话' },
+    { name: '/btw <问题>', description: '把问题交给辅助对话并发回答，不改变当前会话上下文' },
+  ], [])
 
   // 首次打开：fork 当前会话得到子会话。
   useEffect(() => {
@@ -875,46 +1003,73 @@ export function SideChatPanel({ sessionId, host, childSessionId, onChildCreated,
     if (forkingRef.current) return
     forkingRef.current = true
     host.forkSession(sessionId)
-      .then((childId) => { onChildCreated(childId) })
+      .then((childId) => {
+        // fork 出的子会话默认未 open：客户端没有事件窗口、不订阅流，
+        // 快照 nodes 恒空。立即 open（幂等，不切换当前会话）让历史窗口
+        // 与 mux 事件流就绪，发送后回答才能显示。
+        const face = host.getSessionFace(childId)
+        if (face !== undefined) void openSessionFace(face).catch(() => { /* open 失败不阻塞面板 */ })
+        onChildCreated(childId)
+      })
       .catch((err: unknown) => { setForkError(err instanceof Error ? err.message : String(err)) })
       .finally(() => { forkingRef.current = false })
   }, [childSessionId, sessionId, host, onChildCreated])
 
+  // 辅助对话的 fork 只存在于标签页：子会话（含旧标签持久化的）始终归档，
+  // 不出现在会话列表（幂等；归档后 binding 仍可寻址，prompt 照常工作）。
+  useEffect(() => {
+    if (childSessionId === undefined) return
+    void host.archiveSession(childSessionId).catch(() => { /* 归档失败不影响使用 */ })
+  }, [childSessionId, host])
+
+  // /btw 带出的初始问题：挂载即从标签清除（刷新不重发），值留在 ref，
+  // 子会话就绪后自动发送一次（问题只进辅助对话，不改变主会话上下文）。
+  const initialPromptRef = useRef(initialPrompt)
+  useEffect(() => {
+    if (initialPrompt === undefined || initialPrompt === '') return
+    initialPromptRef.current = initialPrompt
+    onPromptConsumed?.()
+  }, [initialPrompt, onPromptConsumed])
+
   const childFace = childSessionId === undefined ? undefined : host.getSessionFace(childSessionId)
   const snap = useSnapshot(childFace)
 
-  const items = useMemo(() => {
-    if (snap === undefined) return []
-    const out: Array<{ key: string; role: 'user' | 'assistant' | 'system'; text: string }> = []
-    const nodes = snap.nodes.slice(-80)
-    for (const node of nodes) {
-      const n = node as { kind: string; seq: number }
-      if (n.kind === 'user') {
-        const text = nodeText((node as { content: readonly unknown[] }).content, 600)
-        if (text.trim() !== '') out.push({ key: `u${n.seq}`, role: 'user', text })
-      } else if (n.kind === 'assistant') {
-        const blocks = (node as unknown as { blocks: ReadonlyArray<{ kind: string; text?: string }> }).blocks
-        let text = ''
-        for (const block of blocks) {
-          if (block.kind === 'text' && typeof block.text === 'string') text += block.text
-        }
-        if (text.trim() !== '') out.push({ key: `a${n.seq}`, role: 'assistant', text: text.slice(0, 1200) })
-      }
-    }
-    return out
-  }, [snap])
+  useEffect(() => {
+    const text = initialPromptRef.current?.trim()
+    if (text === undefined || text === '') return
+    if (childFace === undefined) return
+    if (initialPromptSent.current) return
+    initialPromptSent.current = true
+    initialPromptRef.current = undefined
+    const content = [{ type: 'text', text }] as Parameters<SessionFace['prompt']>[0]
+    // open 确保事件窗口/订阅就绪后发送（幂等；fork 时已触发过一次）。
+    void openSessionFace(childFace).then(() => childFace.prompt(content, 'queue')).catch(() => childFace.prompt(content, 'queue'))
+  }, [childFace])
+
+  const nodeCount = snap?.nodes.length ?? 0
 
   useEffect(() => {
     const el = scrollRef.current
     if (el !== null) el.scrollTop = el.scrollHeight
-  }, [items.length, snap?.running])
+  }, [nodeCount, snap?.running])
 
   const send = (): void => {
     const text = draft.trim()
     if (text === '' || childFace === undefined) return
     const content = [{ type: 'text', text }] as Parameters<SessionFace['prompt']>[0]
-    void childFace.prompt(content, 'queue')
+    void openSessionFace(childFace).then(() => childFace.prompt(content, 'queue')).catch(() => childFace.prompt(content, 'queue'))
     setDraft('')
+  }
+
+  // 官方 InputBar：运行中发送按钮变停止方块（primaryStops = running）
+  const running = snap?.running === true
+  const stop = (): void => {
+    if (childFace === undefined) return
+    void childFace.cancel().catch(() => { /* 取消失败不阻塞 */ })
+  }
+  const onPrimary = (): void => {
+    if (running) { stop(); return }
+    send()
   }
 
   return (
@@ -925,40 +1080,88 @@ export function SideChatPanel({ sessionId, host, childSessionId, onChildCreated,
         {snap !== undefined && snap.running && <span className={css.trajRunning}>运行中</span>}
       </div>
       <div ref={scrollRef} className={css.chatScroll}>
-        {items.length === 0 && (
+        {nodeCount === 0 && snap?.partial === undefined && (
           <div className={css.devEmpty}>
             {childSessionId === undefined ? '准备中…' : '从下面输入消息，开始这段辅助对话（它带着当前会话的上下文 fork）'}
           </div>
         )}
-        {items.map(item => (
-          <div key={item.key} className={css.chatMsg} data-role={item.role}>
-            <div className={css.chatMsgText}>{item.text}</div>
-          </div>
-        ))}
-        {snap?.partial !== undefined && snap.partial !== null && (
-          <div className={css.chatMsg} data-role="assistant">
-            <div className={css.chatMsgText}>
-              {snap.partial.blocks.filter(b => b.kind === 'text').map(b => (b as { text?: string }).text ?? '').join('').slice(0, 1200) || '…'}
-            </div>
-          </div>
-        )}
+        <ChatFlowView snap={snap} />
+        <ChatFlowPartial partial={snap?.partial} running={snap?.running === true} />
       </div>
-      <form className={css.chatComposer} onSubmit={(e) => { e.preventDefault(); send() }}>
-        <textarea
-          className={css.chatInput}
-          value={draft}
-          rows={2}
-          onChange={(e) => { setDraft(e.target.value) }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              send()
-            }
-          }}
-          placeholder={childFace === undefined ? '子会话准备中…' : '输入消息，Enter 发送（Shift+Enter 换行）'}
-          disabled={childFace === undefined}
-        />
-        <button type="submit" className={css.chatSend} disabled={childFace === undefined || draft.trim() === ''}>发送</button>
+      <form ref={composerRef} className={css.chatComposer} onSubmit={(e) => { e.preventDefault(); send() }} data-composer-card="true">
+        <div className={css.composerScroll}>
+          <div className={css.composerGrow}>
+            <textarea
+              className={css.chatInput}
+              value={draft}
+              rows={2}
+              onChange={(e) => { setDraft(e.target.value) }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  send()
+                }
+                if (e.key === 'Escape') setCommandMenuOpen(false)
+              }}
+              placeholder={childFace === undefined ? '子会话准备中…' : '输入消息，Enter 发送（Shift+Enter 换行）'}
+              disabled={childFace === undefined}
+            />
+            <div className={css.composerMirror} aria-hidden="true">{`${draft}\n`}</div>
+          </div>
+        </div>
+        <div className={css.composerRow}>
+          <div className={css.composerTools}>
+            <button
+              type="button"
+              className={css.composerAdd}
+              disabled={childFace === undefined}
+              aria-label="命令"
+              aria-haspopup="listbox"
+              aria-expanded={commandMenuOpen}
+              title="命令"
+              onClick={() => { setCommandMenuOpen(v => !v) }}
+            >
+              <IconPlusOutline16 size={14} />
+            </button>
+            {commandMenuOpen && (
+              <div className={css.commandMenu} role="listbox" data-testid="sidechat-command-menu">
+                <div className={css.commandMenuViewport}>
+                  {commands.map(cmd => (
+                    <button
+                      key={cmd.name}
+                      type="button"
+                      role="option"
+                      className={css.commandRow}
+                      onClick={() => {
+                        setDraft(cmd.name + ' ')
+                        setCommandMenuOpen(false)
+                        const ta = composerRef.current?.querySelector('textarea')
+                        ta?.focus()
+                      }}
+                    >
+                      <span className={css.commandLabel}>{cmd.name}</span>
+                      <span className={css.commandDetail}>{cmd.description}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <div className={css.composerTrailing}>
+            {childFace !== undefined && <ContextMeter face={childFace} />}
+            <button
+              type="button"
+              className={css.chatSend}
+              disabled={childFace === undefined || (!running && draft.trim() === '')}
+              aria-label={running ? '停止' : '发送'}
+              onClick={onPrimary}
+            >
+              {running
+                ? <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="3" y="3" width="10" height="10" rx="3" fill="currentColor" /></svg>
+                : <IconSendOutline14 size={16} />}
+            </button>
+          </div>
+        </div>
       </form>
     </div>
   )

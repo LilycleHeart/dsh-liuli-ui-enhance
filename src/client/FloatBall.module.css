@@ -70,12 +70,17 @@
   transform: translateY(-36px);
 }
 
-/* 工具栏：球旁横向面板（亚克力 + 噪声 + 辉光），按球所在半区展开方向 */
+/* 工具栏：竖向菜单，绝对定位在球旁（亚克力 + 噪声 + 辉光）；
+   默认在球右侧、顶边对齐球顶向下展开；不占 root 布局，
+   root 尺寸始终等于球本体，拖拽/吸附几何不受菜单影响 */
 .toolbar {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 0;
   display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: 10px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
   padding: 6px;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: var(--liuli-radius-sm, 10px);
@@ -84,25 +89,34 @@
   box-shadow: var(--liuli-glow-brand), var(--liuli-shadow);
   backdrop-filter: var(--liuli-material-blur);
   -webkit-backdrop-filter: var(--liuli-material-blur);
-  flex: none;
 }
 
-.root[data-side='left'] .toolbar {
-  margin-left: 0;
-  margin-right: 10px;
-  order: -1;
+/* 右侧放不下：翻到球左侧 */
+.toolbar[data-menu-left] {
+  left: auto;
+  right: calc(100% + 8px);
+}
+
+/* 下方放不下：底边对齐球底，向上展开 */
+.toolbar[data-menu-bottom] {
+  top: auto;
+  bottom: 0;
 }
 
 .toolGroup {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 4px;
+  width: 100%;
 }
 
 .tool {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: flex-start;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
   padding: 6px 10px;
   border: 1px solid transparent;
   border-radius: 8px;
@@ -426,8 +440,9 @@
   background: var(--dsw-alias-interactive-bg-hover-accent);
 }
 
-/* 工具快捷键角标 */
+/* 工具快捷键角标（竖向菜单：推到行尾右缘） */
 .hotkey {
+  margin-left: auto;
   padding: 1px 5px;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 5px;

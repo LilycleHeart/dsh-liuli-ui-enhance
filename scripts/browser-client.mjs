@@ -8,7 +8,7 @@
  * 或人工驱动侧边栏嵌入式浏览器：
  *
  *   node browser-client.mjs caps                       # 能力探测
- *   node browser-client.mjs open <url> [--tab <id>]    # 打开标签（缺省 agent:<n>）
+ *   node browser-client.mjs open <url> [--tab <id>] [--show]  # 打开标签（缺省 agent:<n>）
  *   node browser-client.mjs list                       # 标签清单
  *   node browser-client.mjs state <tab>                # 状态 JSON
  *   node browser-client.mjs goto <tab> <url>           # 导航
@@ -26,6 +26,9 @@
  * 无几何上报的 agent 标签保持隐藏（等效 DSH CLI-managed headless CDP：
  * 导航/执行/截图可用，仅不可见）；GUI 侧边栏打开的标签 id 形如 browser:<uid>，
  * 可直接用本 CLI 驱动（IAB 模式）。
+ * `open --show`：用 browser:show-<uid> 作为标签 id，GUI 侧边栏的轮询桥接（只认
+ * 这个前缀）会自动把该标签展示到右侧面板（agent 驱动浏览器 → 用户实时可见）；
+ * 不带 --show 时保持隐藏，适合无头验证（snap/click/shot）。
  */
 import { writeFileSync } from 'node:fs'
 
@@ -137,10 +140,17 @@ async function run() {
     case 'open': {
       const url = args[1] ?? 'about:blank'
       const tabIndex = args.indexOf('--tab')
-      const tab = tabIndex >= 0 ? args[tabIndex + 1] : 'agent:' + Date.now().toString(36)
+      // --show：用 browser:show-<uid> id，GUI 侧边栏轮询桥接（只认这个前缀）
+      // 会自动展示（agent 驱动浏览器 → 用户实时可见）；缺省 agent:<n> 保持隐藏
+      // （无头验证用）。普通 browser:* / agent:* 标签不会被桥接，避免误打扰。
+      const show = args.includes('--show')
+      const tab = tabIndex >= 0
+        ? args[tabIndex + 1]
+        : (show ? 'browser:show-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7) : 'agent:' + Date.now().toString(36))
       const created = await postJson('/liuli-browser/tabs', { id: tab, url })
       if (created.ok !== true) fail('create failed: ' + JSON.stringify(created))
       const state = await waitIdle(tab)
+      if (show) process.stderr.write(`[browser-client] --show 标签 ${tab} 会在数秒内出现在侧边栏（PreviewPanel 轮询桥接）\n`)
       console.log(JSON.stringify({ tabId: tab, ...state }, null, 2))
       return
     }

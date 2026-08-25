@@ -165,7 +165,9 @@ body {
   --dsw-specific-bubble-highlight: #c4e2ff;
   --dsw-specific-bubble: #d0e8ff;
   --dsw-specific-bubble-fg: #001d33;
-  --dsw-specific-input-major: rgba(var(--liuli-acrylic-rgb), 0.22);
+  /* 输入面/浮动卡（composer 卡、审批卡、问题卡等）：跟随材质不透明度滑条，
+     不再写死 0.22 —— 否则拖动「材质不透明度」对这些表面无效果。 */
+  --dsw-specific-input-major: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55));
   --dsw-specific-login-input: #f8f9fa;
   --dsw-specific-menu: var(--dsw-alias-bg-layer-3);
   --dsw-specific-selector: #eef2f6;
@@ -173,7 +175,9 @@ body {
   --dsw-specific-sidebar-nav-item-active-accent: #001d33;
   --dsw-specific-sidebar-nav-item-active: #d0e8ff;
   --dsw-specific-sidebar-nav-item-hover: rgba(0, 121, 191, 0.08);
-  --dsw-specific-tip: rgba(var(--liuli-acrylic-rgb), 0.5);
+  /* 输入 dock（GoalBar / QueueDock / TodoDock）：跟随材质不透明度滑条，
+     不再写死 0.5。 */
+  --dsw-specific-tip: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55));
 
   --liuli-acrylic-rgb: 221, 229, 237;
   --liuli-acrylic-rgb-low: 232, 238, 244;
@@ -288,7 +292,7 @@ body[data-ds-dark-theme] {
   --dsw-specific-bubble-highlight: #005477;
   --dsw-specific-bubble: #004a73;
   --dsw-specific-bubble-fg: #d0e8ff;
-  --dsw-specific-input-major: rgba(var(--liuli-acrylic-rgb), 0.22);
+  --dsw-specific-input-major: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55));
   --dsw-specific-login-input: #121316;
   --dsw-specific-menu: var(--dsw-alias-bg-layer-3);
   --dsw-specific-selector: #283040;
@@ -296,7 +300,7 @@ body[data-ds-dark-theme] {
   --dsw-specific-sidebar-nav-item-active-accent: #d0e8ff;
   --dsw-specific-sidebar-nav-item-active: #004a73;
   --dsw-specific-sidebar-nav-item-hover: rgba(142, 205, 248, 0.08);
-  --dsw-specific-tip: rgba(var(--liuli-acrylic-rgb), 0.5);
+  --dsw-specific-tip: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55));
 
   --liuli-acrylic-rgb: 30, 37, 48;
   --liuli-acrylic-rgb-low: 26, 32, 42;
@@ -436,6 +440,31 @@ div[data-phase]:not([data-phase='active'])::before {
 }
 
 /* ════════════════════════════════════════════════════════════
+ * 开始页（hero 阶段）去掉壁纸模糊：blank session 整列只有标题 +
+ * 输入卡，磨砂层糊满整页，用户要求开始页不模糊。
+ * 只关掉模糊层（backdrop-filter:none），壁纸原图清晰透出；
+ * 输入卡自身的亚克力磨砂不受影响。
+ * ════════════════════════════════════════════════════════════ */
+div[data-phase='hero']::before {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* ════════════════════════════════════════════════════════════
+ * 页头独立面板模式（advanced dock 拆出页头，header 被搬到
+ * region:conversation-header，正文 phase 内只有 scrollBody 一张卡片）：
+ * 磨砂层无需动态 mask 挖「header↔正文」的缝，改用 clip-path 整卡裁剪
+ * （顶部圆角、底部直角，与 scrollBody active 态一致）——不依赖
+ * HeaderEffects 动态生成的 SVG mask，收起侧栏等布局重排不会再让
+ * mask 失效导致壁纸模糊层消失。与侧栏等卡片一致的稳定做法。
+ * ════════════════════════════════════════════════════════════ */
+div[data-phase='active']:not(:has(header))::before {
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+  clip-path: inset(0 round var(--liuli-radius, 14px) var(--liuli-radius, 14px) 0 0);
+}
+
+/* ════════════════════════════════════════════════════════════
  * Agent 询问卡片磨砂：与输入框（composer）一致的亚克力效果。
  * QuestionComposer / PlanReviewPanel 都是接管输入框位置的卡片，
  * 背景沿用 --dsw-specific-input-major，但宿主 CSS 未带 backdrop-filter。
@@ -527,8 +556,11 @@ div[role="menu"] [class*="_groupTitle"] {
 }
 
 /* 输入卡内的“命令”圆钮、聊天区“回到底部”按钮：
-   从实色容器改为与卡片一致的亚克力表面。 */
-[data-composer-card] button[class*="_add"] {
+   从实色容器改为与卡片一致的亚克力表面。
+   [class*="_add"] 覆盖官方命令圆钮（hash 尾 _add）；
+   [class*="_composerAdd"] 覆盖侧边栏辅助对话的命令圆钮（hash 尾 _composerAdd）。 */
+[data-composer-card] button[class*="_add"],
+[data-composer-card] button[class*="_composerAdd"] {
   background-color: var(--dsw-specific-input-major) !important;
   background-image: var(--liuli-noise) !important;
 }
@@ -755,6 +787,42 @@ div[data-phase] > div > header[aria-hidden] {
 }
 
 [data-shard-region="region:conversation"]:has(~ [data-shard-region="region:conversation-header"]:has(header[aria-hidden])) {
+  flex-grow: 1 !important;
+}
+
+/* ── hero 阶段兜底（会话归档后残留旧 header 不带 aria-hidden 的场景）──
+   开始页（data-phase='hero'）无论 header 是否带 aria-hidden 一律隐藏：
+   归档当前会话后官方会跳到空白会话，但页头面板里可能残留归档前的旧
+   header（有内容、无 aria-hidden），:has(header[aria-hidden]) 匹配不到
+   导致 header 页依然显示；而重新进入开始页时只有空白 header（带
+   aria-hidden）所以正常。这里以 hero 阶段为信号兜底。 */
+div[data-phase='hero'] > header,
+div[data-phase='hero'] > div > header {
+  display: none !important;
+}
+
+/* 页头 shard：会话 shard 处于 hero 阶段时整块隐藏（覆盖旧 header 残留） */
+[data-shard-region="region:conversation-header"]:has(~ [data-shard-region="region:conversation"] div[data-phase='hero']) {
+  display: none !important;
+}
+
+/* 页头 shard 在会话 shard 下方时 */
+[data-shard-region="region:conversation"]:has(div[data-phase='hero']) ~ [data-shard-region="region:conversation-header"] {
+  display: none !important;
+}
+
+/* 相邻 sash 一并隐藏（页头在上：sash 紧随页头 shard） */
+[data-shard-region="region:conversation-header"]:has(~ [data-shard-region="region:conversation"] div[data-phase='hero']) + [data-testid="dock-sash"] {
+  display: none !important;
+}
+
+/* 页头在下：sash 紧随会话 shard，且其下一兄弟是页头 shard */
+[data-shard-region="region:conversation"]:has(div[data-phase='hero']) + [data-testid="dock-sash"]:has(+ [data-shard-region="region:conversation-header"]) {
+  display: none !important;
+}
+
+/* 页头 shard 隐藏后会话 shard 提权填满（flex-grow 总和 <1 时只按比例分配） */
+[data-shard-region="region:conversation"]:has(div[data-phase='hero']) {
   flex-grow: 1 !important;
 }
 
@@ -1037,6 +1105,35 @@ div[data-phase='active'] {
   -webkit-backdrop-filter: var(--liuli-material-blur);
   backdrop-filter: var(--liuli-material-blur);
   pointer-events: none;
+}
+
+/* ════════════════════════════════════════════════════════════
+ * 设置页（SettingsRoot 全屏模态）卡片材质化：官方设置外壳的面板是
+ * --dsw-alias-bg-layer-2 实底，琉璃的材质不透明度（--liuli-material-opacity）
+ * 在设置页上完全不可见，拖动「材质不透明度」滑条页面无任何变化。
+ * 这里只把设置卡片面板改为与侧栏/对话卡一致的 ::before 亚克力配方
+ * （背景层独立、根不持有 backdrop-filter，避免成为 fixed 后代的包含块），
+ * 让设置卡片随材质不透明度/模糊实时响应。
+ * 卡片外的全屏遮罩（bg-mask + 磨砂）保持官方硬编码，不随滑条变化。
+ * ════════════════════════════════════════════════════════════ */
+[class*="_sidebarCol"] [class*="_overlay"] > [class*="_panel"] {
+  background-color: transparent !important;
+  background-image: none !important;
+  border: 1px solid var(--dsw-alias-border-l1) !important;
+  box-shadow: var(--liuli-glow-brand), var(--liuli-shadow) !important;
+}
+
+[class*="_sidebarCol"] [class*="_overlay"] > [class*="_panel"]::before {
+  content: '' !important;
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: -1 !important;
+  border-radius: inherit !important;
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55)) !important;
+  background-image: var(--liuli-noise) !important;
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;
+  pointer-events: none !important;
 }
 
 /* 品牌头部留白（琉璃 sidebar-header 配方） */
@@ -1402,11 +1499,6 @@ div[data-phase='active'] {
 [role="dialog"][class*="_panel"],
 [role="dialog"][class*="_dialog"] {
   box-shadow: var(--liuli-glow-brand), var(--liuli-shadow) !important;
-}
-
-/* 设置页去掉重复且无功能的“插件”导航项（保留官方第一个） */
-[role="dialog"] [class*="_navList"] > button:nth-of-type(6) {
-  display: none !important;
 }
 
 /* 设置页“已保存”提示去掉背景色，文字用主题色 */

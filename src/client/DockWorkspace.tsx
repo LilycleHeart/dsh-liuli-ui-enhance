@@ -13,6 +13,7 @@ import { Fragment, useCallback, useEffect, useRef, useState, useSyncExternalStor
 import { collectTabsNodes, findNode, MIN_SIZE, panelCount, type DockLayout, type DockNode, type DropTarget, type FloatWindow, type PanelInstance, type TabsNode } from './dock-model.ts'
 import type { DockStore } from './dock-store.ts'
 import { DOCK_PANEL_DEFS, panelDef, panelTitle, type DockHostAccess } from './dock-panels.tsx'
+import type { SidePaneHostAccess } from './SidePaneExtraPanels.tsx'
 import { markSideTabAccepted, parseSideTab, SIDE_TAB_MIME, sideTabToDockPanel, type SideTabDockPanel } from './side-tab-dock.ts'
 import css from './DockWorkspace.module.css'
 import { beginResizePerf, endResizePerf } from './resize-perf.ts'
@@ -63,6 +64,8 @@ export interface DockWorkspaceProps {
   sessionList: DockSessionList | undefined
   addFileToChat?: (path: string) => void
   openPath?: (path: string) => void
+  /** 宿主 sidePane 数据面（开发者工具/轨迹/计划/子智能体/辅助对话面板需要）。 */
+  sidePaneHost?: SidePaneHostAccess | undefined
   onClose: () => void
 }
 
@@ -91,7 +94,7 @@ function basename(path: string): string {
   return parts[parts.length - 1] ?? path
 }
 
-export function DockWorkspace({ store, sessionList, addFileToChat, openPath, onClose }: DockWorkspaceProps) {
+export function DockWorkspace({ store, sessionList, addFileToChat, openPath, sidePaneHost, onClose }: DockWorkspaceProps) {
   const layout = useSyncExternalStore(store.subscribe, store.getSnapshot)
   const [sessionId, setSessionId] = useState<string | undefined>(() => sessionList?.getSnapshot().current)
   const [drag, setDrag] = useState<DragState | null>(null)
@@ -150,6 +153,7 @@ export function DockWorkspace({ store, sessionList, addFileToChat, openPath, onC
     addFileToChat,
     openPath,
     openFileInDock,
+    sidePaneHost,
   }
 
   /* ── 拖拽：命中判定 ── */

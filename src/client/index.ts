@@ -32,6 +32,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { InputTriggerSource, ReferenceCodec } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import { LiuliAppearanceSection, type LiuliAppearanceInjected } from './LiuliAppearance.tsx'
 import { LiuliAppearanceRow, type LiuliAppearanceRowInjected } from './LiuliAppearanceRow.tsx'
+import { LiuliFeaturesSection, type LiuliFeaturesInjected } from './LiuliFeaturesSection.tsx'
 import { createLiuliAppearanceStore } from './liuli-appearance-store.ts'
 import { createLiuliStore } from './liuli-store.ts'
 import {
@@ -42,7 +43,7 @@ import {
   LIULI_LS_KEY, LIULI_SETTINGS_DEFAULTS, liuliSettingsOf,
   type LiuliBgArea, type LiuliSettings,
 } from '../liuli-settings.ts'
-import { en, zh, type LiuliAppearanceKey, modelRetryZh, modelRetryEn, type ModelRetryKey, historyLoadZh, historyLoadEn, type HistoryLoadKey } from './locales.ts'
+import { en, zh, type LiuliAppearanceKey, featuresZh, featuresEn, type LiuliFeaturesKey } from './locales.ts'
 import { liuliCss } from './liuli-css.ts'
 import {
   LiuliHeaderVoiceprint, LiuliHeaderChrome, LiuliHeaderResizer,
@@ -50,6 +51,8 @@ import {
 import { setTurnRailCommitHandler, TurnRail } from './TurnRail.tsx'
 import { fileChangesDefinition, RoundSummaryCard } from './TurnFileCard.tsx'
 import { startEditDiffAutoExpand } from './edit-diff-autoplay.ts'
+import { startAutoOpenDetails } from './auto-open-details.ts'
+import { startAutoDriveBrowser } from './auto-drive-browser.ts'
 import { startLiuliTransition } from './liuli-transition.ts'
 import { startAutoLoadHistory } from './auto-load-history.ts'
 import { installResizePerfWatcher } from './resize-perf.ts'
@@ -58,10 +61,7 @@ import { startHeaderTextAnimation } from './header-text-animation.ts'
 import { startConversationSplit } from './conversation-split.ts'
 import { disposeSupplierQuota, initSupplierQuota, refreshSupplierQuota } from './supplier-quota.ts'
 import { SupplierQuota } from './SupplierQuota.tsx'
-import { ModelRetryRow, type ModelRetryRowInjected } from './ModelRetryRow.tsx'
-import { HistoryLoadRow, type HistoryLoadRowInjected } from './HistoryLoadRow.tsx'
-import { createHistoryLoadStore, loadHistoryBatches, saveHistoryBatches } from './history-load-store.ts'
-import { createModelRetryStore } from './model-retry-store.ts'
+import { loadHistoryBatches, saveHistoryBatches } from './history-load-store.ts'
 import { initModelRetry, disposeModelRetry, loadModelRetry, saveModelRetry, cacheModelRetryBackoff } from './model-retry-controller.ts'
 import { createElement } from 'react'
 import { FloatBall } from './FloatBall.tsx'
@@ -75,9 +75,11 @@ import { startSessionContextMenu } from './session-context-menu.ts'
 import { startWorkspaceContextMenu } from './workspace-context-menu.ts'
 import {
   PreviewDetailsPanel, PreviewButton, PREVIEW_TOGGLE_EVENT, PREVIEW_NAVIGATE_EVENT,
+  SIDE_CHAT_OPEN_EVENT,
   resolvePreviewUrl, setPreviewOpen, togglePreviewOpen, setPaneSyncSuppressed,
 } from './PreviewPanel.tsx'
 import type { SidePaneHostAccess } from './SidePaneExtraPanels.tsx'
+import { BtwAnswerHost, BTW_ANSWER_EVENT } from './BtwAnswer.tsx'
 import { DockWorkspace, DOCK_TOGGLE_EVENT, isDockOpen, setDockOpen, toggleDockOpen } from './DockWorkspace.tsx'
 import { DockStore } from './dock-store.ts'
 import { addPanel as addDockPanel } from './dock-model.ts'
@@ -90,23 +92,18 @@ import {
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
-    /** 琉璃 界面设置 section 的文案。 */
+    /** 琉璃 设置「外观」分区 section 的文案。 */
     'liuli-appearance': LiuliAppearanceKey
-    /** 模型请求重试行（通用设置区）的文案。 */
-    'liuli-model-retry': ModelRetryKey
-    /** 切换会话默认历史加载行（通用设置区）的文案。 */
-    'liuli-history-load': HistoryLoadKey
+    /** 琉璃 设置「功能」分区 section 的文案。 */
+    'liuli-features': LiuliFeaturesKey
   }
 }
 
-/** 琉璃 设置 section 的文案命名空间。 */
+/** 琉璃 设置「外观」分区 section 的文案命名空间。 */
 export const LIULI_LOCALE_NS = 'liuli-appearance'
 
-/** 模型请求重试行的文案命名空间。 */
-export const MODEL_RETRY_LOCALE_NS = 'liuli-model-retry'
-
-/** 切换会话默认历史加载行的文案命名空间。 */
-export const HISTORY_LOAD_LOCALE_NS = 'liuli-history-load'
+/** 琉璃 设置「功能」分区 section 的文案命名空间。 */
+export const LIULI_FEATURES_LOCALE_NS = 'liuli-features'
 
 /** 主题样式注入的 <style> id（幂等：重复 apply 不叠加）。 */
 const STYLE_ID = 'liuli-theme-css'
@@ -149,8 +146,9 @@ const SETTINGS_DEFER_CSS = [
   'body[data-liuli-settings-open] [data-region-pane="region:conversation"] header,',
   'body[data-liuli-settings-open] [data-region-pane="region:conversation-header"] header,',
   'body[data-liuli-settings-open] [data-testid="dock-tab-strip"],',
-  'body[data-liuli-settings-open] [data-liuli-pane-drag],',
-  'body[data-liuli-settings-open] [data-liuli-window-drag] {',
+  'body[data-liuli-settings-open] [class*="_sidebarCol"] [class*="_logoRow"],',
+  'body[data-liuli-settings-open] [data-preview-panel] [class*="_tabStrip"],',
+  'body[data-liuli-settings-open] [data-liuli-pane-drag] {',
   '  -webkit-app-region: no-drag !important;',
   '}',
 ].join('\n')
@@ -216,17 +214,43 @@ const DESKTOP_ADVANCED_CSS = [
   'body[data-dsh-desktop-mode="advanced"] [class*="_sidebarCol"] > div > [class*="_root"] {',
   '  width: 100% !important;',
   '}',
-  '/* ── 无边框窗口拖动区：win32 去掉 caption 行后，窗口拖拽由 desktop 顶部',
-  '   15px 透明拖动条（DockShellFrame 的 .windowTopDrag）承担，header 不再拖窗 */',
-  '/* dock 合并标签条空白区（tabFiller）也可拖动窗口；标签 chip no-drag 保持可拖拽/可点 */',
-  'body[data-dsh-desktop-mode="advanced"] [data-testid="dock-tab-strip"] {',
+  '/* ── 无边框窗口拖动区：win32 去掉 caption 行后，各「贴顶卡片」的顶部条带承担窗口拖动 ── */',
+  '/* 门控 [data-edge-top]：只有触及 dock 画布顶边的卡片（data-edge-top，由 edgeMap 实测）',
+  '   的顶部 chrome 才是窗口拖拽区；dockable 布局中拆到下方/中间的卡片其 chrome 保持',
+  '   自身语义（标签条排序/面板拖拽），不会误拖窗口。悬浮窗（dock-float）不参与。 */',
+  '/* 会话页头（独立面板或回退到正文面板内）整体 drag，空白处可拖窗 */',
+  'body[data-dsh-desktop-mode="advanced"] [data-region-pane="region:conversation-header"][data-edge-top] header,',
+  'body[data-dsh-desktop-mode="advanced"] [data-region-pane="region:conversation"][data-edge-top] header {',
   '  -webkit-app-region: drag;',
   '}',
-  'body[data-dsh-desktop-mode="advanced"] [data-testid="dock-tab-strip"] [data-testid="dock-tab-chip"] {',
+  '/* 页头内交互元素保持可点（no-drag 挖洞覆盖父级 drag） */',
+  'body[data-dsh-desktop-mode="advanced"] :is([data-region-pane="region:conversation-header"][data-edge-top], [data-region-pane="region:conversation"][data-edge-top]) header :is(button, a, input, select, textarea, label, [role="button"], [role="tab"], [role="menuitem"], [role="combobox"], [role="listbox"], [contenteditable], [data-liuli-window-controls]) {',
+  '  -webkit-app-region: no-drag;',
+  '}',
+  '/* dock 面板标签条空白区（tabFiller）也可拖动窗口（仅贴顶面板）；标签 chip no-drag 保持可拖拽/可点 */',
+  'body[data-dsh-desktop-mode="advanced"] [data-testid="dock-pane"][data-edge-top] [data-testid="dock-tab-strip"] {',
+  '  -webkit-app-region: drag;',
+  '}',
+  'body[data-dsh-desktop-mode="advanced"] [data-testid="dock-pane"][data-edge-top] [data-testid="dock-tab-strip"] [data-testid="dock-tab-chip"] {',
+  '  -webkit-app-region: no-drag;',
+  '}',
+  '/* 侧栏卡片顶部（logoRow，60px）可拖窗：侧栏常驻贴顶，其顶部即窗口拖拽区；',
+  '   内部交互元素（折叠钮/logo 等）no-drag 保持可点 */',
+  'body[data-dsh-desktop-mode="advanced"] [data-region-pane="region:sidebar"][data-edge-top] [class*="_logoRow"] {',
+  '  -webkit-app-region: drag;',
+  '}',
+  'body[data-dsh-desktop-mode="advanced"] [data-region-pane="region:sidebar"][data-edge-top] [class*="_logoRow"] :is(button, a, input, select, textarea, [role], [tabindex], [contenteditable]) {',
+  '  -webkit-app-region: no-drag;',
+  '}',
+  '/* 详情卡片顶部（右侧面板标签条，48px）可拖窗（详情贴顶时）；标签/按钮 no-drag 保持可点可拖排序 */',
+  'body[data-dsh-desktop-mode="advanced"] [data-region-pane="region:details"][data-edge-top] [data-preview-panel] [class*="_tabStrip"] {',
+  '  -webkit-app-region: drag;',
+  '}',
+  'body[data-dsh-desktop-mode="advanced"] [data-region-pane="region:details"][data-edge-top] [data-preview-panel] [class*="_tabStrip"] :is(button, a, [data-side-pane-tab-id], [role], [tabindex]) {',
   '  -webkit-app-region: no-drag;',
   '}',
   '/* 开始页（会话 header 隐藏 display:none）：激活会话面板顶部拖动条，顶部可拖窗 */',
-  'body[data-dsh-desktop-mode="advanced"] [data-region-pane="region:conversation"]:has(header[aria-hidden]) [data-liuli-pane-drag] {',
+  'body[data-dsh-desktop-mode="advanced"] [data-region-pane="region:conversation"][data-edge-top]:has(header[aria-hidden]) [data-liuli-pane-drag] {',
   '  -webkit-app-region: drag;',
   '  pointer-events: auto;',
   '}',
@@ -336,11 +360,37 @@ function unequipRootEntryChildren(ctx: ClientContext): void {
 export function apply(ctx: ClientContext): void {
   injectThemeCss()
 
+  // ── 非官方增强开关（兼容其它插件）：启动时同步读取 localStorage，决定以下各
+  //    挂载点是否生效。总开关关闭或对应分组关闭时，相应功能完全不挂载（不留
+  //    DOM 观察器 / 不接管布局 / 不触发宿主补丁），只保留官方扩展点功能
+  //    （主题 / 声纹 / 右侧边栏 / 设置页）。更改后需刷新页面生效。 ──
+  const bootSettings = ((): LiuliSettings => {
+    try {
+      const raw = localStorage.getItem(LIULI_LS_KEY)
+      if (raw) return liuliSettingsOf(JSON.parse(raw))
+    } catch (_) { /* 损坏则回落默认 */ }
+    return LIULI_SETTINGS_DEFAULTS
+  })()
+  /** 分组判定：总开关关闭则全部关闭；否则按分组开关。 */
+  const unofficial = (group: 'layout' | 'desktop' | 'browser' | 'dom'): boolean => {
+    if (!bootSettings.unofficial_enabled) return false
+    switch (group) {
+      case 'layout': return bootSettings.unofficial_layout
+      case 'desktop': return bootSettings.unofficial_desktop
+      case 'browser': return bootSettings.unofficial_browser
+      default: return bootSettings.unofficial_dom
+    }
+  }
+  /** 五个开关的指纹（用于远端设置与启动生效值不一致时触发重载）。 */
+  const unofficialFlagsOf = (s: LiuliSettings): string =>
+    [s.unofficial_enabled, s.unofficial_layout, s.unofficial_desktop, s.unofficial_browser, s.unofficial_dom].join(',')
+
   // ── advanced（无边框）模式别名挂载：桌面 shell 元素补上上游结构类名，──
   // ── 让兼容模式配方（[class*="_frame"]/"_sidebarCol"/"_centerCol"/"_detailsCol"）直接命中 ──
   // advanced 模式下宿主 shell（.dshDesktopFrame 网格）替换上游 AppFrame，
   // 哈希结构类全部消失导致琉璃大部分样式失效；给 shell 表面挂同名别名类即可复用配方。
   ctx.effect(() => {
+    if (!unofficial('layout')) return () => {}
     const mode = new URLSearchParams(window.location.search).get('dsh-desktop-mode')
     if (mode !== 'advanced') return () => {}
     const ALIASES: Array<[string, string]> = [
@@ -377,7 +427,7 @@ export function apply(ctx: ClientContext): void {
   // 拖拽/四向拆分/边缘与面板内停靠/浮动窗口/标签页合并/sash 缩放 + Workspace 保存/恢复。
   // 子 slot（sidebar/conversation/details/shell.overlay）的声明仍归桌面 shell，
   // 本插件借 ctx.slots.inject('sidebar') 等到声明落地后再注册 root 占用者，避免重复声明。
-  if (new URLSearchParams(window.location.search).get('dsh-desktop-mode') === 'advanced') {
+  if (new URLSearchParams(window.location.search).get('dsh-desktop-mode') === 'advanced' && unofficial('layout')) {
     const shellHandle = createDockShellStore().create()
     // 对话页双容器：把 conversation 面板里的 header 槽位容器与正文滚动容器
     // 标记为两个并列容器（CSS 驱动布局），会话切换/面板重挂时由 body 级观察补标记。
@@ -453,41 +503,69 @@ export function apply(ctx: ClientContext): void {
   }
 
   // ── 会话切换/新消息入场动画：MutationObserver 挂类（动画定义在 liuli.css）──
-  ctx.effect(() => startLiuliTransition(), 'dsh-liuli-ui-enhance: message transition observer')
+  ctx.effect(() => {
+    if (!unofficial('dom')) return () => {}
+    return startLiuliTransition()
+  }, 'dsh-liuli-ui-enhance: message transition observer')
 
   // ── 对话页历史自动加载：上翻到消息列顶部时自动点击“加载更早消息”，
   //    替代手动点击 older 按钮 ──
-  ctx.effect(() => startAutoLoadHistory(), 'dsh-liuli-ui-enhance: auto load history on scroll top')
+  ctx.effect(() => {
+    if (!unofficial('dom')) return () => {}
+    return startAutoLoadHistory()
+  }, 'dsh-liuli-ui-enhance: auto load history on scroll top')
 
   // ── 缩放性能护栏：sash/窗口 resize 期间冻结宿主产物行 RO、关闭磨砂/过渡，
   //    避免长对话拖拽掉帧（详见 resize-perf.ts 注释）──
   ctx.effect(() => {
+    if (!unofficial('dom')) return () => {}
     installResizePerfWatcher()
     return () => { /* 监听器随页面生命周期常驻，幂等安装无需卸载 */ }
   }, 'dsh-liuli-ui-enhance: resize perf guard')
 
   // ── 会话 header 视图标签（对话/轨迹）滑动激活指示条：官方横条瞬间切换，
   //    这里注入独立指示条跟随激活 tab 平滑滑动（动画定义在 liuli.css）──
-  ctx.effect(() => startHeaderTabIndicator(), 'dsh-liuli-ui-enhance: header tab indicator')
+  ctx.effect(() => {
+    if (!unofficial('dom')) return () => {}
+    return startHeaderTabIndicator()
+  }, 'dsh-liuli-ui-enhance: header tab indicator')
 
   // ── 会话 header 动态文本（标题名/模型/路由等）变化时入场动画：
   //    MutationObserver 检测文本变化后挂 .liuli-header-text-enter ──
-  ctx.effect(() => startHeaderTextAnimation(), 'dsh-liuli-ui-enhance: header text animation')
+  ctx.effect(() => {
+    if (!unofficial('dom')) return () => {}
+    return startHeaderTextAnimation()
+  }, 'dsh-liuli-ui-enhance: header text animation')
 
   // ── 用户发送的网页元素：在聊天气泡里也渲染成卡片（官方只装饰 /@ chip）──
-  ctx.effect(() => startElementCardDecoration(), 'dsh-liuli-ui-enhance: element card decoration')
+  ctx.effect(() => {
+    if (!unofficial('dom')) return () => {}
+    return startElementCardDecoration()
+  }, 'dsh-liuli-ui-enhance: element card decoration')
 
   // ── 会话内联重命名：双击侧栏会话标题进入内联编辑（不弹菜单/对话框）──
-  ctx.effect(() => startSessionRename(ctx), 'dsh-liuli-ui-enhance: session inline rename')
+  ctx.effect(() => {
+    if (!unofficial('dom')) return () => {}
+    return startSessionRename(ctx)
+  }, 'dsh-liuli-ui-enhance: session inline rename')
 
   // ── 会话标记：localStorage store + 会话行图标装饰 ──
-  ctx.effect(() => startSessionMarkerDecoration(ctx), 'dsh-liuli-ui-enhance: session marker decoration')
+  ctx.effect(() => {
+    if (!unofficial('dom')) return () => {}
+    return startSessionMarkerDecoration(ctx)
+  }, 'dsh-liuli-ui-enhance: session marker decoration')
 
   // ── 会话栏右键菜单：右键会话行弹出标记/重命名/分叉/归档（不改官方代码）──
-  ctx.effect(() => startSessionContextMenu(ctx), 'dsh-liuli-ui-enhance: session context menu')
+  ctx.effect(() => {
+    if (!unofficial('dom')) return () => {}
+    return startSessionContextMenu(ctx)
+  }, 'dsh-liuli-ui-enhance: session context menu')
 
   // ── 工作区/目录行右键菜单：重命名/删除工作区（不改官方代码）──
-  ctx.effect(() => startWorkspaceContextMenu(ctx), 'dsh-liuli-ui-enhance: workspace context menu')
+  ctx.effect(() => {
+    if (!unofficial('dom')) return () => {}
+    return startWorkspaceContextMenu(ctx)
+  }, 'dsh-liuli-ui-enhance: workspace context menu')
 
   // ── 供应商额度：注入 connection/remote，供 header 工具区显示当前供应商额度 ──
   initSupplierQuota(ctx.get('connection') as ConnectionHandle, ctx.get('modelDirectories'))
@@ -585,13 +663,6 @@ export function apply(ctx: ClientContext): void {
     }, span)
   }
 
-  // dock shell 扩展面板的宿主能力桥（advanced 模式下 DockShellFrame 为纯组件，
-  // 不碰 cordis；文件入聊天 / 系统打开经此桥到达 conversation / workspaces 服务）。
-  setDockHostBridge({
-    addFileToChat: insertFileReference,
-    openPath: (path: string) => { void ctx.workspaces.openPath(path) },
-  })
-
   const insertCommitReference = (commit: string): void => {
     const current = ctx.sessions.list.getSnapshot().current
     if (current === undefined) return
@@ -611,6 +682,7 @@ export function apply(ctx: ClientContext): void {
 
   // ── 常驻悬浮圆点工具窗（fixed 全局置顶，独立 React root）──
   ctx.effect(() => {
+    if (!unofficial('dom')) return () => {}
     const host = document.createElement('div')
     host.id = 'liuli-floatball-host'
     document.body.appendChild(host)
@@ -633,6 +705,7 @@ export function apply(ctx: ClientContext): void {
   // 胶囊内置智能避让：遮挡交互元素（header 工具按钮/详情面板头部/浮动窗口
   // 标题栏等）时自动淡出，悬停右上角检测区唤出（见 WindowControls.tsx）。
   ctx.effect(() => {
+    if (!unofficial('desktop')) return () => {}
     if (!isFramelessWin32()) return () => {}
     const hostEl = document.createElement('div')
     hostEl.id = 'liuli-window-controls-host'
@@ -685,6 +758,7 @@ export function apply(ctx: ClientContext): void {
   // ── Electron 手动刷新快捷键：DSH Desktop 无边框窗口没有浏览器刷新按钮/菜单，
   //    安装新 bundle 后可用 Ctrl/Cmd+Shift+R（或 F5）整页重载。 ──
   ctx.effect(() => {
+    if (!unofficial('dom')) return () => {}
     const onKey = (e: KeyboardEvent): void => {
       const wantsReload = (e.ctrlKey || e.metaKey) && e.shiftKey && e.code === 'KeyR'
       const wantsReloadF5 = e.key === 'F5'
@@ -726,11 +800,44 @@ export function apply(ctx: ClientContext): void {
     }
   }, 'dsh-liuli-ui-enhance: settings overlay defer')
 
+  // 扩展面板（轨迹/计划/子智能体/辅助对话/开发者工具）的宿主数据面。
+  // 定义在 Dockable Workspace / dock shell 之前，供两者注入同一份数据面。
+  const sidePaneHost: SidePaneHostAccess = {
+    sessionList: ctx.sessions.list,
+    getSessionFace: id => ctx.sessions.binding(id as SessionId)?.session,
+    forkSession: async id => {
+      // 辅助对话 fork 的会话只存在于标签页：fork 后立即归档，隐藏于会话列表
+      // （binding 仍可寻址，prompt 照常工作；归档由 workspace 侧记账）。
+      const childId = await ctx.sessions.fork({ sessionId: id as SessionId, increaseTitle: true })
+      try {
+        await ctx.workspaces.archiveSession(childId)
+      } catch (error) {
+        console.warn('liuli side-chat archive failed:', error)
+      }
+      return childId
+    },
+    openSession: id => { ctx.sessions.open(id as SessionId) },
+    archiveSession: id => ctx.workspaces.archiveSession(id as SessionId),
+    archivedSessionIds: {
+      getSnapshot: () => ctx.workspaces.list.getSnapshot().archivedSessionIds,
+      subscribe: fn => ctx.workspaces.list.subscribe(fn),
+    },
+  }
+
+  // dock shell 扩展面板的宿主能力桥（advanced 模式下 DockShellFrame 为纯组件，
+  // 不碰 cordis；文件入聊天 / 系统打开 / sidePane 数据面经此桥到达宿主服务）。
+  setDockHostBridge({
+    addFileToChat: insertFileReference,
+    openPath: (path: string) => { void ctx.workspaces.openPath(path) },
+    sidePaneHost,
+  })
+
   // ── Dockable Workspace（琉璃工作台）：可拖拽/停靠/拆分/浮动/标签合并的面板工作台 ──
   // 布局自动落 localStorage（dock-store 防抖保存），刷新/HMR 重载后原样恢复；
   // 顶栏另有命名槽位保存/恢复与 JSON 导出/导入。
   const dockStore = new DockStore()
   ctx.effect(() => {
+    if (!unofficial('layout')) return () => {}
     const hostEl = document.createElement('div')
     hostEl.id = 'liuli-dock-host'
     document.body.appendChild(hostEl)
@@ -742,6 +849,7 @@ export function apply(ctx: ClientContext): void {
           sessionList: ctx.sessions.list,
           addFileToChat: insertFileReference,
           openPath: (path: string) => { void ctx.workspaces.openPath(path) },
+          sidePaneHost,
           onClose: () => { toggleDockOpen() },
         })
         : null)
@@ -786,13 +894,24 @@ export function apply(ctx: ClientContext): void {
     const next = snap.ids[index + dir]
     if (next !== undefined) ctx.sessions.open(next)
   }
-  // 扩展面板（轨迹/计划/子智能体/辅助对话/开发者工具）的宿主数据面。
-  const sidePaneHost: SidePaneHostAccess = {
-    sessionList: ctx.sessions.list,
-    getSessionFace: id => ctx.sessions.binding(id as SessionId)?.session,
-    forkSession: id => ctx.sessions.fork({ sessionId: id as SessionId, increaseTitle: true }),
-    openSession: id => { ctx.sessions.open(id as SessionId) },
-  }
+  // /side、/btw 指令桥：命令在 node 半注册、仅返回成功；这里监听 command/executed
+  // （控制面事件，不进模型历史）。
+  // - /side：在当前会话侧边栏新建辅助对话标签（fork 在标签首次打开时惰性完成）。
+  // - /btw <text>：把问题交给 fork 出的子会话并发回答，回答渲染到正文消息流
+  //   末尾的卡片（BtwAnswerHost），不打开侧边栏窗口、不改变主会话上下文。
+  ctx.effect(() => ctx.events.on('command/executed', (sessionId: unknown, name: unknown, result: unknown) => {
+    if (name !== 'side' && name !== 'btw') return
+    const current = ctx.sessions.list.getSnapshot().current
+    if (sessionId !== current) return
+    const payload = result as { kind?: string; text?: string } | null | undefined
+    if (payload?.kind !== 'success') return
+    if (name === 'btw') {
+      const question = (payload.text ?? '').trim()
+      if (question !== '') window.dispatchEvent(new CustomEvent(BTW_ANSWER_EVENT, { detail: { question } }))
+      return
+    }
+    window.dispatchEvent(new CustomEvent(SIDE_CHAT_OPEN_EVENT))
+  }), 'dsh-liuli-ui-enhance: /side /btw command bridge')
   ctx.slots.inject('details', () => ctx.slots.register({
     name: 'details',
     priority: -1,
@@ -821,6 +940,24 @@ export function apply(ctx: ClientContext): void {
     }),
   }, PreviewDetailsPanel))
 
+  // ── /btw 正文回答宿主（body 级 root）：fork 当前会话并发回答，
+  //    回答卡片 portal 到正文消息流末尾；不打开侧边栏窗口、不改变主会话上下文。 ──
+  ctx.effect(() => {
+    if (!unofficial('dom')) return () => {}
+    const hostEl = document.createElement('div')
+    hostEl.id = 'liuli-btw-answer-host'
+    document.body.appendChild(hostEl)
+    const root = createRoot(hostEl)
+    root.render(createElement(BtwAnswerHost, {
+      host: sidePaneHost,
+      sessionList: ctx.sessions.list,
+    }))
+    return () => {
+      root.unmount()
+      hostEl.remove()
+    }
+  }, 'dsh-liuli-ui-enhance: /btw answer host mount')
+
   // 切换会话时宿主会自动收起 details 列；这里同步重置预览开关，避免下次按钮反向。
   // 宿主收起同样走关闭动画：抑制 RO 同步，防止动画期间被翻回打开。
   // 只在「当前会话真的变了」时重置：session list 的任何其他更新（状态/流式/未读）
@@ -836,6 +973,7 @@ export function apply(ctx: ClientContext): void {
 
   // ── 会话内前端产物点击：拦截本地回环/前端文件链接，切换到预览浏览器模式 ──
   ctx.effect(() => {
+    if (!unofficial('dom')) return () => {}
     const onDocClick = (e: MouseEvent): void => {
       if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
       const target = e.target as Element | null
@@ -854,9 +992,8 @@ export function apply(ctx: ClientContext): void {
     return () => { document.removeEventListener('click', onDocClick, true) }
   }, 'dsh-liuli-ui-enhance: frontend artifact preview click')
 
-  ctx.effect(() => ctx.locale.register(LIULI_LOCALE_NS, { zh, en }), 'dsh-liuli-ui-enhance: liuli dictionaries')
-  ctx.effect(() => ctx.locale.register(MODEL_RETRY_LOCALE_NS, { zh: modelRetryZh, en: modelRetryEn }), 'dsh-liuli-ui-enhance: model-retry dictionaries')
-  ctx.effect(() => ctx.locale.register(HISTORY_LOAD_LOCALE_NS, { zh: historyLoadZh, en: historyLoadEn }), 'dsh-liuli-ui-enhance: history-load dictionaries')
+  ctx.effect(() => ctx.locale.register(LIULI_LOCALE_NS, { zh, en }), 'dsh-liuli-ui-enhance: liuli appearance dictionaries')
+  ctx.effect(() => ctx.locale.register(LIULI_FEATURES_LOCALE_NS, { zh: featuresZh, en: featuresEn }), 'dsh-liuli-ui-enhance: liuli features dictionaries')
 
   // ── 琉璃 界面设置：localStorage 持久化 + 运行时应用 ──
   const liuliStore = createLiuliStore()
@@ -918,6 +1055,18 @@ export function apply(ctx: ClientContext): void {
       syncLiuli(remote)
       void applyLiuliSettings(remote)
       window.dispatchEvent(new CustomEvent('liuli:vp-params'))
+      // 远端设置里的非官方开关与启动时生效的不一致（Desktop 重启后首载 localStorage
+      // 为空、默认全开，远端才是用户上次的选择）→ 整页重载让开关真正生效。
+      // sessionStorage 标记防循环：重载后 boot 读到的就是新值，不会再触发。
+      if (unofficialFlagsOf(remote) !== unofficialFlagsOf(bootSettings)) {
+        try {
+          if (!sessionStorage.getItem('liuli:unofficial-reload')) {
+            sessionStorage.setItem('liuli:unofficial-reload', '1')
+            window.location.reload()
+            return
+          }
+        } catch (_) { /* sessionStorage 不可用时跳过自动重载 */ }
+      }
     } catch (_) { /* Host 路由不可用时保留 localStorage 行为 */ }
   }
 
@@ -1076,7 +1225,7 @@ export function apply(ctx: ClientContext): void {
     }
   }, 'dsh-liuli-ui-enhance: liuli theme toggle bridge')
 
-  // ── 设置页「界面」分区 ──
+  // ── 设置页「外观」分区（settings.section）：取色/背景/材质/字体/圆角/泛光/阴影/壁纸 ──
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
     id: 'liuli-appearance',
@@ -1113,85 +1262,71 @@ export function apply(ctx: ClientContext): void {
     },
   }, LiuliAppearanceRow))
 
-  // ── 设置页「通用」分区新增一行：模型请求重试次数 + 重试等待时间 ──
-  //    写入由宿主各供应商 profile 持有的 retryPolicy（dsh-llm-retry 执行），
-  //    path-addressed settings.mutate 只改 retryPolicy 键，不碰密钥等其它字段。
-  //    只新增本插件自身的行，不替换/不修改官方通用设置区其它行。
-  const modelRetryStore = createModelRetryStore()
-  const modelRetryT = ctx.locale.bind(MODEL_RETRY_LOCALE_NS)
-  let modelRetryBound: BoundActions<typeof modelRetryStore> | undefined
-  ctx.slots.inject('settings.general.item', () => ctx.slots.register({
-    name: 'settings.general.item',
-    id: 'liuli-model-retry',
-    order: 15,
-    locale: MODEL_RETRY_LOCALE_NS,
-    store: modelRetryStore,
-    inject: (actions: BoundActions<typeof modelRetryStore>): ModelRetryRowInjected => {
-      modelRetryBound = actions
-      return {
-        reload: async () => {
-          const snap = await loadModelRetry()
-          cacheModelRetryBackoff(snap.maxDelayMs, snap.jitterRatio)
-          modelRetryBound?.sync({
-            maxRetries: snap.maxRetries,
-            initialDelayMs: snap.initialDelayMs,
-            maxDelayMs: snap.maxDelayMs,
-            jitterRatio: snap.jitterRatio,
-            providerCount: snap.providerCount,
-            status: 'ready',
-            error: '',
-          })
-        },
-        save: async (params) => {
-          modelRetryBound?.sync({ status: 'saving' })
-          const err = await saveModelRetry(params)
-          if (err !== undefined) {
-            modelRetryBound?.sync({ status: 'error', error: err })
-          } else {
-            modelRetryBound?.sync({ status: 'ready', error: '' })
-          }
-          return err
-        },
-      }
-    },
-  }, ModelRetryRow))
-  void modelRetryT
-
-  // ── 设置页「通用」分区新增一行：切换会话默认历史加载轮数 ──
-  //    只影响插件自身行为（自动点击 older 按钮），持久化在 localStorage。
-  const historyLoadStore = createHistoryLoadStore()
-  const historyLoadT = ctx.locale.bind(HISTORY_LOAD_LOCALE_NS)
-  let historyLoadBound: BoundActions<typeof historyLoadStore> | undefined
-  ctx.slots.inject('settings.general.item', () => ctx.slots.register({
-    name: 'settings.general.item',
-    id: 'liuli-history-load',
-    order: 20,
-    locale: HISTORY_LOAD_LOCALE_NS,
-    store: historyLoadStore,
-    inject: (actions: BoundActions<typeof historyLoadStore>): HistoryLoadRowInjected => {
-      historyLoadBound = actions
-      return {
-        load: () => {
-          const batches = loadHistoryBatches()
-          historyLoadBound?.sync({
-            batches,
-            status: 'ready',
-            error: '',
-          })
-          return batches
-        },
-        save: (batches) => {
-          saveHistoryBatches(batches)
-          historyLoadBound?.sync({
-            batches,
-            status: 'ready',
-            error: '',
-          })
-        },
-      }
-    },
-  }, HistoryLoadRow))
-  void historyLoadT
+  // ── 设置页「功能」分区（settings.section）：宽边/会话动画/声纹 + 模型重试/历史加载 ──
+  // 与「外观」分区共享同一 liuli store：模型重试与历史加载状态存在合并 store 的
+  // modelRetry / historyLoad 切片（原通用分区两行归拢至此），写入面经注入面接线。
+  // 模型重试写入由宿主各供应商 profile 持有的 retryPolicy（dsh-llm-retry 执行），
+  // path-addressed settings.mutate 只改 retryPolicy 键，不碰密钥等其它字段。
+  const featuresT = ctx.locale.bind(LIULI_FEATURES_LOCALE_NS)
+  const liuliFeaturesInjected = (actions: BoundActions<typeof liuliStore>): LiuliFeaturesInjected => {
+    liuliBound = actions
+    liuliBound.syncWallpaper(loadWallpaper())
+    liuliBound.syncSettings(readLiuliSettings(), liuliRev)
+    return {
+      save: (patch) => {
+        const next = { ...readLiuliSettings(), ...patch }
+        commitLiuli(next)
+      },
+      reset: () => {
+        clearWallpaper()
+        liuliBound?.syncWallpaper(null)
+        writeLiuliSettings(LIULI_SETTINGS_DEFAULTS)
+        syncLiuli(LIULI_SETTINGS_DEFAULTS)
+        void applyLiuliSettings(LIULI_SETTINGS_DEFAULTS)
+      },
+      modelRetryReload: async () => {
+        const snap = await loadModelRetry()
+        cacheModelRetryBackoff(snap.maxDelayMs, snap.jitterRatio)
+        liuliBound?.syncModelRetry({
+          maxRetries: snap.maxRetries,
+          initialDelayMs: snap.initialDelayMs,
+          maxDelayMs: snap.maxDelayMs,
+          jitterRatio: snap.jitterRatio,
+          providerCount: snap.providerCount,
+          status: 'ready',
+          error: '',
+        })
+      },
+      modelRetrySave: async (params) => {
+        liuliBound?.syncModelRetry({ status: 'saving' })
+        const err = await saveModelRetry(params)
+        if (err !== undefined) {
+          liuliBound?.syncModelRetry({ status: 'error', error: err })
+        } else {
+          liuliBound?.syncModelRetry({ status: 'ready', error: '' })
+        }
+        return err
+      },
+      historyLoad: () => {
+        const batches = loadHistoryBatches()
+        liuliBound?.syncHistoryLoad({ batches, status: 'ready', error: '' })
+        return batches
+      },
+      historySave: (batches) => {
+        saveHistoryBatches(batches)
+        liuliBound?.syncHistoryLoad({ batches, status: 'ready', error: '' })
+      },
+    }
+  }
+  ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section',
+    id: 'liuli-features',
+    order: 31,
+    label: () => featuresT('nav'),
+    store: liuliStore,
+    locale: LIULI_FEATURES_LOCALE_NS,
+    inject: liuliFeaturesInjected,
+  }, LiuliFeaturesSection))
 
   // ── 会话 header 效果（供应商额度/声纹/监听/主题切换/拉伸手柄）──
   // 额度放在 header.actions：排到后台任务/子代理等官方入口右侧，作为普通文本而非工具区胶囊。
@@ -1244,5 +1379,24 @@ export function apply(ctx: ClientContext): void {
   // ── 对话页 edit/write 工具行自动展开（显示文件 diff）──
   // 上游 ToolRow 把 diff 放在默认收起的可折叠 body；这里在会话正文渲染后
   // 把带 diff 的 edit/write 行自动点开一次（虚拟化重挂载后再展开）。
-  ctx.effect(() => startEditDiffAutoExpand(), 'dsh-liuli-ui-enhance: edit diff auto-expand')
+  ctx.effect(() => {
+    if (!unofficial('dom')) return () => {}
+    return startEditDiffAutoExpand()
+  }, 'dsh-liuli-ui-enhance: edit diff auto-expand')
+
+  // ── 详细页自动展开（LLM 活动感知）：模型写/改文件、执行 git 操作时
+  //    自动展开右侧详细页并切到「审查文件」标签（每轮一次；用户手动收起后
+  //    本会话不再自动展开）。浏览器新标签仍走 PreviewPanel 既有导航展开。 ──
+  ctx.effect(() => {
+    if (!unofficial('dom')) return () => {}
+    return startAutoOpenDetails()
+  }, 'dsh-liuli-ui-enhance: auto open details on llm activity')
+
+  // ── 侧边栏浏览器自动驱动（LLM 活动感知）：模型启动 dev server / 写前端
+  //    文件时，自动在右侧边栏打开浏览器标签展示页面（每轮一次；设置项
+  //    auto_drive_browser 与 unofficial_browser 均可关闭）。 ──
+  ctx.effect(() => {
+    if (!unofficial('browser')) return () => {}
+    return startAutoDriveBrowser()
+  }, 'dsh-liuli-ui-enhance: auto drive sidebar browser on llm activity')
 }

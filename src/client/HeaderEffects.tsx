@@ -298,6 +298,13 @@ type RGB = [number, number, number]
 /** 品牌色缓存：按主题（data-ds-dark-theme）缓存解析结果，避免每帧 getComputedStyle。 */
 let brandCache: { theme: string; rgb: RGB } | null = null
 
+// 品牌色变化（换壁纸/取色模式/品牌色调整）时 liuliApplyBrand 会广播
+// liuli:brand-changed；brandCache 只按主题失效，这里显式清空让声纹 canvas
+// 下一帧重新读 --dsw-alias-brand-primary，否则换壁纸后波形颜色不跟随刷新。
+if (typeof window !== 'undefined') {
+  window.addEventListener('liuli:brand-changed', () => { brandCache = null })
+}
+
 /** 品牌色缓存读取（--dsw-alias-brand-primary），主题切换后失效。 */
 function brandRGB(): RGB {
   const theme = document.body.getAttribute('data-ds-dark-theme') ?? ''
@@ -784,7 +791,14 @@ export function LiuliHeaderResizer() {
     // 把 header 实际高度同步到 root 的 --dsh-header-height，
     // 并生成跟随卡片圆角的 SVG mask（--dsh-wallpaper-mask），
     // 让壁纸模糊层只在 header / 正文两张圆角卡片范围内可见。
-    const root = header.closest<HTMLElement>('[data-phase]')
+    // 页头拆成独立 dock 面板后 header 被搬到 region:conversation-header，已不在
+    // 正文 [data-phase] 内；closest 会落空导致 mask 永不生成（正文顶部走 fallback
+    // 的 12px 透明缝 → “顶上缺一段模糊”）。此时全局回退到正文面板的 phase，只为
+    // 正文卡片生成 mask（headerSvg 由 sync 内的 inDockHeaderPanel 置空）。
+    let root = header.closest<HTMLElement>('[data-phase]')
+    if (root === null && header.closest('[data-region-pane="region:conversation-header"]') !== null) {
+      root = document.querySelector<HTMLElement>('[data-region-pane="region:conversation"] div[data-phase]')
+    }
     // mask 再生成本身不便宜（getComputedStyle + SVG 字符串 + data-URL 重新解码），
     // 拖拽缩放时 RO 每帧触发 sync：纵向几何（header/模糊层/正文卡高度、阶段）
     // 未变时跳过重建——mask 以 mask-size:100% 100% 拉伸，宽度变化自动适配，
@@ -800,18 +814,29 @@ export function LiuliHeaderResizer() {
       // DockShellFrame 维护，这里不能写 header 高度，否则 TurnRail 会按
       // 错误偏移；mask 也只用正文卡片（headerSvg 置空）。
       const inDockHeaderPanel = header.closest('[data-region-pane="region:conversation-header"]') !== null
-      // 先把 header 高度变量写入 —— TurnRail 的 top 依赖它跟随拉伸。
-      // 必须放在 blur 层检查之前：官方 aria-hidden 模糊层已由本插件的
-      // [data-phase]::before 伪元素替代，querySelector 会落空提前 return，
-      // 导致变量从未写入、rail 拉伸不跟随（见此前 bug）。
+      // 先把 header 高度变量写入 —— TurnRail 的 top 依赖它跟随拉伸；
+      // 必须在 mask 生成之前写入，即使后续 mask 计算因 root 尺寸为 0
+      // 提前返回，高度变量也已落地（rail 拉伸不跟随的历史 bug 即因此）。
       // 仅在变化时写入，避免缩放期每帧 setProperty 触发样式失效。
       const hh = inDockHeaderPanel ? '0px' : `${headerRect.height}px`
       if (root.style.getPropertyValue('--dsh-header-height') !== hh) {
         root.style.setProperty('--dsh-header-height', hh)
       }
-      const blur = root.querySelector<HTMLElement>(':scope > [aria-hidden="true"]:first-child')
-      const blurRect = blur?.getBoundingClientRect()
-      if (blurRect === undefined || blurRect.height <= 0) return
+      // 模糊层由 liuli-css.ts 的 div[data-phase]::before 承载（inset:0 铺满 root，
+      // active 态再 bottom:-16px 下探，覆盖 scrollBody 负 margin 延伸的 16px）；官方
+      // DOM 已无 [aria-hidden="true"] 模糊层子元素（phase 下只有 header 槽位 +
+      // scrollBody 两个 div），旧 querySelector 落空提前 return，mask 一直走 fallback
+      // linear-gradient（无圆角 + 顶部按 --dsh-header-height 硬算），表现为“模糊没跟
+      // 卡片一致、正文顶部有缺”。这里改用 root 自身作 mask 坐标参考。
+      const rootRect = root.getBoundingClientRect()
+      if (rootRect.height <= 0) return
+      const overhang = root.dataset.phase === 'active' ? 16 : 0
+      const blurRect = {
+        left: rootRect.left,
+        top: rootRect.top,
+        width: rootRect.width,
+        height: rootRect.height + overhang,
+      }
       const body = root.querySelector<HTMLElement>('[data-conversation-scroll]')
       const bodyRect = body?.getBoundingClientRect()
       const geomKey = `${root.dataset.phase ?? ''}|${headerRect.height}|${blurRect.height}|${bodyRect?.height ?? -1}`
@@ -865,6 +890,11 @@ export function LiuliHeaderResizer() {
         } else {
           bodySvg = `<path d="M${r.x} ${r.y + topRadius} L${r.x + topRadius} ${r.y} L${r.x + r.width - topRadius} ${r.y} Q${r.x + r.width} ${r.y} ${r.x + r.width} ${r.y + topRadius} L${r.x + r.width} ${r.y + r.height} L${r.x} ${r.y + r.height} Z"/>`
         }
+      } else {
+        // scrollBody 缺失/高度为 0（收起侧栏等布局重排的中间态）：退化为整卡 mask，
+        // 覆盖整个 root 并带圆角，避免生成空 SVG 让壁纸模糊层完全消失（“模糊没了”）。
+        const fallbackRadius = Number.parseFloat(getComputedStyle(root).borderTopLeftRadius) || 14
+        bodySvg = `<rect x="0" y="0" width="${w}" height="${h}" rx="${fallbackRadius}"/>`
       }
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${headerSvg}${bodySvg}</svg>`
       root.style.setProperty('--dsh-wallpaper-mask', `url("data:image/svg+xml,${encodeURIComponent(svg)}")`)

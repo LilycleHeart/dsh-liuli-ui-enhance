@@ -1,37 +1,36 @@
 /**
- * 模型请求重试行 —— 设置页「通用」分区里的一行（settings.general.item 槽位）。
+ * 模型请求重试行 —— 设置页「功能」分区（liuli-features）里的一个区块。
  *
  * 编辑模型请求的重试次数与重试等待时间（首次退避），写入由宿主各供应商
  * profile 持有的 retryPolicy.normal.{maxRetries, backoff.initialDelayMs}，
  * 由 @deepseek-ai/dsh-llm-retry 在 agent 失败步骤上执行。
  *
+ * 纯展示组件：状态与写入面（reload/save）由「功能」分区从合并 store /
+ * 注入面传入，本组件不直接持有槽位 store。
+ *
  * 行为：
- * - 挂载时经 model-retry-controller 拉取聚合展示值（首个已配置供应商的
- *   retryPolicy + 已配置供应商数量）。
+ * - 挂载时经 reload 拉取聚合展示值（首个已配置供应商的 retryPolicy +
+ *   已配置供应商数量）。
  * - 改值后失焦/回车即保存（path-addressed settings.mutate，对每个已配置
  *   供应商写 retryPolicy 键；不碰密钥等其它字段）。
  * - 写入失败展示错误文本，不阻塞后续重试。
- *
- * 只修改 dsh-liuli-ui-enhance 插件自身代码，不触碰宿主通用设置分区其它行。
  */
 import { useEffect, useState } from 'react'
-import type { PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
-import type { createModelRetryStore } from './model-retry-store.ts'
-// model-retry-controller 的 load/save/cache 由 index.ts 经注入面接线，行组件不直接 import。
+import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
+import type { ModelRetryState } from './model-retry-store.ts'
 import css from './ModelRetryRow.module.css'
 
-/** 注入面：保存重试参数。 */
-export interface ModelRetryRowInjected {
+/** 展示面：模型重试状态 + 写入/刷新入口。 */
+export interface ModelRetryRowProps {
+  /** 聚合后的重试参数快照（来自功能分区合并 store）。 */
+  state: ModelRetryState
+  /** 功能分区命名空间的翻译函数（键带 modelRetry. 前缀）。 */
+  t: TranslateNS<'liuli-features'>
   /** 保存重试次数与首次等待；返回错误信息（成功为 undefined）。 */
   save: (params: { maxRetries: number; initialDelayMs: number }) => Promise<string | undefined>
   /** 重新拉取聚合展示值。 */
   reload: () => Promise<void>
 }
-
-/** 完整组件 props：runtime share + store share + locale seat + 注入面。 */
-export type ModelRetryRowComponentProps =
-  PropsRuntime<'settings.general.item'> & PropsStore<ReturnType<typeof createModelRetryStore>>
-  & PropsLocale<'liuli-model-retry'> & ModelRetryRowInjected
 
 /** 数字输入行：标签 + 提示 + 数字输入框 + 单位。 */
 function NumRow(props: {
@@ -84,11 +83,10 @@ function NumRow(props: {
 
 /**
  * 渲染模型请求重试行。
- * @param props - 组合槽位 props。
+ * @param props - 状态 + 写入面。
  * @returns 行元素树。
  */
-export function ModelRetryRow({ t, useStore, save, reload }: ModelRetryRowComponentProps) {
-  const state = useStore(s => s)
+export function ModelRetryRow({ state, t, save, reload }: ModelRetryRowProps) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -119,32 +117,32 @@ export function ModelRetryRow({ t, useStore, save, reload }: ModelRetryRowCompon
 
   return (
     <div className={css.group}>
-      <div className={css.title}>{t('title')}</div>
+      <div className={css.title}>{t('modelRetry.title')}</div>
       <NumRow
-        label={t('maxRetries')}
-        hint={t('maxRetriesHint')}
+        label={t('modelRetry.maxRetries')}
+        hint={t('modelRetry.maxRetriesHint')}
         value={state.maxRetries}
         min={0}
         max={20}
-        unit={t('times')}
+        unit={t('modelRetry.times')}
         disabled={busy}
         onCommit={(v) => { void onSave({ maxRetries: v }) }}
       />
       <NumRow
-        label={t('initialDelay')}
-        hint={t('initialDelayHint')}
+        label={t('modelRetry.initialDelay')}
+        hint={t('modelRetry.initialDelayHint')}
         value={state.initialDelayMs}
         min={100}
         max={60_000}
         step={100}
-        unit={t('ms')}
+        unit={t('modelRetry.ms')}
         disabled={busy}
         onCommit={(v) => { void onSave({ initialDelayMs: v }) }}
       />
       <div className={css.footer}>
         {error !== '' && <span className={css.error}>{error}</span>}
         {state.providerCount > 0 && (
-          <span className={css.providerCount}>{t('providerCount').replace('{count}', String(state.providerCount))}</span>
+          <span className={css.providerCount}>{t('modelRetry.providerCount').replace('{count}', String(state.providerCount))}</span>
         )}
       </div>
     </div>

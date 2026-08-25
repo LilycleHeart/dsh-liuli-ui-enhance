@@ -707,6 +707,6 @@ CSS Modules 内普通面板只用 `edgeBottom` 类；区域表面镜像用 `:glo
 | 侧栏面板（搜索 / 列表 / 命令中心） | `src/client/RightSidebarPanels.module.css` |
 | 审查面板（源切换 / diff / 右键菜单） | `src/client/FileReviewPanel.module.css` |
 | 设置页控件（滑块 / 开关 / 选择器 / 壁纸） | `src/client/LiuliAppearance.module.css` |
-| 设置行（Appearance / 历史加载 / 重试） | `src/client/LiuliAppearanceRow.module.css`、`HistoryLoadRow.module.css`、`ModelRetryRow.module.css` |
+| 设置行（Appearance 主题行 / 功能分区重试与历史加载） | `src/client/LiuliAppearanceRow.module.css`、`HistoryLoadRow.module.css`、`ModelRetryRow.module.css` |
 | 终端 / 轨迹 / 画板 / 计划 / 辅助对话 | `src/client/SidePaneExtraPanels.module.css` |
 | 工作台面板内容 | `src/client/dock-panels.module.css` |

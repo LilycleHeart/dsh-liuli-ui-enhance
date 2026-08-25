@@ -220,6 +220,19 @@
   overflow: hidden;
 }
 
+.fileIcon {
+  flex: none;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dsw-alias-label-secondary, #888);
+}
+
+.fileIcon svg {
+  display: block;
+}
+
 .fileName {
   flex: none;
   max-width: 70%;

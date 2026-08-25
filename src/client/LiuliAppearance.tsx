@@ -1,6 +1,9 @@
 /**
- * 琉璃 界面设置 section（设置页「界面」）：取色/壁纸/材质/字体/圆角/泛光阴影。
+ * 琉璃 设置 section（设置页「外观」分区）：取色/背景/材质/字体/圆角/面板留白/
+ * 泛光/阴影/壁纸。宽边模式、会话动画与声纹参数已移到「功能」分区
+ * （LiuliFeaturesSection）。
  * 实现自电波推送 dashboard 的「界面设置」面板。
+ * 行组件原语（Row/SliderRow/SelectRow/ToggleRow）同时导出给「功能」分区复用。
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
@@ -82,7 +85,7 @@ function Tip({ text }: { text: string }) {
 }
 
 /** 一个表单行：标签 + 控件；tip 提供指针悬浮功能描述（ⓘ 图标）。 */
-function Row(props: { label: string; hint?: string; tip?: string | undefined; children: ReactNode }) {
+export function Row(props: { label: string; hint?: string; tip?: string | undefined; children: ReactNode }) {
   return (
     <label
       className={css.row}
@@ -104,7 +107,7 @@ function Row(props: { label: string; hint?: string; tip?: string | undefined; ch
 }
 
 /** 滑块行（可越界数字输入 + 独立复位，仅值≠默认时显示复位）。 */
-function SliderRow(props: {
+export function SliderRow(props: {
   label: string
   value: number
   suffix: string
@@ -154,7 +157,7 @@ function SliderRow(props: {
 }
 
 /** 下拉行：Menu + trigger（与通用设置的权限选择器同款外观）。 */
-function SelectRow(props: {
+export function SelectRow(props: {
   label: string
   value: string
   options: { value: string; label: string }[]
@@ -555,7 +558,7 @@ function WallpaperPreview(props: {
   )
 }
 /** 开关行。 */
-function ToggleRow(props: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void }) {
+export function ToggleRow(props: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <Row label={props.label} {...(props.hint !== undefined ? { hint: props.hint } : {})}>
       <button
@@ -588,7 +591,7 @@ function ColorRow(props: { label: string; value: string; onChange: (v: string) =
   )
 }
 
-/** 渲染 琉璃 界面设置 section。 */
+/** 渲染 琉璃 设置「外观」分区 section。 */
 export function LiuliAppearanceSection({
   useStore, t, save, reset, uploadWallpaper, removeWallpaper,
 }: LiuliAppearanceComponentProps) {
@@ -605,12 +608,6 @@ export function LiuliAppearanceSection({
   return (
     <div className={css.section}>
       <div className={css.grid}>
-        <ToggleRow
-          label={t('wideMode')}
-          checked={s.wide_mode}
-          onChange={(v) => { set({ wide_mode: v }) }}
-        />
-
         <SelectRow
           label={t('colorMode')}
           value={s.color_mode}
@@ -743,98 +740,6 @@ export function LiuliAppearanceSection({
           disabled={!s.shadow_enabled}
           onChange={(v) => { set({ shadow_intensity: v }) }}
         />
-
-        <div className={css.divider} />
-
-        <SelectRow
-          label={t('transition')}
-          value={s.transition_effect}
-          options={[
-            { value: 'rise', label: t('transition.rise') },
-            { value: 'fade', label: t('transition.fade') },
-            { value: 'drop', label: t('transition.drop') },
-            { value: 'slide', label: t('transition.slide') },
-            { value: 'zoom', label: t('transition.zoom') },
-            { value: 'blur', label: t('transition.blur') },
-            { value: 'spring', label: t('transition.spring') },
-            { value: 'stagger', label: t('transition.stagger') },
-            { value: 'staggerRise', label: t('transition.staggerRise') },
-            { value: 'none', label: t('transition.none') },
-          ]}
-          onChange={(v) => { set({ transition_effect: v as LiuliSettings['transition_effect'] }) }}
-        />
-      </div>
-
-      {/* 声纹响应（Nanoleaf Desktop 移植检测的参数，即时生效） */}
-      <div className={css.wallpaperBlock}>
-        <div className={css.wallpaperTitle}>{t('vp.title')}</div>
-        <div className={css.grid}>
-          <SliderRow
-            label={t('vp.sensitivity')} value={s.vp_sensitivity} suffix="" min={0.01} max={1} step={0.01}
-            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_sensitivity} tip={t('vp.tip.sensitivity')}
-            onChange={(v) => { set({ vp_sensitivity: v }) }}
-          />
-          <SliderRow
-            label={t('vp.beatGain')} value={s.vp_beat_gain} suffix="×" min={0} max={5} step={0.1}
-            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_beat_gain} tip={t('vp.tip.beatGain')}
-            onChange={(v) => { set({ vp_beat_gain: v }) }}
-          />
-          <SliderRow
-            label={t('vp.beatDecay')} value={s.vp_beat_decay} suffix="" min={0.5} max={0.995} step={0.005}
-            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_beat_decay} tip={t('vp.tip.beatDecay')}
-            onChange={(v) => { set({ vp_beat_decay: v }) }}
-          />
-          <SliderRow
-            label={t('vp.beatMult')} value={s.vp_beat_mult} suffix="×" min={1} max={5} step={0.1}
-            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_beat_mult} tip={t('vp.tip.beatMult')}
-            onChange={(v) => { set({ vp_beat_mult: v }) }}
-          />
-          <SliderRow
-            label={t('vp.pulseMult')} value={s.vp_pulse_mult} suffix="×" min={0.1} max={3} step={0.05}
-            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_pulse_mult} tip={t('vp.tip.pulseMult')}
-            onChange={(v) => { set({ vp_pulse_mult: v }) }}
-          />
-          <SliderRow
-            label={t('vp.bassWeight')} value={s.vp_bass_weight} suffix="%" min={0} max={100} step={1}
-            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_bass_weight} tip={t('vp.tip.bassWeight')}
-            onChange={(v) => { set({ vp_bass_weight: v }) }}
-          />
-          <SliderRow
-            label={t('vp.midWeight')} value={s.vp_mid_weight} suffix="%" min={0} max={100} step={1}
-            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_mid_weight} tip={t('vp.tip.midWeight')}
-            onChange={(v) => { set({ vp_mid_weight: v }) }}
-          />
-          <SliderRow
-            label={t('vp.highWeight')} value={s.vp_high_weight} suffix="%" min={0} max={100} step={1}
-            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_high_weight} tip={t('vp.tip.highWeight')}
-            onChange={(v) => { set({ vp_high_weight: v }) }}
-          />
-          <SliderRow
-            label={t('vp.beatCooldown')} value={s.vp_beat_cooldown} suffix="ms" min={50} max={1000} step={10}
-            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_beat_cooldown} tip={t('vp.tip.beatCooldown')}
-            onChange={(v) => { set({ vp_beat_cooldown: v }) }}
-          />
-          <SliderRow
-            label={t('vp.pulseCooldown')} value={s.vp_pulse_cooldown} suffix="ms" min={50} max={1000} step={10}
-            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_pulse_cooldown} tip={t('vp.tip.pulseCooldown')}
-            onChange={(v) => { set({ vp_pulse_cooldown: v }) }}
-          />
-          <SliderRow
-            label={t('vp.envSpeed')} value={s.vp_env_speed} suffix="" min={0} max={100} step={1}
-            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_env_speed} tip={t('vp.tip.envSpeed')}
-            onChange={(v) => { set({ vp_env_speed: v }) }}
-          />
-          <SliderRow
-            label={t('vp.specSmooth')} value={s.vp_spec_smooth} suffix="" min={0.02} max={0.8} step={0.01}
-            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_spec_smooth} tip={t('vp.tip.specSmooth')}
-            onChange={(v) => { set({ vp_spec_smooth: v }) }}
-          />
-          <SliderRow
-            label={t('vp.noiseGate')} value={s.vp_noise_gate} suffix="" min={0} max={0.2} step={0.005}
-            defaultValue={LIULI_SETTINGS_DEFAULTS.vp_noise_gate} tip={t('vp.tip.noiseGate')}
-            onChange={(v) => { set({ vp_noise_gate: v }) }}
-          />
-        </div>
       </div>
 
       {/* 壁纸 */}

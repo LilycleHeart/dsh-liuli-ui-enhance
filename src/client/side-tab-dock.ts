@@ -41,6 +41,7 @@ export function serializeSideTab(tab: SidePaneTab): string {
     title: tab.title,
     favicon: tab.favicon,
     childSessionId: tab.childSessionId,
+    initialPrompt: tab.initialPrompt,
   })
 }
 
@@ -60,6 +61,7 @@ export function parseSideTab(raw: string): SidePaneTab | undefined {
     if (typeof parsed.title === 'string') tab.title = parsed.title
     if (typeof parsed.favicon === 'string') tab.favicon = parsed.favicon
     if (typeof parsed.childSessionId === 'string') tab.childSessionId = parsed.childSessionId
+    if (typeof parsed.initialPrompt === 'string') tab.initialPrompt = parsed.initialPrompt
     return tab
   } catch {
     return undefined
@@ -74,8 +76,9 @@ export interface SideTabDockPanel {
 
 /**
  * SidePane 标签类型 → dock 面板类型映射（面板注册表复用同一批组件）。
- * 返回 undefined 表示该标签类型无布局对应（开发者工具/轨迹/计划/子智能体/
- * 辅助对话依赖宿主 sidePaneHost 数据面，布局内无同构面板），标签只能内部排序。
+ * 所有标签类型都有布局对应；依赖宿主 sidePaneHost 数据面的面板
+ * （开发者工具/轨迹/计划/子智能体/辅助对话）由 DockWorkspace /
+ * DockShellFrame 注入同一份数据面，在布局内渲染同构面板。
  */
 export function sideTabToDockPanel(tab: SidePaneTab): SideTabDockPanel | undefined {
   switch (tab.type) {
@@ -98,7 +101,21 @@ export function sideTabToDockPanel(tab: SidePaneTab): SideTabDockPanel | undefin
       return panel
     }
     case 'whiteboard': return { type: 'whiteboard', state: { boardId: tab.id } }
-    default: return undefined
+    case 'developer-tools': return { type: 'developer-tools' }
+    case 'trajectory': return { type: 'trajectory' }
+    case 'plan': return { type: 'plan' }
+    case 'subagents': return { type: 'subagents' }
+    case 'side-chat': {
+      const panel: SideTabDockPanel = {
+        type: 'side-chat',
+        state: {
+          childSessionId: tab.childSessionId ?? '',
+          initialPrompt: tab.initialPrompt ?? '',
+        },
+      }
+      if (tab.title !== undefined && tab.title !== '') panel.title = tab.title
+      return panel
+    }
   }
 }
 
@@ -135,6 +152,28 @@ export function dockPanelToSideTab(panel: {
       break
     case 'whiteboard':
       base.type = 'whiteboard'
+      if (panel.title !== undefined && panel.title !== '') base.title = panel.title
+      break
+    case 'developer-tools':
+      base.type = 'developer-tools'
+      break
+    case 'trajectory':
+      base.type = 'trajectory'
+      break
+    case 'plan':
+      base.type = 'plan'
+      break
+    case 'subagents':
+      base.type = 'subagents'
+      break
+    case 'side-chat':
+      base.type = 'side-chat'
+      if (typeof panel.state?.childSessionId === 'string' && panel.state.childSessionId !== '') {
+        base.childSessionId = panel.state.childSessionId
+      }
+      if (typeof panel.state?.initialPrompt === 'string' && panel.state.initialPrompt !== '') {
+        base.initialPrompt = panel.state.initialPrompt
+      }
       if (panel.title !== undefined && panel.title !== '') base.title = panel.title
       break
     default:

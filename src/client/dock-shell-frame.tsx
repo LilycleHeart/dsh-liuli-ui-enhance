@@ -24,6 +24,7 @@ import {
   type DockLayout, type DockNode, type DropTarget, type FloatWindow, type PanelInstance, type SplitNode, type TabsNode,
 } from './dock-model.ts'
 import { DOCK_PANEL_DEFS, panelDef, panelTitle, type DockHostAccess } from './dock-panels.tsx'
+import type { SidePaneHostAccess } from './SidePaneExtraPanels.tsx'
 import { dockPanelToSideTab, markSideTabAccepted, openSidePaneTab, parseSideTab, SIDE_TAB_MIME, sideTabToDockPanel, type SideTabDockPanel } from './side-tab-dock.ts'
 import {
   createDockShellStore, defaultShellLayout, exportDockJSON, findRegion, importDockJSON, isRegionPanel,
@@ -40,9 +41,17 @@ import { beginResizePerf, endResizePerf } from './resize-perf.ts'
 
 /* ── ctx 能力桥（index.ts 注入；纯组件不碰 cordis） ── */
 
-let dockHostBridge: { addFileToChat?: (path: string) => void; openPath?: (path: string) => void } = {}
+let dockHostBridge: {
+  addFileToChat?: (path: string) => void
+  openPath?: (path: string) => void
+  sidePaneHost?: SidePaneHostAccess | undefined
+} = {}
 
-export function setDockHostBridge(bridge: { addFileToChat?: (path: string) => void; openPath?: (path: string) => void }): void {
+export function setDockHostBridge(bridge: {
+  addFileToChat?: (path: string) => void
+  openPath?: (path: string) => void
+  sidePaneHost?: SidePaneHostAccess | undefined
+}): void {
   dockHostBridge = bridge
 }
 
@@ -80,6 +89,13 @@ const DRAG_THRESHOLD = 5
 /** 非区域 dock 面板（拆出来的标签页）的最小宽/高：sash 拖到极限也不会更小。 */
 const PANE_CARD_MIN_W = 240
 const PANE_CARD_MIN_H = 160
+
+/** 会话 header 的定位选择器：官方槽位容器（display:contents）直下 header，或 phase 直下 header。
+ *  不要用 `div[data-phase] header` 全量匹配 —— 提问卡片（QuestionComposer/PlanReviewPanel）
+ *  内部也是 <header> 标签，会被误认成会话 header 搬进页头面板（表现为提问弹出时
+ *  页头显示提问卡的内容）。与 conversation-split.ts 的定位语义保持一致。 */
+const CONVERSATION_HEADER_SELECTOR =
+  'div[data-phase] > div[data-slot="conversation.session.header"] > header, div[data-phase] > header'
 
 /** 直接子级的最小像素尺寸（会话列 640×160，普通面板 240×160）。
  *  渲染期换算 flexGrow 与 sash 拖拽 clamp 共用同一套最小尺寸语义。
@@ -204,6 +220,10 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
   const [modal, setModal] = useState<null | { kind: 'export' | 'import'; text: string }>(null)
   const [toast, setToast] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement | null>(null)
+  /** 上次搬入页头面板 host 的 <header> 引用：页头面板被拆分/浮动时，header 会跟着
+   *  旧 host 一起被 React 移出 DOM（detached），此时无法再从正文 phase 查到它；
+   *  用这个引用把它「抢救」回新 host，否则页头面板出现空白。 */
+  const headerRef = useRef<HTMLElement | null>(null)
   /** 页头高度恢复只应用一次（应用后用户拖拽 sash 会重新写入 localStorage）。 */
   const headerHeightAppliedRef = useRef(false)
   const dragRef = useRef<{ source: DragSource; title: string; sx: number; sy: number; active: boolean } | null>(null)
@@ -258,6 +278,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     }
     for (const item of shardRects) {
       const r = item.rect
+      const topFlush = r.top - rootRect.top <= EPS
       const leftFlush = r.left - rootRect.left <= EPS
       const rightFlush = rootRect.right - r.right <= EPS
       const bottomFlush = rootRect.bottom - r.bottom <= EPS
@@ -273,7 +294,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
         next[item.id] = {
           left: leftFlush && !rightFlush,
           right: rightFlush && !leftFlush,
-          top: false,
+          top: topFlush,
           bottom: false,
           row: r.width >= r.height,
           hasBelow,
@@ -283,19 +304,19 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
         next[item.id] = {
           left: leftFlush && !rightFlush,
           right: rightFlush && !leftFlush,
-          top: false,
+          top: topFlush,
           bottom: bottomFlush && !hasBelow,
           row: r.width >= r.height,
           hasBelow,
         }
       } else if (region === 'region:conversation') {
-        next[item.id] = { left: false, right: false, top: false, bottom: false, row: r.width >= r.height, hasBelow }
+        next[item.id] = { left: false, right: false, top: topFlush, bottom: false, row: r.width >= r.height, hasBelow }
       } else {
         // 普通 dock 面板：上下堆叠时，下方卡片底部触底；其余三边留白。左右不贴边。
         next[item.id] = {
           left: false,
           right: false,
-          top: false,
+          top: topFlush,
           bottom: bottomFlush && hasAbove,
           row: r.width >= r.height,
           hasBelow,
@@ -389,7 +410,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
       if (conversationPane === null) return
       const slot = conversationPane.querySelector<HTMLElement>('div[data-slot="conversation.session.header"]')
       const phase = conversationPane.querySelector<HTMLElement>('div[data-phase]')
-      for (const header of conversationPane.querySelectorAll<HTMLElement>('div[data-phase] header')) {
+      for (const header of conversationPane.querySelectorAll<HTMLElement>(CONVERSATION_HEADER_SELECTOR)) {
         if (slot !== null && header.parentElement !== slot) slot.appendChild(header)
         else if (slot === null && phase !== null && header.parentElement !== phase) phase.insertBefore(header, phase.firstChild)
       }
@@ -398,16 +419,38 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
       return
     }
     // 页头面板存在：把会话面板里的 header 全部搬入 host（保留一个，其余是 React 重建的旧节点）。
-    const headers = conversationPane !== null
-      ? Array.from(conversationPane.querySelectorAll<HTMLElement>('div[data-phase] header'))
-      : []
-    if (headers.length === 0) return
-    const first = headers[0]
+    // 另收集多标签卡 tabStrip 顶部的残留 header（单区域 host → tabStrip 的原地复用遗留；
+    // 排除浮动窗内的 tabStrip），一并纳入候选，避免「页头卡上半多一个 header」。
+    const headers = [
+      ...(conversationPane !== null ? Array.from(conversationPane.querySelectorAll<HTMLElement>(CONVERSATION_HEADER_SELECTOR)) : []),
+      ...Array.from(rootEl.querySelectorAll<HTMLElement>('[data-testid="dock-tab-strip"] > header'))
+        .filter(h => h.closest('[data-testid="dock-float"]') === null),
+    ]
+    if (headers.length === 0) {
+      // 页头面板拆分/浮动时，header 跟着旧 host 被 React 移出 DOM（detached），
+      // 正文 phase 已查不到它；用之前保存的引用抢救回新 host，避免页头空白。
+      const saved = headerRef.current
+      if (saved !== null && !saved.isConnected && headerHost.querySelector('header') === null) {
+        headerHost.appendChild(saved)
+        headerRef.current = saved
+      }
+      return
+    }
+    // React 重建会话根时可能残留多个 <header>（新旧节点并存）；优先保留「有内容」
+    // 的节点（含标题行或任意子元素），避免把空的旧节点搬进页头面板、删掉真正有
+    // 内容的新节点——表现为「header 拆分成独立面板后内容空白」。
+    const first = headers.find(h => h.childElementCount > 0) ?? headers[0]
     if (first === undefined) return
     const existing = headerHost.querySelector<HTMLElement>('header')
     if (existing !== null && existing !== first) existing.remove()
     if (first.parentElement !== headerHost) headerHost.appendChild(first)
-    for (let i = 1; i < headers.length; i += 1) headers[i]?.remove()
+    // 记录当前页头 header 引用，供拆分/浮动后「抢救」detached 的 header 使用。
+    headerRef.current = first
+    // 删除除 first 外的所有残留 header（不能按下标 i>=1 删，否则 first 不是
+    // headers[0] 时会把刚搬入面板的节点误删）。
+    for (const h of headers) {
+      if (h !== first) h.remove()
+    }
     // 页头已独立：面板高度由 dock 布局控制，清除 HeaderEffects 旧逻辑写在
     // header 上的内联 min-height（否则 header/canvas 不会跟随 sash 缩放，
     // 而是被 min-height 钉住并被 host 裁剪）。
@@ -787,6 +830,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     addFileToChat: dockHostBridge.addFileToChat,
     openPath: dockHostBridge.openPath,
     openFileInDock,
+    sidePaneHost: dockHostBridge.sidePaneHost,
   }
 
   const renderPanelBody = (panel: PanelInstance): ReactNode => {
@@ -1384,19 +1428,46 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     const paneCardClass = css.pane
       + ' ' + css.paneCard
       + (edges.bottom ? ' ' + css.edgeBottom : '')
+    // 页头面板并入多标签组（其他卡片拖进页头）时：
+    // - 卡片补 data-region-pane，让 header 的填充/去边框/隐藏 resizer/拖窗等
+    //   region 规则对组内 header 生效；
+    // - 宿主常驻挂载（页头标签非激活时 display:none 不占位）：syncConversationHeader
+    //   始终能找到 host，header 元素不会因「页头标签非激活时 host 不渲染」被打回
+    //   会话面板（现象：页头卡内 header 空白/跑到正文里）。
+    const hasHeaderTab = node.tabs.some(p => p.type === REGION_CONVERSATION_HEADER)
+    const activeIsHeader = active?.type === REGION_CONVERSATION_HEADER
+    // 子节点带 key：单区域页头卡（children[0]=host，含外来 header）变成多标签卡时，
+    // 若 children[0] 原地复用为 tabStrip，旧 host 里的外来 header 会残留在 tabStrip
+    // 顶部（表现为「页头卡上半多一个 header」）；带 key 让 React 建新节点、旧节点
+    // 连同外来 header 一起摘除，由 syncConversationHeader 的抢救路径重挂。
     return (
       <div
         className={paneCardClass}
         data-dock-node={node.id}
         data-testid="dock-pane"
+        data-region-pane={hasHeaderTab ? REGION_CONVERSATION_HEADER : undefined}
+        data-edge-left={edges.left || undefined}
+        data-edge-right={edges.right || undefined}
+        data-edge-top={edges.top || undefined}
+        data-edge-bottom={edges.bottom || undefined}
       >
-        <div className={css.tabStrip} data-testid="dock-tab-strip">
+        <div key="tab-strip" className={css.tabStrip} data-testid="dock-tab-strip">
           {node.tabs.map(p => renderTabChip(p, node.id, 'node'))}
           <div className={css.tabFiller} />
         </div>
-        <div className={css.paneBody}>
-          {active === undefined ? <div className={css.paneEmpty}>（空面板组）</div> : renderPanelBody(active)}
-        </div>
+        {hasHeaderTab && (
+          <div
+            key="header-host"
+            className={css.conversationHeaderHost}
+            data-liuli-conversation-header-host=""
+            style={activeIsHeader ? undefined : { display: 'none' }}
+          />
+        )}
+        {!activeIsHeader && (
+          <div key="pane-body" className={css.paneBody}>
+            {active === undefined ? <div className={css.paneEmpty}>（空面板组）</div> : renderPanelBody(active)}
+          </div>
+        )}
       </div>
     )
   }
@@ -1502,11 +1573,11 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
       data-hmr-marker={HMR_MARKER}
       data-panels={String(panelCount(dock))}
     >
-      {/* win32 无边框：移除 caption 行，画布从第 1 行起占满（窗口拖拽改由
-          顶部 15px 透明拖动条承担、面板悬浮改由 grip ⧉ 按钮承担）。
+      {/* win32 无边框：移除 caption 行，画布从第 1 行起占满（窗口拖拽由会话
+          header 整体承担，见 index.ts DESKTOP_ADVANCED_CSS 的 header drag 规则；
+          面板悬浮由 grip ⧉ 按钮承担）。
           macOS 保留 caption 行（红绿灯留白 + 窗口拖拽区）。 */}
       {platform === 'darwin' && <div className="dshDesktopMacCaptionRow" aria-hidden="true" />}
-      {platform !== 'darwin' && <div className={css.windowTopDrag} data-liuli-window-drag="" aria-hidden="true" />}
       <div
         className={css.dockBody}
         ref={rootRef}

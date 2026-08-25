@@ -160,7 +160,7 @@ body {
   --dsw-specific-bubble-highlight: #c4e2ff;
   --dsw-specific-bubble: #d0e8ff;
   --dsw-specific-bubble-fg: #001d33;
-  --dsw-specific-input-major: rgba(var(--liuli-acrylic-rgb), 0.22);
+  --dsw-specific-input-major: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55));
   --dsw-specific-login-input: #f8f9fa;
   --dsw-specific-menu: var(--dsw-alias-bg-layer-3);
   --dsw-specific-selector: #eef2f6;
@@ -168,7 +168,7 @@ body {
   --dsw-specific-sidebar-nav-item-active-accent: #001d33;
   --dsw-specific-sidebar-nav-item-active: #d0e8ff;
   --dsw-specific-sidebar-nav-item-hover: rgba(0, 121, 191, 0.08);
-  --dsw-specific-tip: rgba(var(--liuli-acrylic-rgb), 0.5);
+  --dsw-specific-tip: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55));
 
   --liuli-acrylic-rgb: 221, 229, 237;
   --liuli-acrylic-rgb-low: 232, 238, 244;
@@ -283,7 +283,7 @@ body[data-ds-dark-theme] {
   --dsw-specific-bubble-highlight: #005477;
   --dsw-specific-bubble: #004a73;
   --dsw-specific-bubble-fg: #d0e8ff;
-  --dsw-specific-input-major: rgba(var(--liuli-acrylic-rgb), 0.22);
+  --dsw-specific-input-major: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55));
   --dsw-specific-login-input: #121316;
   --dsw-specific-menu: var(--dsw-alias-bg-layer-3);
   --dsw-specific-selector: #283040;
@@ -291,7 +291,7 @@ body[data-ds-dark-theme] {
   --dsw-specific-sidebar-nav-item-active-accent: #d0e8ff;
   --dsw-specific-sidebar-nav-item-active: #004a73;
   --dsw-specific-sidebar-nav-item-hover: rgba(142, 205, 248, 0.08);
-  --dsw-specific-tip: rgba(var(--liuli-acrylic-rgb), 0.5);
+  --dsw-specific-tip: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55));
 
   --liuli-acrylic-rgb: 30, 37, 48;
   --liuli-acrylic-rgb-low: 26, 32, 42;
@@ -431,6 +431,18 @@ div[data-phase]:not([data-phase='active']) > div[aria-hidden="true"]:first-child
 }
 
 /* ════════════════════════════════════════════════════════════
+ * 开始页（hero 阶段）去掉壁纸模糊：blank session 整列只有标题 +
+ * 输入卡，磨砂层糊满整页，用户要求开始页不模糊。
+ * 只关掉模糊层（backdrop-filter:none），壁纸原图清晰透出；
+ * 输入卡自身的亚克力磨砂不受影响。
+ * 运行时注入以 liuli-css.ts 为准（此处为源拷贝同步）。
+ * ════════════════════════════════════════════════════════════ */
+div[data-phase='hero']::before {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* ════════════════════════════════════════════════════════════
  * 开始页：官方 blank session 会给会话 header 加 aria-hidden +
  * .headerHidden（display:none）。普通三列模式兜底强制隐藏；
  * advanced dock 模式下 header 被搬入独立页头面板，需连 shard
@@ -465,6 +477,43 @@ div[data-phase] > div > header[aria-hidden] {
 }
 
 [data-shard-region="region:conversation"]:has(~ [data-shard-region="region:conversation-header"]:has(header[aria-hidden])) {
+  flex-grow: 1 !important;
+}
+
+/* ── hero 阶段兜底（会话归档后残留旧 header 不带 aria-hidden 的场景）──
+   开始页（data-phase='hero'）无论 header 是否带 aria-hidden 一律隐藏：
+   归档当前会话后官方会跳到空白会话，但页头面板里可能残留归档前的旧
+   header（有内容、无 aria-hidden），:has(header[aria-hidden]) 匹配不到
+   导致 header 页依然显示；而重新进入开始页时只有空白 header（带
+   aria-hidden）所以正常。这里以 hero 阶段为信号兜底。
+   运行时注入以 liuli-css.ts 为准（此处为源拷贝同步）。 */
+div[data-phase='hero'] > header,
+div[data-phase='hero'] > div > header {
+  display: none !important;
+}
+
+/* 页头 shard：会话 shard 处于 hero 阶段时整块隐藏（覆盖旧 header 残留） */
+[data-shard-region="region:conversation-header"]:has(~ [data-shard-region="region:conversation"] div[data-phase='hero']) {
+  display: none !important;
+}
+
+/* 页头 shard 在会话 shard 下方时 */
+[data-shard-region="region:conversation"]:has(div[data-phase='hero']) ~ [data-shard-region="region:conversation-header"] {
+  display: none !important;
+}
+
+/* 相邻 sash 一并隐藏（页头在上：sash 紧随页头 shard） */
+[data-shard-region="region:conversation-header"]:has(~ [data-shard-region="region:conversation"] div[data-phase='hero']) + [data-testid="dock-sash"] {
+  display: none !important;
+}
+
+/* 页头在下：sash 紧随会话 shard，且其下一兄弟是页头 shard */
+[data-shard-region="region:conversation"]:has(div[data-phase='hero']) + [data-testid="dock-sash"]:has(+ [data-shard-region="region:conversation-header"]) {
+  display: none !important;
+}
+
+/* 页头 shard 隐藏后会话 shard 提权填满（flex-grow 总和 <1 时只按比例分配） */
+[data-shard-region="region:conversation"]:has(div[data-phase='hero']) {
   flex-grow: 1 !important;
 }
 
@@ -807,4 +856,34 @@ div[class$="hoverCard"] {
     content-visibility: auto;
     contain-intrinsic-size: auto 300px;
   }
+}
+
+/* ════════════════════════════════════════════════════════════
+ * 设置页（SettingsRoot 全屏模态）卡片材质化：官方设置外壳的面板是
+ * --dsw-alias-bg-layer-2 实底，琉璃的材质不透明度（--liuli-material-opacity）
+ * 在设置页上完全不可见，拖动「材质不透明度」滑条页面无任何变化。
+ * 这里只把设置卡片面板改为与侧栏/对话卡一致的 ::before 亚克力配方
+ * （背景层独立、根不持有 backdrop-filter，避免成为 fixed 后代的包含块），
+ * 让设置卡片随材质不透明度/模糊实时响应。
+ * 卡片外的全屏遮罩（bg-mask + 磨砂）保持官方硬编码，不随滑条变化。
+ * 运行时注入以 liuli-css.ts 为准（此处为源拷贝同步）。
+ * ════════════════════════════════════════════════════════════ */
+[class*="_sidebarCol"] [class*="_overlay"] > [class*="_panel"] {
+  background-color: transparent !important;
+  background-image: none !important;
+  border: 1px solid var(--dsw-alias-border-l1) !important;
+  box-shadow: var(--liuli-glow-brand), var(--liuli-shadow) !important;
+}
+
+[class*="_sidebarCol"] [class*="_overlay"] > [class*="_panel"]::before {
+  content: '' !important;
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: -1 !important;
+  border-radius: inherit !important;
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55)) !important;
+  background-image: var(--liuli-noise) !important;
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;
+  pointer-events: none !important;
 }

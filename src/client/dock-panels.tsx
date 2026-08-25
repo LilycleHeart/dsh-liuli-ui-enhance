@@ -6,7 +6,10 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { FileTreePanel, WikiPanel } from './RightSidebarPanels.tsx'
-import { TerminalPanel, WhiteboardPanel } from './SidePaneExtraPanels.tsx'
+import {
+  DeveloperToolsPanel, PlanPanel, SideChatPanel, SubagentPanel, TerminalPanel, TrajectoryPanel, WhiteboardPanel,
+  type SidePaneHostAccess,
+} from './SidePaneExtraPanels.tsx'
 import { BrowserPanel, CodeViewerPanel } from './PreviewPanel.tsx'
 import { FileReviewPanel } from './FileReviewPanel.tsx'
 import type { PanelInstance } from './dock-model.ts'
@@ -19,6 +22,8 @@ export interface DockHostAccess {
   openPath?: ((path: string) => void) | undefined
   /** 在 dock 工作区里打开一个文件（新建/聚焦代码查看面板）。 */
   openFileInDock?: ((path: string, rel: string) => void) | undefined
+  /** 宿主 sidePane 数据面（开发者工具/轨迹/计划/子智能体/辅助对话面板需要）。 */
+  sidePaneHost?: SidePaneHostAccess | undefined
 }
 
 export interface DockPanelRenderProps {
@@ -57,6 +62,11 @@ const ICONS = {
   preview: 'M4 6h16v10H4V6zm0-2c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h6v2H8v2h8v-2h-2v-2h6c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2H4z',
   browser: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm7.9 9h-3.4a15.7 15.7 0 0 0-1.2-5.3A8.03 8.03 0 0 1 19.9 11zM12 4.1c.9 1.2 1.9 3.4 2.4 6.9H9.6c.5-3.5 1.5-5.7 2.4-6.9zM4.1 13h3.4c.2 2 .7 3.8 1.2 5.3A8.03 8.03 0 0 1 4.1 13zm3.4-2H4.1a8.03 8.03 0 0 1 4.6-5.3A15.7 15.7 0 0 0 7.5 11zm4.5 8.9c-.9-1.2-1.9-3.4-2.4-6.9h4.8c-.5 3.5-1.5 5.7-2.4 6.9zm3.3-1.6c.6-1.5 1-3.3 1.2-5.3h3.4a8.03 8.03 0 0 1-4.6 5.3z',
   notes: 'M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z',
+  devtools: 'M20 8h-2.81c-.45-.78-1.07-1.45-1.82-1.96L17 4.41 15.59 3l-2.17 2.17C12.96 5.06 12.49 5 12 5s-.96.06-1.41.17L8.41 3 7 4.41l1.62 1.63C7.88 6.55 7.26 7.22 6.81 8H4v2h2.09c-.05.33-.09.66-.09 1v1H4v2h2v1c0 .34.04.67.09 1H4v2h2.81c1.04 1.79 2.97 3 5.19 3s4.15-1.21 5.19-3H20v-2h-2.09c.05-.33.09-.66.09-1v-1h2v-2h-2v-1c0-.34-.04-.67-.09-1H20V8zm-4 4v3c0 .22-.03.47-.07.7l-.1.65-.37.65c-.72 1.24-2.04 2-3.46 2s-2.74-.77-3.46-2l-.37-.64-.1-.66C8.03 15.48 8 15.23 8 15v-4c0-.23.03-.48.07-.7l.1-.65.37-.65c.72-1.24 2.04-2 3.46-2s2.74.77 3.46 2l.37.64.1.66c.04.22.07.47.07.7v3z',
+  trajectory: 'M23 8c0 1.1-.9 2-2 2-.18 0-.35-.02-.51-.07l-3.56 6.55c.05.16.07.34.07.52 0 1.1-.9 2-2 2s-2-.9-2-2c0-.18.02-.36.07-.52l-3.56-6.55c-.16.05-.33.07-.51.07s-.35-.02-.51-.07l-3.56 6.55c.05.16.07.34.07.52 0 1.1-.9 2-2 2s-2-.9-2-2c0-.18.02-.36.07-.52L2.07 9.93C1.91 9.98 1.73 10 1.56 10 .66 10 0 9.34 0 8.44S.66 7 1.56 7s1.56.66 1.56 1.56c0 .18-.02.36-.07.52l3.56 6.55c.16-.05.33-.07.51-.07s.35.02.51.07l3.56-6.55c-.05-.16-.07-.34-.07-.52 0-1.1.9-2 2-2s2 .9 2 2c0 .18-.02.36-.07.52l3.56 6.55c.16-.05.33-.07.51-.07 1.1 0 2 .9 2 2z',
+  plan: 'M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z',
+  subagents: 'M22 11V3h-8v4h-2V3H4v8h8V7h2v4h8zm-10 0H6V5h6v6zm8 0h-6V5h6v6zm-8 6v4h8v-8h-8v4zm-2 0H6v4h6v-4z',
+  sidechat: 'M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z',
 }
 
 /* ── dock 专用面板 ── */
@@ -123,6 +133,27 @@ function CodePanel({ panel, host }: DockPanelRenderProps) {
       rel={rel}
       path={path}
       onOpenPath={host.openPath}
+    />
+  )
+}
+
+/** 依赖 sidePaneHost 数据面的面板统一占位：数据面缺失时给出明确空态，避免组件解构崩溃。 */
+function SidePaneHostUnavailable({ label }: { label: string }) {
+  return <div className={css.paneEmpty}>「{label}」需要宿主数据面，当前不可用。</div>
+}
+
+/** 辅助对话：在 dock 里把 fork 出的子会话 id 写回面板 state，拖回详情页/刷新后可继续同一段对话。 */
+function DockSideChatPanel({ panel, host, onStatePatch }: DockPanelRenderProps) {
+  if (host.sidePaneHost === undefined) return <SidePaneHostUnavailable label="辅助对话" />
+  return (
+    <SideChatPanel
+      sessionId={host.sessionId}
+      host={host.sidePaneHost}
+      childSessionId={typeof panel.state?.childSessionId === 'string' && panel.state.childSessionId !== '' ? panel.state.childSessionId : undefined}
+      onChildCreated={(childId) => { onStatePatch({ childSessionId: childId }) }}
+      title={panel.title ?? '辅助对话'}
+      initialPrompt={typeof panel.state?.initialPrompt === 'string' && panel.state.initialPrompt !== '' ? panel.state.initialPrompt : undefined}
+      onPromptConsumed={() => { onStatePatch({ initialPrompt: '' }) }}
     />
   )
 }
@@ -203,6 +234,49 @@ export const DOCK_PANEL_DEFS: DockPanelDef[] = [
     defaultTitle: '便签',
     icon: <Icon d={ICONS.notes} />,
     render: props => <NotesPanel {...props} />,
+  },
+  {
+    type: 'developer-tools',
+    label: '开发者工具',
+    defaultTitle: '开发者工具',
+    icon: <Icon d={ICONS.devtools} />,
+    render: ({ host }) => host.sidePaneHost === undefined
+      ? <SidePaneHostUnavailable label="开发者工具" />
+      : <DeveloperToolsPanel sessionId={host.sessionId} host={host.sidePaneHost} />,
+  },
+  {
+    type: 'trajectory',
+    label: '模型调用轨迹',
+    defaultTitle: '轨迹',
+    icon: <Icon d={ICONS.trajectory} />,
+    render: ({ host }) => host.sidePaneHost === undefined
+      ? <SidePaneHostUnavailable label="模型调用轨迹" />
+      : <TrajectoryPanel sessionId={host.sessionId} host={host.sidePaneHost} />,
+  },
+  {
+    type: 'plan',
+    label: '计划',
+    defaultTitle: '计划',
+    icon: <Icon d={ICONS.plan} />,
+    render: ({ host }) => host.sidePaneHost === undefined
+      ? <SidePaneHostUnavailable label="计划" />
+      : <PlanPanel sessionId={host.sessionId} host={host.sidePaneHost} />,
+  },
+  {
+    type: 'subagents',
+    label: '子智能体目录',
+    defaultTitle: '子智能体',
+    icon: <Icon d={ICONS.subagents} />,
+    render: ({ host }) => host.sidePaneHost === undefined
+      ? <SidePaneHostUnavailable label="子智能体目录" />
+      : <SubagentPanel sessionId={host.sessionId} host={host.sidePaneHost} />,
+  },
+  {
+    type: 'side-chat',
+    label: '辅助对话',
+    defaultTitle: '辅助对话',
+    icon: <Icon d={ICONS.sidechat} />,
+    render: props => <DockSideChatPanel {...props} />,
   },
 ]
 

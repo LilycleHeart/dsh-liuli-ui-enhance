@@ -191,8 +191,11 @@ export function liuliApplyBrand(pal: LiuliPalette, isDark: boolean, sourceHex?: 
   set('--dsw-alias-bg-multi-select', pal.bg2)
   set('--dsw-alias-bg-skeleton', isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)')
   set('--dsw-specific-selector', pal.bg2)
-  set('--dsw-specific-tip', 'rgba(var(--liuli-acrylic-rgb), 0.5)')
-  set('--dsw-specific-input-major', 'rgba(var(--liuli-acrylic-rgb), 0.22)')
+  // 输入面/浮动卡与输入 dock 的表面透明度跟随材质不透明度滑条：
+  // 令牌内用 var() 引用，运行时只写令牌、不写死 0.22/0.5，
+  // 否则拖动「材质不透明度」对 composer/审批卡/GoalBar/QueueDock 无效果。
+  set('--dsw-specific-tip', 'rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55))')
+  set('--dsw-specific-input-major', 'rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55))')
   set('--dsw-specific-login-input', pal.appBg)
 
   // 描边
@@ -256,6 +259,10 @@ export function liuliApplyBrand(pal: LiuliPalette, isDark: boolean, sourceHex?: 
   set('--liuli-acrylic-rgb-high', rgbStr(pal.bg4))
   set('--liuli-control-rgb', rgbStr(pal.bg3))
   void unset
+  // 品牌色已落地：广播变化事件，让 HeaderEffects 的 brandRGB 缓存失效。
+  // brandRGB 的缓存键只有 theme（data-ds-dark-theme），换壁纸/取色模式/品牌色
+  // 变化会改 --dsw-alias-brand-primary 却不改主题，若不失效声纹 canvas 颜色不刷新。
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('liuli:brand-changed'))
 }
 
 /** 清空品牌覆盖（回到 liuli.css 静态令牌）。 */

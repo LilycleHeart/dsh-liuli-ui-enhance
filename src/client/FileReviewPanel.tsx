@@ -19,7 +19,10 @@ import {
 import { consumeReviewRequest, REVIEW_FILE_EVENT } from './review-bus.ts'
 import { getLastTurnChanges, subscribeLastTurnChanges } from './turn-file-store.ts'
 import type { FileDiffHunk } from './TurnFileCard.tsx'
+import { resolveDriveTarget, type ReviewPanelRequest } from './review-drive.ts'
 import css from './FileReviewPanel.module.css'
+
+export { resolveDriveTarget, type ReviewPanelRequest } from './review-drive.ts'
 
 declare global {
   interface Window { __liuliDiffCache?: Map<string, readonly FileDiffHunk[]> }
@@ -29,7 +32,7 @@ export interface FileReviewPanelProps {
   sessionId?: string | undefined
   onOpenPath?: ((path: string) => void) | undefined
   /** 宿主面板（PreviewDetailsPanel）驱动的审查请求。 */
-  reviewRequest?: { path: string; nonce: number } | null
+  reviewRequest?: ReviewPanelRequest | null
   /** 在文件树中定位当前文件（ZCode git.changeContext.revealInFileTree 对应）。 */
   onRevealInFileTree?: ((path: string) => void) | undefined
 }
@@ -151,6 +154,51 @@ function Chevron() {
     <svg className={css.chevron} viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
       <path fill="currentColor" d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z" />
     </svg>
+  )
+}
+
+/* ── 文件类型图标（Material Icons，按扩展名区分，让文件列表不再单调） ── */
+
+type FileIconKind = 'code' | 'image' | 'data' | 'doc' | 'settings' | 'default'
+
+const CODE_EXTS = new Set(['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'py', 'go', 'rs', 'java', 'c', 'h', 'cpp', 'hpp', 'cc', 'cs', 'css', 'scss', 'less', 'html', 'htm', 'vue', 'svelte', 'php', 'rb', 'swift', 'kt', 'sql', 'sh', 'bash', 'zsh', 'lua', 'r', 'scala', 'dart', 'ex', 'exs'])
+const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'ico', 'bmp', 'avif', 'apng'])
+const DATA_EXTS = new Set(['json', 'jsonc', 'yaml', 'yml', 'toml', 'xml', 'csv', 'tsv', 'lock'])
+const DOC_EXTS = new Set(['md', 'markdown', 'txt', 'doc', 'docx', 'pdf', 'rtf', 'tex', 'rst'])
+
+/** Material Icons 路径（24×24 viewBox）。 */
+const FILE_ICON_PATHS: Record<FileIconKind, string> = {
+  code: 'M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z',
+  image: 'M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z',
+  data: 'M4 7v2c0 .55-.45 1-1 1H2v4h1c.55 0 1 .45 1 1v2c0 1.65 1.35 3 3 3h3v-2H7c-.55 0-1-.45-1-1v-2c0-1.3-.84-2.42-2-2.83v-.34C5.16 11.42 6 10.3 6 9V7c0-.55.45-1 1-1h3V4H7C5.35 4 4 5.35 4 7zm17 3h-1c-.55 0-1-.45-1-1V7c0-1.65-1.35-3-3-3h-3v2h3c.55 0 1 .45 1 1v2c0 1.3.84 2.42 2 2.83v.34c-1.16.41-2 1.52-2 2.83v2c0 .55-.45 1-1 1h-3v2h3c1.65 0 3-1.35 3-3v-2c0-.55.45-1 1-1h1v-4z',
+  doc: 'M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z',
+  settings: 'M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z',
+  default: 'M6 2c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6H6zm7 7V3.5L18.5 9H13z',
+}
+
+function fileIconKind(path: string): FileIconKind {
+  const base = basenameOf(path).toLowerCase()
+  if (base === 'package.json' || base.endsWith('lock') || base.startsWith('.') || /(config|settings)\.(js|ts|json|ya?ml)$/.test(base)) {
+    return 'settings'
+  }
+  const dot = base.lastIndexOf('.')
+  if (dot === -1 || dot === base.length - 1) return 'default'
+  const ext = base.slice(dot + 1)
+  if (CODE_EXTS.has(ext)) return 'code'
+  if (IMAGE_EXTS.has(ext)) return 'image'
+  if (DATA_EXTS.has(ext)) return 'data'
+  if (DOC_EXTS.has(ext)) return 'doc'
+  return 'default'
+}
+
+function FileIcon({ path }: { path: string }) {
+  const kind = fileIconKind(path)
+  return (
+    <span className={css.fileIcon} data-file-kind={kind} aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+        <path d={FILE_ICON_PATHS[kind]} />
+      </svg>
+    </span>
   )
 }
 
@@ -438,8 +486,26 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
   }, [git, source, datasets, lastTurnChanges, loadDiff])
 
   // 宿主面板（PreviewDetailsPanel）驱动的审查请求（props 变化）。
+  // 带 source 的请求是「LLM 活动驱动」（auto-open-details）：强制切换来源并展开
+  // 目标文件——驱动打开审查面板时用户想看的是模型上一轮改了什么，所以切到
+  // 「上一轮更改」并直接把第一个修改文件展开到 diff 区域；不带 source 的请求
+  // 是轮次卡片「审查」按钮（reviewPath：找到包含该文件的源）。
   useEffect(() => {
-    if (reviewRequest !== null && reviewRequest !== undefined) reviewPath(reviewRequest.path)
+    if (reviewRequest === null || reviewRequest === undefined) return
+    if ('source' in reviewRequest) {
+      const req = reviewRequest
+      setSource(req.source)
+      if (req.source === 'last-turn') {
+        // last-turn 快照是同步的（turn-file-store），直接展开目标文件。
+        const changes = getLastTurnChanges()
+        const target = resolveDriveTarget(changes, req.path)
+        setExpanded(target)
+      } else {
+        setExpanded(req.path ?? null)
+      }
+      return
+    }
+    reviewPath(reviewRequest.path)
   }, [reviewRequest, reviewPath])
 
   // 事件驱动的审查请求（自包含面板兜底：dock 工作台实例等）。
@@ -560,6 +626,7 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
                   onContextMenu={(e) => { openMenu(e, change) }}
                 >
                   <span className={css.fileInfo}>
+                    <FileIcon path={rel} />
                     <span className={css.fileName}>{basenameOf(rel)}</span>
                     {dirnameOf(rel) !== '' && <span className={css.fileDir}>{dirnameOf(rel)}</span>}
                   </span>

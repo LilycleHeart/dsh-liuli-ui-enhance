@@ -7,7 +7,7 @@
  * - `/preview`：把当前会话 cwd 作为同源静态站点（预览面板 iframe 用），
  *   只服务会话目录内的文件，Host fence 防 DNS rebinding。
  */
-import { createReadStream, existsSync } from 'node:fs'
+import { createReadStream, existsSync, readFileSync } from 'node:fs'
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { execFile as execFileCb, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -28,6 +28,25 @@ import { audioCaptureRoute, installSystemAudioCapture } from './host-audio.ts'
 export const name = 'dsh-liuli-ui-enhance'
 
 export const inject = ['webServer', 'credentials', 'sessions']
+
+/**
+ * 琉璃扩展命令的最小结构面。刻意不 import @deepseek-ai/dsh-commands：
+ * 它的类型面会拖进 dsh-session 的 `Context.sessions: SessionStore` 声明，
+ * 与 dsh-client-runtime 浏览器侧的 `ISessions` 声明合并冲突（见 AGENTS.md）。
+ * 这里只声明我们用到的子集，运行时经 ctx.inject(['commands']) 解析。
+ */
+interface LiuliCommandRegistry {
+  register(definition: {
+    name: string
+    description: string
+    input?: { hint: string; images?: boolean }
+    recordInput?: boolean
+    handler: (invocation: { agent: unknown; rawInput: string; attachments: unknown[] }) => {
+      kind: 'success' | 'error'
+      text?: string
+    } | Promise<{ kind: 'success' | 'error'; text?: string }>
+  }): () => void
+}
 
 /**
  * Host 会话存储的最小读面。刻意不 import @deepseek-ai/dsh-session：它的
@@ -505,6 +524,29 @@ function liuliSettingsFile(): string {
   return joinPath(root, 'settings.json')
 }
 
+/** 非官方增强开关（Host 半，兼容其它插件）：同步读取用户保存的 Host 设置文件
+ * （客户端每次改设置都会 PUT 到这里；文件缺失/损坏时默认全部开启，行为不变）。
+ * 只读布尔字段，刻意不 import schemastery，避免把额外依赖拖进 node bundle。
+ * 注意：这里的开关只在「有真实副作用的动作」上生效——frameless 补丁（改写
+ * DSH app.asar）、系统音频授权 handler（全局 handler 安装）、内嵌浏览器引擎、
+ * /side /btw 指令注册；各 /liuli-* 数据路由保持注册（被动、无冲突）。 */
+function hostUnofficialFlags(): { desktop: boolean; browser: boolean; dom: boolean } {
+  const flags = { desktop: true, browser: true, dom: true }
+  try {
+    const text = readFileSync(liuliSettingsFile(), 'utf8')
+    const data = JSON.parse(text) as { settings?: Record<string, unknown> | null }
+    const s = data.settings
+    if (typeof s !== 'object' || s === null) return flags
+    if (s.unofficial_enabled === false) return { desktop: false, browser: false, dom: false }
+    flags.desktop = s.unofficial_desktop !== false
+    flags.browser = s.unofficial_browser !== false
+    flags.dom = s.unofficial_dom !== false
+    return flags
+  } catch {
+    return flags
+  }
+}
+
 /** /liuli-settings：Host 端保存/读取琉璃界面设置与壁纸（跨 ephemeral 端口持久化）。 */
 function liuliSettingsRoute(): WebRoute {
   return {
@@ -651,10 +693,16 @@ async function queryQuota(ctx: Context, provider: string): Promise<QuotaPayload>
 
 /** 宿主插件体：注册 /liuli-quota 与 /preview 本地路由。 */
 export function apply(ctx: Context): void {
+  // 非官方增强开关（兼容其它插件）：与浏览器半共用同一份 Host 设置文件。
+  const unofficial = hostUnofficialFlags()
+
   // 客户端更新会还原 app.asar，无边框补丁需要在插件启动时自动重打。
   // 幂等；仅 win32 + Electron 主进程生效，纯 Web / 其他平台自动跳过。
   // 补丁为尽力而为：失败只告警不阻断插件加载，避免外观功能变成启动阻塞点。
-  applyFramelessPatch()
+  // unofficial_desktop 关闭时不打补丁（不改写宿主文件）。
+  if (unofficial.desktop) {
+    applyFramelessPatch()
+  }
 
   const route: WebRoute = {
     kind: 'prefix',
@@ -701,9 +749,12 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.webServer.register(revealRoute(ctx)), 'dsh-liuli-ui-enhance: /liuli-reveal route')
   // 系统音频监听（HeaderEffects.tsx 的「监听系统音量」按钮）：Electron 主进程给
   // defaultSession 装 setDisplayMediaRequestHandler，getDisplayMedia 的 audio 请求
-  // 直接授予系统回环音频（audio:'loopback'，仅 Windows）；另提供 /liuli-audio 探测。
+  // 直接授予系统回环音频（audio:'loopback'，仅 Windows）；另提供 /liuli-audio 探测
+  // （路由保持注册，未装 handler 时返回 available:false，前端降级走默认授权流程）。
   // 纯 Web 部署两者都为空操作（handler 不装、路由返回 available:false）。
+  // unofficial_desktop 关闭时只跳过 handler 安装（全局 handler 会与其他插件冲突）。
   ctx.effect(() => {
+    if (!unofficial.desktop) return () => {}
     let disposed = false
     let dispose: (() => void) | undefined
     void installSystemAudioCapture().then((release) => {
@@ -716,25 +767,49 @@ export function apply(ctx: Context): void {
     }
   }, 'dsh-liuli-ui-enhance: desktop system audio capture handler')
   ctx.effect(() => ctx.webServer.register(audioCaptureRoute()), 'dsh-liuli-ui-enhance: /liuli-audio route')
+  // /side、/btw 指令：挂到 DSH 命令注册表（控制面，绝不进入模型历史）。
+  // 命令本身只回成功；fork 子会话与标签打开在客户端观察 command/executed 完成，
+  // 保证辅助对话的 fork 不进入会话列表（只出现在标签页）。
+  // unofficial_dom 关闭时不注册（客户端对应桥也一并停用）。
+  if (unofficial.dom) {
+    ctx.inject(['commands'], (commandCtx) => {
+      const commands = (commandCtx as unknown as { commands: LiuliCommandRegistry }).commands
+      commands.register({
+        name: 'side',
+        description: '在当前会话侧边栏新建一个辅助对话',
+        handler: () => ({ kind: 'success' }),
+      })
+      commands.register({
+        name: 'btw',
+        description: '把问题交给辅助对话并发回答，不改变当前会话上下文',
+        input: { hint: '<问题>', images: false },
+        recordInput: false,
+        handler: ({ rawInput }) => ({ kind: 'success', text: rawInput.trim() }),
+      })
+    })
+  }
   // 嵌入式浏览器引擎（DSH Desktop IAB 实现）：仅 Electron 主进程内有
   // WebContentsView 可承载真实 webview；纯 Web 部署返回 undefined，
   // 渲染端探测 /liuli-browser/capabilities 失败后自动回退 iframe。
-  void createBrowserEngine().then((engine) => {
-    if (engine === undefined) return
-    try {
-      ctx.effect(() => {
-        const release = ctx.webServer.register(engine.route)
-        return () => { release(); engine.dispose() }
-      }, 'dsh-liuli-ui-enhance: /liuli-browser route (embedded webview engine)')
-    } catch {
-      // 插件在探测完成前被卸载：直接销毁引擎。
-      engine.dispose()
-    }
-  }).catch((cause: unknown) => {
-    try {
-      ctx.logger.warn(`dsh-liuli-ui-enhance: embedded browser engine unavailable: ${cause instanceof Error ? cause.message : String(cause)}`)
-    } catch { /* 上下文已释放则静默 */ }
-  })
+  // unofficial_browser 关闭时直接跳过（前端浏览器标签自动回退 iframe / 代理）。
+  if (unofficial.browser) {
+    void createBrowserEngine().then((engine) => {
+      if (engine === undefined) return
+      try {
+        ctx.effect(() => {
+          const release = ctx.webServer.register(engine.route)
+          return () => { release(); engine.dispose() }
+        }, 'dsh-liuli-ui-enhance: /liuli-browser route (embedded webview engine)')
+      } catch {
+        // 插件在探测完成前被卸载：直接销毁引擎。
+        engine.dispose()
+      }
+    }).catch((cause: unknown) => {
+      try {
+        ctx.logger.warn(`dsh-liuli-ui-enhance: embedded browser engine unavailable: ${cause instanceof Error ? cause.message : String(cause)}`)
+      } catch { /* 上下文已释放则静默 */ }
+    })
+  }
 }
 
 /* ── /preview：会话 cwd 同源静态服务（预览面板 iframe）────────────── */

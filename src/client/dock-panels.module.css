@@ -84,3 +84,15 @@
   color: var(--dsw-alias-label-primary, inherit);
   font: var(--dsw-font-s-13, 13px/1.6 system-ui);
 }
+
+.paneEmpty {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  color: var(--dsw-alias-label-tertiary, #888);
+  font-size: 12px;
+  text-align: center;
+}

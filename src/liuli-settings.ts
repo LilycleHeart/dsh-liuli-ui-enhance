@@ -88,6 +88,24 @@ export interface LiuliSettings {
   vp_noise_gate: number
   /** 会话切换/新消息入场动画（'rise' 默认；'none' 关闭）。 */
   transition_effect: LiuliTransitionEffect
+  /** 自动驱动侧边栏浏览器（LLM 活动感知）：模型启动 dev server / 写前端文件时
+   *  自动在右侧边栏打开浏览器标签展示页面（auto-drive-browser.ts）。 */
+  auto_drive_browser: boolean
+  /** 非官方增强总开关：关闭后仅保留官方扩展点功能（主题/声纹/侧边栏/设置页），
+   *  全部非官方（侵入式/观察式）功能不挂载，用于与其它插件冲突时一键降级。 */
+  unofficial_enabled: boolean
+  /** Dockable 布局改造：advanced 模式接管宿主 root slot（三栏可拖拽/拆分/浮动）、
+   *  会话页头独立面板、conversation-split、桌面 shell 别名类挂载。 */
+  unofficial_layout: boolean
+  /** 桌面宿主补丁：自动补丁 DSH Desktop（无边框 / 内嵌 webviewTag）、页面内窗口按钮、
+   *  /liuli-window 窗口控制路由、系统回环音频授权。 */
+  unofficial_desktop: boolean
+  /** 内嵌浏览器：Host 浏览器引擎（WebContentsView / webview）、侧栏浏览器标签、
+   *  模型活动自动驱动浏览器。 */
+  unofficial_browser: boolean
+  /** DOM 观察增强：悬浮球、自动展开、入场动画、会话标记/右键菜单、重命名、
+   *  缩放性能护栏、/side /btw 等基于 DOM 观察或自有 overlay 的增强。 */
+  unofficial_dom: boolean
 }
 
 /** 默认设置（与 琉璃 界面设置一致）。 */
@@ -127,6 +145,12 @@ export const LIULI_SETTINGS_DEFAULTS: LiuliSettings = {
   vp_spec_smooth: 0.3,
   vp_noise_gate: 0.025,
   transition_effect: 'rise',
+  auto_drive_browser: true,
+  unofficial_enabled: true,
+  unofficial_layout: true,
+  unofficial_desktop: true,
+  unofficial_browser: true,
+  unofficial_dom: true,
 }
 
 /** 持久化 schema（浏览器 scope 复用同一描述）。 */
@@ -171,6 +195,13 @@ export const LiuliSettingsSchema: z<LiuliSettings> = z.object({
   transition_effect: z.union([
     'fade', 'rise', 'drop', 'slide', 'zoom', 'blur', 'spring', 'stagger', 'staggerRise', 'none',
   ]).default('rise'),
+  auto_drive_browser: z.boolean().default(true),
+  // 非官方增强开关（兼容其它插件）：默认全部开启（行为不变）；关闭后相应功能不挂载。
+  unofficial_enabled: z.boolean().default(true),
+  unofficial_layout: z.boolean().default(true),
+  unofficial_desktop: z.boolean().default(true),
+  unofficial_browser: z.boolean().default(true),
+  unofficial_dom: z.boolean().default(true),
 }) as unknown as z<LiuliSettings>
 
 /** 合并任意部分值到完整设置（读侧防御）。 */

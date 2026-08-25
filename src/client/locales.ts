@@ -1,8 +1,8 @@
-/** 琉璃主题文案字典（liuli-appearance 命名空间）。 */
+/** 琉璃主题文案字典（liuli-appearance / liuli-features 两个设置分区命名空间）。 */
 
-/** `liuli-appearance` 字典（键相对命名空间）。 */
+/** `liuli-appearance` 字典（键相对命名空间；外观分区）。 */
 export const zh = {
-  'nav': '界面',
+  'nav': '外观',
   'colorMode': '取色模式',
   'colorMode.dynamic': '动态（壁纸 Material 取色）',
   'colorMode.static': '静态（自定义颜色）',
@@ -31,7 +31,6 @@ export const zh = {
   'glowStrength': '泛光强度',
   'shadowOn': '投影阴影',
   'shadowStrength': '阴影强度',
-  'wideMode': '宽边模式',
   'wallpaper': '壁纸设置',
   'wallpaper.choose': '选择图片',
   'bgFit': '适应模式',
@@ -48,45 +47,6 @@ export const zh = {
   'wallpaper.uploading': '上传中…',
   'wallpaper.remove': '移除',
   'wallpaper.preview': '壁纸预览',
-  'vp.title': '声纹响应',
-  'vp.sensitivity': '响应灵敏度（参考响度）',
-  'vp.tip.sensitivity': '连续响应的参考响度：频段能量达到该值即视为强响应。越小波形对音量越敏感，越大越迟钝',
-  'vp.beatGain': '鼓点强度（振幅加成）',
-  'vp.tip.beatGain': '鼓点击中时波形振幅的加成倍率：峰值 = 基础振幅 ×(1+该值)；设为 0 关闭鼓点爆发',
-  'vp.beatDecay': '脉冲长度（衰减系数）',
-  'vp.tip.beatDecay': '每次鼓点脉冲的衰减速度（每帧乘该系数）：越大脉冲越持久、越小越短促',
-  'vp.beatMult': '节拍触发灵敏度（均值倍数）',
-  'vp.tip.beatMult': '官方节拍检测阈值：帧能量超过滑动平均的该倍数即视为节拍。越大越难触发（更挑重音），越小越容易触发',
-  'vp.pulseMult': '低频脉冲灵敏度（均值倍数）',
-  'vp.tip.pulseMult': '官方低频脉冲阈值：50-350Hz 能量超过滑动平均的该倍数即触发 30% 弱脉冲。越大越难触发',
-  'vp.bassWeight': '低频段权重',
-  'vp.tip.bassWeight': '低频段（0-860Hz）在连续响应中的权重：越大鼓点/贝斯的起伏越明显',
-  'vp.midWeight': '中频段权重',
-  'vp.tip.midWeight': '中频段（0.86-2.7kHz）权重：人声、旋律、军鼓所在频段',
-  'vp.highWeight': '高频段权重',
-  'vp.tip.highWeight': '高频段（2.7-10.9kHz）权重：镲片、踩镲、高频细节所在频段',
-  'vp.beatCooldown': '节拍冷却（ms）',
-  'vp.tip.beatCooldown': '两次节拍触发的最小间隔：越小触发密度越高（官方 200ms ≈ 最高 5 拍/秒）',
-  'vp.pulseCooldown': '低频脉冲冷却（ms）',
-  'vp.tip.pulseCooldown': '两次低频脉冲触发的最小间隔（官方 220ms）',
-  'vp.envSpeed': '响应速度（包络攻速）',
-  'vp.tip.envSpeed': '频段包络的攻击速度：越大波形越跟手、越小越平滑；释放速度自动按攻速的 1/6 跟随',
-  'vp.specSmooth': '频谱平滑度（抖动/锐度）',
-  'vp.tip.specSmooth': '绘制所用频谱的一阶低通系数：越小瞬态越锐利（线条可能抖），越大越柔和',
-  'vp.noiseGate': '静音门限（底噪抑制）',
-  'vp.tip.noiseGate': '频段能量低于该值的部分驱动归零：越大静音/底噪时波形越安静',
-  'transition': '会话切换动画',
-  'transition.desc': '切换会话或收到新消息时的入场效果',
-  'transition.fade': '淡入',
-  'transition.rise': '上浮淡入',
-  'transition.drop': '下沉淡入',
-  'transition.slide': '右滑淡入',
-  'transition.zoom': '缩放淡入',
-  'transition.blur': '模糊淡入',
-  'transition.spring': '弹性上浮',
-  'transition.stagger': '级联淡入',
-  'transition.staggerRise': '级联上浮',
-  'transition.none': '关闭',
   'reset': '恢复默认',
 } satisfies Record<string, string>
 
@@ -95,7 +55,7 @@ export type LiuliAppearanceKey = keyof typeof zh
 
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
-  'nav': 'Liuli UI',
+  'nav': 'Appearance',
   'colorMode': 'Accent mode',
   'colorMode.dynamic': 'Dynamic (Material from wallpaper)',
   'colorMode.static': 'Static (custom color)',
@@ -124,7 +84,6 @@ export const en = {
   'glowStrength': 'Glow strength',
   'shadowOn': 'Drop shadow',
   'shadowStrength': 'Shadow strength',
-  'wideMode': 'Wide mode',
   'wallpaper': 'Wallpaper',
   'wallpaper.choose': 'Choose image',
   'bgFit': 'Fit mode',
@@ -141,6 +100,103 @@ export const en = {
   'wallpaper.uploading': 'Uploading…',
   'wallpaper.remove': 'Remove',
   'wallpaper.preview': 'Wallpaper preview',
+  'reset': 'Reset to defaults',
+} satisfies Record<string, string>
+
+/* ── 功能分区（liuli-features 命名空间）──────────────────────────── */
+
+/** `liuli-features` 字典（中）：宽边/会话动画/声纹/模型重试/历史加载。 */
+export const featuresZh = {
+  'nav': '功能',
+  'wideMode': '宽边模式',
+  'transition': '会话切换动画',
+  'transition.desc': '切换会话或收到新消息时的入场效果',
+  'transition.fade': '淡入',
+  'transition.rise': '上浮淡入',
+  'transition.drop': '下沉淡入',
+  'transition.slide': '右滑淡入',
+  'transition.zoom': '缩放淡入',
+  'transition.blur': '模糊淡入',
+  'transition.spring': '弹性上浮',
+  'transition.stagger': '级联淡入',
+  'transition.staggerRise': '级联上浮',
+  'transition.none': '关闭',
+  'autoDriveBrowser': '自动驱动侧边栏浏览器',
+  'autoDriveBrowserHint': '模型启动 dev server / 写前端文件时，自动在右侧边栏打开浏览器标签展示页面',
+  'vp.title': '声纹响应',
+  'vp.sensitivity': '响应灵敏度（参考响度）',
+  'vp.tip.sensitivity': '连续响应的参考响度：频段能量达到该值即视为强响应。越小波形对音量越敏感，越大越迟钝',
+  'vp.beatGain': '鼓点强度（振幅加成）',
+  'vp.tip.beatGain': '鼓点击中时波形振幅的加成倍率：峰值 = 基础振幅 ×(1+该值)；设为 0 关闭鼓点爆发',
+  'vp.beatDecay': '脉冲长度（衰减系数）',
+  'vp.tip.beatDecay': '每次鼓点脉冲的衰减速度（每帧乘该系数）：越大脉冲越持久、越小越短促',
+  'vp.beatMult': '节拍触发灵敏度（均值倍数）',
+  'vp.tip.beatMult': '官方节拍检测阈值：帧能量超过滑动平均的该倍数即视为节拍。越大越难触发（更挑重音），越小越容易触发',
+  'vp.pulseMult': '低频脉冲灵敏度（均值倍数）',
+  'vp.tip.pulseMult': '官方低频脉冲阈值：50-350Hz 能量超过滑动平均的该倍数即触发 30% 弱脉冲。越大越难触发',
+  'vp.bassWeight': '低频段权重',
+  'vp.tip.bassWeight': '低频段（0-860Hz）在连续响应中的权重：越大鼓点/贝斯的起伏越明显',
+  'vp.midWeight': '中频段权重',
+  'vp.tip.midWeight': '中频段（0.86-2.7kHz）权重：人声、旋律、军鼓所在频段',
+  'vp.highWeight': '高频段权重',
+  'vp.tip.highWeight': '高频段（2.7-10.9kHz）权重：镲片、踩镲、高频细节所在频段',
+  'vp.beatCooldown': '节拍冷却（ms）',
+  'vp.tip.beatCooldown': '两次节拍触发的最小间隔：越小触发密度越高（官方 200ms ≈ 最高 5 拍/秒）',
+  'vp.pulseCooldown': '低频脉冲冷却（ms）',
+  'vp.tip.pulseCooldown': '两次低频脉冲触发的最小间隔（官方 220ms）',
+  'vp.envSpeed': '响应速度（包络攻速）',
+  'vp.tip.envSpeed': '频段包络的攻击速度：越大波形越跟手、越小越平滑；释放速度自动按攻速的 1/6 跟随',
+  'vp.specSmooth': '频谱平滑度（抖动/锐度）',
+  'vp.tip.specSmooth': '绘制所用频谱的一阶低通系数：越小瞬态越锐利（线条可能抖），越大越柔和',
+  'vp.noiseGate': '静音门限（底噪抑制）',
+  'vp.tip.noiseGate': '频段能量低于该值的部分驱动归零：越大静音/底噪时波形越安静',
+  'modelRetry.title': '模型请求重试',
+  'modelRetry.maxRetries': '重试次数',
+  'modelRetry.maxRetriesHint': '模型请求失败后自动重试的最大次数（0 = 不重试）',
+  'modelRetry.initialDelay': '重试等待时间',
+  'modelRetry.initialDelayHint': '首次重试前的等待时间，之后按指数退避递增',
+  'modelRetry.times': '次',
+  'modelRetry.ms': 'ms',
+  'modelRetry.providerCount': '已应用到 {count} 个供应商',
+  'historyLoad.title': '切换会话默认历史加载',
+  'historyLoad.batches': '默认加载轮数',
+  'historyLoad.batchesHint': '切换会话时希望默认加载的历史轮数（一个用户对话算一轮；宿主基线约 2 轮，调大后自动补载更多历史，0-2 保持默认）',
+  'historyLoad.rounds': '轮',
+  'unofficial.title': '非官方增强（兼容开关）',
+  'unofficial.enabled': '启用非官方增强',
+  'unofficial.enabledHint': '总开关：关闭后仅保留官方扩展点功能（主题/声纹/侧边栏/设置页），非官方功能全部不挂载；与其它插件冲突时使用。更改后需刷新页面生效',
+  'unofficial.layout': 'Dockable 布局改造',
+  'unofficial.layoutHint': '高级模式下接管宿主布局（三栏可拖拽/拆分/浮动）、会话页头独立面板、桌面 shell 别名类；与其它布局类插件冲突时关闭',
+  'unofficial.desktop': '桌面宿主补丁',
+  'unofficial.desktopHint': '自动补丁 DSH Desktop（无边框/内嵌 webviewTag）、页面内窗口按钮、窗口控制路由、系统回环音频授权',
+  'unofficial.browser': '内嵌浏览器',
+  'unofficial.browserHint': '右侧边栏嵌入式浏览器引擎与模型活动自动驱动（启动 dev server / 写前端文件时自动展示页面）',
+  'unofficial.dom': 'DOM 观察增强',
+  'unofficial.domHint': '悬浮球/自动展开/入场动画/会话标记与右键菜单/重命名/缩放性能护栏等基于 DOM 观察或自有 overlay 的增强；与其它插件改造同一界面元素时冲突则关闭',
+  'reset': '恢复默认',
+} satisfies Record<string, string>
+
+/** The liuli-features namespace key union. */
+export type LiuliFeaturesKey = keyof typeof featuresZh
+
+/** `liuli-features` 字典（英，与 zh 键集对齐）。 */
+export const featuresEn = {
+  'nav': 'Features',
+  'wideMode': 'Wide mode',
+  'transition': 'Session transition',
+  'transition.desc': 'Entrance effect when switching sessions or receiving new messages',
+  'transition.fade': 'Fade',
+  'transition.rise': 'Rise',
+  'transition.drop': 'Drop',
+  'transition.slide': 'Slide',
+  'transition.zoom': 'Zoom',
+  'transition.blur': 'Blur in',
+  'transition.spring': 'Spring up',
+  'transition.stagger': 'Cascade fade',
+  'transition.staggerRise': 'Cascade rise',
+  'transition.none': 'Off',
+  'autoDriveBrowser': 'Auto-drive sidebar browser',
+  'autoDriveBrowserHint': 'When the model starts a dev server or edits frontend files, automatically open a browser tab in the right sidebar to show the page',
   'vp.title': 'Voiceprint response',
   'vp.sensitivity': 'Response sensitivity (reference loudness)',
   'vp.tip.sensitivity': 'Reference loudness of the continuous response: a band is "strong" once its energy reaches this. Lower = more sensitive, higher = more sluggish',
@@ -168,69 +224,30 @@ export const en = {
   'vp.tip.specSmooth': 'One-pole low-pass factor of the drawing spectrum: lower = sharper transients (lines may jitter), higher = softer',
   'vp.noiseGate': 'Noise gate (quiet suppression)',
   'vp.tip.noiseGate': 'Band energy below this level drives to zero: higher keeps the wave calmer on silence/noise',
-  'transition': 'Session transition',
-  'transition.desc': 'Entrance effect when switching sessions or receiving new messages',
-  'transition.fade': 'Fade',
-  'transition.rise': 'Rise',
-  'transition.drop': 'Drop',
-  'transition.slide': 'Slide',
-  'transition.zoom': 'Zoom',
-  'transition.blur': 'Blur in',
-  'transition.spring': 'Spring up',
-  'transition.stagger': 'Cascade fade',
-  'transition.staggerRise': 'Cascade rise',
-  'transition.none': 'Off',
+  'modelRetry.title': 'Model request retry',
+  'modelRetry.maxRetries': 'Retry count',
+  'modelRetry.maxRetriesHint': 'Max auto-retries after a model request fails (0 = no retry)',
+  'modelRetry.initialDelay': 'Retry wait',
+  'modelRetry.initialDelayHint': 'Wait before the first retry; later retries back off exponentially',
+  'modelRetry.times': 'times',
+  'modelRetry.ms': 'ms',
+  'modelRetry.providerCount': 'Applied to {count} provider(s)',
+  'historyLoad.title': 'Default history load on session switch',
+  'historyLoad.batches': 'Default batches',
+  'historyLoad.batchesHint': 'Desired history rounds when switching sessions (one user message = one round; host baseline ~2 rounds; larger values auto-load more, 0-2 keeps default)',
+  'historyLoad.rounds': 'rounds',
+  'unofficial.title': 'Unofficial enhancements (compat switches)',
+  'unofficial.enabled': 'Enable unofficial enhancements',
+  'unofficial.enabledHint': 'Master switch: when off, only official extension-point features remain (theme / voiceprint / sidebar / settings); unofficial features are not mounted. Use this when another plugin conflicts. A page refresh is required after changing',
+  'unofficial.layout': 'Dockable layout takeover',
+  'unofficial.layoutHint': 'In advanced mode: take over the host layout (draggable/split/float three columns), standalone conversation-header panel, desktop shell alias classes. Disable when conflicting with other layout plugins',
+  'unofficial.desktop': 'Desktop host patches',
+  'unofficial.desktopHint': 'Auto-patch DSH Desktop (frameless / embedded webviewTag), in-page window controls, window control route, system loopback audio grant',
+  'unofficial.browser': 'Embedded browser',
+  'unofficial.browserHint': 'Sidebar embedded browser engine and model-activity auto-drive (auto-show pages when the model starts a dev server or edits frontend files)',
+  'unofficial.dom': 'DOM observation enhancements',
+  'unofficial.domHint': 'Float ball / auto-expand / entrance animations / session markers & context menus / rename / resize performance guard — DOM-observation or own-overlay enhancements. Disable when another plugin reshapes the same UI elements',
   'reset': 'Reset to defaults',
-} satisfies Record<string, string>
-
-/* ── 模型请求重试（liuli-model-retry 命名空间）────────────────────── */
-
-/** `liuli-model-retry` 字典（中）。 */
-export const modelRetryZh = {
-  'title': '模型请求重试',
-  'maxRetries': '重试次数',
-  'maxRetriesHint': '模型请求失败后自动重试的最大次数（0 = 不重试）',
-  'initialDelay': '重试等待时间',
-  'initialDelayHint': '首次重试前的等待时间，之后按指数退避递增',
-  'times': '次',
-  'ms': 'ms',
-  'providerCount': '已应用到 {count} 个供应商',
-} satisfies Record<string, string>
-
-/** The liuli-model-retry namespace key union. */
-export type ModelRetryKey = keyof typeof modelRetryZh
-
-/** `liuli-model-retry` 字典（英，与 zh 键集对齐）。 */
-export const modelRetryEn = {
-  'title': 'Model request retry',
-  'maxRetries': 'Retry count',
-  'maxRetriesHint': 'Max auto-retries after a model request fails (0 = no retry)',
-  'initialDelay': 'Retry wait',
-  'initialDelayHint': 'Wait before the first retry; later retries back off exponentially',
-  'times': 'times',
-  'ms': 'ms',
-  'providerCount': 'Applied to {count} provider(s)',
-} satisfies Record<string, string>
-
-/* ── 切换会话默认历史加载量（liuli-history-load 命名空间）────────────── */
-
-/** `liuli-history-load` 字典（中）。 */
-export const historyLoadZh = {
-  'title': '切换会话默认历史加载',
-  'batches': '默认加载轮数',
-  'batchesHint': '切换会话时希望默认加载的历史轮数（一个用户对话算一轮；宿主基线约 2 轮，调大后自动补载更多历史，0-2 保持默认）',
-  'rounds': '轮',
-} satisfies Record<string, string>
-
-/** The liuli-history-load namespace key union. */
-export type HistoryLoadKey = keyof typeof historyLoadZh
-
-/** `liuli-history-load` 字典（英，与 zh 键集对齐）。 */
-export const historyLoadEn = {
-  'title': 'Default history load on session switch',
-  'batches': 'Default batches',
-  'batchesHint': 'Desired history rounds when switching sessions (one user message = one round; host baseline ~2 rounds; larger values auto-load more, 0-2 keeps default)',
-  'rounds': 'rounds',
 } satisfies Record<string, string>
 
 /* ── 悬浮球开发者工具（liuli-floatball 命名空间，待接入组件文案）────────── */

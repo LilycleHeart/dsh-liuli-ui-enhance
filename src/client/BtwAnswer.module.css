@@ -1,0 +1,107 @@
+/* /btw 正文回答卡片：容器挂在消息列 [data-chat-flow] 内、与消息同列，
+   视觉上与消息卡片一致（亚克力材质由正文卡片承担，自身只需要透明底 +
+   描边/圆角，避免再次 backdrop-filter 截断采样）。 */
+
+/* 宿主给 [data-chat-flow] > * 挂了 content-visibility:auto（长对话减负），
+   我们的容器必须始终渲染，覆盖为 visible。 */
+:global([data-chat-flow] > [data-liuli-btw-answer-list]) {
+  content-visibility: visible !important;
+  contain-intrinsic-size: auto !important;
+}
+
+.btwList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px 12px;
+  margin: 0;
+}
+
+.card {
+  position: relative;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: var(--liuli-radius, 14px);
+  background-color: rgba(var(--liuli-acrylic-rgb, 255 255 255), 0.55);
+  box-shadow: var(--liuli-shadow-subtle, none);
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--dsw-alias-label-primary);
+  overflow: hidden;
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-brand-primary, #4f9dff);
+  letter-spacing: 0.02em;
+}
+
+.status {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+.status[data-state='running'] {
+  color: var(--dsw-alias-brand-primary, #4f9dff);
+}
+.status[data-state='done'] {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.close {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.close:hover {
+  background: rgba(var(--dsw-specific-hover, 128 128 128), 0.12);
+  color: var(--dsw-alias-label-primary);
+}
+
+.question {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  background: rgba(var(--liuli-acrylic-rgb, 255 255 255), 0.35);
+  border-left: 2px solid var(--dsw-alias-border-l2);
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin-bottom: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.answer {
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-word;
+  /* 正文交给官方 MarkdownText 渲染（段落/代码块/列表自管理），
+     不再整体 pre-wrap，避免与块级元素布局冲突。 */
+}
+.answer > *:first-child {
+  margin-top: 0;
+}
+.answer > *:last-child {
+  margin-bottom: 0;
+}
+.answer[data-empty=''] {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.error {
+  color: var(--dsw-alias-danger, #e5484d);
+  font-size: 12px;
+  margin-top: 4px;
+}

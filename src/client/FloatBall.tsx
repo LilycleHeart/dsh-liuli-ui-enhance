@@ -89,8 +89,11 @@ interface Tool {
  * @param props.openLayoutMenu - 可选：唤起布局工作台菜单（dockable shell）。 */
 export function FloatBall({ insertElement, openDock, openLayoutMenu }: { insertElement: InsertElementFn; openDock?: () => void; openLayoutMenu?: () => void }) {
   const rootRef = useRef<HTMLDivElement | null>(null)
+  const toolbarRef = useRef<HTMLDivElement | null>(null)
   const hoverRef = useRef<HTMLDivElement | null>(null)
   const drag = useRef<{ sx: number; sy: number; px: number; py: number; moved: boolean } | null>(null)
+  /** 从吸附半隐藏态点击展开时的原吸附边；关闭菜单时据此回到原位置吸附隐藏。 */
+  const returnSnap = useRef<Side | null>(null)
   const posRef = useRef<Pos>(loadPos())
   const detachRef = useRef<(() => void) | null>(null)
 
@@ -98,6 +101,10 @@ export function FloatBall({ insertElement, openDock, openLayoutMenu }: { insertE
   const [dragging, setDragging] = useState(false)
   const [snapped, setSnapped] = useState<Side | null>(null)
   const [open, setOpen] = useState(DEFAULT_OPEN)
+  /** 菜单翻到球左侧（默认在球右侧） */
+  const [menuLeft, setMenuLeft] = useState(false)
+  /** 菜单底边对齐球底、向上展开（默认顶边对齐球顶、向下展开） */
+  const [menuBottom, setMenuBottom] = useState(false)
   const [hovered, setHovered] = useState(false)
   const [picking, setPicking] = useState(false)
   const [picked, setPicked] = useState<PickedElement | null>(null)
@@ -237,25 +244,50 @@ export function FloatBall({ insertElement, openDock, openLayoutMenu }: { insertE
     return () => { window.clearTimeout(timer) }
   }, [notice])
 
-  /* ── 展开时把 root（球+工具栏）完整拉回窗口内 ──
-     根因修复：球贴近右侧时 side='left' 工具栏向左展开，球被推向窗口外
-     （不可见也无法点击收起）；clamp 保证展开后整体可见。 */
+  /* ── 展开时把球 + 竖向菜单完整拉回窗口内 ──
+     菜单绝对定位在球旁：默认在球右侧、顶边对齐球顶向下展开；
+     根据球的位置动态调整——右侧放不下且左侧放得下 → 翻到球左侧（data-menu-left）；
+     下方放不下且上方放得下 → 改为底边对齐球底向上展开（data-menu-bottom）。
+     root 只承载球本体，夹取按「球 ∪ 菜单」的并集矩形计算；
+     方向判定与夹取分两步：先定方向（等重渲染挂上翻转类），再按最终 rect 夹取。 */
   useLayoutEffect(() => {
     if (!open) return
     const el = rootRef.current
-    if (el === null) return
-    const r = el.getBoundingClientRect()
+    const t = toolbarRef.current
+    if (el === null || t === null) return
     const vw = window.innerWidth
     const vh = window.innerHeight
+    const r = el.getBoundingClientRect()
+    const menuW = t.offsetWidth
+    const menuH = t.offsetHeight
+    // 水平方向：默认球右侧，右侧放不下且左侧放得下 → 翻到球左侧
+    const wantLeft = vw - (r.right + 8) < menuW && r.left - 8 >= menuW
+    // 垂直方向：默认顶边对齐球顶向下展开，下方放不下且上方放得下 → 底边对齐向上展开
+    const wantBottom = r.top + menuH > vh - 8 && r.bottom - menuH >= 8
+    if (wantLeft !== menuLeft || wantBottom !== menuBottom) {
+      setMenuLeft(wantLeft)
+      setMenuBottom(wantBottom)
+      return
+    }
+    // 夹取：球与菜单的并集矩形保持在视口内（偏移同时作用于两者）
+    const tr = t.getBoundingClientRect()
+    const left = Math.min(r.left, tr.left)
+    const top = Math.min(r.top, tr.top)
+    const width = Math.max(r.right, tr.right) - left
+    const height = Math.max(r.bottom, tr.bottom) - top
     const p = posRef.current
-    let left = p.left
-    let top = p.top
-    if (r.right > vw - 8) left = Math.max(0, vw - r.width - 8)
-    if (r.left < 8) left = 8
-    if (r.bottom > vh - 8) top = Math.max(0, vh - r.height - 8)
-    if (r.top < 8) top = 8
-    if (left !== p.left || top !== p.top) applyPos({ left, top })
-  }, [open])
+    const dLeft = left - p.left
+    const dTop = top - p.top
+    let nl = p.left
+    let nt = p.top
+    if (nl + dLeft < 8) nl = 8 - dLeft
+    if (nl + dLeft + width > vw - 8) nl = vw - 8 - width - dLeft
+    if (nt + dTop < 8) nt = 8 - dTop
+    if (nt + dTop + height > vh - 8) nt = vh - 8 - height - dTop
+    nl = Math.max(0, nl)
+    nt = Math.max(0, nt)
+    if (nl !== p.left || nt !== p.top) applyPos({ left: nl, top: nt })
+  }, [open, menuLeft, menuBottom])
   /* ── 工具栏热键：Alt+Shift+<首字母> 直接触发工具；F12 打开侧边开发者工具 ── */
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -314,21 +346,51 @@ export function FloatBall({ insertElement, openDock, openLayoutMenu }: { insertE
     setDragging(false)
     ;(e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId)
     if (!d.moved) {
-      // 点击：若处于半隐藏吸附，先滑出完整再展开工具栏
+      // 点击：若处于半隐藏吸附，先滑出完整再展开工具栏，并记住原吸附边，
+      // 关闭菜单时回到原位置吸附隐藏（见下方 next 分支）。
       if (snapped !== null) {
+        returnSnap.current = snapped
         const vw = window.innerWidth
         const vh = window.innerHeight
         const p = posRef.current
-        const full: Pos = snapped === 'left' ? { left: 8, top: p.top }
-          : snapped === 'right' ? { left: vw - BALL - 8, top: p.top }
-            : snapped === 'top' ? { left: p.left, top: 8 }
-              : { left: p.left, top: vh - BALL - 8 }
-        applyPos(full)
+        const el = rootRef.current
+        // hover 滑出时球已在完整视觉位置（transform 偏移，left 属性仍在半隐藏位）：
+        // 直接按当前视觉 rect 落定并临时禁过渡，避免 left 过渡与 transform 归零
+        // 不同步——点击瞬间先跳回半隐藏位、再播放滑动画到另一个位置。
+        if (hovered && el !== null) {
+          const r = el.getBoundingClientRect()
+          el.style.transition = 'none'
+          applyPos({ left: r.left, top: r.top })
+          requestAnimationFrame(() => { el.style.transition = '' })
+        } else {
+          const full: Pos = snapped === 'left' ? { left: 8, top: p.top }
+            : snapped === 'right' ? { left: vw - BALL - 8, top: p.top }
+              : snapped === 'top' ? { left: p.left, top: 8 }
+                : { left: p.left, top: vh - BALL - 8 }
+          applyPos(full)
+        }
         setSnapped(null)
       }
-      setOpen(o => !o)
+      const next = !open
+      if (!next && returnSnap.current !== null) {
+        // 从展开态关闭且展开前处于吸附 → 恢复原位置吸附半隐藏
+        const side = returnSnap.current
+        returnSnap.current = null
+        const vw = window.innerWidth
+        const vh = window.innerHeight
+        const p = posRef.current
+        const target: Pos = side === 'left' ? { left: -BALL + PEEK, top: p.top }
+          : side === 'right' ? { left: vw - PEEK, top: p.top }
+            : side === 'top' ? { left: p.left, top: -BALL + PEEK }
+              : { left: p.left, top: vh - PEEK }
+        applyPos(target)
+        setSnapped(side)
+      }
+      setOpen(next)
       return
     }
+    // 拖拽松手：不再回弹到点击展开前的吸附位
+    returnSnap.current = null
     // 松手：贴近边缘则吸附半隐藏
     const vw = window.innerWidth
     const vh = window.innerHeight
@@ -430,9 +492,7 @@ export function FloatBall({ insertElement, openDock, openLayoutMenu }: { insertE
     })
   }
 
-  /* 工具栏展开方向：球偏左向右展开，偏右向左展开 */
-  const side = pos.left < window.innerWidth / 2 ? 'right' : 'left'
-
+  /* 工具栏展开方向：菜单竖向浮在球上方（下方空间不足时翻到球下方） */
   return (
     <>
       <div
@@ -440,7 +500,6 @@ export function FloatBall({ insertElement, openDock, openLayoutMenu }: { insertE
         className={css.root + (dragging ? ' ' + css.dragging : '')}
         data-snapped={snapped ?? undefined}
         data-hovered={hovered || undefined}
-        data-side={side}
         style={{ left: pos.left, top: pos.top }}
       >
         {/* 拖拽/点击只在球上生效：工具栏按钮不经过 pointer 逻辑，
@@ -457,7 +516,7 @@ export function FloatBall({ insertElement, openDock, openLayoutMenu }: { insertE
           <CrosshairIcon size={17} />
         </div>
         {open && (
-          <div className={css.toolbar} role="toolbar" aria-label="琉璃工具">
+          <div ref={toolbarRef} className={css.toolbar} data-menu-left={menuLeft || undefined} data-menu-bottom={menuBottom || undefined} role="toolbar" aria-label="琉璃工具">
             {tools.map(tool => (
               <div className={css.toolGroup} key={tool.id}>
                 <button

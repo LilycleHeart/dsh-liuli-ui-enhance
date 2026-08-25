@@ -42,6 +42,43 @@
 4. GUI 右侧面板 → 浏览器标签：地址栏输入任意站点（含禁嵌入的 Google/GitHub 也可加载）
 5. `node scripts/browser-client.mjs open https://example.com --tab t1` →
    `snap t1` → `shot t1`
+6. `node demo/verify-auto-drive.mjs` → 自动驱动 + `--show` 轮询桥接 + 驱动审查 GUI 验证
+   （T1..T14：dev server bash 行注入 → 侧边栏自动展开出浏览器标签；每轮一次；
+   同源复用导航并激活；前端文件编辑驱动；非前端文件不驱动；驱动审查自动切
+   「上一轮更改」；`browser:*` 引擎标签轮询桥接）
+
+## 自动驱动侧边栏浏览器（LLM 活动感知）
+
+模型在对话流里做前端项目时，插件会自动把页面展示到右侧边栏浏览器
+（`src/client/auto-drive-browser.ts`，设置「功能 → 自动驱动侧边栏浏览器」可关）：
+
+- **dev server 启动**：bash 工具行摘要命中 dev server 关键词（vite / next dev /
+  serve / http.server / php -S 等）时，临时展开该行读取输出（读完即收起，
+  流式输出最多重试 3 次），解析本地地址（Vite/Next/CRA「Local:」、webpack
+  「Project is running at」、serve「Local:」、python「Serving HTTP on … port N」、
+  php -S 等；`0.0.0.0` 归一为 `localhost`），自动在侧边栏打开浏览器标签并展开面板。
+- **前端文件编辑**：edit/write 前端文件（html/tsx/jsx/vue/css 等；已有 dev server
+  时放宽到 .js/.ts）且本会话已知 dev server 地址（10 分钟有效）时，每轮最多一次
+  把浏览器标签导航回 dev server 根地址——同源已有浏览器标签则复用导航、否则新开。
+- **每轮一次 / 手动收起抑制 / 会话切换重置 / 3s 稳定窗口**：与详细页自动展开
+  （auto-open-details）同一套控制策略，避免打扰。
+- 纯逻辑单测：`node demo/test-auto-drive.ts`（dev server 输出解析 / 摘要关键词 /
+  前端文件识别，34 项）。
+
+### agent CLI `open --show`：驱动即展示
+
+`browser-client.mjs open <url> --show` 会用 `browser:show-<uid>` 作为标签 id 创建引擎
+标签；GUI 侧边栏的 PreviewPanel 每 4s 轮询 `/liuli-browser/capabilities`，把新出现的
+`browser:show-*` 引擎标签桥接进侧边栏并展开面板——agent 驱动浏览器时用户实时可见。
+**只有这个前缀会被桥接**：普通 `browser:*` / `agent:*` 标签（GUI 自己创建的、agent
+无头验证的）一律不桥接，避免「没做前端却莫名弹出浏览器」。不带 `--show`（缺省
+`agent:<n>`）的标签保持隐藏，适合无头验证（snap/click/shot，不被用户看到）。若用
+`--tab <id>` 显式指定 id，请配合 `--show` 使用 `browser:show-` 前缀才能被桥接展示。
+
+```pwsh
+node scripts/browser-client.mjs open "http://localhost:5173" --show   # 侧边栏可见
+node scripts/browser-client.mjs open "http://localhost:5173"          # 隐藏（无头验证）
+```
 
 ## 实测记录（DSH Desktop 重启后，真实 Electron 引擎）
 

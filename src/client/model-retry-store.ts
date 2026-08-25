@@ -1,13 +1,11 @@
 /**
- * 模型请求重试行槽位 store：镜像当前各供应商已解析的重试策略快照。
+ * 模型请求重试行状态 —— 设置页「功能」分区的展示状态类型与默认值。
  *
- * 与 liuli-appearance-store 同构 —— 为 settings.general.item 行提供
- * 响应式读取面（组件经 props.useStore 读取）。真实重试策略持久化在
- * 宿主各供应商配置里（retryPolicy 字段，由 dsh-llm-retry 在 agent 失败
- * 步骤上执行）；本 store 只缓存展示用的聚合值，写入由
- * model-retry-controller 经 settings.mutate 落到每个供应商配置。
+ * 真实重试策略持久化在宿主各供应商配置里（retryPolicy 字段，由 dsh-llm-retry
+ * 在 agent 失败步骤上执行）；本模块只声明展示用的聚合值形状，镜像在设置
+ * 「功能」分区的合并 store 里，写入由 model-retry-controller 经 settings.mutate
+ * 落到每个供应商配置。
  */
-import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
 
 /** 宿主 dsh-llm 重试策略默认值（与 dsh-llm/retry-policy 一致）。 */
 export const MODEL_RETRY_DEFAULTS = {
@@ -33,27 +31,4 @@ export interface ModelRetryState {
   status: 'idle' | 'loading' | 'ready' | 'saving' | 'error'
   /** 最近一次错误信息（status==='error' 时有意义）。 */
   error: string
-}
-
-/** 声明的 action 形状。 */
-type ModelRetryActions = {
-  sync: (draft: ModelRetryState, patch: Partial<ModelRetryState>) => void
-}
-
-/**
- * 声明模型重试行的状态与写入面。
- * @returns store handle。
- */
-export function createModelRetryStore(): EngineStoreHandle<ModelRetryState, ModelRetryActions> {
-  return defineStore({
-    init: (): ModelRetryState => ({
-      ...MODEL_RETRY_DEFAULTS,
-      providerCount: 0,
-      status: 'idle',
-      error: '',
-    }),
-    actions: {
-      sync: (d, patch) => { Object.assign(d, patch) },
-    },
-  })
 }

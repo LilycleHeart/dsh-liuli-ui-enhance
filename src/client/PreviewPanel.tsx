@@ -42,8 +42,10 @@ import {
   DeveloperToolsPanel, PlanPanel, SideChatPanel, SubagentPanel, TerminalPanel, TrajectoryPanel,
   WhiteboardPanel, type SidePaneHostAccess,
 } from './SidePaneExtraPanels.tsx'
-import { FileReviewPanel } from './FileReviewPanel.tsx'
+import { FileReviewPanel, type ReviewPanelRequest } from './FileReviewPanel.tsx'
 import { REVIEW_FILE_EVENT } from './review-bus.ts'
+import { AUTO_OPEN_DETAILS_EVENT, type AutoOpenDetailsDetail } from './auto-open-details.ts'
+import { AUTO_DRIVE_BROWSER_EVENT, type AutoDriveBrowserDetail } from './auto-drive-browser.ts'
 import {
   consumeSideTabAccepted, SIDE_TAB_MIME, SIDE_TAB_OPEN_EVENT, serializeSideTab, sideTabToDockPanel,
 } from './side-tab-dock.ts'
@@ -55,6 +57,9 @@ export const PREVIEW_TOGGLE_EVENT = 'liuli:preview-toggle'
 
 /** 导航事件名：会话内点击前端产物时由全局点击拦截器广播。 */
 export const PREVIEW_NAVIGATE_EVENT = 'liuli:preview-navigate'
+
+/** 请求打开一个辅助对话标签（detail: { initialPrompt? }；/side、/btw 指令桥）。 */
+export const SIDE_CHAT_OPEN_EVENT = 'liuli:side-chat-open'
 
 /** 预览列开关的模块级状态（header 按钮与 details 面板共享）。 */
 let previewOpen = false
@@ -103,6 +108,17 @@ function looksLikeFrontendPath(path: string): boolean {
   return /\.html?$/i.test(path)
     || /(^|\/)(dist|build|public|out|docs)(\/|$)/i.test(path)
     || path.startsWith('/preview/')
+}
+
+/** 两个 URL 是否同源（scheme + host + port；自动驱动时复用同源浏览器标签）。 */
+function sameOrigin(a: string, b: string): boolean {
+  try {
+    const ua = new URL(a, window.location.href)
+    const ub = new URL(b, window.location.href)
+    return ua.protocol === ub.protocol && ua.host === ub.host
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -203,6 +219,8 @@ export interface SidePaneTab {
   favicon?: string
   /** side-chat：fork 出的子会话 id。 */
   childSessionId?: string
+  /** side-chat：首次打开自动发送给子会话的问题（/btw 指令带出，消费后清除）。 */
+  initialPrompt?: string
 }
 
 /** 最近关闭的标签（概览里可重开）。 */
@@ -557,7 +575,7 @@ export function PreviewDetailsPanel({
   const [fileDialogOpen, setFileDialogOpen] = useState(false)
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; tabId: string } | null>(null)
   const [now, setNow] = useState(() => Date.now())
-  const [reviewRequest, setReviewRequest] = useState<{ path: string; nonce: number } | null>(null)
+  const [reviewRequest, setReviewRequest] = useState<ReviewPanelRequest | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
   const tabsViewportRef = useRef<HTMLDivElement | null>(null)
   const overviewBtnRef = useRef<HTMLButtonElement | null>(null)
@@ -571,6 +589,10 @@ export function PreviewDetailsPanel({
 
   const { tabs, activeTabId, recentClosed, width } = persist
   const activeTab = tabs.find(t => t.id === activeTabId) ?? tabs[0]
+  // tabs 的引用镜像：轮询桥接（agent CLI --show 引擎标签）需要读最新标签而不
+  // 重建 interval（tabs 变化频繁时避免每帧重建定时器）。
+  const tabsRef = useRef(tabs)
+  tabsRef.current = tabs
 
   const patch = useCallback((p: Partial<PanePersist>) => {
     setPersist(prev => {
@@ -883,8 +905,12 @@ export function PreviewDetailsPanel({
   }, [openTab, nextNumberedTitle])
 
   /** 新开一个辅助对话标签（多实例；子会话在面板内 fork）。 */
-  const openSideChat = useCallback(() => {
-    openTab(makeTab('side-chat', { title: nextNumberedTitle('辅助对话', 'side-chat') }))
+  const openSideChat = useCallback((initialPrompt?: string) => {
+    const tab = makeTab('side-chat', {
+      title: nextNumberedTitle('辅助对话', 'side-chat'),
+      ...(initialPrompt === undefined || initialPrompt === '' ? {} : { initialPrompt }),
+    })
+    openTab(tab)
     setAddMenuOpen(false)
   }, [openTab, nextNumberedTitle])
 
@@ -898,6 +924,34 @@ export function PreviewDetailsPanel({
       return next
     })
   }, [])
+
+  /** 辅助对话 initialPrompt 已消费 → 从标签上清除（重开/刷新不重复发送）。 */
+  const clearSideChatPrompt = useCallback((tabId: string) => {
+    setPersist(prev => {
+      const target = prev.tabs.find(t => t.id === tabId)
+      if (target === undefined || target.initialPrompt === undefined) return prev
+      const next: PanePersist = {
+        ...prev,
+        tabs: prev.tabs.map(t => {
+          if (t.id !== tabId) return t
+          const { initialPrompt: _drop, ...rest } = t
+          return rest
+        }),
+      }
+      savePersist(next)
+      return next
+    })
+  }, [])
+
+  // /side、/btw 指令桥：客户端监听 command/executed 后广播本事件打开辅助对话标签。
+  useEffect(() => {
+    const onOpenSideChat = (e: Event): void => {
+      const detail = (e as CustomEvent<{ initialPrompt?: string } | undefined>).detail
+      openSideChat(detail?.initialPrompt)
+    }
+    window.addEventListener(SIDE_CHAT_OPEN_EVENT, onOpenSideChat)
+    return () => { window.removeEventListener(SIDE_CHAT_OPEN_EVENT, onOpenSideChat) }
+  }, [openSideChat])
 
   /** DSH z/Iae：URL 导航（产物链接）→ 总是新开浏览器标签。 */
   const openBrowserUrl = useCallback((url: string) => {
@@ -1006,6 +1060,104 @@ export function PreviewDetailsPanel({
     window.addEventListener(REVIEW_FILE_EVENT, onReview)
     return () => { window.removeEventListener(REVIEW_FILE_EVENT, onReview) }
   }, [openDetails, openSingleton, sessionId])
+
+  /* ── LLM 活动自动展开（auto-open-details.ts 观察对话流后请求）： ──
+     打开 details 列 + 激活请求的标签。审查文件（git）标签还会下发驱动请求：
+     切到「上一轮更改」来源并展开第一个修改文件（用户要求：驱动时直接看到
+     模型本轮改了什么、改动区域在哪）。 ── */
+
+  useEffect(() => {
+    const onAutoOpen = (e: Event): void => {
+      const detail = (e as CustomEvent<AutoOpenDetailsDetail>).detail
+      const tab = detail?.tab
+      if (tab === undefined) return
+      setPreviewOpen(true)
+      saveOpenState(true)
+      openDetails?.()
+      openSingleton(tab)
+      if (tab === 'git') {
+        setReviewRequest({ nonce: Date.now(), source: 'last-turn' })
+      }
+    }
+    window.addEventListener(AUTO_OPEN_DETAILS_EVENT, onAutoOpen)
+    return () => { window.removeEventListener(AUTO_OPEN_DETAILS_EVENT, onAutoOpen) }
+  }, [openDetails, openSingleton, saveOpenState])
+
+  /* ── 自动驱动浏览器（auto-drive-browser.ts 观察对话流后请求）： ──
+     dev server 启动 / 前端文件编辑时展示页面。同源已有浏览器标签 → 导航复用，
+     否则新开标签；同时展开 details 列。 ── */
+
+  useEffect(() => {
+    const onAutoDrive = (e: Event): void => {
+      const url = (e as CustomEvent<AutoDriveBrowserDetail>).detail?.url
+      if (typeof url !== 'string' || url === '') return
+      setPreviewOpen(true)
+      saveOpenState(true)
+      openDetails?.()
+      const existing = tabs.find(t => t.type === 'browser' && t.url !== undefined && sameOrigin(t.url, url))
+      if (existing !== undefined) {
+        // 复用同源已有标签并**激活**（让用户直接看到页面），URL 更新为最新目标；
+        // 纯 navigateBrowserTab 只改 URL 不激活，用户会停在原标签上看不到前端。
+        openTab({ ...existing, url })
+      } else {
+        openBrowserUrl(url)
+      }
+    }
+    window.addEventListener(AUTO_DRIVE_BROWSER_EVENT, onAutoDrive)
+    return () => { window.removeEventListener(AUTO_DRIVE_BROWSER_EVENT, onAutoDrive) }
+  }, [tabs, openBrowserUrl, openTab, openDetails, saveOpenState])
+
+  /* ── agent CLI open --show：browser:show-* 引擎标签 → 侧边栏可见（轮询桥接）。
+     浏览器引擎标签与 GUI 标签共用同一 id 空间；只有 agent 显式 `open --show`
+     （CLI 生成 browser:show-<uid>）的标签才桥接——普通 browser:* 标签是 GUI
+     自己创建的（已在 persist）或 agent 无头验证标签，一律不桥接，避免
+     「agent 测试网页时侧边栏莫名弹出浏览器」的误打扰。 ── */
+
+  useEffect(() => {
+    let alive = true
+    const fetchTabUrl = async (id: string): Promise<string | undefined> => {
+      try {
+        const resp = await fetch('/liuli-browser/tabs/state?id=' + encodeURIComponent(id), {
+          headers: { accept: 'application/json' },
+          signal: AbortSignal.timeout(4000),
+        })
+        const type = resp.headers.get('content-type') ?? ''
+        if (!resp.ok || !type.includes('application/json')) return undefined
+        const body = await resp.json() as { state?: { url?: string } }
+        const url = body.state?.url
+        return typeof url === 'string' && url !== '' && url !== 'about:blank' ? url : undefined
+      } catch {
+        return undefined
+      }
+    }
+    const bind = async (): Promise<void> => {
+      if (!alive || document.visibilityState === 'hidden') return
+      try {
+        const resp = await fetch('/liuli-browser/capabilities', {
+          headers: { accept: 'application/json' },
+          signal: AbortSignal.timeout(4000),
+        })
+        const type = resp.headers.get('content-type') ?? ''
+        if (!resp.ok || !type.includes('application/json')) return
+        const body = await resp.json() as { ok?: boolean; tabs?: string[] }
+        if (body.ok !== true || !Array.isArray(body.tabs)) return
+        const known = new Set(tabsRef.current.map(t => t.id))
+        for (const id of body.tabs) {
+          if (!/^browser:show-/i.test(id) || known.has(id)) continue
+          const url = await fetchTabUrl(id)
+          if (!alive) return
+          openTab({ id, type: 'browser', openedAt: Date.now(), url: url ?? 'about:blank' })
+          known.add(id)
+          setPreviewOpen(true)
+          saveOpenState(true)
+          openDetails?.()
+        }
+      } catch { /* 引擎不可用/请求失败：下次轮询再试 */ }
+    }
+    void bind()
+    const timer = window.setInterval(() => { void bind() }, 4000)
+    return () => { alive = false; window.clearInterval(timer) }
+  }, [openTab, openDetails, saveOpenState])
 
   /* ── webview 引擎：弹窗/新窗口请求 → 侧边栏新浏览器标签（DSH [App] webview 请求打开右侧浏览器 tab） ── */
 
@@ -1544,6 +1696,8 @@ export function PreviewDetailsPanel({
                   childSessionId={tab.childSessionId}
                   onChildCreated={(childId) => { setSideChatChild(tab.id, childId) }}
                   title={tabTitle(tab)}
+                  initialPrompt={tab.initialPrompt}
+                  onPromptConsumed={() => { clearSideChatPrompt(tab.id) }}
                 />
               )}
             </div>

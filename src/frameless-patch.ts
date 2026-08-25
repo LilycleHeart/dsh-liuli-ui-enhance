@@ -244,6 +244,12 @@ export function applyFramelessPatch(): void {
     }
 
     // 3. 重建 app.asar 头（同步 size / SHA256 integrity），并保留头之后的原始字节。
+    //    幂等快路径：运行时已打补丁且 asar 头记录的 size/SHA256 已与磁盘文件一致时，
+    //    说明头部就是最新状态，直接跳过整文件重写 —— 避免每次启动都重写 5MB+ 的
+    //    app.asar。重写期间 Loader 的包元数据读取（client-modules 扫描）可能与
+    //    copyFileSync 竞态，读到半截文件导致个别 client 包被判为缺失/非 client 包
+    //    （缓存永不失效），表现就是启动后 boot 图缺少入口（如 dsh-client-ui-layout），
+    //    客户端出现「Failed to load plugins」。
     const { header, contentStart } = readAsarHeader(asarPath)
     let node: { files?: Record<string, unknown> } | undefined = header
     for (const part of ['lib', runtimeName]) {
@@ -257,6 +263,10 @@ export function applyFramelessPatch(): void {
     const runtimeBuffer = readFileSync(runtimePath)
     const hash = createHash('sha256').update(runtimeBuffer).digest('hex')
     const target = node as unknown as { size?: number; integrity?: { algorithm?: string; blockSize?: number; blocks?: string[]; hash?: string } }
+    if (!runtimeChanged && target.size === runtimeBuffer.length && target.integrity?.hash === hash) {
+      console.log('[dsh-liuli-ui-enhance] 无边框自动补丁：asar 头已是最新，跳过重建（不再重写 app.asar）')
+      return
+    }
     target.size = runtimeBuffer.length
     target.integrity ??= { algorithm: 'SHA256', blockSize: 4194304, blocks: [] }
     target.integrity.hash = hash

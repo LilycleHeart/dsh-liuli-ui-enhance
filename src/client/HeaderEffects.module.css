@@ -106,8 +106,11 @@
 
 /* 会话页头拆成独立 dock 面板后，页头高度由页头/正文之间的 sash 调整；
    resizer 的职责已并入 sash，这里隐藏避免出现两个 resize 手柄。
-   header 被搬回正文面板时选择器不命中，resizer 自动恢复。 */
-:global([data-region-pane='region:conversation-header']) .resizer {
+   同时以 header host 为作用域再覆盖一层：页头面板浮动成独立窗口时，
+   floatWindow 里的 paneCard 不带 data-region-pane 属性（pane 作用域
+   匹配不到），但 host（[data-liuli-conversation-header-host]）仍在。 */
+:global([data-region-pane='region:conversation-header']) .resizer,
+:global([data-liuli-conversation-header-host]) .resizer {
   display: none !important;
 }
 
