@@ -1,5 +1,5 @@
 /**
- * Dockable Workspace 布局模型（纯逻辑，无 React/DOM 依赖）。
+ * Dockable 布局模型（纯逻辑，无 React/DOM 依赖）。
  *
  * 布局是一棵树：
  *  - TabsNode：一个面板组（标签页合并的载体），含若干面板实例 + 激活项；
@@ -556,14 +556,13 @@ export function updateFloat(layout: DockLayout, floatId: string, box: { x: numbe
 
 /* ── 默认布局与序列化 ── */
 
-/** 首次打开的默认布局：左文件树 | 右（Git + Wiki 标签组）。 */
+/** 首次打开的默认布局：左文件树 | 右 Git。 */
 export function defaultLayout(): DockLayout {
   const layout = emptyLayout()
   const files = createPanel(layout, 'files')
   const git = createPanel(layout, 'git')
-  const wiki = createPanel(layout, 'wiki')
   const left = makeTabsNode(layout, [files])
-  const right = makeTabsNode(layout, [git, wiki])
+  const right = makeTabsNode(layout, [git])
   right.activeId = git.id
   layout.root = {
     id: nextId(layout, 's'),

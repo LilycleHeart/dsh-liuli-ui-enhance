@@ -10,6 +10,9 @@ let liuliApplySeq = 0
 let currentImageRatio: number | null = null
 /** currentImageRatio 对应的壁纸 src：更换壁纸后必须重算比例，否则选区归一化会错位。 */
 let currentImageSrc: string | null = null
+/** 壁纸 src → 原始宽高比 缓存：动态取色与比例刷新共用，按 src 取值永不错位，
+    也避免同一壁纸被反复解码。 */
+const imageRatioCache = new Map<string, number>()
 
 import { hexFromArgb, sourceColorFromImage } from '../vendor/material-color-utilities.js'
 import {
@@ -155,8 +158,14 @@ export function dynamicSourceFromImage(imageSrc: string): Promise<string> {
 async function extractDynamicSource(imageSrc: string): Promise<string> {
   const img = await loadImage(imageSrc)
   if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-    currentImageRatio = img.naturalWidth / img.naturalHeight
-    currentImageSrc = imageSrc
+    const ratio = img.naturalWidth / img.naturalHeight
+    imageRatioCache.set(imageSrc, ratio)
+    // 只有 src 仍是当前已提交壁纸时才落地模块级比例，防止被淘汰的动态取色
+    // （await 期间的壁纸切换）用旧壁纸比例覆盖新壁纸比例。
+    if (imageSrc === loadWallpaper()) {
+      currentImageRatio = ratio
+      currentImageSrc = imageSrc
+    }
   }
   const size = 64
   const cvs = document.createElement('canvas')
@@ -203,7 +212,10 @@ function ensureBgLayer(): HTMLDivElement {
   return div
 }
 
-/** 把选区按指定比例（窗口宽高比 / 图片宽高比）归一化，保留面积与中心。 */
+/** 把选区按指定比例（窗口宽高比 / 图片宽高比）归一化，保留面积与中心。
+    结果两维恒 ≤ 0.998：铺满/超过图片的选区（w/h 曾可达 1.0）会被压回有效范围，
+    既避免 bgGeometry 的 0.999 门槛把选区当"无选区"静默忽略，也避免
+    position 公式 x/(1-w) 除零 —— 这是"选区怎么选都不应用"的根因。 */
 export function normalizeAreaToRatio(area: LiuliBgArea, ratio: number): LiuliBgArea {
   const safeRatio = Math.max(0.05, Math.min(20, ratio))
   const areaSize = Math.max(area.w * area.h, 0.04 * 0.04)
@@ -212,6 +224,13 @@ export function normalizeAreaToRatio(area: LiuliBgArea, ratio: number): LiuliBgA
   const scale = Math.min(1, 1 / w, 1 / h)
   w *= scale
   h *= scale
+  // 两维同比例压到 ≤ 0.998（保持宽高比与中心不变）。
+  const maxDim = Math.max(w, h)
+  if (maxDim > 0.998) {
+    const shrink = 0.998 / maxDim
+    w *= shrink
+    h *= shrink
+  }
   const cx = area.x + area.w / 2
   const cy = area.y + area.h / 2
   return {
@@ -233,7 +252,7 @@ export function bgGeometry(
 ): { size: string; position: string } {
   if (fit === 'contain') return { size: 'contain', position: 'center' }
   if (fit === 'stretch') return { size: '100% 100%', position: 'center' }
-  if (area !== null && area.w > 0.04 && area.h > 0.04 && area.w < 0.999 && area.h < 0.999) {
+  if (area !== null && area.w > 0.04 && area.h > 0.04) {
     const vRatio = viewportRatio && viewportRatio > 0 ? viewportRatio : window.innerWidth / window.innerHeight
     const iRatio = imageRatio && imageRatio > 0 ? imageRatio : currentImageRatio
     const n = iRatio !== null && iRatio > 0
@@ -241,9 +260,13 @@ export function bgGeometry(
       : {
         x: area.x,
         y: area.y,
-        w: Math.min(1, Math.max(0.05, area.w)),
-        h: Math.min(1, Math.max(0.05, area.h)),
+        w: Math.min(0.998, Math.max(0.05, area.w)),
+        h: Math.min(0.998, Math.max(0.05, area.h)),
       }
+    // 门槛检查归一化后的选区（而非原始面积）：normalizeAreaToRatio 已把两维压到
+    // ≤0.998，旧版本持久化的脏选区（w/h ≥ 0.999 甚至 =1）在这里会被重新归一化后
+    // 正常应用，而不是被当成"无选区"静默忽略（壁纸永远停留在 cover）。
+    if (n.w >= 0.999 || n.h >= 0.999) return { size: 'cover', position: 'center' }
     const px = Math.min(1, Math.max(0, n.x / (1 - n.w)))
     const py = Math.min(1, Math.max(0, n.y / (1 - n.h)))
     return {
@@ -263,7 +286,9 @@ function applyBgLayer(wallpaperSrc: string, _blur: number, fit: LiuliBgFit, area
   // 对话页 .wallpaperBlur 独立背景层承担）。
   layer.style.backgroundImage = `url("${wallpaperSrc}")`
   layer.style.filter = 'none'
-  const g = bgGeometry(fit, area, currentImageRatio)
+  // 比例必须取当前 src 的缓存值而非模块级全局：全局值可能被被淘汰的
+  // 异步调用写成旧壁纸的比例（竞态），按 src 取值永不错位。
+  const g = bgGeometry(fit, area, imageRatioCache.get(wallpaperSrc) ?? currentImageRatio)
   layer.style.backgroundSize = g.size
   layer.style.backgroundPosition = g.position
   layer.style.backgroundRepeat = 'no-repeat'
@@ -316,14 +341,22 @@ export async function applyLiuliSettings(settings: LiuliSettings): Promise<void>
   }
   // 记录当前壁纸的图片比例（按 src 缓存）：更换壁纸后必须重算，
   // 否则选区归一化沿用旧图片比例，壁纸放大出来的区域会与框选区域不一致。
-  if (wallpaperSrc && wallpaperSrc !== currentImageSrc) {
+  if (wallpaperSrc && !imageRatioCache.has(wallpaperSrc)) {
     try {
       const img = await loadImage(wallpaperSrc)
       if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-        currentImageRatio = img.naturalWidth / img.naturalHeight
-        currentImageSrc = wallpaperSrc
+        imageRatioCache.set(wallpaperSrc, img.naturalWidth / img.naturalHeight)
       }
     } catch (_) { /* 忽略取图失败 */ }
+  }
+  // 同步模块级"当前壁纸比例"：只在 src 仍是当前已提交壁纸时落地，
+  // 避免被淘汰的 apply 用旧壁纸的比例覆盖新壁纸（async 竞态）。
+  if (wallpaperSrc && wallpaperSrc === loadWallpaper()) {
+    const cached = imageRatioCache.get(wallpaperSrc)
+    if (cached !== undefined && cached > 0 && (currentImageSrc !== wallpaperSrc || currentImageRatio !== cached)) {
+      currentImageRatio = cached
+      currentImageSrc = wallpaperSrc
+    }
   }
   // 竞态保护：期间有更新的 apply 启动（主题切换/后续滑条），本调用作废。
   if (seq !== liuliApplySeq) return

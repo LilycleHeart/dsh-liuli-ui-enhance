@@ -50,6 +50,27 @@ body[data-liuli-blur-off] {
 }
 
 /* ════════════════════════════════════════════════════════════
+ * 内嵌浏览上下文让路（配套 resize-perf.ts / dock sash 拖拽防失焦）：
+ * sash / 窗口缩放期间指针可能扫进内嵌浏览器（<webview> guest 页 /
+ * iframe / 原生 WebContentsView 区域）。指针一旦进入 guest/iframe，
+ * 事件就不再派发给主窗口——主窗口收不到 pointermove，拖拽即卡住，
+ * 焦点还可能被内嵌页抢走（用户反馈「拖 sash 碰到浏览器窗口会失焦」）。
+ * 原生 WebContentsView 已在 resize 期由 geometry 循环隐藏（见
+ * browser-webview.ts 的 isVisible 回调）；DOM 内嵌两类：
+ *   - iframe：pointer-events:none 点击穿透即可（内容保持可见）；
+ *   - <webview>：guest 是独立渲染进程，CSS pointer-events 对它
+ *     不可靠。不靠 CSS 隐藏（整屏消失体验差，用户反馈「拖拽时浏览器
+ *     画面消失」）——resize-perf.ts 在缩放期挂全视口透明护盾
+ *     （data-liuli-resize-shield，普通 DOM 元素、pointer-events:auto、
+ *     z-index 盖过一切 DOM）：护盾先于 webview 命中测试，guest 收不到
+ *     pointerdown（不抢焦点、不吞 move），而护盾透明，webview 画面
+ *     全程保持可见。
+ * ════════════════════════════════════════════════════════════ */
+body[data-liuli-resizing] iframe {
+  pointer-events: none !important;
+}
+
+/* ════════════════════════════════════════════════════════════
  * 亮色主题 — 琉璃 M3 light (#1d9bf0 派生)
  * ════════════════════════════════════════════════════════════ */
 body {
@@ -886,4 +907,17 @@ div[class$="hoverCard"] {
   -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;
   backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;
   pointer-events: none !important;
+}
+
+/* ════════════════════════════════════════════════════════════
+ * 收起态插件市场按钮（dshMarketLauncher）对齐：宿主桌面壳把
+ * sidebar.footer.action 的 slot host 设为 column flex +
+ * scrollbar-gutter:stable + width:100%，36px 内容盒被 gutter 挤掉
+ * ~10px，按钮压到内容盒起点（圆心左偏 5px，与其它圆形按钮错位）。
+ * 收起态清掉 gutter 并水平居中；展开态不干预宿主原布局。
+ * 运行时注入以 liuli-css.ts 为准（此处为源拷贝同步）。
+ * ════════════════════════════════════════════════════════════ */
+[class*="_sidebarCol"] [class*="_collapsed"] [data-slot="sidebar.footer.action"] {
+  scrollbar-gutter: auto !important;
+  align-items: center !important;
 }

@@ -1,0 +1,146 @@
+/* 设置页原生 select → 琉璃下拉组件：触发器（body portal + fixed，覆盖宿主 select
+   原位、坐标随 select 实时同步）与下拉菜单（body portal + fixed，与终端 Shell
+   选择器同款观感）。类名随本模块编译为哈希，天然作用域化，不触碰宿主类。 */
+
+.trigger {
+  position: fixed;
+  z-index: 2147482500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 12px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.3));
+  border-radius: var(--liuli-radius, 14px);
+  color: var(--dsw-alias-label-primary, inherit);
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+  /* 半透明亚克力（琉璃 配方，与设置页其它琉璃控件一致） */
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55));
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur, blur(16px));
+  backdrop-filter: var(--liuli-material-blur, blur(16px));
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.trigger:hover {
+  background-color: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.15));
+}
+
+.trigger[data-liuli-focused] {
+  border-color: var(--dsw-alias-brand-primary, #1d9bf0);
+}
+
+.trigger:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.triggerLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.triggerChevron {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  color: var(--dsw-alias-label-tertiary, #888);
+  transition: transform 120ms ease;
+}
+
+.triggerChevronOpen {
+  transform: rotate(180deg);
+}
+
+/* 下拉菜单（body portal + fixed，镜像终端 Shell 选择器） */
+.menu {
+  position: fixed;
+  z-index: 2147482500;
+  box-sizing: border-box;
+  padding: 4px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.25));
+  border-radius: var(--liuli-radius, 14px);
+  background: color-mix(in srgb, var(--dsw-alias-surface-primary, #ffffff) 86%, transparent);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  -webkit-backdrop-filter: var(--liuli-material-blur, blur(16px));
+  backdrop-filter: var(--liuli-material-blur, blur(16px));
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow-y: auto;
+  max-height: 60vh;
+  outline: none;
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary, inherit);
+  font-size: 13px;
+  line-height: 20px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  outline: none;
+}
+
+.menuItem:hover {
+  background-color: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.14));
+}
+
+/* 键盘高亮/当前选中项（激活态）：高亮底色 + 勾选图标 */
+.menuItemActive {
+  background-color: var(--dsw-specific-card-major, rgba(128, 128, 128, 0.18));
+}
+
+.menuItemDisabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.menuItemDisabled:hover {
+  background-color: transparent;
+}
+
+.menuItemLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.menuCheck {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  color: var(--dsw-alias-brand-primary, #1d9bf0);
+}
+
+.menuGroup {
+  padding: 6px 10px 2px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary, #888);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

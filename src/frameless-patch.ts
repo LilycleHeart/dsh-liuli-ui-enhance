@@ -6,6 +6,12 @@
  * `scripts/patch-desktop-frameless.mjs` 保持一致，但安装目录由
  * `process.resourcesPath` 推导（跟随当前运行的客户端版本，不写死路径）。
  *
+ * 两种客户端布局都支持：
+ *   旧布局：electron-runtime-*.js 直接位于 app.asar.unpacked/lib 磁盘目录（unpacked 条目）。
+ *   新布局：electron-runtime-*.js 被打包进 app.asar 内部（packed 条目，offset 相对内容区起点）。
+ *          此时把补丁后的内容解包写到磁盘 unpacked 目录，并把 asar 头条目从
+ *          packed（带 offset）改为 unpacked（去 offset），让 Electron 改从磁盘读取。
+ *
  * 软性语义：
  * - 仅 win32 + Electron 主进程执行，纯 Web / 其他平台直接跳过（与补丁无关）；
  * - win32 + Electron 下尝试自动重打补丁，但无边框是纯外观增强，任何失败
@@ -15,22 +21,47 @@
  * - 已包含 [liuli-theme patch] 时跳过文件修改，只校验/重建 asar 头（幂等）。
  */
 import { createHash } from 'node:crypto'
-import { closeSync, copyFileSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync, unlinkSync, writeFileSync, writeSync } from 'node:fs'
+import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, statSync, unlinkSync, writeFileSync, writeSync } from 'node:fs'
 import { join as joinPath } from 'node:path'
 
 /** 补丁标记：electron-runtime 文件里出现该字符串即视为已打补丁。 */
 const PATCH_MARK = '[liuli-theme patch]'
 
-/** 运行时文件里需要被替换的 win32 titleBarOverlay 片段。 */
-const TITLEBAR_PATTERN = /titleBarStyle:\s*"hidden",\s*titleBarOverlay:\s*\{[\s\S]*?\},/
+/** 主窗口 win32 补丁点：customChromeWindowOptions 的 win32 分支（含 autoHideMenuBar: true 前缀，
+ *  height 用 geometry.titlebarHeight），不是 auxiliary 辅助窗口那份（height 字面量 36）。 */
+const TITLEBAR_MAIN = /(?<=autoHideMenuBar:\s*true,\s*)titleBarStyle:\s*"hidden",\s*titleBarOverlay:\s*\{[\s\S]*?\},/
+/** 兜底：无 autoHideMenuBar 锚定的历史布局（旧版客户端只有一处 titleBarOverlay）。 */
+const TITLEBAR_GENERIC = /titleBarStyle:\s*"hidden",\s*titleBarOverlay:\s*\{[\s\S]*?\},/
 
-/** advanced/compatibility 主窗口的 webPreferences 块（两者同构；不匹配 profile 小窗）。 */
-const WEBVIEWTAG_PATTERN = /webPreferences:\s*\{\s*preload,\s*contextIsolation:\s*true,\s*nodeIntegration:\s*false,\s*sandbox:\s*true,\s*webSecurity:\s*true\s*\}/g
+/** advanced/compatibility 主窗口的 webPreferences 块（开头是 preload…webSecurity:true，
+ *  兼容结尾是 `}` 或继续跟 partition 等字段；不匹配 profile 小窗/对话框块）。 */
+const WEBVIEWTAG_PATTERN = /webPreferences:\s*\{\s*preload,\s*contextIsolation:\s*true,\s*nodeIntegration:\s*false,\s*sandbox:\s*true,\s*webSecurity:\s*true(?:,|\s*})/g
+
+// 新版标记块：注释里记录原 titleBarOverlay height 表达式，还原时可逐字恢复。
+// 用 m 标志并吞掉行首缩进：patch 时注释行前保留了原 titleBarStyle 行的缩进，
+// 还原若不吞掉会双重缩进（保留缩进 + restore 自带 indent）。
+const MARKER_BLOCK_NEW = /^[ \t]*\/\/ \[liuli-theme patch\] 无边框窗口：移除原生 titleBarOverlay 按钮（原 titleBarOverlay height 表达式：([^）]*)），[\s\S]*?\n[ \t]*frame: false,/m
+// 旧版标记块（无 height 记录；还原按官方原版 height:32 处理）。
+const MARKER_BLOCK_LEGACY = /^[ \t]*\/\/ \[liuli-theme patch\] 无边框窗口：[\s\S]*?\n[ \t]*frame: false,/m
 
 type ProcessWithNoAsar = NodeJS.Process & { noAsar: boolean | undefined }
 
+interface AsarFileNode {
+  size?: number
+  offset?: string | number
+  unpacked?: boolean
+  integrity?: { algorithm?: string; blockSize?: number; blocks?: string[]; hash?: string }
+  files?: Record<string, AsarFileNode | { files: Record<string, unknown> }>
+}
+
 interface AsarHeader {
-  files?: Record<string, unknown>
+  files?: Record<string, AsarFileNode | { files: Record<string, unknown> }>
+}
+
+interface RuntimeRef {
+  name: string
+  content: Buffer
+  mode: 'disk' | 'asar'
 }
 
 /**
@@ -74,30 +105,70 @@ function writeFullySync(fd: number, buffer: Buffer): void {
 }
 
 /** 客户端版本升级会更换 electron-runtime-<hash>.js 文件名，不能写死。
- *  在 unpacked lib 里找包含 titleBarStyle 的 electron-runtime-*.js。 */
-function findRuntimeFile(libDir: string): string | undefined {
+ *  优先磁盘 unpacked 目录（旧布局 / 已解包的新布局），没有则从 asar 头里
+ *  找打包条目（新布局）并读出内容。 */
+function resolveRuntime(libDir: string, asarPath: string): RuntimeRef | undefined {
   let names: string[] = []
   try {
     names = readdirSync(libDir)
   } catch {
-    return undefined
+    /* lib 目录不存在也正常 */
   }
-  const candidates = names.filter(name => /^electron-runtime-[A-Za-z0-9_-]+\.js$/.test(name))
-  for (const name of candidates) {
+  const diskCandidates = names.filter(name => /^electron-runtime-[A-Za-z0-9_-]+\.js$/.test(name))
+  for (const name of diskCandidates) {
     try {
-      if (readFileSync(joinPath(libDir, name), 'utf8').includes('titleBarStyle')) return name
+      const content = readFileSync(joinPath(libDir, name))
+      if (content.toString('utf8').includes('titleBarStyle')) {
+        return { name, content, mode: 'disk' }
+      }
     } catch { /* 继续找下一个 */ }
   }
-  // 兜底：取最大者（通常就是完整 runtime bundle）。
+  // asar 打包条目（新布局）
+  try {
+    const { header, contentStart } = readAsarHeader(asarPath)
+    const libFiles = (header.files?.lib as AsarFileNode | undefined)?.files ?? {}
+    const packedNames = Object.keys(libFiles).filter(
+      (name) => /^electron-runtime-[A-Za-z0-9_-]+\.js$/.test(name)
+        && (libFiles[name] as AsarFileNode | undefined)?.unpacked !== true,
+    )
+    for (const name of packedNames) {
+      try {
+        const content = readPackedEntry(asarPath, libFiles[name] as AsarFileNode, contentStart)
+        if (content.toString('utf8').includes('titleBarStyle')) {
+          return { name, content, mode: 'asar' }
+        }
+      } catch { /* 继续找下一个 */ }
+    }
+  } catch { /* asar 头读取失败，交由下方兜底 */ }
+  // 兜底：磁盘目录里取最大者（通常就是完整 runtime bundle）
   let best: string | undefined
   let bestSize = -1
-  for (const name of candidates) {
+  for (const name of diskCandidates) {
     try {
       const size = statSync(joinPath(libDir, name)).size
       if (size > bestSize) { best = name; bestSize = size }
     } catch { /* ignore */ }
   }
-  return best
+  if (best !== undefined) {
+    try {
+      return { name: best, content: readFileSync(joinPath(libDir, best)), mode: 'disk' }
+    } catch { /* ignore */ }
+  }
+  return undefined
+}
+
+/** 从 asar 归档内容区（contentStart + offset）读取打包文件内容。 */
+function readPackedEntry(asarPath: string, entry: AsarFileNode, contentStart: number): Buffer {
+  const offset = parseInt(String(entry.offset), 10)
+  if (!Number.isFinite(offset) || offset < 0 || typeof entry.size !== 'number') {
+    throw new Error(`asar 条目无有效 offset/size：${JSON.stringify(entry)}`)
+  }
+  const fd = openSync(asarPath, 'r')
+  try {
+    return readFullySync(fd, entry.size, contentStart + offset)
+  } finally {
+    closeSync(fd)
+  }
 }
 
 /**
@@ -140,9 +211,8 @@ function buildAsarHeader(header: AsarHeader): Buffer {
 }
 
 /**
- * 生成完整的新 asar 文件：新头 + 原文件 contentStart 之后的全部字节。
- * 这样既兼容 DSH 当前「全部文件 unpacked、归档只有头」的布局，也不会在
- * 未来出现打包文件时把归档内容截断。
+ * 生成完整的新 asar 文件：新头 + 原文件 contentStart 之后的全部字节原样接上。
+ * 打包条目的 offset 相对内容区起点，头部长度变化不影响其有效性，尾部不会被截断。
  */
 function writePatchedAsar(sourcePath: string, destPath: string, newHeader: Buffer, contentStart: number): void {
   const srcFd = openSync(sourcePath, 'r')
@@ -168,6 +238,100 @@ function writePatchedAsar(sourcePath: string, destPath: string, newHeader: Buffe
   }
 }
 
+/** 在 asar 头中找到 lib/<runtimeName> 条目。 */
+function findRuntimeNode(header: AsarHeader, runtimeName: string): AsarFileNode {
+  let node: AsarFileNode | { files: Record<string, unknown> } | undefined = header
+  for (const part of ['lib', runtimeName]) {
+    const next = node?.files?.[part] as AsarFileNode | { files: Record<string, unknown> } | undefined
+    if (next === undefined) {
+      throw new Error(`asar 头中缺少 ${part}（客户端版本可能不兼容）`)
+    }
+    node = next
+  }
+  return node as AsarFileNode
+}
+
+/** 从被替换的 marker 之前找最近的 autoHideMenuBar 行推断主窗口标题栏块缩进
+ *  （新版 customChromeWindowOptions 是 3 层 tab；文件里对话框窗口也有
+ *  autoHideMenuBar，不能全局找第一处）。找不到时退回 2 层 tab（旧版布局）。 */
+function detectTitlebarIndentBefore(text: string, beforeIndex: number): string {
+  const head = text.slice(0, beforeIndex)
+  const lines = head.split('\n')
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]
+    if (line === undefined) continue
+    const m = line.match(/^([ \t]*)autoHideMenuBar:\s*true,/)
+    if (m && m[1] !== undefined) return m[1]
+  }
+  return '\t\t'
+}
+
+function nativeTitleBarRestore(heightExpr: string, indent: string = '\t\t'): string {
+  return [
+    `${indent}titleBarStyle: "hidden",`,
+    `${indent}titleBarOverlay: {`,
+    `${indent}\tcolor: "#00000000",`,
+    `${indent}\tsymbolColor: "#7f858f",`,
+    `${indent}\theight: ${heightExpr}`,
+    `${indent}},`,
+  ].join('\n')
+}
+
+/** 写回 runtime 内容（磁盘或 asar 解包）并重建 asar 头（同步 size/integrity）。 */
+function commitRuntime(
+  resourcesDir: string,
+  asarPath: string,
+  runtime: RuntimeRef,
+  content: Buffer,
+  runtimeChanged: boolean,
+): void {
+  const libDir = joinPath(resourcesDir, 'app.asar.unpacked', 'lib')
+  const patchedCopyPath = joinPath(resourcesDir, 'app.asar.patched')
+  const diskRuntimePath = joinPath(libDir, runtime.name)
+
+  if (runtimeChanged) {
+    mkdirSync(libDir, { recursive: true })
+    writeFileSync(diskRuntimePath, content)
+    console.log(`[dsh-liuli-ui-enhance] 已写入 ${diskRuntimePath}`)
+  }
+
+  const { header, contentStart } = readAsarHeader(asarPath)
+  const target = findRuntimeNode(header, runtime.name)
+  const hash = createHash('sha256').update(content).digest('hex')
+  const needUnpack = target.unpacked !== true
+
+  // 幂等快路径：内容没变 && 头部已是最新（unpacked 状态、size、hash 一致）时跳过重建。
+  if (!runtimeChanged && !needUnpack && target.size === content.length && target.integrity?.hash === hash) {
+    console.log('[dsh-liuli-ui-enhance] 无边框自动补丁：asar 头已是最新，跳过重建（不再重写 app.asar）')
+    return
+  }
+
+  if (needUnpack) {
+    // packed 条目 -> unpacked：去掉 offset，内容改由 app.asar.unpacked 磁盘文件承担
+    delete target.offset
+    target.unpacked = true
+    console.log('[dsh-liuli-ui-enhance] asar 条目已从打包改为 unpacked（内容改由磁盘文件承载）')
+  }
+  target.size = content.length
+  target.integrity ??= { algorithm: 'SHA256', blockSize: 4194304, blocks: [] }
+  target.integrity.hash = hash
+  target.integrity.blocks = [hash]
+
+  const newHeader = buildAsarHeader(header)
+  const tmpPath = joinPath(resourcesDir, `app.asar.liuli-patch-${process.pid}.tmp`)
+  try {
+    writePatchedAsar(asarPath, tmpPath, newHeader, contentStart)
+    copyFileSync(tmpPath, asarPath)
+    copyFileSync(tmpPath, patchedCopyPath)
+    console.log(`[dsh-liuli-ui-enhance] 已重建 ${asarPath}`)
+    console.log(`[dsh-liuli-ui-enhance] 已同步 ${patchedCopyPath}`)
+  } finally {
+    try {
+      if (existsSync(tmpPath)) unlinkSync(tmpPath)
+    } catch { /* ignore */ }
+  }
+}
+
 /** 在插件启动时应用无边框补丁（win32 + Electron 下尽力而为，失败不抛错）。 */
 export function applyFramelessPatch(): void {
   if (process.platform !== 'win32') return
@@ -180,9 +344,6 @@ export function applyFramelessPatch(): void {
 
   const asarPath = joinPath(resourcesDir, 'app.asar')
   const backupPath = joinPath(resourcesDir, 'app.asar.bak-frameless')
-  const patchedCopyPath = joinPath(resourcesDir, 'app.asar.patched')
-  const libDir = joinPath(resourcesDir, 'app.asar.unpacked', 'lib')
-  const tmpPath = joinPath(resourcesDir, `app.asar.liuli-patch-${process.pid}.tmp`)
 
   // Electron 主进程里 fs 带 ASAR 钩子，直接读写 app.asar 会抛 ENOENT；
   // 整个补丁过程关闭 ASAR 钩子，结束后恢复原值。
@@ -190,15 +351,15 @@ export function applyFramelessPatch(): void {
   const previousNoAsar = proc.noAsar
   proc.noAsar = true
   try {
-    const runtimeName = findRuntimeFile(libDir)
-    if (runtimeName === undefined) {
-      throw new Error('在 app.asar.unpacked/lib 下找不到 electron-runtime-*.js（客户端目录结构可能已变化）')
-    }
-    const runtimePath = joinPath(libDir, runtimeName)
-
     if (!existsSync(asarPath)) {
       throw new Error('找不到 app.asar（客户端目录结构可能已变化）')
     }
+    const libDir = joinPath(resourcesDir, 'app.asar.unpacked', 'lib')
+    const runtime = resolveRuntime(libDir, asarPath)
+    if (runtime === undefined) {
+      throw new Error('在磁盘 app.asar.unpacked/lib 与 app.asar 头内均找不到 electron-runtime-*.js（客户端目录结构可能已变化）')
+    }
+    console.log(`[dsh-liuli-ui-enhance] 无边框自动补丁：runtime=${runtime.name}（${runtime.mode === 'disk' ? '磁盘 unpacked' : 'app.asar 打包'}）`)
 
     // 1. 备份原始 app.asar（首次）。
     if (!existsSync(backupPath)) {
@@ -206,86 +367,57 @@ export function applyFramelessPatch(): void {
       console.log('[dsh-liuli-ui-enhance] 无边框自动补丁：已备份 app.asar -> app.asar.bak-frameless')
     }
 
-    // 2. 修改 unpacked electron runtime（无边框 + webviewTag 两项补丁独立幂等）。
-    let runtime = readFileSync(runtimePath, 'utf8')
+    // 2. 修改 runtime 内容（无边框 + webviewTag 两项补丁独立幂等）。
+    let content = runtime.content
     let runtimeChanged = false
-    if (runtime.includes(PATCH_MARK)) {
+    const text = content.toString('utf8')
+    if (text.includes(PATCH_MARK)) {
       console.log('[dsh-liuli-ui-enhance] 无边框自动补丁：electron-runtime 已包含无边框补丁，跳过该部分')
     } else {
-      if (!TITLEBAR_PATTERN.test(runtime)) {
+      const mainMatch = text.match(TITLEBAR_MAIN)
+      const genericMatch = !mainMatch ? text.match(TITLEBAR_GENERIC) : undefined
+      const block = mainMatch?.[0] ?? genericMatch?.[0]
+      if (block === undefined) {
         throw new Error('未找到 win32 titleBarOverlay 补丁点（客户端版本可能不兼容，请运行 pnpm patch:desktop 手动补丁或更新插件）')
       }
-      runtime = runtime.replace(TITLEBAR_PATTERN, [
-        '// [liuli-theme patch] 无边框窗口：移除原生 titleBarOverlay 按钮，',
+      const heightExpr = (block.match(/height:\s*([^,}]+)/)?.[1] ?? '32').trim()
+      const replacement = [
+        `// [liuli-theme patch] 无边框窗口：移除原生 titleBarOverlay 按钮（原 titleBarOverlay height 表达式：${heightExpr}），`,
         '// 最小化/最大化/关闭改由页面内按钮承担（dsh-liuli-ui-enhance 插件 /liuli-window',
         '// 路由 + WindowControls 组件：会话 header 内 + 开始页标题条右侧兜底）。',
         '// 注意：未安装 dsh-liuli-ui-enhance 时 advanced 模式将没有窗口按钮（Alt+F4/托盘仍可用）。',
         'frame: false,',
-      ].join('\n\t\t'))
+      ].join('\n\t\t')
+      content = Buffer.from(text.replace(block, replacement), 'utf8')
       runtimeChanged = true
-      console.log('[dsh-liuli-ui-enhance] 无边框自动补丁：已修补 electron-runtime 无边框配置')
+      console.log(`[dsh-liuli-ui-enhance] 无边框自动补丁：已修补 ${runtime.name} 无边框配置（${mainMatch ? '主窗口标题栏块' : '通用标题栏块'}，原 height: ${heightExpr}）`)
     }
     // 启用 webviewTag：zcode 参考实现的浏览器用 <webview> DOM 标签承载，
     // 由 CSS overflow:hidden 自然裁剪，彻底避免 WebContentsView 溢出容器问题。
-    if (runtime.includes('webviewTag: true')) {
+    const textAfter = content.toString('utf8')
+    if (textAfter.includes('webviewTag: true')) {
       console.log('[dsh-liuli-ui-enhance] 浏览器补丁：electron-runtime 已启用 webviewTag，跳过该部分')
     } else {
-      if (!WEBVIEWTAG_PATTERN.test(runtime)) {
-        console.warn('[dsh-liuli-ui-enhance] 浏览器补丁：未找到 webPreferences 补丁点，跳过 webviewTag（浏览器面板将回退 WebContentsView）')
+      if (!WEBVIEWTAG_PATTERN.test(textAfter)) {
+        console.warn('[dsh-liuli-ui-enhance] 浏览器补丁：未找到主窗口 webPreferences 补丁点，跳过 webviewTag（浏览器面板将回退 WebContentsView）')
       } else {
-        runtime = runtime.replace(WEBVIEWTAG_PATTERN, (block) => block.replace('webSecurity: true', 'webviewTag: true,\n\t\t\twebSecurity: true'))
+        content = Buffer.from(
+          textAfter.replace(WEBVIEWTAG_PATTERN, (block) => block.replace('webSecurity: true', 'webviewTag: true,\n\t\t\twebSecurity: true')),
+          'utf8',
+        )
         runtimeChanged = true
         console.log('[dsh-liuli-ui-enhance] 浏览器补丁：已启用 webviewTag')
       }
     }
-    if (runtimeChanged) {
-      writeFileSync(runtimePath, runtime, 'utf8')
-      console.log('[dsh-liuli-ui-enhance] 已写入 electron-runtime 补丁')
-    }
 
-    // 3. 重建 app.asar 头（同步 size / SHA256 integrity），并保留头之后的原始字节。
-    //    幂等快路径：运行时已打补丁且 asar 头记录的 size/SHA256 已与磁盘文件一致时，
-    //    说明头部就是最新状态，直接跳过整文件重写 —— 避免每次启动都重写 5MB+ 的
-    //    app.asar。重写期间 Loader 的包元数据读取（client-modules 扫描）可能与
-    //    copyFileSync 竞态，读到半截文件导致个别 client 包被判为缺失/非 client 包
-    //    （缓存永不失效），表现就是启动后 boot 图缺少入口（如 dsh-client-ui-layout），
-    //    客户端出现「Failed to load plugins」。
-    const { header, contentStart } = readAsarHeader(asarPath)
-    let node: { files?: Record<string, unknown> } | undefined = header
-    for (const part of ['lib', runtimeName]) {
-      const next = node?.files?.[part] as { files?: Record<string, unknown> } | undefined
-      if (next === undefined) {
-        throw new Error(`asar 头中缺少 ${part}（客户端版本可能不兼容）`)
-      }
-      node = next
-    }
-
-    const runtimeBuffer = readFileSync(runtimePath)
-    const hash = createHash('sha256').update(runtimeBuffer).digest('hex')
-    const target = node as unknown as { size?: number; integrity?: { algorithm?: string; blockSize?: number; blocks?: string[]; hash?: string } }
-    if (!runtimeChanged && target.size === runtimeBuffer.length && target.integrity?.hash === hash) {
-      console.log('[dsh-liuli-ui-enhance] 无边框自动补丁：asar 头已是最新，跳过重建（不再重写 app.asar）')
-      return
-    }
-    target.size = runtimeBuffer.length
-    target.integrity ??= { algorithm: 'SHA256', blockSize: 4194304, blocks: [] }
-    target.integrity.hash = hash
-    target.integrity.blocks = [hash]
-
-    const newHeader = buildAsarHeader(header)
-    writePatchedAsar(asarPath, tmpPath, newHeader, contentStart)
-    copyFileSync(tmpPath, asarPath)
-    copyFileSync(tmpPath, patchedCopyPath)
-    console.log('[dsh-liuli-ui-enhance] 无边框自动补丁：已重建 app.asar 头')
+    // 3. 写回 runtime 内容 + 重建 asar 头（同步 size / SHA256 integrity）。
+    commitRuntime(resourcesDir, asarPath, runtime, content, runtimeChanged)
     console.log('[dsh-liuli-ui-enhance] 无边框自动补丁：重启 DSH Desktop 后生效')
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.warn('[dsh-liuli-ui-enhance] 无边框自动补丁未应用：', message)
     console.warn('[dsh-liuli-ui-enhance] 插件继续加载；页面内窗口按钮仍可用，原生标题栏按钮会保留。如需隐藏原生标题栏，请运行 pnpm patch:desktop')
   } finally {
-    try {
-      if (existsSync(tmpPath)) unlinkSync(tmpPath)
-    } catch { /* ignore */ }
     proc.noAsar = previousNoAsar
   }
 }
@@ -303,90 +435,51 @@ export function revertFramelessPatch(): void {
   }
 
   const asarPath = joinPath(resourcesDir, 'app.asar')
-  const patchedCopyPath = joinPath(resourcesDir, 'app.asar.patched')
-  const libDir = joinPath(resourcesDir, 'app.asar.unpacked', 'lib')
-  const tmpPath = joinPath(resourcesDir, `app.asar.liuli-revert-${process.pid}.tmp`)
-
-  // marker 注释块 + frame:false → 逐字还原官方 win32 advanced 窗口配置
-  // （来自 anywhere-labs/dsh-desktop 的 window-options.ts，bundler 已内联常量：
-  // titleBarStyle:"hidden" + titleBarOverlay { color:#00000000, symbolColor:#7f858f,
-  // height:32 }，原生标题栏按钮回归且配色与原版一致）。
-  const MARKER_BLOCK = /\/\/ \[liuli-theme patch\] 无边框窗口：[\s\S]*?\n\s*frame: false,/
-  const NATIVE_TITLEBAR_RESTORE = [
-    'titleBarStyle: "hidden",',
-    '\t\ttitleBarOverlay: {',
-    '\t\t\tcolor: "#00000000",',
-    '\t\t\tsymbolColor: "#7f858f",',
-    '\t\t\theight: 32',
-    '\t\t},',
-  ].join('\n')
 
   const proc = process as ProcessWithNoAsar
   const previousNoAsar = proc.noAsar
   proc.noAsar = true
   try {
-    const runtimeName = findRuntimeFile(libDir)
-    if (runtimeName === undefined) {
-      throw new Error('在 app.asar.unpacked/lib 下找不到 electron-runtime-*.js（客户端目录结构可能已变化）')
-    }
-    const runtimePath = joinPath(libDir, runtimeName)
     if (!existsSync(asarPath)) {
       throw new Error('找不到 app.asar（客户端目录结构可能已变化）')
     }
-
-    let runtime = readFileSync(runtimePath, 'utf8')
-    let runtimeChanged = false
-    if (MARKER_BLOCK.test(runtime)) {
-      runtime = runtime.replace(MARKER_BLOCK, NATIVE_TITLEBAR_RESTORE)
-      runtimeChanged = true
-      console.log('[dsh-liuli-ui-enhance] 无边框补丁还原：已恢复官方原生标题栏配置')
+    const libDir = joinPath(resourcesDir, 'app.asar.unpacked', 'lib')
+    const runtime = resolveRuntime(libDir, asarPath)
+    if (runtime === undefined) {
+      throw new Error('在磁盘 app.asar.unpacked/lib 与 app.asar 头内均找不到 electron-runtime-*.js（客户端目录结构可能已变化）')
     }
-    if (runtime.includes('webviewTag: true')) {
-      runtime = runtime.replace(/^\s*webviewTag: true,\r?\n/mg, '')
+    console.log(`[dsh-liuli-ui-enhance] 无边框补丁还原：runtime=${runtime.name}（${runtime.mode === 'disk' ? '磁盘 unpacked' : 'app.asar 打包'}）`)
+
+    let content = runtime.content
+    let runtimeChanged = false
+    const text = content.toString('utf8')
+    const newMatch = text.match(MARKER_BLOCK_NEW)
+    const legacyMatch = !newMatch ? text.match(MARKER_BLOCK_LEGACY) : undefined
+    if (!newMatch && !legacyMatch) {
+      console.log('[dsh-liuli-ui-enhance] 无边框补丁还原：electron-runtime 未包含无边框补丁，跳过还原')
+    } else {
+      const heightExpr = (newMatch?.[1] ?? '32').trim()
+      const markerBlock = newMatch ? MARKER_BLOCK_NEW : MARKER_BLOCK_LEGACY
+      const markerIndex = (newMatch ?? legacyMatch)?.index ?? 0
+      const indent = detectTitlebarIndentBefore(text, markerIndex)
+      content = Buffer.from(text.replace(markerBlock, () => nativeTitleBarRestore(heightExpr, indent)), 'utf8')
+      runtimeChanged = true
+      console.log(`[dsh-liuli-ui-enhance] 无边框补丁还原：已恢复官方原生标题栏配置（titleBarOverlay height: ${heightExpr}）`)
+    }
+    if (content.toString('utf8').includes('webviewTag: true')) {
+      content = Buffer.from(content.toString('utf8').replace(/^\s*webviewTag: true,\r?\n/mg, ''), 'utf8')
       runtimeChanged = true
       console.log('[dsh-liuli-ui-enhance] 无边框补丁还原：已移除 webviewTag')
     }
-    if (runtimeChanged) {
-      writeFileSync(runtimePath, runtime, 'utf8')
-      console.log('[dsh-liuli-ui-enhance] 已写入 electron-runtime 还原')
-    }
 
-    // 重建 asar 头（同步 size / SHA256 integrity），保留头之后的原始字节。
-    const { header, contentStart } = readAsarHeader(asarPath)
-    let node: { files?: Record<string, unknown> } | undefined = header
-    for (const part of ['lib', runtimeName]) {
-      const next = node?.files?.[part] as { files?: Record<string, unknown> } | undefined
-      if (next === undefined) {
-        throw new Error(`asar 头中缺少 ${part}（客户端版本可能不兼容）`)
-      }
-      node = next
-    }
-    const runtimeBuffer = readFileSync(runtimePath)
-    const hash = createHash('sha256').update(runtimeBuffer).digest('hex')
-    const target = node as unknown as { size?: number; integrity?: { algorithm?: string; blockSize?: number; blocks?: string[]; hash?: string } }
-    if (!runtimeChanged && target.size === runtimeBuffer.length && target.integrity?.hash === hash) {
-      console.log('[dsh-liuli-ui-enhance] 无边框补丁还原：asar 头已是最新，跳过重建')
-      return
-    }
-    target.size = runtimeBuffer.length
-    target.integrity ??= { algorithm: 'SHA256', blockSize: 4194304, blocks: [] }
-    target.integrity.hash = hash
-    target.integrity.blocks = [hash]
-
-    const newHeader = buildAsarHeader(header)
-    writePatchedAsar(asarPath, tmpPath, newHeader, contentStart)
-    copyFileSync(tmpPath, asarPath)
-    copyFileSync(tmpPath, patchedCopyPath)
-    console.log('[dsh-liuli-ui-enhance] 无边框补丁还原：已重建 app.asar 头')
+    // 重建 asar 头（同步 size / SHA256 integrity）。
+    commitRuntime(resourcesDir, asarPath, runtime, content, runtimeChanged)
     console.log('[dsh-liuli-ui-enhance] 无边框补丁还原：重启 DSH Desktop 后原生标题栏恢复')
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.warn('[dsh-liuli-ui-enhance] 无边框补丁还原未完成：', message)
     console.warn('[dsh-liuli-ui-enhance] 可手动运行 pnpm patch:desktop --revert，或重新启用「桌面宿主补丁」开关后重启 DSH Desktop')
   } finally {
-    try {
-      if (existsSync(tmpPath)) unlinkSync(tmpPath)
-    } catch { /* ignore */ }
     proc.noAsar = previousNoAsar
   }
 }

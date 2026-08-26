@@ -238,7 +238,7 @@ function withPanel(type: string): DockLayout {
 {
   const layout = defaultLayout()
   check('M15 default is h-split', layout.root !== null && layout.root.kind === 'split' && layout.root.dir === 'h' && layout.root.children.length === 2)
-  check('M15b default panel count', panelCount(layout) === 3)
+  check('M15b default panel count', panelCount(layout) === 2)
 }
 
 // M16 placePanel（外部拖入：右侧标签面板标签 → 布局落点）

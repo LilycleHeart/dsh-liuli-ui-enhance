@@ -1,22 +1,18 @@
 /**
- * 侧边面板扩展标签：终端 / 开发者工具 / 模型调用轨迹 / 画板 / 计划 / 子智能体 / 辅助对话。
+ * 侧边面板扩展标签：终端 / 开发者工具 / 辅助对话。
  * DSH 实现面板在 DSH 内的可行实现：
  * - 终端：插件 node 半 /liuli-terminal WebSocket 升级路由 + piped shell（行模式）；
  * - 开发者工具：会话/投影(contextPressure/contextBreakdown/plan)/后台作业/存储诊断；
- * - 模型调用轨迹：当前会话 ConversationSnapshot 的工具调用时间线（含子调用）；
- * - 画板：本地 canvas 涂鸦板，笔画持久化 localStorage；
- * - 计划：会话 plan/todo/goal 投影；
- * - 子智能体：会话列表中 parentId 指向当前会话的子会话目录；
  * - 辅助对话：fork 当前会话生成子会话，面板内轻量对话（session.prompt 发送）。
  */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
 import { IconSendOutline14, IconPlusOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
-  ConversationSnapshot, ObservableSnapshot, SessionFace, SessionId, SessionListState,
+  ObservableSnapshot, SessionFace, SessionId, SessionListState,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import { ChatFlowView, ChatFlowPartial } from './chat-flow-view.tsx'
+import { LIULI_LS_KEY, liuliSettingsOf } from '../liuli-settings.ts'
 import css from './SidePaneExtraPanels.module.css'
 
 /** 面板可用的宿主数据面（由 index.ts 注入）。 */
@@ -73,121 +69,28 @@ function relTime(ts: number): string {
 
 export interface TerminalPanelProps {
   sessionId?: string | undefined
-  title: string
 }
 
-const TERMINAL_SHELL_OPTIONS: ReadonlyArray<{ id: string; label: string }> = [
-  { id: '', label: '默认' },
-  { id: 'cmd', label: '命令提示符 (cmd)' },
-  { id: 'powershell', label: 'Windows PowerShell' },
-  { id: 'pwsh', label: 'PowerShell 7 (pwsh)' },
-  { id: 'bash', label: 'Git Bash' },
-]
-
-/** 终端 Shell 选择器：琉璃自定义下拉（body portal + fixed 菜单），替代原生 select。 */
-function ShellSelect({ value, options, onChange }: {
-  value: string
-  options: ReadonlyArray<{ id: string; label: string }>
-  onChange: (id: string) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState<{ left: number; top: number; width: number }>({ left: 0, top: 0, width: 200 })
-  const triggerRef = useRef<HTMLButtonElement | null>(null)
-  const menuRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const onDown = (e: MouseEvent): void => {
-      const target = e.target as Node
-      if (triggerRef.current !== null && triggerRef.current.contains(target)) return
-      if (menuRef.current !== null && menuRef.current.contains(target)) return
-      setOpen(false)
+/** 读取「默认终端」设置值（功能设置页配置；'' = 宿主默认）。
+ *  旧版终端面板把选择记在 liuli:terminal-shell，这里作一次性迁移兜底。 */
+function terminalShellSetting(): string {
+  try {
+    const raw = localStorage.getItem(LIULI_LS_KEY)
+    if (raw !== null && raw !== '') {
+      const s = liuliSettingsOf(JSON.parse(raw))
+      if (s.terminal_shell !== '') return s.terminal_shell
     }
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') setOpen(false)
-    }
-    const onResize = (): void => { setOpen(false) }
-    document.addEventListener('mousedown', onDown, true)
-    document.addEventListener('keydown', onKey, true)
-    window.addEventListener('resize', onResize)
-    return () => {
-      document.removeEventListener('mousedown', onDown, true)
-      document.removeEventListener('keydown', onKey, true)
-      window.removeEventListener('resize', onResize)
-    }
-  }, [open])
-
-  const toggle = (): void => {
-    const rect = triggerRef.current?.getBoundingClientRect()
-    if (rect === undefined) return
-    const itemHeight = 30
-    const height = options.length * itemHeight + 8
-    const menuWidth = Math.max(180, Math.min(Math.max(rect.width, 180), 260))
-    const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - menuWidth - 8))
-    const top = rect.bottom + 4 + height > window.innerHeight ? Math.max(8, rect.top - 4 - height) : rect.bottom + 4
-    setPos({ left, top, width: menuWidth })
-    setOpen(prev => !prev)
-  }
-
-  const currentLabel = options.find(option => option.id === value)?.label ?? options[0]?.label ?? ''
-
-  return (
-    <>
-      <button
-        type="button"
-        ref={triggerRef}
-        className={css.termShell}
-        title="选择终端 Shell"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={toggle}
-      >
-        <span className={css.termShellLabel}>{currentLabel}</span>
-        <svg
-          className={`${css.termShellChevron}${open ? ' ' + css.termShellChevronOpen : ''}`}
-          viewBox="0 0 24 24"
-          width="12"
-          height="12"
-          aria-hidden="true"
-        >
-          <path fill="currentColor" d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z" />
-        </svg>
-      </button>
-      {open && createPortal(
-        <div ref={menuRef} className={css.termShellMenu} role="menu" style={{ left: pos.left, top: pos.top, width: pos.width }}>
-          {options.map(option => (
-            <button
-              key={option.id}
-              type="button"
-              role="menuitemradio"
-              aria-checked={option.id === value}
-              className={`${css.termShellMenuItem}${option.id === value ? ' ' + css.termShellMenuItemActive : ''}`}
-              onClick={() => { onChange(option.id); setOpen(false) }}
-            >
-              <span className={css.termShellItemLabel}>{option.label}</span>
-              {option.id === value && (
-                <svg className={css.termShellCheck} viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-                  <path fill="currentColor" d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
-                </svg>
-              )}
-            </button>
-          ))}
-        </div>,
-        document.body,
-      )}
-    </>
-  )
+    return localStorage.getItem('liuli:terminal-shell') ?? ''
+  } catch { return '' }
 }
 
 /** WebSocket 终端：行模式 piped shell（DSH 终端面板的 DSH 实现）。 */
-export function TerminalPanel({ sessionId, title }: TerminalPanelProps) {
+export function TerminalPanel({ sessionId }: TerminalPanelProps) {
   const [output, setOutput] = useState('')
   const [status, setStatus] = useState<'connecting' | 'open' | 'closed' | 'error'>('connecting')
   const [input, setInput] = useState('')
   const [epoch, setEpoch] = useState(0)
-  const [shell, setShell] = useState<string>(() => {
-    try { return localStorage.getItem('liuli:terminal-shell') ?? '' } catch { return '' }
-  })
+  const [shell] = useState<string>(terminalShellSetting)
   const wsRef = useRef<WebSocket | null>(null)
   const outRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
@@ -222,6 +125,17 @@ export function TerminalPanel({ sessionId, title }: TerminalPanelProps) {
     const el = outRef.current
     if (el !== null) el.scrollTop = el.scrollHeight
   }, [output])
+
+  // 意外断开自动重连（最多 3 次，3s 间隔），替代已移除工具条里的「重连」按钮。
+  const [reconnectTries, setReconnectTries] = useState(0)
+  useEffect(() => {
+    if (status !== 'closed' || reconnectTries >= 3) return
+    const t = setTimeout(() => {
+      setReconnectTries(n => n + 1)
+      setEpoch(n => n + 1)
+    }, 3000)
+    return () => { clearTimeout(t) }
+  }, [status, reconnectTries])
 
   const send = (): void => {
     const ws = wsRef.current
@@ -261,27 +175,8 @@ export function TerminalPanel({ sessionId, title }: TerminalPanelProps) {
     }
   }
 
-  const onShellChange = (next: string): void => {
-    setShell(next)
-    setOutput('')
-    try { localStorage.setItem('liuli:terminal-shell', next) } catch { /* ignore */ }
-  }
-
   return (
     <div className={css.termRoot}>
-      <div className={css.termBar}>
-        <span className={css.termTitle}>{title}</span>
-        <span className={css.termStatus} data-status={status}>
-          {status === 'connecting' ? '连接中' : status === 'open' ? '已连接' : status === 'error' ? '连接失败' : '已断开'}
-        </span>
-        <ShellSelect
-          value={shell}
-          options={TERMINAL_SHELL_OPTIONS}
-          onChange={onShellChange}
-        />
-        <button type="button" className={css.termBtn} onClick={() => { setOutput('') }}>清屏</button>
-        <button type="button" className={css.termBtn} onClick={() => { setEpoch(v => v + 1) }}>重连</button>
-      </div>
       <div
         ref={outRef}
         className={css.termOut}
@@ -409,444 +304,6 @@ function Row({ k, v }: { k: string; v: string }) {
   )
 }
 
-/* ── 模型调用轨迹 ── */
-
-export interface TrajectoryPanelProps {
-  sessionId?: string | undefined
-  host: SidePaneHostAccess
-}
-
-interface TrajectoryRow {
-  callId: string
-  name: string
-  argsRaw: string
-  running: boolean
-  isError: boolean
-  time: number
-  durationMs: number | null
-  resultText: string | null
-  depth: number
-}
-
-/** 收集会话快照里的全部工具调用（含子调用），时间升序。 */
-function collectCalls(snap: ConversationSnapshot): TrajectoryRow[] {
-  const rows: TrajectoryRow[] = []
-  const pushSettled = (node: { callId: string; call: { name: string; argsRaw: string } | null; time: number; callTime: number | null; content: readonly unknown[]; isError: boolean; subCalls: readonly unknown[] }, depth: number): void => {
-    let text = ''
-    for (const block of node.content) {
-      const b = block as { type?: string; text?: string }
-      if (b.type === 'text' && typeof b.text === 'string') text += b.text
-    }
-    rows.push({
-      callId: node.callId,
-      name: node.call?.name ?? node.callId,
-      argsRaw: node.call?.argsRaw ?? '',
-      running: false,
-      isError: node.isError,
-      time: node.time,
-      durationMs: node.callTime === null ? null : Math.max(0, node.time - node.callTime),
-      resultText: text === '' ? null : text.slice(0, 4000),
-      depth,
-    })
-    for (const sub of node.subCalls) pushBlock(sub, depth + 1)
-  }
-  const pushBlock = (block: unknown, depth: number): void => {
-    const b = block as { kind?: string; callId?: string }
-    if (b.kind === 'tool-result' && typeof b.callId === 'string') {
-      pushSettled(block as Parameters<typeof pushSettled>[0], depth)
-    } else if (typeof b.callId === 'string' && typeof (b as { name?: unknown }).name === 'string') {
-      const running = block as { callId: string; name: string; argsRaw: string; time: number }
-      rows.push({
-        callId: running.callId,
-        name: running.name,
-        argsRaw: running.argsRaw ?? '',
-        running: true,
-        isError: false,
-        time: running.time,
-        durationMs: null,
-        resultText: null,
-        depth,
-      })
-    }
-  }
-  for (const node of snap.nodes) {
-    const n = node as { kind: string }
-    if (n.kind === 'tool-result') pushBlock(node, 0)
-  }
-  for (const running of snap.runningCalls) pushBlock(running, 0)
-  rows.sort((a, b) => a.time - b.time)
-  return rows
-}
-
-/** 模型调用轨迹：当前会话工具调用时间线（DSH model-trajectory 的 DSH 实现）。 */
-export function TrajectoryPanel({ sessionId, host }: TrajectoryPanelProps) {
-  const face = sessionId === undefined ? undefined : host.getSessionFace(sessionId)
-  const snap = useSnapshot(face)
-  const [expanded, setExpanded] = useState<string | null>(null)
-
-  const rows = useMemo(() => snap === undefined ? [] : collectCalls(snap), [snap])
-  const runningCount = rows.filter(r => r.running).length
-  const errorCount = rows.filter(r => r.isError).length
-
-  if (sessionId === undefined) return <div className={css.devEmpty}>没有活动会话</div>
-
-  return (
-    <div className={css.trajRoot}>
-      <div className={css.trajHead}>
-        <span>调用 {rows.length}</span>
-        {runningCount > 0 && <span className={css.trajRunning}>运行中 {runningCount}</span>}
-        {errorCount > 0 && <span className={css.trajError}>错误 {errorCount}</span>}
-        {snap !== undefined && snap.running && <span className={css.trajRunning}>回合进行中</span>}
-      </div>
-      <div className={css.trajList}>
-        {rows.length === 0 && <div className={css.devEmpty}>还没有工具调用</div>}
-        {rows.map(row => (
-          <div key={row.callId} className={css.trajRow} style={{ paddingLeft: 10 + row.depth * 14 }}>
-            <button
-              type="button"
-              className={css.trajRowHead}
-              onClick={() => { setExpanded(expanded === row.callId ? null : row.callId) }}
-            >
-              <span className={css.trajDot} data-state={row.running ? 'running' : row.isError ? 'error' : 'done'} />
-              <span className={css.trajName}>{row.name}</span>
-              {row.durationMs !== null && <span className={css.trajDur}>{row.durationMs < 1000 ? `${row.durationMs}ms` : `${(row.durationMs / 1000).toFixed(1)}s`}</span>}
-              <span className={css.trajTime}>{relTime(row.time)}</span>
-            </button>
-            {expanded === row.callId && (
-              <div className={css.trajDetail}>
-                {row.argsRaw !== '' && (
-                  <>
-                    <div className={css.trajDetailLabel}>参数</div>
-                    <pre className={css.trajPre}>{row.argsRaw.slice(0, 2000)}</pre>
-                  </>
-                )}
-                {row.running && <div className={css.trajDetailLabel}>运行中…</div>}
-                {row.resultText !== null && (
-                  <>
-                    <div className={css.trajDetailLabel}>结果{row.isError ? '（错误）' : ''}</div>
-                    <pre className={css.trajPre}>{row.resultText}</pre>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-/* ── 画板 ── */
-
-export interface WhiteboardPanelProps {
-  boardId: string
-}
-
-interface Stroke {
-  color: string
-  size: number
-  erase: boolean
-  points: Array<[number, number]>
-}
-
-const BOARD_COLORS = ['#1f2937', '#dc2626', '#16a34a', '#2563eb', '#d97706', '#9333ea']
-const BOARD_SIZES = [2, 4, 8]
-
-function boardKey(boardId: string): string {
-  return `liuli:whiteboard:${boardId}`
-}
-
-function loadStrokes(boardId: string): Stroke[] {
-  try {
-    const raw = localStorage.getItem(boardKey(boardId))
-    if (raw === null || raw === '') return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
-
-function saveStrokes(boardId: string, strokes: Stroke[]): void {
-  try { localStorage.setItem(boardKey(boardId), JSON.stringify(strokes.slice(-500))) } catch { /* ignore */ }
-}
-
-/** 画板：本地 canvas 涂鸦板（DSH whiteboard 的 DSH 实现）。 */
-export function WhiteboardPanel({ boardId }: WhiteboardPanelProps) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const wrapRef = useRef<HTMLDivElement | null>(null)
-  const strokesRef = useRef<Stroke[]>(loadStrokes(boardId))
-  const liveRef = useRef<Stroke | null>(null)
-  const [color, setColor] = useState(BOARD_COLORS[0] ?? '#1f2937')
-  const [size, setSize] = useState(4)
-  const [erase, setErase] = useState(false)
-
-  const redraw = (): void => {
-    const canvas = canvasRef.current
-    const ctx = canvas?.getContext('2d')
-    if (canvas === null || canvas === undefined || ctx === null || ctx === undefined) return
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-    const all = liveRef.current === null ? strokesRef.current : [...strokesRef.current, liveRef.current]
-    for (const stroke of all) drawStroke(ctx, stroke)
-  }
-
-  const drawStroke = (ctx: CanvasRenderingContext2D, stroke: Stroke): void => {
-    if (stroke.points.length === 0) return
-    ctx.save()
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
-    ctx.lineWidth = stroke.size
-    if (stroke.erase) {
-      ctx.globalCompositeOperation = 'destination-out'
-      ctx.strokeStyle = 'rgba(0,0,0,1)'
-      ctx.lineWidth = stroke.size * 4
-    } else {
-      ctx.strokeStyle = stroke.color
-    }
-    ctx.beginPath()
-    const first = stroke.points[0]
-    if (first === undefined) return
-    ctx.moveTo(first[0], first[1])
-    for (let i = 1; i < stroke.points.length; i += 1) {
-      const p = stroke.points[i]
-      if (p === undefined) continue
-      ctx.lineTo(p[0], p[1])
-    }
-    ctx.stroke()
-    ctx.restore()
-  }
-
-  // 画布尺寸跟随容器（含 devicePixelRatio），重绘全部笔画。
-  useEffect(() => {
-    const wrap = wrapRef.current
-    const canvas = canvasRef.current
-    if (wrap === null || canvas === null) return
-    const resize = (): void => {
-      const rect = wrap.getBoundingClientRect()
-      const dpr = window.devicePixelRatio || 1
-      canvas.width = Math.max(1, Math.round(rect.width * dpr))
-      canvas.height = Math.max(1, Math.round(rect.height * dpr))
-      canvas.style.width = `${rect.width}px`
-      canvas.style.height = `${rect.height}px`
-      const ctx = canvas.getContext('2d')
-      if (ctx !== null) ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      redraw()
-    }
-    resize()
-    const ro = new ResizeObserver(resize)
-    ro.observe(wrap)
-    return () => { ro.disconnect() }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boardId])
-
-  useEffect(() => { redraw() }, [color, size, erase]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const pointOf = (e: React.PointerEvent<HTMLCanvasElement>): [number, number] => {
-    const rect = e.currentTarget.getBoundingClientRect()
-    return [e.clientX - rect.left, e.clientY - rect.top]
-  }
-
-  const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>): void => {
-    e.preventDefault()
-    e.currentTarget.setPointerCapture(e.pointerId)
-    liveRef.current = { color, size, erase, points: [pointOf(e)] }
-    redraw()
-  }
-
-  const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>): void => {
-    const live = liveRef.current
-    if (live === null) return
-    live.points.push(pointOf(e))
-    redraw()
-  }
-
-  const onPointerUp = (): void => {
-    const live = liveRef.current
-    if (live === null) return
-    liveRef.current = null
-    strokesRef.current = [...strokesRef.current, live]
-    saveStrokes(boardId, strokesRef.current)
-    redraw()
-  }
-
-  const clearBoard = (): void => {
-    strokesRef.current = []
-    liveRef.current = null
-    saveStrokes(boardId, [])
-    redraw()
-  }
-
-  const downloadPng = (): void => {
-    const canvas = canvasRef.current
-    if (canvas === null) return
-    const flat = document.createElement('canvas')
-    flat.width = canvas.width
-    flat.height = canvas.height
-    const ctx = flat.getContext('2d')
-    if (ctx === null) return
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, flat.width, flat.height)
-    ctx.drawImage(canvas, 0, 0)
-    const a = document.createElement('a')
-    a.href = flat.toDataURL('image/png')
-    a.download = `whiteboard-${boardId}.png`
-    a.click()
-  }
-
-  return (
-    <div className={css.boardRoot}>
-      <div className={css.boardBar}>
-        <span className={css.boardSwatches}>
-          {BOARD_COLORS.map(c => (
-            <button
-              key={c}
-              type="button"
-              className={css.boardSwatch}
-              style={{ background: c }}
-              data-active={!erase && color === c ? '' : undefined}
-              aria-label={`颜色 ${c}`}
-              onClick={() => { setColor(c); setErase(false) }}
-            />
-          ))}
-        </span>
-        <span className={css.boardSizes}>
-          {BOARD_SIZES.map(s => (
-            <button
-              key={s}
-              type="button"
-              className={css.boardSize}
-              data-active={size === s ? '' : undefined}
-              aria-label={`线宽 ${s}`}
-              onClick={() => { setSize(s) }}
-            >
-              <span style={{ width: s + 2, height: s + 2 }} />
-            </button>
-          ))}
-        </span>
-        <button type="button" className={css.termBtn} data-active={erase ? '' : undefined} onClick={() => { setErase(v => !v) }}>橡皮</button>
-        <button type="button" className={css.termBtn} onClick={clearBoard}>清空</button>
-        <button type="button" className={css.termBtn} onClick={downloadPng}>导出 PNG</button>
-      </div>
-      <div ref={wrapRef} className={css.boardWrap}>
-        <canvas
-          ref={canvasRef}
-          className={css.boardCanvas}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
-        />
-      </div>
-    </div>
-  )
-}
-
-/* ── 计划 ── */
-
-export interface PlanPanelProps {
-  sessionId?: string | undefined
-  host: SidePaneHostAccess
-}
-
-/** 计划：会话 plan / todos / goal 投影（DSH plan-detail 的 DSH 实现）。 */
-export function PlanPanel({ sessionId, host }: PlanPanelProps) {
-  const face = sessionId === undefined ? undefined : host.getSessionFace(sessionId)
-  const plan = useSnapshot(face?.projections.faceOf('plan')) as
-    | { active?: boolean; pending?: boolean } | undefined
-  const todos = useSnapshot(face?.projections.faceOf('todos')) as
-    | Array<{ content?: string; status?: string }> | undefined
-  const goal = useSnapshot(face?.projections.faceOf('goal')) as
-    | { objective?: string; phase?: string } | undefined
-
-  if (sessionId === undefined) return <div className={css.devEmpty}>没有活动会话</div>
-
-  const planActive = plan != null && (plan.pending === true ? plan.active !== false : plan.active === true)
-
-  return (
-    <div className={css.planRoot}>
-      <Section title="计划模式">
-        <Row k="状态" v={plan == null ? '未启用' : planActive ? '进行中' : plan.pending === true ? '待确认' : '未激活'} />
-      </Section>
-      <Section title="目标">
-        {goal == null || goal.objective === undefined
-          ? <div className={css.devEmpty}>没有活动目标</div>
-          : (
-            <div className={css.planGoal}>
-              <div className={css.planGoalText}>{goal.objective}</div>
-              {goal.phase !== undefined && <div className={css.planGoalPhase}>{goal.phase}</div>}
-            </div>
-          )}
-      </Section>
-      <Section title="任务清单">
-        {todos == null || todos.length === 0
-          ? <div className={css.devEmpty}>暂无任务项</div>
-          : (
-            <div className={css.planTodos}>
-              {todos.map((todo, i) => {
-                const status = todo.status ?? 'pending'
-                return (
-                  <div key={i} className={css.planTodo} data-status={status}>
-                    <span className={css.planTodoMark}>
-                      {status === 'completed' ? '✓' : status === 'in_progress' ? '▶' : '○'}
-                    </span>
-                    <span className={css.planTodoText}>{todo.content ?? ''}</span>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-      </Section>
-    </div>
-  )
-}
-
-/* ── 子智能体目录 ── */
-
-export interface SubagentPanelProps {
-  sessionId?: string | undefined
-  host: SidePaneHostAccess
-}
-
-/** 子智能体目录：当前会话派生的子会话列表（DSH subagent-directory 的 DSH 实现）。 */
-export function SubagentPanel({ sessionId, host }: SubagentPanelProps) {
-  const list = useSnapshot(host.sessionList)
-  const archived = useSnapshot(host.archivedSessionIds) ?? []
-
-  const children = useMemo(() => {
-    if (list === undefined || sessionId === undefined) return []
-    const archivedSet = new Set(archived)
-    return list.ids
-      .map(id => list.byId[id])
-      .filter((s): s is NonNullable<typeof s> => s !== undefined && s.parentId === sessionId && !archivedSet.has(s.id))
-  }, [list, sessionId, archived])
-
-  if (sessionId === undefined) return <div className={css.devEmpty}>没有活动会话</div>
-
-  return (
-    <div className={css.subRoot}>
-      <div className={css.trajHead}>
-        <span>子智能体 {children.length}</span>
-      </div>
-      <div className={css.subList}>
-        {children.length === 0 && <div className={css.devEmpty}>这个会话还没有派生子智能体</div>}
-        {children.map(child => (
-          <button
-            key={child.id}
-            type="button"
-            className={css.subRow}
-            onClick={() => { host.openSession(child.id) }}
-          >
-            <span className={css.trajDot} data-state={child.running ? 'running' : child.completed === true ? 'done' : 'idle'} />
-            <span className={css.subTitle}>{child.displayTitle}</span>
-            {child.agentPreset !== undefined && <span className={css.subPreset}>{child.agentPreset}</span>}
-            <span className={css.trajTime}>{relTime(child.updatedAt)}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 /* ── 辅助对话 ── */
 
 export interface SideChatPanelProps {
@@ -856,7 +313,6 @@ export interface SideChatPanelProps {
   childSessionId?: string | undefined
   /** fork 成功后回写标签。 */
   onChildCreated: (childId: string) => void
-  title: string
   /** 首次打开时自动发送给子会话的问题（/btw 指令带出）。 */
   initialPrompt?: string | undefined
   /** initialPrompt 已被消费（面板回写标签清除，避免重开重复发送）。 */
@@ -982,7 +438,7 @@ function ContextMeter({ face }: { face: SessionFace }) {
 }
 
 /** 辅助对话：fork 当前会话生成子会话，面板内收发消息（DSH selection-side-chat 的 DSH 实现）。 */
-export function SideChatPanel({ sessionId, host, childSessionId, onChildCreated, title, initialPrompt, onPromptConsumed }: SideChatPanelProps) {
+export function SideChatPanel({ sessionId, host, childSessionId, onChildCreated, initialPrompt, onPromptConsumed }: SideChatPanelProps) {
   const [draft, setDraft] = useState('')
   const [forkError, setForkError] = useState<string | null>(null)
   const [commandMenuOpen, setCommandMenuOpen] = useState(false)
@@ -1074,12 +530,10 @@ export function SideChatPanel({ sessionId, host, childSessionId, onChildCreated,
 
   return (
     <div className={css.chatRoot}>
-      <div className={css.chatHead}>
-        <span>{title}</span>
-        {childSessionId === undefined && <span className={css.termStatus} data-status="connecting">{forkError === null ? '正在创建子会话…' : `创建失败：${forkError}`}</span>}
-        {snap !== undefined && snap.running && <span className={css.trajRunning}>运行中</span>}
-      </div>
-      <div ref={scrollRef} className={css.chatScroll}>
+      {/* .chatScroll 是侧边栏助手自绘信息流的外层列：ChatFlowView 的 .flow 与
+          流式尾巴都直接挂在它下面（.flow 自身也是列），挂 data-liuli-chat-flow
+          让级联观察器识别本列（锚点须为列直接子元素，见 liuli-transition.ts）。 */}
+      <div ref={scrollRef} className={css.chatScroll} data-liuli-chat-flow="">
         {nodeCount === 0 && snap?.partial === undefined && (
           <div className={css.devEmpty}>
             {childSessionId === undefined ? '准备中…' : '从下面输入消息，开始这段辅助对话（它带着当前会话的上下文 fork）'}
@@ -1103,7 +557,9 @@ export function SideChatPanel({ sessionId, host, childSessionId, onChildCreated,
                 }
                 if (e.key === 'Escape') setCommandMenuOpen(false)
               }}
-              placeholder={childFace === undefined ? '子会话准备中…' : '输入消息，Enter 发送（Shift+Enter 换行）'}
+              placeholder={childFace === undefined
+                ? (forkError === null ? '子会话准备中…' : `创建失败：${forkError}`)
+                : '输入消息，Enter 发送（Shift+Enter 换行）'}
               disabled={childFace === undefined}
             />
             <div className={css.composerMirror} aria-hidden="true">{`${draft}\n`}</div>

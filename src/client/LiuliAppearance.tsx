@@ -14,7 +14,7 @@ import {
 import type { PropsLocale, PropsRuntime, PropsStore, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { LiuliBgArea, LiuliSettings } from '../liuli-settings.ts'
 import { LIULI_SETTINGS_DEFAULTS } from '../liuli-settings.ts'
-import { bgGeometry } from './liuli-runtime.ts'
+import { bgGeometry, normalizeAreaToRatio } from './liuli-runtime.ts'
 import type { createLiuliStore } from './liuli-store.ts'
 import css from './LiuliAppearance.module.css'
 
@@ -142,7 +142,7 @@ export function SliderRow(props: {
         {changed && (
           <button
             type="button" className={css.resetBtn} title={props.label}
-            aria-label="恢复该参数默认值"
+            aria-label="恢复该参数默认值" disabled={props.disabled === true}
             onClick={() => {
               // changed 为真时 defaultValue 必然存在（见上方条件）。
               if (props.defaultValue !== undefined) props.onChange(props.defaultValue)
@@ -257,25 +257,6 @@ function WallpaperPreview(props: {
 
   // 框选要保持“实际窗口比例”：在原图坐标系中，w/h = 窗口宽高比 / 图片宽高比。
   const cropRatio = imgRatio !== null && imgRatio > 0 ? winRatio / imgRatio : 1
-
-  /** 把已有选区转换为指定比例（保留面积与中心，并限制在 0..1 内）。 */
-  const normalizeAreaToRatio = (area: LiuliBgArea, ratio: number): LiuliBgArea => {
-    const safeRatio = Math.max(0.05, Math.min(20, ratio))
-    const areaSize = Math.max(area.w * area.h, 0.04 * 0.04)
-    let w = Math.sqrt(areaSize * safeRatio)
-    let h = Math.sqrt(areaSize / safeRatio)
-    const scale = Math.min(1, 1 / w, 1 / h)
-    w *= scale
-    h *= scale
-    const cx = area.x + area.w / 2
-    const cy = area.y + area.h / 2
-    return {
-      x: clamp(cx - w / 2, 0, 1 - w),
-      y: clamp(cy - h / 2, 0, 1 - h),
-      w,
-      h,
-    }
-  }
 
   /** 从起点向指针方向创建指定比例的选区（自动限制在图片范围内）。 */
   const createArea = (start: { x: number; y: number }, p: { x: number; y: number }, ratio: number): LiuliBgArea => {
@@ -558,12 +539,17 @@ function WallpaperPreview(props: {
   )
 }
 /** 开关行。 */
-export function ToggleRow(props: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void }) {
+export function ToggleRow(props: { label: string; hint?: string; tip?: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
-    <Row label={props.label} {...(props.hint !== undefined ? { hint: props.hint } : {})}>
+    <Row
+      label={props.label}
+      {...(props.hint !== undefined ? { hint: props.hint } : {})}
+      {...(props.tip !== undefined ? { tip: props.tip } : {})}
+    >
       <button
         type="button" role="switch" aria-checked={props.checked}
         className={clsx(css.toggle, props.checked && css.toggleOn)}
+        disabled={props.disabled === true}
         onClick={() => { props.onChange(!props.checked) }}
       >
         <span className={css.toggleKnob} />

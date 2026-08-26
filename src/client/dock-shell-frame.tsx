@@ -1069,6 +1069,15 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
   const beginSash = useCallback((e: React.PointerEvent, splitNode: SplitNode, dividerIndex: number, dir: 'h' | 'v'): void => {
     if (e.button !== 0) return
     e.preventDefault()
+    // 指针捕获：按下即把后续 pointermove/pointerup 全部收归 sash 元素
+    // （再冒泡到 window 上的既有监听），指针扫进 iframe 文档也不会丢事件、
+    // 不被内嵌页抢焦点。注意捕获只在本页面内有效——iframe 由 CSS 点击穿透
+    // 兜底（body[data-liuli-resizing] iframe { pointer-events:none }，见
+    // liuli-css）；<webview> guest 是独立渲染进程、CSS pointer-events 对它
+    // 不可靠，resize-perf.ts 在缩放期挂全视口透明护盾
+    // （data-liuli-resize-shield）盖住它拦截指针（guest 收不到 pointerdown、
+    // 不吞 move），护盾透明故浏览器画面全程保持可见。
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch { /* ignore */ }
     const container = (e.currentTarget as HTMLElement).parentElement
     const rect = container?.getBoundingClientRect()
     if (rect === undefined) return
@@ -1343,8 +1352,14 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     actions.setDock(movePanel(shellRef.current.dock, panelId, { kind: 'float', x, y }))
   }
 
-  const renderGrip = (node: TabsNode): ReactNode => {
+  /** 悬停抓握簇：单标签面板的唯一交互入口（拖动/浮动/关闭），平时隐藏，hover 显形。
+   *  - 区域面板：拖动 + ⧉ 浮动；
+   *  - 非区域单标签卡（无标签条）：额外提供 × 关闭（closable）。 */
+  const renderGrip = (node: TabsNode, closable = false): ReactNode => {
     const draggable = node.tabs[0]
+    const title = draggable !== undefined
+      ? (isRegionPanel(draggable.type) ? regionLabel(draggable.type) : panelTitle(draggable))
+      : ''
     if (draggable === undefined || node.tabs.length > 1) return null
     return (
       <div className={css.gripCluster}>
@@ -1354,7 +1369,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
           role="button"
           title="拖动以自定义布局"
           aria-label="拖动以自定义布局"
-          onPointerDown={(e) => { beginDrag(e, { kind: 'node', containerId: node.id, panelId: draggable.id }, isRegionPanel(draggable.type) ? regionLabel(draggable.type) : panelTitle(draggable)) }}
+          onPointerDown={(e) => { beginDrag(e, { kind: 'node', containerId: node.id, panelId: draggable.id }, title) }}
         />
         <button
           type="button"
@@ -1366,6 +1381,25 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
         >
           ⧉
         </button>
+        {closable && draggable.type !== REGION_CONVERSATION && draggable.type !== REGION_CONVERSATION_HEADER && draggable.type !== REGION_SIDEBAR && (
+          <button
+            type="button"
+            className={css.gripClose}
+            data-testid="dock-grip-close"
+            title={'关闭 ' + title}
+            aria-label={'关闭 ' + title}
+            onClick={(e) => {
+              e.stopPropagation()
+              if (draggable.type === REGION_DETAILS) {
+                hostLayout.closeDetails()
+                return
+              }
+              actions.setDock(closePanelOf(shellRef.current.dock, draggable.id))
+            }}
+          >
+            ×
+          </button>
+        )}
       </div>
     )
   }
@@ -1443,6 +1477,27 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
           {renderGrip(node)}
           {/* 开始页（会话 header 隐藏）顶部拖动区：CSS 仅在 header[aria-hidden] 时激活 */}
           {regionType === REGION_CONVERSATION && <div className={css.paneTopDrag} data-liuli-pane-drag="" aria-hidden="true" />}
+        </div>
+      )
+    }
+    // 单标签非区域面板：不渲染标签条（标题栏不该出现）。hover 抓握簇
+    // （拖动 / ⧉ 浮动 / × 关闭）保持拆成单标签后的可用性。
+    if (only !== undefined) {
+      const soloEdges = edgeMap[node.id] ?? { left: false, right: false, top: false, bottom: false, row: false, hasBelow: false }
+      return (
+        <div
+          className={css.pane + ' ' + css.paneCard + (soloEdges.bottom ? ' ' + css.edgeBottom : '')}
+          data-dock-node={node.id}
+          data-testid="dock-pane"
+          data-edge-left={soloEdges.left || undefined}
+          data-edge-right={soloEdges.right || undefined}
+          data-edge-top={soloEdges.top || undefined}
+          data-edge-bottom={soloEdges.bottom || undefined}
+        >
+          <div className={css.paneBody}>
+            {active === undefined ? <div className={css.paneEmpty}>（空面板组）</div> : renderPanelBody(active)}
+          </div>
+          {renderGrip(node, true)}
         </div>
       )
     }
@@ -1837,10 +1892,13 @@ function ShellFloatWindow({ float, active, renderTabChip, renderPanelBody, onDoc
           ×
         </button>
       </div>
-      <div className={css.tabStrip}>
-        {float.tabs.map(p => renderTabChip(p, float.id, 'float'))}
-        <div className={css.tabFiller} />
-      </div>
+      {/* 浮动窗口标题栏已显示标题；仅 ≥2 个标签时才需要标签条切换 */}
+      {float.tabs.length > 1 && (
+        <div className={css.tabStrip}>
+          {float.tabs.map(p => renderTabChip(p, float.id, 'float'))}
+          <div className={css.tabFiller} />
+        </div>
+      )}
       <div className={css.paneBody}>
         {active === undefined ? <div className={css.paneEmpty}>（空）</div> : renderPanelBody(active)}
       </div>

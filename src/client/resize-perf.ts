@@ -20,8 +20,14 @@
  *     运行时（TurnRail 跟随让位等）识别缩放期。
  *  4. 窗口 resize 同样触发宿主 RO 风暴：监听 window resize，期间自动进入/退出
  *     护栏（防抖 300ms）。
+ *  5. 全视口透明「指针护盾」（data-liuli-resize-shield）：普通 DOM 元素、
+ *     pointer-events:auto、z-index 盖过一切 DOM 内容（含内嵌 <webview> 与
+ *     iframe）。护盾先于内嵌 guest 命中测试——拖拽期间指针无论扫到哪里，
+ *     事件都落在护盾上并冒泡回主窗口监听，内嵌 guest 收不到 pointerdown：
+ *     不抢焦点、不吞 pointermove；护盾透明，内嵌页面保持完全可见
+ *     （用户要求拖 sash 时浏览器画面不消失，见 liuli-css 注释）。
  *
- * begin/end 引用计数配对，多个拖拽源（dock-shell sash / DockWorkspace sash /
+ * begin/end 引用计数配对，多个拖拽源（dock-shell sash /
  * PreviewPanel 手柄 / 宿主原生手柄 / 窗口 resize）可安全重叠。
  */
 
@@ -43,6 +49,11 @@ const THAW_TOTAL_MS = 800
 const THAW_START_DELAY_MS = 60
 
 let depth = 0
+/** 护盾 z-index：盖过一切 DOM（菜单层 2147482500 / 内嵌 webview / 验证探针），
+ *  但不能压过宿主原生 WebContentsView（窗口级图层，不受 DOM z-index 控制，
+ *  由 reportGeometryLoop 的 isResizeInProgress 门控隐藏，机制互不冲突）。 */
+const SHIELD_Z = 2147483100
+let shieldEl: HTMLElement | null = null
 /** 产物行 → 冻结前的原始内联 width（跨连续多次拖拽保持，解冻时还原）。 */
 const originalWidths = new Map<HTMLElement, string>()
 let failsafe: ReturnType<typeof setTimeout> | null = null
@@ -177,6 +188,25 @@ function fadeBlurIn(): void {
   blurRaf = requestAnimationFrame(tick)
 }
 
+/** 获取（或重建）缩放期的透明点击护盾。护盾是普通 DOM 元素且 pointer-events:auto
+ *  ——盖住 <webview>/iframe 后命中测试先落到护盾（内嵌 guest 是 DOM 嵌入、遵守
+ *  正常层叠与命中测试，见 PreviewPanel「更多」菜单能盖住 webview 的既有事实），
+ *  guest 拿不到 pointerdown（不抢焦点、不吞 move），而护盾透明、页面全程可见。 */
+function ensureResizeShield(): HTMLElement {
+  if (shieldEl !== null && shieldEl.isConnected) return shieldEl
+  const el = document.createElement('div')
+  el.setAttribute('data-liuli-resize-shield', '')
+  el.style.cssText = `position:fixed;inset:0;z-index:${SHIELD_Z};background:transparent;pointer-events:auto;`
+  document.body.appendChild(el)
+  shieldEl = el
+  return el
+}
+
+function removeResizeShield(): void {
+  shieldEl?.remove()
+  shieldEl = null
+}
+
 /** 进入缩放护栏（引用计数 +1；首次进入时冻结产物行并挂标记）。 */
 export function beginResizePerf(): void {
   if (typeof window === 'undefined') return
@@ -184,6 +214,7 @@ export function beginResizePerf(): void {
   if (depth !== 1) return
   thawToken += 1 // 打断上一轮尚未完成的分批解冻
   document.body.setAttribute(RESIZING_ATTR, '')
+  ensureResizeShield()
   // 冻结产物行：先批量读宽（一次回流），再批量写内联 width，避免读写交替。
   const rows = Array.from(document.querySelectorAll<HTMLElement>(ROW_SELECTOR))
   const widths = rows.map(el => el.getBoundingClientRect().width)
@@ -211,6 +242,7 @@ export function endResizePerf(): void {
     failsafe = null
   }
   document.body.removeAttribute(RESIZING_ATTR)
+  removeResizeShield()
   fadeBlurIn()
   // 节流解冻：宽度还原会触发宿主 RO 的一次性 measure（每行百毫秒级），
   // 全部同帧还原会堆出大尖峰；按定时器分批摊平（总时长 ≤ THAW_TOTAL_MS）。

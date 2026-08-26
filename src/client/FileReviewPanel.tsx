@@ -383,6 +383,14 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
   const menuPanelRef = useRef<HTMLDivElement | null>(null)
   const requestSeq = useRef(0)
   const diffCacheRef = useRef<Record<string, SidebarDiffPayload | undefined>>({})
+  /** 已应用的「驱动请求」nonce：同一请求只应用一次。effect 依赖中的
+   *  reviewPath 身份会随 source/git/datasets 等状态变化而重建，若不加闸，
+   *  用户手动切换来源/折叠文件后 effect 重跑会把旧驱动请求重新弹回
+   *  （现象：LLM 驱动展开审查面板后「来源选项无法切换」）。 */
+  const lastDriveNonce = useRef(-1)
+  /** 已应用的「定位请求」nonce：git 未就绪时不标记（等加载后 effect 重跑
+   *  再完成定位），应用后标记，防止旧定位请求被反复重放。 */
+  const lastPathNonce = useRef(-1)
 
   // diffCache 镜像到 ref，避免 loadDiff/toggle/reviewPath 因缓存变化而改变身份。
   useEffect(() => {
@@ -490,9 +498,15 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
   // 目标文件——驱动打开审查面板时用户想看的是模型上一轮改了什么，所以切到
   // 「上一轮更改」并直接把第一个修改文件展开到 diff 区域；不带 source 的请求
   // 是轮次卡片「审查」按钮（reviewPath：找到包含该文件的源）。
+  // 两个分支都按 nonce 只应用一次：reviewPath 身份随 source/git/datasets/
+  // lastTurnChanges 等状态变化重建，若不加闸，用户手动切换来源/折叠展开后
+  // effect 重跑会把旧请求重新弹回驱动值。定位分支在 git 未就绪时不标记，
+  // 等 git 加载完成后重跑再完成定位（与旧的「reviewPath 身份变化即重试」等价）。
   useEffect(() => {
     if (reviewRequest === null || reviewRequest === undefined) return
     if ('source' in reviewRequest) {
+      if (reviewRequest.nonce === lastDriveNonce.current) return
+      lastDriveNonce.current = reviewRequest.nonce
       const req = reviewRequest
       setSource(req.source)
       if (req.source === 'last-turn') {
@@ -505,13 +519,22 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
       }
       return
     }
+    if (reviewRequest.nonce === lastPathNonce.current) return
+    if (git === null) return
+    lastPathNonce.current = reviewRequest.nonce
     reviewPath(reviewRequest.path)
-  }, [reviewRequest, reviewPath])
+  }, [reviewRequest, reviewPath, git])
 
-  // 事件驱动的审查请求（自包含面板兜底：dock 工作台实例等）。
+  /** 已消费的 pending 审查路径：兜底请求按路径去重，避免 effect 随
+   *  reviewPath 身份重跑时反复重放同一条旧请求（与驱动请求 nonce 同因）。 */
+  const consumedPendingPath = useRef<string | null>(null)
+  // 事件驱动的审查请求（自包含面板兜底：dock 布局实例等）。
   useEffect(() => {
     const pending = consumeReviewRequest()
-    if (pending !== null) reviewPath(pending.path)
+    if (pending !== null && consumedPendingPath.current !== pending.path) {
+      consumedPendingPath.current = pending.path
+      reviewPath(pending.path)
+    }
     const onReview = (e: Event): void => {
       const detail = (e as CustomEvent<{ sessionId?: string; path: string }>).detail
       if (detail === undefined || typeof detail.path !== 'string') return

@@ -12,7 +12,7 @@
  *
  * 覆盖两种宿主形态：
  * - 普通会话页：div[data-phase] > header（或 > div > header）；
- * - Dockable Workspace 标题面板：region:conversation-header 内的 header。
+ * - Dockable 布局标题面板：region:conversation-header 内的 header。
  *
  * 动画关闭：prefers-reduced-motion 时 CSS 已禁用 transition（liuli.css）。
  */

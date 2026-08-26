@@ -433,46 +433,6 @@ async function sidebarGitLog(root: string, skip = 0): Promise<{ branch: string; 
   }
 }
 
-/** Wiki：README 摘录 + 顶层模块地图（生成式架构导读的朴素实现）。 */
-async function sidebarReadWiki(root: string): Promise<{
-  title: string
-  readme: string[]
-  readmePath?: string
-  modules: Array<{ name: string; files: Array<{ name: string; path: string }> }>
-}> {
-  const title = root.split(sep).pop() ?? 'workspace'
-  const readme: string[] = []
-  let readmePath: string | undefined
-  for (const candidate of ['README.md', 'README.zh.md', 'readme.md', 'README']) {
-    try {
-      const text = await readFile(joinPath(root, candidate), 'utf8')
-      readme.push(...text.split(/\r?\n/).filter(line => line.trim() !== '').slice(0, 40).map(line => line.replace(/^#{1,6}\s*/, '').trim()).filter(Boolean))
-      readmePath = joinPath(root, candidate)
-      break
-    } catch {
-      // try next candidate
-    }
-  }
-  const entries = await readdir(root, { withFileTypes: true })
-  const modules: Array<{ name: string; files: Array<{ name: string; path: string }> }> = []
-  for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name.startsWith('.') || entry.name === 'node_modules') continue
-    const dirPath = joinPath(root, entry.name)
-    let files: Array<{ name: string; path: string }> = []
-    try {
-      files = (await readdir(dirPath, { withFileTypes: true }))
-        .filter(f => f.isFile() && !f.name.startsWith('.'))
-        .slice(0, 8)
-        .map(f => ({ name: f.name, path: joinPath(dirPath, f.name) }))
-    } catch {
-      // unreadable directory
-    }
-    modules.push({ name: entry.name, files })
-  }
-  modules.sort((a, b) => a.name.localeCompare(b.name))
-  return readmePath === undefined ? { title, readme, modules } : { title, readme, readmePath, modules }
-}
-
 const DEEPSEEK_KEY_REFS = ['DEEPSEEK_API_KEY', 'DEEPSEEK_OFFICIAL_API_KEY']
 const DEEPSEEK_BASE_URL = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.DEEPSEEK_BASE_URL
   ?? 'https://api.deepseek.com'
@@ -1208,11 +1168,6 @@ async function serveSidebar(ctx: Context, req: IncomingMessage, res: ServerRespo
       json(res, 200, { ok: true, root, rel, ...payload })
       return
     }
-    if (pathname === '/liuli-sidebar/wiki') {
-      const wiki = await sidebarReadWiki(root)
-      json(res, 200, { ok: true, root, ...wiki })
-      return
-    }
     json(res, 404, { ok: false, error: 'not found' })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -1630,15 +1585,15 @@ function encodeTerminalInput(line: string, encoding: 'gbk' | 'utf-8'): Buffer {
 function terminalShellInstallHint(shell: ResolvedTerminalShell): string {
   switch (shell.id) {
     case 'pwsh':
-      return '请先安装 PowerShell 7（https://github.com/PowerShell/PowerShell），或在下方选择其他 Shell。'
+      return '请先安装 PowerShell 7（https://github.com/PowerShell/PowerShell），或在「设置 → 功能 → 默认终端」里改选其他 Shell。'
     case 'bash':
-      return '请先安装 Git for Windows（https://git-scm.com/download/win），或在下方选择其他 Shell。'
+      return '请先安装 Git for Windows（https://git-scm.com/download/win），或在「设置 → 功能 → 默认终端」里改选其他 Shell。'
     case 'powershell':
-      return '请检查 Windows PowerShell 是否可用，或在下方选择其他 Shell。'
+      return '请检查 Windows PowerShell 是否可用，或在「设置 → 功能 → 默认终端」里改选其他 Shell。'
     case 'cmd':
-      return '请检查系统命令提示符（cmd.exe）是否可用，或在下方选择其他 Shell。'
+      return '请检查系统命令提示符（cmd.exe）是否可用，或在「设置 → 功能 → 默认终端」里改选其他 Shell。'
     default:
-      return '请确认已安装对应 Shell，或在下方选择其他 Shell。'
+      return '请确认已安装对应 Shell，或在「设置 → 功能 → 默认终端」里改选其他 Shell。'
   }
 }
 

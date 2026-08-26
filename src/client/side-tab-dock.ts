@@ -1,7 +1,7 @@
 /**
  * 右侧标签面板(SidePane)标签 ↔ Dockable 布局 的拖拽桥：
  *  - SidePane 标签 dragstart 时把标签序列化进 dataTransfer（SIDE_TAB_MIME）；
- *  - DockWorkspace / DockShellFrame 的 drop 读取它并映射成 dock 面板放入布局落点；
+ *  - DockShellFrame 的 drop 读取它并映射成 dock 面板放入布局落点；
  *  - 布局侧 drop 成功后调用 markSideTabAccepted()，SidePane 在 dragend 时
  *    consumeSideTabAccepted() 消费它并关闭源标签 —— 实现"标签拆分到布局"的
  *    移动语义（内部排序不标记，标签保留）。
@@ -76,14 +76,11 @@ export interface SideTabDockPanel {
 
 /**
  * SidePane 标签类型 → dock 面板类型映射（面板注册表复用同一批组件）。
- * 所有标签类型都有布局对应；依赖宿主 sidePaneHost 数据面的面板
- * （开发者工具/轨迹/计划/子智能体/辅助对话）由 DockWorkspace /
+ * 依赖宿主 sidePaneHost 数据面的面板（开发者工具/辅助对话）由
  * DockShellFrame 注入同一份数据面，在布局内渲染同构面板。
  */
 export function sideTabToDockPanel(tab: SidePaneTab): SideTabDockPanel | undefined {
   switch (tab.type) {
-    case 'treemapping': return { type: 'files' }
-    case 'repo-wiki': return { type: 'wiki' }
     case 'git': return { type: 'git' }
     case 'browser': {
       const panel: SideTabDockPanel = { type: 'browser', state: { url: tab.url ?? '' } }
@@ -100,11 +97,7 @@ export function sideTabToDockPanel(tab: SidePaneTab): SideTabDockPanel | undefin
       if (tab.title !== undefined && tab.title !== '') panel.title = tab.title
       return panel
     }
-    case 'whiteboard': return { type: 'whiteboard', state: { boardId: tab.id } }
     case 'developer-tools': return { type: 'developer-tools' }
-    case 'trajectory': return { type: 'trajectory' }
-    case 'plan': return { type: 'plan' }
-    case 'subagents': return { type: 'subagents' }
     case 'side-chat': {
       const panel: SideTabDockPanel = {
         type: 'side-chat',
@@ -132,8 +125,6 @@ export function dockPanelToSideTab(panel: {
 }): SidePaneTab | undefined {
   const base: SidePaneTab = { id: panel.id, type: 'git', openedAt: Date.now() }
   switch (panel.type) {
-    case 'files': base.type = 'treemapping'; break
-    case 'wiki': base.type = 'repo-wiki'; break
     case 'git': base.type = 'git'; break
     case 'browser':
       base.type = 'browser'
@@ -150,21 +141,8 @@ export function dockPanelToSideTab(panel: {
       base.type = 'terminal'
       if (panel.title !== undefined && panel.title !== '') base.title = panel.title
       break
-    case 'whiteboard':
-      base.type = 'whiteboard'
-      if (panel.title !== undefined && panel.title !== '') base.title = panel.title
-      break
     case 'developer-tools':
       base.type = 'developer-tools'
-      break
-    case 'trajectory':
-      base.type = 'trajectory'
-      break
-    case 'plan':
-      base.type = 'plan'
-      break
-    case 'subagents':
-      base.type = 'subagents'
       break
     case 'side-chat':
       base.type = 'side-chat'

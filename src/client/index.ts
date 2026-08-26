@@ -47,6 +47,7 @@ import { en, zh, type LiuliAppearanceKey, featuresZh, featuresEn, type LiuliFeat
 import { liuliCss } from './liuli-css.ts'
 import {
   LiuliHeaderVoiceprint, LiuliHeaderChrome, LiuliHeaderResizer,
+  LiuliHeaderFullscreen,
 } from './HeaderEffects.tsx'
 import { setTurnRailCommitHandler, TurnRail } from './TurnRail.tsx'
 import { fileChangesDefinition, RoundSummaryCard } from './TurnFileCard.tsx'
@@ -63,6 +64,7 @@ import { disposeSupplierQuota, initSupplierQuota, refreshSupplierQuota } from '.
 import { SupplierQuota } from './SupplierQuota.tsx'
 import { loadHistoryBatches, saveHistoryBatches } from './history-load-store.ts'
 import { initModelRetry, disposeModelRetry, loadModelRetry, saveModelRetry, cacheModelRetryBackoff } from './model-retry-controller.ts'
+import { initThinkingFill, disposeThinkingFill, loadThinkingFill, applyThinkingFill, autoApplyThinkingFill } from './thinking-fill-controller.ts'
 import { createElement } from 'react'
 import { FloatBall } from './FloatBall.tsx'
 import { WindowControls, isFramelessWin32 } from './WindowControls.tsx'
@@ -72,7 +74,9 @@ import { rememberComposerElementInfo, startElementCardDecoration } from './eleme
 import { startSessionRename } from './session-rename.ts'
 import { startSessionMarkerDecoration } from './session-markers.ts'
 import { startSessionContextMenu } from './session-context-menu.ts'
+import { startSettingsSelectUpgrade } from './settings-selects.ts'
 import { startWorkspaceContextMenu } from './workspace-context-menu.ts'
+import { startWorkspaceNewSessionCollapse } from './workspace-new-session-collapse.ts'
 import {
   PreviewDetailsPanel, PreviewButton, PREVIEW_TOGGLE_EVENT, PREVIEW_NAVIGATE_EVENT,
   SIDE_CHAT_OPEN_EVENT,
@@ -80,8 +84,6 @@ import {
 } from './PreviewPanel.tsx'
 import type { SidePaneHostAccess } from './SidePaneExtraPanels.tsx'
 import { BtwAnswerHost, BTW_ANSWER_EVENT } from './BtwAnswer.tsx'
-import { DockWorkspace, DOCK_TOGGLE_EVENT, isDockOpen, setDockOpen, toggleDockOpen } from './DockWorkspace.tsx'
-import { DockStore } from './dock-store.ts'
 import { addPanel as addDockPanel } from './dock-model.ts'
 import { DockShellFrame, DOCK_MENU_TOGGLE_EVENT, setDockHostBridge } from './dock-shell-frame.tsx'
 import {
@@ -272,9 +274,9 @@ function parseLiuliRef(raw: string): PickedElement {
 }
 
 /** 设置页模态判定：官方设置页（ui-settings）是渲染在侧栏根内的全屏 fixed overlay
- *  （侧栏根 z-index:1 上下文内 z-index:1000）。琉璃自己的浮层（工作台全屏层 /
- *  advanced shell 浮动窗口）z-index 高达 2147482xxx，会盖住设置页 ——
- *  检测此模态出现/消失，供浮层让位（body 标记 + 工作台收起 + CSS 隐藏）。 */
+ *  （侧栏根 z-index:1 上下文内 z-index:1000）。琉璃自己的浮层（advanced shell
+ *  浮动窗口）z-index 高达 2147482xxx，会盖住设置页 ——
+ *  检测此模态出现/消失，供浮层让位（body 标记 + CSS 隐藏）。 */
 function isSettingsOverlayOpen(): boolean {
   const sidebarRoot = document.querySelector<HTMLElement>('[class*="_sidebarCol"] > div > [class*="_root"]')
   if (sidebarRoot === null) return false
@@ -425,7 +427,7 @@ export function apply(ctx: ClientContext): void {
     }
   }, 'dsh-liuli-ui-enhance: advanced shell alias classes')
 
-  // ── Dockable 布局 shell（advanced 模式）：把桌面 advanced shell 的既有布局改造成可停靠工作台 ──
+  // ── Dockable 布局 shell（advanced 模式）：把桌面 advanced shell 的既有布局改造成可停靠布局 ──
   // advanced 模式下官方 ui-layout 被禁用；桌面 shell（dsh-plugin-desktop）提供 layout 服务
   // 并占用 root slot（AdvancedFrame）。琉璃以更低的渲染优先级（priority -1）接管 root slot，
   // 并覆盖 layout 服务指向自己的 dock store —— 三大区域（侧边栏/会话/详情）成为可拖拽面板：
@@ -437,7 +439,7 @@ export function apply(ctx: ClientContext): void {
     // 对话页双容器：把 conversation 面板里的 header 槽位容器与正文滚动容器
     // 标记为两个并列容器（CSS 驱动布局），会话切换/面板重挂时由 body 级观察补标记。
     ctx.effect(() => startConversationSplit(), 'dsh-liuli-ui-enhance: conversation header/body split')
-    // 自测钩子：无头自测脚本经此驱动宿主 layout 服务与 dock 工作台
+    // 自测钩子：无头自测脚本经此驱动宿主 layout 服务与 dock 布局
     // （开合详情/收起侧栏/菜单开合/面板增删/布局保存恢复导出导入）。
     ctx.effect(() => {
       const hook = {
@@ -572,6 +574,23 @@ export function apply(ctx: ClientContext): void {
     return startWorkspaceContextMenu(ctx)
   }, 'dsh-liuli-ui-enhance: workspace context menu')
 
+  // ── 工作区「新建会话」后右侧详情列回弹：官方点完只开新会话，AppFrame 的自动
+  //    closeDetails 只在当前会话切换时触发，详情列保持打开不回；这里等官方流程
+  //    结束后若详情列仍展开则收回（advanced 走 dock shard、兼容模式走官方列），
+  //    已收起时不动（详见 workspace-new-session-collapse.ts）──
+  ctx.effect(() => {
+    if (!unofficial('dom')) return () => {}
+    return startWorkspaceNewSessionCollapse(ctx)
+  }, 'dsh-liuli-ui-enhance: workspace new session details collapse')
+
+  // ── 设置页原生下拉 → 琉璃组件：DSH「模型服务商」卡片的原生 <select>（API 协议 /
+  //    新增提供商等，宿主 class 后缀 _selectInput）统一换成插件下拉（触发器覆盖 +
+  //    body portal 菜单，选择经 change 事件写回宿主受控表单，不改宿主源码）──
+  ctx.effect(() => {
+    if (!unofficial('dom')) return () => {}
+    return startSettingsSelectUpgrade()
+  }, 'dsh-liuli-ui-enhance: settings selects upgrade')
+
   // ── 供应商额度：注入 connection/remote，供 header 工具区显示当前供应商额度 ──
   initSupplierQuota(ctx.get('connection') as ConnectionHandle, ctx.get('modelDirectories'))
   ctx.effect(() => () => disposeSupplierQuota(), 'dsh-liuli-ui-enhance: supplier quota dispose')
@@ -579,6 +598,9 @@ export function apply(ctx: ClientContext): void {
   // ── 模型请求重试：注入 connection，供通用设置区编辑各供应商 retryPolicy ──
   initModelRetry(ctx.get('connection') as ConnectionHandle)
   ctx.effect(() => () => disposeModelRetry(), 'dsh-liuli-ui-enhance: model retry dispose')
+  // ── 思考等级自动补全：注入 connection，供「功能」分区一键补全自定义提供商 ──
+  initThinkingFill(ctx.get('connection') as ConnectionHandle)
+  ctx.effect(() => () => disposeThinkingFill(), 'dsh-liuli-ui-enhance: thinking fill dispose')
   const refreshQuota = (): void => { void refreshSupplierQuota() }
   ctx.effect(() => {
     const disposers = [
@@ -694,7 +716,6 @@ export function apply(ctx: ClientContext): void {
     const root = createRoot(host)
     root.render(createElement(FloatBall, {
       insertElement,
-      openDock: () => { if (!isSettingsOverlayOpen()) toggleDockOpen() },
       openLayoutMenu: () => { window.dispatchEvent(new CustomEvent(DOCK_MENU_TOGGLE_EVENT)) },
     }))
     return () => {
@@ -776,17 +797,15 @@ export function apply(ctx: ClientContext): void {
   }, 'dsh-liuli-ui-enhance: manual reload shortcut')
 
   // ── 设置页模态让位：设置页（侧栏根内全屏 fixed overlay）打开时，──
-  // 琉璃自己的高 z-index 浮层（工作台全屏层 / advanced shell 浮动窗口）会盖住它。
+  // 琉璃自己的高 z-index 浮层（advanced shell 浮动窗口）会盖住它。
   // 这里检测模态出现/消失：body 打 data-liuli-settings-open 标记（CSS 据此隐藏
-  // advanced shell 浮动窗口），并自动收起工作台（模态优先；工作台布局持久化在
-  // localStorage，重新打开原样恢复）。
+  // advanced shell 浮动窗口）。
   ctx.effect(() => {
     let raf = 0
     const update = (): void => {
       raf = 0
       if (isSettingsOverlayOpen()) {
         document.body.setAttribute('data-liuli-settings-open', '')
-        setDockOpen(false)
       } else {
         document.body.removeAttribute('data-liuli-settings-open')
       }
@@ -805,8 +824,8 @@ export function apply(ctx: ClientContext): void {
     }
   }, 'dsh-liuli-ui-enhance: settings overlay defer')
 
-  // 扩展面板（轨迹/计划/子智能体/辅助对话/开发者工具）的宿主数据面。
-  // 定义在 Dockable Workspace / dock shell 之前，供两者注入同一份数据面。
+  // 扩展面板（辅助对话/开发者工具）的宿主数据面。
+  // 定义在 dock shell 之前，供其注入同一份数据面。
   const sidePaneHost: SidePaneHostAccess = {
     sessionList: ctx.sessions.list,
     getSessionFace: id => ctx.sessions.binding(id as SessionId)?.session,
@@ -836,48 +855,6 @@ export function apply(ctx: ClientContext): void {
     openPath: (path: string) => { void ctx.workspaces.openPath(path) },
     sidePaneHost,
   })
-
-  // ── Dockable Workspace（琉璃工作台）：可拖拽/停靠/拆分/浮动/标签合并的面板工作台 ──
-  // 布局自动落 localStorage（dock-store 防抖保存），刷新/HMR 重载后原样恢复；
-  // 顶栏另有命名槽位保存/恢复与 JSON 导出/导入。
-  const dockStore = new DockStore()
-  ctx.effect(() => {
-    if (!unofficial('layout')) return () => {}
-    const hostEl = document.createElement('div')
-    hostEl.id = 'liuli-dock-host'
-    document.body.appendChild(hostEl)
-    const root = createRoot(hostEl)
-    const renderDock = (): void => {
-      root.render(isDockOpen()
-        ? createElement(DockWorkspace, {
-          store: dockStore,
-          sessionList: ctx.sessions.list,
-          addFileToChat: insertFileReference,
-          openPath: (path: string) => { void ctx.workspaces.openPath(path) },
-          sidePaneHost,
-          onClose: () => { toggleDockOpen() },
-        })
-        : null)
-    }
-    renderDock()
-    window.addEventListener(DOCK_TOGGLE_EVENT, renderDock)
-    const onKey = (e: KeyboardEvent): void => {
-      if (!(e.ctrlKey || e.metaKey) || !e.altKey || e.code !== 'KeyW') return
-      e.preventDefault()
-      if (isSettingsOverlayOpen()) return
-      toggleDockOpen()
-    }
-    window.addEventListener('keydown', onKey)
-    const onPageHide = (): void => { dockStore.flush() }
-    window.addEventListener('pagehide', onPageHide)
-    return () => {
-      window.removeEventListener(DOCK_TOGGLE_EVENT, renderDock)
-      window.removeEventListener('keydown', onKey)
-      window.removeEventListener('pagehide', onPageHide)
-      root.unmount()
-      hostEl.remove()
-    }
-  }, 'dsh-liuli-ui-enhance: dock workspace mount')
 
   // ── 工作区预览列：header 按钮开合宿主右侧 details 列，面板占用 details slot ──
   const togglePreview = (): void => {
@@ -931,7 +908,6 @@ export function apply(ctx: ClientContext): void {
           ctx.layout.closeDetails()
         },
         insertElement,
-        addFileToChat: insertFileReference,
         openPath: (path: string) => { void ctx.workspaces.openPath(path) },
         startSession: () => { ctx.workspaces.startSession() },
         pickDirectory: async () => {
@@ -1328,6 +1304,33 @@ export function apply(ctx: ClientContext): void {
         saveHistoryBatches(batches)
         liuliBound?.syncHistoryLoad({ batches, status: 'ready', error: '' })
       },
+      thinkingFillReload: async () => {
+        const need = await loadThinkingFill()
+        liuliBound?.syncThinkingFill({
+          providerCount: need.providerCount,
+          modelCount: need.modelCount,
+          status: 'ready',
+          error: '',
+        })
+      },
+      thinkingFillApply: async () => {
+        liuliBound?.syncThinkingFill({ status: 'saving', error: '' })
+        const result = await applyThinkingFill()
+        if (!result.ok) {
+          liuliBound?.syncThinkingFill({ status: 'error', error: result.error ?? '' })
+          return result.error
+        }
+        // 补全成功后重新扫描：无待补数量时展示成功文案。
+        const need = await loadThinkingFill()
+        liuliBound?.syncThinkingFill({
+          providerCount: need.providerCount,
+          modelCount: need.modelCount,
+          status: 'ready',
+          error: '',
+          lastFilled: { providers: result.filledProviders, models: result.filledModels },
+        })
+        return undefined
+      },
     }
   }
   ctx.slots.inject('settings.section', () => ctx.slots.register({
@@ -1339,6 +1342,52 @@ export function apply(ctx: ClientContext): void {
     locale: LIULI_FEATURES_LOCALE_NS,
     inject: liuliFeaturesInjected,
   }, LiuliFeaturesSection))
+
+  // ── 思考等级自动补全：新添加的自定义提供商自动声明思考等级 ──
+  // settings/document-updated 在设置文档（settings.yaml）变化时广播——
+  // 在「模型提供商」页添加/修改提供商即触发；启动时先做一次「基底登记」
+  // （只记录现有提供商、不写配置），之后只自动补「新出现」的路由；
+  // 历史缺声明的（本次上线前已添加的）仍由「功能」分区按钮手动补全。
+  {
+    let fillTimer: ReturnType<typeof setTimeout> | undefined
+    let filling = false
+    const tickFill = async (): Promise<void> => {
+      if (filling) return
+      filling = true
+      try {
+        const result = await autoApplyThinkingFill()
+        if (result.changed) {
+          const need = await loadThinkingFill()
+          liuliBound?.syncThinkingFill({
+            providerCount: need.providerCount,
+            modelCount: need.modelCount,
+            status: 'ready',
+            error: '',
+            lastFilled: { providers: result.filledProviders, models: result.filledModels },
+          })
+        }
+      } catch {
+        // 静默：连接未就绪等场景下个事件再试。
+      } finally {
+        filling = false
+      }
+    }
+    const scheduleFill = (): void => {
+      if (fillTimer !== undefined) clearTimeout(fillTimer)
+      fillTimer = setTimeout(() => { void tickFill() }, 500)
+    }
+    const disposers = [
+      ctx.remote.$on('settings/document-updated', scheduleFill),
+      ctx.on('connection/reset', scheduleFill),
+    ]
+    // 启动后做一次基底登记（以及复位后补漏）。
+    const bootTimer = setTimeout(() => { void tickFill() }, 2000)
+    ctx.effect(() => () => {
+      for (const dispose of disposers) dispose()
+      if (fillTimer !== undefined) clearTimeout(fillTimer)
+      clearTimeout(bootTimer)
+    }, 'dsh-liuli-ui-enhance: thinking fill watcher dispose')
+  }
 
   // ── 会话 header 效果（供应商额度/声纹/监听/主题切换/拉伸手柄）──
   // 额度放在 header.actions：排到后台任务/子代理等官方入口右侧，作为普通文本而非工具区胶囊。
@@ -1375,9 +1424,16 @@ export function apply(ctx: ClientContext): void {
     ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
       name: 'conversation.session.header.utilities',
       id: 'liuli-preview-button',
-      order: 25,
+      order: 30,
     }, () => createElement(PreviewButton, { onToggle: togglePreview })))
   }
+  // ── 全屏按钮：排在切换面板左侧（order 25），图标 Material fullscreen/
+  // fullscreen_exit + F11 快捷键，走标准 Fullscreen API。
+  ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
+    name: 'conversation.session.header.utilities',
+    id: 'liuli-header-fullscreen',
+    order: 25,
+  }, LiuliHeaderFullscreen))
   // ── 页面内窗口按钮（无边框模式）：不再注入 header utilities ——
   // 统一由 body 级 host 固定渲染在窗口右上角（见 'dsh-liuli-ui-enhance: window controls fixed top-right'）。
 

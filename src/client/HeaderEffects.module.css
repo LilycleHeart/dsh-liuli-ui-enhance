@@ -23,6 +23,9 @@
   display: block;
   /* 与 header 卡片同圆角，裁剪直角边缘（inherit 取到的是 wrap，须显式同值） */
   border-radius: var(--liuli-radius, 14px);
+  /* 背景层点击穿透：外层 .wrap 已 pointer-events:none（canvas 经继承生效），
+     这里在 canvas 自身再显式声明一份，任何情况下都不拦截 header 内的点击 */
+  pointer-events: none;
 }
 
 /* 监听按钮：titleRow 工具区正常流圆钮（主题切换一侧） */

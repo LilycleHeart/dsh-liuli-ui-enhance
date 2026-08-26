@@ -172,7 +172,10 @@ function BtwAnswerCard({ card, host, onClose }: { card: BtwCard; host: SidePaneH
       {card.error !== undefined && card.childId === undefined && (
         <div className={css.error}>{card.error}</div>
       )}
-      <div className={css.answer} data-empty={!hasNodes && !running ? '' : undefined}>
+      {/* .answer 是自绘信息流列（内含 ChatFlowView 的 .flow 与流式尾巴），
+          挂 data-liuli-chat-flow 让级联观察器识别本列（锚点须为列直接子元素，
+          见 liuli-transition.ts）。 */}
+      <div className={css.answer} data-liuli-chat-flow="" data-empty={!hasNodes && !running ? '' : undefined}>
         {hasNodes
           ? <ChatFlowView snap={snap} />
           : running ? '…' : '（回答为空）'}

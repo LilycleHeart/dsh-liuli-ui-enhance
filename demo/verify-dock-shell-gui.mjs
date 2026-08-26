@@ -279,32 +279,92 @@ try {
   check('S16 no page errors', pageErrors.length === 0, JSON.stringify(pageErrors.slice(0, 3)))
 
   // S17 右侧标签面板(SidePane)标签拖入布局（HTML5 DnD 桥）：
-  //     打开详情 → SidePane 新增 Treemapping 标签 → 把标签拖到会话面板右缘
+  //     打开详情 → SidePane 新增「审查文件」标签 → 把标签拖到会话面板右缘
   //     → 布局按落点拆分出新面板、源标签从 SidePane 关闭（移动语义）。
   await hook('openDetails')
   await sleep(600)
   s = await summary()
   check('S17 details pane open', s && s.details > 0 && await evalJs('document.querySelector("[data-liuli-side-pane]") !== null'), JSON.stringify(s))
-  // SidePane 空状态列表里点开 Treemapping（文件树标签）
-  const openedTab = await evalJs('(() => { const item = document.querySelector("[data-side-pane-open-tab-item=\'treemapping\']"); if (!item) return false; item.click(); return true })()')
+  // SidePane 空状态列表里点开 Git 审查标签
+  const openedTab = await evalJs('(() => { const item = document.querySelector("[data-side-pane-open-tab-item=\'git\']"); if (!item) return false; item.click(); return true })()')
   await sleep(500)
-  const sideChip = await evalJs('(() => { const c = Array.from(document.querySelectorAll("[data-side-pane-tab-id]")).find(el => el.textContent.includes("Treemapping")); return c ? c.getAttribute("data-side-pane-tab-id") : null })()')
-  check('S17b side-pane treemapping tab opened', openedTab === true && typeof sideChip === 'string' && sideChip !== null, String(sideChip))
+  const sideChip = await evalJs('(() => { const c = Array.from(document.querySelectorAll("[data-side-pane-tab-id]")).find(el => el.textContent.includes("审查文件")); return c ? c.getAttribute("data-side-pane-tab-id") : null })()')
+  check('S17b side-pane git tab opened', openedTab === true && typeof sideChip === 'string' && sideChip !== null, String(sideChip))
   const panelsBefore = (await summary())?.panels ?? 0
   const convRect = await paneRect('region:conversation')
   check('S17c conversation pane located', convRect !== null, JSON.stringify(convRect))
-  // 构造 DataTransfer 模拟 HTML5 拖拽：dragstart(源 chip) → dragover/drop(会话面板右缘)
-  const dragResult = await evalJs('(() => { const chip = Array.from(document.querySelectorAll("[data-side-pane-tab-id]")).find(el => el.textContent.includes("Treemapping")); const pane = document.querySelector("[data-region-pane=\'region:conversation\']"); if (!chip || !pane) return null; const pr = pane.getBoundingClientRect(); const x = pr.x + pr.width * 0.94, y = pr.y + pr.height / 2; const dt = new DataTransfer(); const tab = { id: chip.getAttribute("data-side-pane-tab-id"), type: "treemapping", openedAt: Date.now() }; dt.setData("application/x-liuli-side-tab", JSON.stringify(tab)); chip.dispatchEvent(new DragEvent("dragstart", { dataTransfer: dt, bubbles: true, cancelable: true })); window.dispatchEvent(new DragEvent("dragover", { dataTransfer: dt, clientX: x, clientY: y, bubbles: true, cancelable: true })); window.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, clientX: x, clientY: y, bubbles: true, cancelable: true })); chip.dispatchEvent(new DragEvent("dragend", { dataTransfer: dt, bubbles: true, cancelable: true })); return { x, y } })()')
+  // 构造 DataTransfer 模拟 HTML5 拖拽：dragstart(源 chip) → dragover/drop(会话面板右缘)。
+  // 注：dock 的 dragover/drop 监听挂在 dock 根元素上，事件必须派发到落点处的命中元素
+  // （elementFromPoint）并经冒泡到达 dock 根；派发到 window 永远到不了监听器。
+  const dragResult = await evalJs('(() => { const chip = Array.from(document.querySelectorAll("[data-side-pane-tab-id]")).find(el => el.textContent.includes("审查文件")); const pane = document.querySelector("[data-region-pane=\'region:conversation\']"); if (!chip || !pane) return null; const pr = pane.getBoundingClientRect(); const x = pr.x + pr.width * 0.94, y = pr.y + pr.height / 2; const dt = new DataTransfer(); const tab = { id: chip.getAttribute("data-side-pane-tab-id"), type: "git", openedAt: Date.now() }; dt.setData("application/x-liuli-side-tab", JSON.stringify(tab)); chip.dispatchEvent(new DragEvent("dragstart", { dataTransfer: dt, bubbles: true, cancelable: true })); const hit = document.elementFromPoint(x, y) ?? pane; hit.dispatchEvent(new DragEvent("dragover", { dataTransfer: dt, clientX: x, clientY: y, bubbles: true, cancelable: true })); hit.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, clientX: x, clientY: y, bubbles: true, cancelable: true })); chip.dispatchEvent(new DragEvent("dragend", { dataTransfer: dt, bubbles: true, cancelable: true })); return { x, y } })()')
   await sleep(500)
   s = await summary()
   check('S17d drop into layout adds panel', dragResult !== null && s && s.panels === panelsBefore + 1, JSON.stringify({ dragResult, s, panelsBefore }))
-  const sideChipGone = await evalJs('Array.from(document.querySelectorAll("[data-side-pane-tab-id]")).every(el => !el.textContent.includes("Treemapping"))')
+  const sideChipGone = await evalJs('Array.from(document.querySelectorAll("[data-side-pane-tab-id]")).every(el => !el.textContent.includes("审查文件"))')
   check('S17e source tab closed (moved into layout)', sideChipGone === true)
-  const filesPanelInLayout = await evalJs('Array.from(document.querySelectorAll("[data-testid=dock-tab-chip]")).some(el => el.textContent.includes("文件树"))')
-  check('S17f files panel present in layout', filesPanelInLayout === true)
+  const gitPanelInLayout = await evalJs('Array.from(document.querySelectorAll("[data-testid=dock-tab-chip]")).some(el => el.textContent.includes("审查"))')
+  check('S17f git panel present in layout', gitPanelInLayout === true)
   // 收尾：关闭详情（S11 已测过移除面板；这里确保后续不干扰）
   await hook('closeDetails')
   await sleep(500)
+
+  // S18 拖拽防失焦护栏（sash 扫过内嵌浏览器：不卡顿/不被抢焦点/画面不消失）：
+  //     ① 注入的 #liuli-theme-css 含 body[data-liuli-resizing] iframe 点击穿透规则，
+  //        且不再有 webview visibility:hidden 规则（浏览器画面拖拽期保持可见）；
+  //     ② 挂标记后 iframe 计算样式 pointer-events:none、webview 保持 visible；
+  //     ③ 真实 CDP 指针在 sash 上按下（beginSash → beginResizePerf 挂标记 +
+  //        setPointerCapture + 挂全视口透明护盾 data-liuli-resize-shield），
+  //        护栏开启时护盾（普通 DOM、pointer-events:auto、z-index 盖过一切）先于
+  //        iframe/guest 命中测试，12 步 move 全部留在主文档，页面全程可见；
+  //        对照实验：摘掉护栏（标记 + 护盾）后 iframe 恢复可命中并吞掉 move（<12），
+  //        证明护栏是拖拽不卡顿/不被抢焦点的必要保证。
+  const guardCss = await evalJs('document.getElementById("liuli-theme-css")?.textContent ?? ""')
+  check('S18a guard CSS injected (iframe rule in, webview hide removed)', typeof guardCss === 'string' && guardCss.includes('body[data-liuli-resizing] iframe') && !guardCss.includes('body[data-liuli-resizing] webview'), 'cssLen=' + String(guardCss.length))
+  const stylesOn = await evalJs('(() => { const body = document.body; const ifr = document.createElement("iframe"); ifr.setAttribute("data-liuli-probe-offscreen", ""); ifr.style.cssText = "position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;border:0"; body.appendChild(ifr); const wv = document.createElement("webview"); wv.setAttribute("data-liuli-probe-offscreen", ""); wv.style.cssText = "position:fixed;left:-9999px;top:-9999px;width:1px;height:1px"; body.appendChild(wv); body.setAttribute("data-liuli-resizing", ""); const on = { pe: getComputedStyle(ifr).pointerEvents, vis: getComputedStyle(wv).visibility }; body.removeAttribute("data-liuli-resizing"); const off = { pe: getComputedStyle(ifr).pointerEvents, vis: getComputedStyle(wv).visibility }; ifr.remove(); wv.remove(); return { on, off } })()')
+  check('S18b resize guard toggles styles (iframe none, webview stays visible)', stylesOn !== null && stylesOn.on && stylesOn.on.pe === 'none' && stylesOn.on.vis === 'visible' && stylesOn.off.pe !== 'none' && stylesOn.off.vis === 'visible', JSON.stringify(stylesOn))
+  // 可见探针 iframe：骑在 sash 拖拽路径上（从左起 x≈280 的水平线拖过 560..800），
+  // 高 z-index（2147483000，高于菜单层 2147482500）保证无护栏时命中测试真的落在它上面
+  // （否则守卫/对照实验无意义）；护栏的护盾 z-index 必须更高（2147483100）。
+  const probeMounted = await evalJs('(() => { const ifr = document.createElement("iframe"); ifr.setAttribute("data-liuli-probe-iframe", ""); ifr.setAttribute("title", "liuli-probe"); ifr.style.cssText = "position:fixed;left:560px;top:430px;width:240px;height:120px;z-index:2147483000;border:0;background:#fff"; document.body.appendChild(ifr); return true })()')
+  check('S18c visible probe iframe mounted', probeMounted === true)
+  const sashC = await evalJs('(() => { const el = document.querySelector("[data-dock-split] [data-testid=dock-sash]"); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 } })()')
+  check('S18d sash located for real-input drag', sashC !== null && !sashC?.__err, JSON.stringify(sashC))
+  if (sashC && !sashC.__err) {
+    // 安装 move 计数探针并清残留标记（beginSash 由真实 pointerdown 触发）
+    await evalJs('window.__liuliProbeMoves = 0; document.body.removeAttribute("data-liuli-resizing"); document.querySelector("[data-liuli-resize-shield]")?.remove(); window.addEventListener("pointermove", () => { window.__liuliProbeMoves += 1 }, { capture: true })')
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: sashC.x, y: sashC.y, button: 'left', buttons: 1, clickCount: 1 })
+    await sleep(120)
+    const attrDuring = await evalJs('document.body.hasAttribute("data-liuli-resizing")')
+    check('S18e sash press enters resize guard', attrDuring === true)
+    // 护栏开启（生产真实拖拽状态）拖过可见 iframe：护盾盖住命中测试，12 步 move
+    // 全部回到主窗口；拖拽期间 dock 根 data-resizing 持续存在（拖拽未中断）；
+    // 护盾必须覆盖全视口、pointer-events:auto、z-index 高于一切 DOM（含探针），
+    // 且 webview 计算样式 visibility 保持 visible（画面不被隐藏）。
+    for (let i = 1; i <= 12; i++) {
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: sashC.x + 52 * i, y: sashC.y, button: 'none', buttons: 1 })
+      await sleep(25)
+    }
+    const yLit = Number(sashC.y)
+    const onStats = await evalJs('({ moves: window.__liuliProbeMoves, stillResizing: (() => { const r = document.querySelector("[data-testid=dock-root]"); return r !== null && r.hasAttribute("data-resizing") })(), probeOver: (() => { const p = document.querySelector("[data-liuli-probe-iframe]"); return p !== null && p.getBoundingClientRect().top <= ' + yLit + ' && p.getBoundingClientRect().bottom >= ' + yLit + ' })(), shield: (() => { const el = document.querySelector("[data-liuli-resize-shield]"); if (!el) return null; const r = el.getBoundingClientRect(); const cs = getComputedStyle(el); return { w: Math.round(r.width), h: Math.round(r.height), pe: cs.pointerEvents, z: Number.parseInt(cs.zIndex, 10), covers: r.width >= window.innerWidth - 1 && r.height >= window.innerHeight - 1 } })(), webviewVis: (() => { const wv = document.createElement("webview"); wv.style.cssText = "position:fixed;left:-9999px;top:-9999px;width:1px;height:1px"; document.body.appendChild(wv); const v = getComputedStyle(wv).visibility; wv.remove(); return v })() })')
+    check('S18f guard-on drag keeps all moves, shield covers and webview visible', onStats !== null && onStats.moves >= 12 && onStats.stillResizing === true && onStats.probeOver === true && onStats.shield !== null && onStats.shield.pe === 'auto' && onStats.shield.z >= 2147483001 && onStats.shield.covers === true && onStats.webviewVis === 'visible', JSON.stringify(onStats))
+    // 对照实验：摘掉护栏（body 标记 + 护盾，模拟 endResizePerf 摘除）再拖一遍——
+    // iframe 恢复可命中并吞掉 move（<12），证明护栏是拖拽不卡顿/不被抢焦点的
+    // 必要保证（指针捕获在同一文档内有效，但跨 iframe 命中仍可能被嵌入式文档吞掉）。
+    await evalJs('document.body.removeAttribute("data-liuli-resizing"); document.querySelector("[data-liuli-resize-shield]")?.remove(); window.__liuliProbeMoves = 0')
+    for (let i = 1; i <= 12; i++) {
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: sashC.x + 52 * i, y: sashC.y, button: 'none', buttons: 1 })
+      await sleep(25)
+    }
+    const offMoves = await evalJs('window.__liuliProbeMoves')
+    check('S18g guard-off control: iframe steals moves', typeof offMoves === 'number' && offMoves < 12, 'moves=' + String(offMoves))
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: sashC.x + 624, y: sashC.y, button: 'left', buttons: 0, clickCount: 1 })
+    await sleep(400)
+    // 松手后 endResizePerf 清标记并摘护盾（引用计数归零），dock 根 data-resizing 复位。
+    const attrAfter = await evalJs('(() => { const r = document.querySelector("[data-testid=dock-root]"); return { body: document.body.hasAttribute("data-liuli-resizing"), dock: r !== null && r.hasAttribute("data-resizing"), shield: document.querySelector("[data-liuli-resize-shield]") === null } })()')
+    check('S18h release clears guard and shield', attrAfter !== null && attrAfter.body === false && attrAfter.dock === false && attrAfter.shield === true, JSON.stringify(attrAfter))
+    await evalJs('window.__liuliProbeMoves = 0')
+    await evalJs('(() => { const p = document.querySelector("[data-liuli-probe-iframe]"); if (p) p.remove(); return true })()')
+  }
 
   const failed = results.filter(r => !r.pass)
   console.log('SUMMARY: ' + String(results.length - failed.length) + '/' + String(results.length) + ' passed')

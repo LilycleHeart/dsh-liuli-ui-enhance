@@ -447,6 +447,30 @@
   color: var(--dsw-alias-label-primary, inherit);
 }
 
+/* 抓握簇里的关闭（×）：单标签无标签条时唯一的关闭入口；中性 hover，
+   与标签条里的关闭（红）区分，避免与 ⧉ 混淆 */
+.gripClose {
+  width: 22px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary, #999);
+  font-size: 11px;
+  padding: 0;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+  user-select: none;
+}
+
+.gripClose:hover {
+  background: rgba(229, 72, 77, 0.16);
+  color: #e5484d;
+}
+
 /* ── 合并标签条（仅 ≥2 面板的标签组出现；视觉与右侧边栏 48px 标签条对齐） ── */
 
 .tabStrip {

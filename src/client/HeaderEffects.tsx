@@ -20,6 +20,7 @@ import css from './HeaderEffects.module.css'
 
 /** 声纹响应运行时参数（设置页可调；每次保存经 liuli:vp-params 事件重载）。 */
 const vpParams = {
+  enabled: LIULI_SETTINGS_DEFAULTS.vp_enabled,          // 总开关（vp_enabled）
   sensitivity: LIULI_SETTINGS_DEFAULTS.vp_sensitivity, // 参考响度（越小越灵敏）
   beatGain: LIULI_SETTINGS_DEFAULTS.vp_beat_gain,      // 鼓点强度
   beatDecay: LIULI_SETTINGS_DEFAULTS.vp_beat_decay,    // 脉冲长度
@@ -32,6 +33,26 @@ const vpParams = {
   envRelease: 0.05,                                    // 频段包络释放（attack/6）
   specSmooth: LIULI_SETTINGS_DEFAULTS.vp_spec_smooth,  // 频谱平滑
   noiseGate: LIULI_SETTINGS_DEFAULTS.vp_noise_gate,    // 静音门限
+  // ── 视觉/外观（绘制层，原硬编码，现开放）──
+  lines: LIULI_SETTINGS_DEFAULTS.vp_lines,             // 波形线条数（官方 22）
+  idleSpeed: LIULI_SETTINGS_DEFAULTS.vp_idle_speed,    // 空闲流动速度（0.008/帧）
+  amplitude: LIULI_SETTINGS_DEFAULTS.vp_amplitude,     // 整体振幅倍率（1）
+  mainAmp: LIULI_SETTINGS_DEFAULTS.vp_main_amp,        // 中央主波基准幅度（46）
+  glow: LIULI_SETTINGS_DEFAULTS.vp_glow,               // 主波辉光强度（50 ≈ blur 20/6）
+  lineAlpha: LIULI_SETTINGS_DEFAULTS.vp_line_alpha,    // 线条基础不透明度（50 ≈ 原档）
+  edgeFade: LIULI_SETTINGS_DEFAULTS.vp_edge_fade,      // 右缘淡出位置（0.8）
+  bassEvent: LIULI_SETTINGS_DEFAULTS.vp_bass_event,    // 低频冲击强度（×1）
+  midEvent: LIULI_SETTINGS_DEFAULTS.vp_mid_event,      // 中频流速强度（×1）
+  highEvent: LIULI_SETTINGS_DEFAULTS.vp_high_event,    // 高频星闪强度（×1）
+  // ── 检测/响应细节 ──
+  beatWindow: LIULI_SETTINGS_DEFAULTS.vp_beat_window,  // 节拍均值窗口（42 帧）
+  pulseWindow: LIULI_SETTINGS_DEFAULTS.vp_pulse_window, // 脉冲均值窗口（170 帧）
+  noiseRate: LIULI_SETTINGS_DEFAULTS.vp_noise_rate,    // 噪声底学习率（0.0005）
+  driveSmooth: LIULI_SETTINGS_DEFAULTS.vp_drive_smooth, // 驱动平滑（0.3）
+  presenceSpeed: LIULI_SETTINGS_DEFAULTS.vp_presence_speed, // 在场包络速度（50）
+  // ── 自动节拍同步（vp_beat_sync 开启时生效）──
+  beatSync: LIULI_SETTINGS_DEFAULTS.vp_beat_sync,      // 谱通量触发 + BPM 自适应
+  fluxMult: LIULI_SETTINGS_DEFAULTS.vp_flux_mult,      // 谱通量触发阈值（标准差倍数）
 }
 
 /** 运行时安全范围（UI 数字框可越界输入，这里兜底防除零/NaN/反向衰减）。 */
@@ -85,13 +106,54 @@ function loadVpParams(): void {
     if (ss !== undefined) vpParams.specSmooth = clampVp(ss, 0.01, 1)
     const ng = num('vp_noise_gate')
     if (ng !== undefined) vpParams.noiseGate = clampVp(ng, 0, 0.5)
+    // ── 视觉/外观 ──
+    const ln = num('vp_lines')
+    if (ln !== undefined) vpParams.lines = Math.round(clampVp(ln, 8, 48))
+    const isp = num('vp_idle_speed')
+    if (isp !== undefined) vpParams.idleSpeed = clampVp(isp, 0, 0.05)
+    const amp = num('vp_amplitude')
+    if (amp !== undefined) vpParams.amplitude = clampVp(amp, 0.2, 2.5)
+    const ma = num('vp_main_amp')
+    if (ma !== undefined) vpParams.mainAmp = clampVp(ma, 10, 120)
+    const gl = num('vp_glow')
+    if (gl !== undefined) vpParams.glow = clampVp(gl, 0, 100)
+    const la = num('vp_line_alpha')
+    if (la !== undefined) vpParams.lineAlpha = clampVp(la, 0, 100)
+    const ef = num('vp_edge_fade')
+    if (ef !== undefined) vpParams.edgeFade = clampVp(ef, 0.5, 1)
+    const be = num('vp_bass_event')
+    if (be !== undefined) vpParams.bassEvent = clampVp(be, 0, 3)
+    const me = num('vp_mid_event')
+    if (me !== undefined) vpParams.midEvent = clampVp(me, 0, 3)
+    const he = num('vp_high_event')
+    if (he !== undefined) vpParams.highEvent = clampVp(he, 0, 3)
+    // ── 检测/响应细节 ──
+    const bw2 = num('vp_beat_window')
+    if (bw2 !== undefined) vpParams.beatWindow = Math.round(clampVp(bw2, 10, 120))
+    const pw = num('vp_pulse_window')
+    if (pw !== undefined) vpParams.pulseWindow = Math.round(clampVp(pw, 40, 400))
+    const nr = num('vp_noise_rate')
+    if (nr !== undefined) vpParams.noiseRate = clampVp(nr, 0.0001, 0.01)
+    const ds = num('vp_drive_smooth')
+    if (ds !== undefined) vpParams.driveSmooth = clampVp(ds, 0.01, 0.9)
+    const ps = num('vp_presence_speed')
+    if (ps !== undefined) vpParams.presenceSpeed = clampVp(ps, 0, 100)
+    const bsy = s.vp_beat_sync
+    if (typeof bsy === 'boolean') vpParams.beatSync = bsy
+    const fm = num('vp_flux_mult')
+    if (fm !== undefined) vpParams.fluxMult = clampVp(fm, 0.5, 4)
+    const en = s.vp_enabled
+    if (typeof en === 'boolean') vpParams.enabled = en
   } catch (_) { /* 损坏则保持当前值 */ }
 }
 
-if (typeof window !== 'undefined') {
-  loadVpParams()
-  window.addEventListener('liuli:vp-params', loadVpParams)
-}
+/** ── 自动节拍同步（vp_beat_sync = true 时启用）──
+ *  谱通量触发：频谱变化量（正向差分和）超过「期望 + fluxMult×标准差」即重音；
+ *  BPM 估算：对帧能量环形缓冲做自相关（滞后 250-1090ms 对应 55-240 BPM），
+ *  均值窗口 / 冷却 / 脉冲窗口随 ratio = 120/BPM 伸缩（手动值视为 120 BPM 参考）。 */
+const ENV_RING_LEN = 512 // 帧能量环形缓冲（~8.5s @60fps，覆盖 55 BPM 的整拍周期）
+const BPM_EST_INTERVAL = 12 // 每 12 帧估算一次 BPM（≈5 次/秒）
+const FLUX_GATE = 2 // 谱通量下限：单 bin 平均变化 < 2/255 视为噪声，直接不触发
 
 /** 绘制状态（模块级单例，跨组件实例共享）：切换会话/进出会话页时
  *  header 组件卸载重挂载，波形相位/包络/检测器状态保留、无缝延续；
@@ -110,28 +172,83 @@ const vpDraw = {
   punch: 0,
   /** 帧能量噪声底（节拍检测用，同款快降慢升）。 */
   noiseE: 0,
+  // ── 自动节拍同步状态（vpParams.beatSync 开启时生效，停止监听时一并复位）──
+  frameMs: 1000 / 60, // 帧间隔 EMA（自适应窗口/冷却换算）
+  lastFrameAt: 0, // 上一帧时间戳（performance.now()）
+  envRing: new Float32Array(ENV_RING_LEN), // 帧能量环形缓冲（BPM 自相关输入）
+  envIdx: 0, // 环形缓冲写指针
+  envFilled: 0, // 已写入帧数（< ENV_RING_LEN 时不足以估算）
+  bpmSmoothed: 0, // BPM 平滑估计（0 = 未锁定，ratio=1）
+  estTick: 0, // 估算节流计数
+  fluxQueue: [] as number[], // 谱通量历史（自适应阈值窗口）
+  fluxPrevSpec: null as Float32Array | null, // 上一帧频谱（谱通量差分）
+  fluxNoise: 0, // 谱通量噪声底（同款快降慢升最小值跟随）
+}
+
+/** BPM 估算（帧能量环形缓冲自相关）：滞后 250ms-1090ms 对应 55-240 BPM；
+ *  减均值后归一化相关，最佳滞后相关 > 0.25 才接受（否则朝 120 衰减，ratio→1），
+ *  结果 EMA 平滑（0.15）写回 vpDraw.bpmSmoothed（0 = 未锁定）。 */
+function updateBpmEstimate(): void {
+  const d = vpDraw
+  if (d.envFilled < Math.ceil(ENV_RING_LEN * 0.25)) return // 数据不足（<~2s）
+  const n = Math.min(d.envFilled, ENV_RING_LEN)
+  const at = (i: number): number => d.envRing[(d.envIdx - n + i + ENV_RING_LEN) % ENV_RING_LEN] ?? 0
+  let sum = 0
+  for (let i = 0; i < n; i++) sum += at(i)
+  const mean = sum / n
+  const frameS = d.frameMs / 1000
+  const lo = Math.max(1, Math.round(0.25 / frameS))
+  const hi = Math.min(n - 1, Math.round(1.09 / frameS))
+  let bestLag = -1
+  let bestCorr = 0
+  for (let lag = lo; lag <= hi; lag++) {
+    const n2 = n - lag
+    let sa = 0, sb = 0, saa = 0, sbb = 0, sab = 0
+    for (let i = 0; i < n2; i++) {
+      const a = at(i) - mean
+      const b = at(lag + i) - mean
+      sa += a; sb += b; saa += a * a; sbb += b * b; sab += a * b
+    }
+    const va = Math.max(0, saa - (sa * sa) / n2)
+    const vb = Math.max(0, sbb - (sb * sb) / n2)
+    const denom = Math.sqrt(va * vb)
+    if (denom <= 1e-9) continue
+    const corr = (sab - (sa * sb) / n2) / denom
+    if (corr > bestCorr) { bestCorr = corr; bestLag = lag }
+  }
+  if (bestLag <= 0) return
+  const bpm = 60 / (bestLag * frameS) // frameS 秒 → 每拍秒数 → BPM
+  if (bestCorr > 0.25 && bpm >= 55 && bpm <= 240) {
+    const prev = d.bpmSmoothed
+    d.bpmSmoothed = prev > 0 ? prev + (bpm - prev) * 0.15 : bpm
+  } else {
+    // 无稳定节奏 → 衰减回 120：所有手动窗口/冷却语义回到「120 BPM 参考」
+    d.bpmSmoothed = Math.max(0, d.bpmSmoothed + (120 - d.bpmSmoothed) * 0.02)
+  }
 }
 
 /** 连续响应：Nanoleaf 风格三频段能量驱动 —— bass/mid/high 各自攻击/释放包络，
  *  按参考响度归一（保留响度动态），加权求和为连续 drive；
  *  频段权重/攻放/参考响度/静音门限/频谱平滑等均为设置页可调参数（vpParams）。 */
 const BAND_EDGES = [[0, 3], [4, 15], [16, 63]] as const // 128-bin FFT 分段
-const DRIVE_SMOOTH = 0.3
 /** ── 官方 Nanoleaf Desktop 检测参数（从 Desktop 主进程 bundle 还原，原样移植）──
  *  节拍（能量包络对比）：E=Σx² vs 15 块滑动平均（块≈46ms → 0.7s ≈ 42 帧@60fps），
  *    超过 min(1.5×均值, 均值+Δ) + 200ms 冷却（防连击）+ 平均能量门槛；
  *  低频脉冲（50-350Hz）：频段能量 vs 0.8×60 块均值（≈2.8s ≈ 170 帧）+ 220ms 冷却；
- *  两级强度（RhythmicNorthernLights 官方示例）：节拍 100%、脉冲 30%。 */
-const BEAT_AVG_WIN = 42
+ *  两级强度（RhythmicNorthernLights 官方示例）：节拍 100%、脉冲 30%。
+ *  均值窗口（42/170 帧）与噪声学习率等已开放为设置页参数（vpParams）；
+ *  自动节拍同步（vpParams.beatSync）开启时用谱通量触发替代能量包络对比，
+ *  窗口/冷却按 ratio=120/BPM 伸缩（BPM 由帧能量自相关实时估算），见 vpDraw 上方常量。 */
 const BEAT_ADD = 0.02 // 官方 +10（大尺度能量域）；归一化域等效值
 const BEAT_MEAN_GATE = 0.002 // 平均能量门槛（官方 beatPowerThreshold 的"非静音"门）
-const PULSE_AVG_WIN = 170
 const PULSE_FLOOR = 1
 /** 用户可调参数见 vpParams（设置页「界面」→「声纹响应」，liuli:vp-params 事件热载）。 */
 
 /* ── 模块级单例引擎 ─────────────────────────────────────────────── */
 
 interface VpState {
+  /** 总开关：由 vpParams.enabled 同步，关闭时停止捕获并隐藏监听入口。 */
+  enabled: boolean
   listening: boolean
   /** 捕获来源：system（屏幕共享 · 系统扬声器输出）。不降级麦克风。 */
   mode: 'system' | null
@@ -145,6 +262,7 @@ interface VpState {
 }
 
 const vpState: VpState = {
+  enabled: true,
   listening: false,
   mode: null,
   error: '',
@@ -178,6 +296,27 @@ function vpStopCapture(): void {
   if (vpState.stream !== null) { vpState.stream.getTracks().forEach(t => t.stop()); vpState.stream = null }
   if (vpState.analyser !== null) vpState.analyser = null
   if (vpState.audioCtx !== null) { try { void vpState.audioCtx.close() } catch (_) {} vpState.audioCtx = null }
+}
+
+/** 同步总开关到运行时：关闭时若正在监听则立即停止（参数保留，重新开启即恢复）。 */
+function syncVpEnabled(): void {
+  vpState.enabled = vpParams.enabled
+  if (!vpParams.enabled && vpState.listening) {
+    vpStopCapture()
+    vpState.listening = false
+    vpState.mode = null
+  }
+}
+
+// 模块级初始化：先载入设置再同步开关；之后每次设置保存都经 liuli:vp-params 重载并广播。
+if (typeof window !== 'undefined') {
+  loadVpParams()
+  syncVpEnabled()
+  window.addEventListener('liuli:vp-params', () => {
+    loadVpParams()
+    syncVpEnabled()
+    vpEmit()
+  })
 }
 
 async function vpToggle(): Promise<void> {
@@ -254,6 +393,8 @@ async function vpToggle(): Promise<void> {
   // 系统正在播放的声音（音乐/视频等），而非麦克风输入。
   // 注：不设置 suppressLocalAudioPlayback —— 实测该约束会把系统主音量静音
   // （疑似其实现直接置零输出音量）；捕获环噪音由检测侧噪声底扣除压制。
+  /** 最后一次 getDisplayMedia 失败的 DOMException name（兜底诊断用）。 */
+  let captureError: string | undefined
   if (typeof navigator.mediaDevices.getDisplayMedia === 'function') {
     try {
       let stream: MediaStream
@@ -274,6 +415,10 @@ async function vpToggle(): Promise<void> {
       return
     } catch (err) {
       const name = (err as DOMException | undefined)?.name
+      captureError = name
+      // 保留真实失败原因：兜底文案只显示统一诊断，具体 DOMException 打进 console
+      // （重启后可用 demo/dsh-main.mjs console 抓取，区分 NotReadableError/TypeError 等）。
+      console.warn('[liuli] voiceprint getDisplayMedia failed', name, err)
       if (name === 'NotAllowedError' || name === 'SecurityError') {
         vpState.error = desktopLoopback
           ? '系统音频监听不可用：DSH Desktop 未启用系统音频捕获（请确认已安装最新版琉璃主题并重启应用）'
@@ -286,7 +431,7 @@ async function vpToggle(): Promise<void> {
   }
 
   vpState.error = desktopLoopback
-    ? '系统音频监听不可用：DSH Desktop 未启用系统音频捕获（请重启应用后重试）'
+    ? '系统音频监听不可用：DSH Desktop 未启用系统音频捕获（' + (captureError ?? '未知错误') + '，请重启应用后重试）'
     : '系统音频监听不可用：请用 Chrome/Edge 访问本页面（当前 ' + window.location.protocol + '//' + window.location.host + '）并允许屏幕共享'
   vpEmit()
 }
@@ -337,13 +482,13 @@ function lighten(c: RGB, amt: number): RGB {
 }
 
 /* 琉璃 ECG 式水平渐变：波形在绘制层面淡出 —— 左端透明快速浮现、
-   主段全亮；右端从 80% 处开始渐隐（覆盖工具区至 session log 按钮宽度），
-   到右缘完全消失（alpha 0）。 */
-function edgeGradient(ctx: CanvasRenderingContext2D, w: number, C: RGB, alpha: number): CanvasGradient {
+   主段全亮；右端从 `fade` 处（默认 80%）开始渐隐（覆盖工具区至 session
+   log 按钮宽度），到右缘完全消失（alpha 0）。fade 由设置 vp.edgeFade 控制。 */
+function edgeGradient(ctx: CanvasRenderingContext2D, w: number, C: RGB, alpha: number, fade = 0.8): CanvasGradient {
   const lg = ctx.createLinearGradient(0, 0, w, 0)
   lg.addColorStop(0, rgba(C, 0))
   lg.addColorStop(0.12, rgba(C, alpha * 0.4))
-  lg.addColorStop(0.8, rgba(C, alpha))
+  lg.addColorStop(fade, rgba(C, alpha))
   lg.addColorStop(1, rgba(C, 0))
   return lg
 }
@@ -397,6 +542,8 @@ export function LiuliHeaderVoiceprint() {
 
     const draw = (): void => {
       ctx.clearRect(0, 0, w, h)
+      // 总开关关闭：不绘制波形（canvas 保持透明，监听循环随之复位）。
+      if (!vpParams.enabled) return
       const C = brandRGB()
       const dark = document.body.hasAttribute('data-ds-dark-theme')
       ctx.shadowBlur = 0
@@ -433,7 +580,7 @@ export function LiuliHeaderVoiceprint() {
           // 恒定的回放环/系统底噪被压掉，音乐的真实起伏保留。
           const nz = vpDraw.bandNoise[b] ?? 0
           if (raw < nz) vpDraw.bandNoise[b] = raw
-          else vpDraw.bandNoise[b] = nz + (raw - nz) * 0.0005
+          else vpDraw.bandNoise[b] = nz + (raw - nz) * vpParams.noiseRate
           const clean = Math.max(0, raw - (vpDraw.bandNoise[b] ?? 0))
           // oxlint-disable-next-line typescript/no-non-null-assertion -- bandEnv is a fixed 3-band array; b < 3
           vpDraw.bandEnv[b]! += (clean - vpDraw.bandEnv[b]!) * (clean > vpDraw.bandEnv[b]! ? vpParams.envAttack : vpParams.envRelease)
@@ -454,11 +601,22 @@ export function LiuliHeaderVoiceprint() {
       }
 
       // 连续 mix：跟随 drive 平滑（快升慢落由频段包络自身承担）
-      vpState.audioMix += (drive - vpState.audioMix) * DRIVE_SMOOTH
+      vpState.audioMix += (drive - vpState.audioMix) * vpParams.driveSmooth
 
-      // ── 官方 Nanoleaf Desktop 节拍/脉冲检测（能量包络对比 + 冷却 + 两级强度）──
+      // ── 节拍/脉冲检测 ──
+      //  vpParams.beatSync=true（默认）→ 自动节拍同步：
+      //    谱通量触发（频谱正向变化和 > 期望 + fluxMult×标准差）+ 实时 BPM 估算
+      //    （帧能量自相关），均值窗口/冷却随 ratio = 120/BPM 伸缩，
+      //    手动窗口/冷却值语义为「120 BPM 参考」；
+      //  vpParams.beatSync=false → 官方 Nanoleaf 能量包络对比原样保留。
       if (vpState.analyser !== null) {
         const now = performance.now()
+        // 帧间隔 EMA（dt 夹 1..1000ms）：窗口/冷却按真实帧率换算
+        if (vpDraw.lastFrameAt > 0) {
+          const dt = Math.min(1000, Math.max(1, now - vpDraw.lastFrameAt))
+          vpDraw.frameMs = vpDraw.frameMs * 0.9 + dt * 0.1
+        }
+        vpDraw.lastFrameAt = now
         // 帧能量 E = Σ(bin/255)²（对应官方 ei=Σx²）；扣除噪声底后用于节拍判断
         let rawE = 0
         for (let i = 0; i < freqData.length; i++) {
@@ -466,47 +624,129 @@ export function LiuliHeaderVoiceprint() {
           rawE += v * v
         }
         if (rawE < vpDraw.noiseE) vpDraw.noiseE = rawE
-        else vpDraw.noiseE += (rawE - vpDraw.noiseE) * 0.0005
+        else vpDraw.noiseE += (rawE - vpDraw.noiseE) * vpParams.noiseRate
         const E = Math.max(0, rawE - vpDraw.noiseE)
-        vpDraw.beatAvgQueue.push(E)
-        if (vpDraw.beatAvgQueue.length > BEAT_AVG_WIN) vpDraw.beatAvgQueue.shift()
-        let beatAvg = 0
-        for (const v of vpDraw.beatAvgQueue) beatAvg += v
-        beatAvg /= vpDraw.beatAvgQueue.length
-        // 节拍：能量超均值 50%（或 +Δ）&& 平均能量门槛 && 冷却
-        const isBeat = E > BEAT_MEAN_GATE * freqData.length
-          && E > Math.min(vpParams.beatMult * beatAvg, beatAvg + BEAT_ADD)
-          && now - vpDraw.lastBeatAt > vpParams.beatCooldown
-        if (isBeat) vpDraw.lastBeatAt = now
-        // 低频脉冲（50-350Hz ≈ bins 0-1）：超 0.8×均值 && 下限 && 220ms 冷却
-        const pulseE = ((freqData[0] ?? 0) + (freqData[1] ?? 0)) / 2
-        vpDraw.pulseAvgQueue.push(pulseE)
-        if (vpDraw.pulseAvgQueue.length > PULSE_AVG_WIN) vpDraw.pulseAvgQueue.shift()
-        let pulseAvg = 0
-        for (const v of vpDraw.pulseAvgQueue) pulseAvg += v
-        pulseAvg /= vpDraw.pulseAvgQueue.length
-        const isPulse = pulseE > PULSE_FLOOR
-          && pulseE > vpParams.pulseMult * pulseAvg
-          && now - vpDraw.lastPulseAt > vpParams.pulseCooldown
-        if (isPulse) vpDraw.lastPulseAt = now
+        // BPM 估算：E 入环形缓冲，每 BPM_EST_INTERVAL 帧自相关一次
+        vpDraw.envRing[vpDraw.envIdx] = E
+        vpDraw.envIdx = (vpDraw.envIdx + 1) % ENV_RING_LEN
+        if (vpDraw.envFilled < ENV_RING_LEN) vpDraw.envFilled++
+        vpDraw.estTick++
+        if (vpDraw.estTick >= BPM_EST_INTERVAL) {
+          vpDraw.estTick = 0
+          updateBpmEstimate()
+        }
+        let isBeat = false
+        let isPulse = false
+        if (vpParams.beatSync) {
+          // ── 自动节拍同步：谱通量触发 + BPM 自适应窗口/冷却 ──
+          // 谱通量 = 本帧 vs 上一帧平滑频谱的正向差分和（复用 specSmooth）
+          const spec = vpDraw.specSmooth
+          if (vpDraw.fluxPrevSpec === null || vpDraw.fluxPrevSpec.length !== spec.length) {
+            vpDraw.fluxPrevSpec = new Float32Array(spec.length)
+          }
+          const prev = vpDraw.fluxPrevSpec
+          let flux = 0
+          for (let i = 0; i < spec.length; i++) {
+            const s = spec[i] ?? 0
+            const d = s - (prev[i] ?? 0)
+            if (d > 0) flux += d
+            prev[i] = s
+          }
+          // 谱通量噪声底（快降慢升，同帧能量噪声底同款）
+          if (flux < vpDraw.fluxNoise) vpDraw.fluxNoise = flux
+          else vpDraw.fluxNoise += (flux - vpDraw.fluxNoise) * vpParams.noiseRate
+          const fluxClean = Math.max(0, flux - vpDraw.fluxNoise)
+          // ratio = 120/BPM：未锁定（bpmSmoothed=0）时为 1 → 手动值即 120 BPM 参考
+          const ratio = vpDraw.bpmSmoothed > 0 ? 120 / vpDraw.bpmSmoothed : 1
+          // 自适应窗口/冷却：以手动参数为基准随节拍周期伸缩（限幅防极端）
+          const fluxWin = Math.round(clampVp(vpParams.beatWindow * ratio, 10, 120))
+          const beatCd = clampVp(vpParams.beatCooldown * ratio, 30, 2000)
+          const pulseWin = Math.round(clampVp(vpParams.pulseWindow * ratio, 40, 400))
+          const pulseCd = clampVp(vpParams.pulseCooldown * ratio, 30, 2000)
+          // 谱通量自适应阈值：期望 + fluxMult×标准差（窗口内），下限门防误触发
+          vpDraw.fluxQueue.push(fluxClean)
+          if (vpDraw.fluxQueue.length > fluxWin) vpDraw.fluxQueue.shift()
+          let fm = 0, fv = 0
+          for (const f of vpDraw.fluxQueue) { fm += f; fv += f * f }
+          const fqLen = vpDraw.fluxQueue.length
+          if (fqLen > 0) {
+            fm /= fqLen
+            fv = Math.max(0, fv / fqLen - fm * fm)
+          }
+          const fluxMean = fm
+          const fluxStd = Math.sqrt(fv)
+          const fluxGate = FLUX_GATE * spec.length
+          // 低频脉冲（50-350Hz ≈ bins 0-1）：超 0.8×均值 && 下限 && 冷却（窗口自适应）
+          const pulseE = ((freqData[0] ?? 0) + (freqData[1] ?? 0)) / 2
+          vpDraw.pulseAvgQueue.push(pulseE)
+          if (vpDraw.pulseAvgQueue.length > pulseWin) vpDraw.pulseAvgQueue.shift()
+          let pulseAvg = 0
+          for (const v of vpDraw.pulseAvgQueue) pulseAvg += v
+          pulseAvg /= vpDraw.pulseAvgQueue.length
+          isPulse = pulseE > PULSE_FLOOR
+            && pulseE > vpParams.pulseMult * pulseAvg
+            && now - vpDraw.lastPulseAt > pulseCd
+          if (isPulse) vpDraw.lastPulseAt = now
+          // 节拍：平均能量门槛 && 谱通量超阈值 && 冷却
+          isBeat = E > BEAT_MEAN_GATE * freqData.length
+            && fluxClean > Math.max(fluxMean + vpParams.fluxMult * fluxStd, fluxGate)
+            && now - vpDraw.lastBeatAt > beatCd
+          if (isBeat) vpDraw.lastBeatAt = now
+        } else {
+          // ── 官方能量包络路径（原样保留）──
+          vpDraw.beatAvgQueue.push(E)
+          if (vpDraw.beatAvgQueue.length > vpParams.beatWindow) vpDraw.beatAvgQueue.shift()
+          let beatAvg = 0
+          for (const v of vpDraw.beatAvgQueue) beatAvg += v
+          beatAvg /= vpDraw.beatAvgQueue.length
+          // 节拍：能量超均值 50%（或 +Δ）&& 平均能量门槛 && 冷却
+          isBeat = E > BEAT_MEAN_GATE * freqData.length
+            && E > Math.min(vpParams.beatMult * beatAvg, beatAvg + BEAT_ADD)
+            && now - vpDraw.lastBeatAt > vpParams.beatCooldown
+          if (isBeat) vpDraw.lastBeatAt = now
+          // 低频脉冲（50-350Hz ≈ bins 0-1）：超 0.8×均值 && 下限 && 220ms 冷却
+          const pulseE = ((freqData[0] ?? 0) + (freqData[1] ?? 0)) / 2
+          vpDraw.pulseAvgQueue.push(pulseE)
+          if (vpDraw.pulseAvgQueue.length > vpParams.pulseWindow) vpDraw.pulseAvgQueue.shift()
+          let pulseAvg = 0
+          for (const v of vpDraw.pulseAvgQueue) pulseAvg += v
+          pulseAvg /= vpDraw.pulseAvgQueue.length
+          isPulse = pulseE > PULSE_FLOOR
+            && pulseE > vpParams.pulseMult * pulseAvg
+            && now - vpDraw.lastPulseAt > vpParams.pulseCooldown
+          if (isPulse) vpDraw.lastPulseAt = now
+        }
         // 两级强度（官方）：节拍 100%、脉冲 30%，其余指数衰减
         if (isBeat) vpDraw.punch = 1
         else if (isPulse) vpDraw.punch = Math.max(vpDraw.punch, 0.3)
         else vpDraw.punch *= vpParams.beatDecay
       } else {
+        // 停止监听：复位检测器与自动节拍同步状态（包括新增的动态范围追踪）
         vpDraw.beatAvgQueue.length = 0
         vpDraw.pulseAvgQueue.length = 0
         vpDraw.lastBeatAt = -1e9
         vpDraw.lastPulseAt = -1e9
+        vpDraw.fluxQueue.length = 0
+        vpDraw.frameMs = 1000 / 60
+        vpDraw.lastFrameAt = 0
+        vpDraw.envFilled = 0
+        vpDraw.envIdx = 0
+        vpDraw.bpmSmoothed = 0
+        vpDraw.estTick = 0
+        vpDraw.fluxPrevSpec = null
+        vpDraw.fluxNoise = 0
         vpDraw.punch *= vpParams.beatDecay
       }
 
-      // liuli_echo 式「音频在场」包络（原参数 0.035 / 1÷600）：
-      // 进入响应（有信号）时快升，空闲时 10s 匀速归零，驱动空闲态幅度压制。
+      // liuli_echo 式「音频在场」包络：进入响应（有信号）时快升，空闲时匀速归零，
+      // 驱动空闲态幅度压制。攻速/衰减由 vpParams.presenceSpeed（0-100）映射：
+      // attack = 0.005 + speed/100×0.06（50 → 0.035 ≈ 原参数），decay = attack/21（50 → 1/600）。
+      const presenceAttack = 0.005 + (vpParams.presenceSpeed / 100) * 0.06
+      const presenceDecay = presenceAttack / 21
       const hasSignal = vpState.analyser !== null && freqData.some(v => v > 12)
-      if (hasSignal) vpDraw.presence += (1 - vpDraw.presence) * 0.035
+      if (hasSignal) vpDraw.presence += (1 - vpDraw.presence) * presenceAttack
       else {
-        vpDraw.presence -= 1 / 600
+        vpDraw.presence -= presenceDecay
         if (vpDraw.presence < 0) vpDraw.presence = 0
       }
 
@@ -514,7 +754,8 @@ export function LiuliHeaderVoiceprint() {
     }
 
     /* 流动波形（空闲态 ↔ 响应态平滑过渡；绘制公式逐字参照 liuli_echo
-       Waveform：22 线 + 逐线 binVal 频谱纹理 + 三正弦主波。
+       Waveform：vpParams.lines（默认 22）条线 + 逐线 binVal 频谱纹理
+       + 三正弦主波（线条数与各视觉强度均可由 vp.* 参数调节）。
        空闲态幅度压制由 liuli_echo 式 presence 包络驱动（进入响应即压低
        空闲流动，×0.8 系数原样）；低/中/高频各自产生一种视觉事件叠加在
        整幅波形上（不按线条分组）：
@@ -524,7 +765,7 @@ export function LiuliHeaderVoiceprint() {
     const drawWave = (freqData: Uint8Array, C: RGB, dark: boolean): void => {
       const lineC = dark ? lighten(C, 0.35) : C
       const cy = h / 2
-      const lines = 22
+      const lines = vpParams.lines
       const mix = vpState.audioMix
 
       // 振幅随 header 高度整体线性缩放：外层线与主波共用同一系数，比例不变。
@@ -542,8 +783,8 @@ export function LiuliHeaderVoiceprint() {
       const midDrive = bandDrive(1)
       const highDrive = bandDrive(2)
 
-      // mid 事件：流速——旋律/人声能量让波形流动加快
-      vpDraw.idlePhase += 0.008 * (1 + vpDraw.presence * 2) * (1 + midDrive * 1.2)
+      // mid 事件：流速——旋律/人声能量让波形流动加快（强度 ×vpParams.midEvent）
+      vpDraw.idlePhase += vpParams.idleSpeed * (1 + vpDraw.presence * 2) * (1 + midDrive * 1.2 * vpParams.midEvent)
 
       // 外层细线不设 shadowBlur：canvas 高斯模糊是每帧最大开销（同 liuli_echo）；
       // 辉光焦点保留给中央主波。
@@ -561,19 +802,21 @@ export function LiuliHeaderVoiceprint() {
         const binIdx = Math.min(tex.length - 1, Math.floor((li / lines) * tex.length))
         // oxlint-disable-next-line typescript/no-non-null-assertion -- binIdx is clamped to tex.length - 1
         const binVal = tex[binIdx]! / 255
-        // bass 事件：冲击——低频能量让波形整体膨胀（节拍 punch 为爆发加成）
-        const amp = idleAmp + mix * binVal * h * 0.3 * (1 - Math.abs(off) * 0.6)
-          * (1 + vpParams.beatGain * vpDraw.punch + bassDrive * 0.4)
-        // high 事件：星闪——镲片/高频能量提升线条亮度
-        const alpha = (dark ? 0.18 : 0.16) + (1 - Math.abs(off)) * (dark ? 0.42 : 0.32)
-          + mix * binVal * 0.2 + highDrive * 0.3
+        // bass 事件：冲击——低频能量让波形整体膨胀（节拍 punch 为爆发加成），
+        // 强度 ×vpParams.bassEvent；vpParams.amplitude 为整体振幅倍率
+        const amp = (idleAmp + mix * binVal * h * 0.3 * (1 - Math.abs(off) * 0.6)
+          * (1 + vpParams.beatGain * vpDraw.punch + bassDrive * 0.4 * vpParams.bassEvent)) * vpParams.amplitude
+        // high 事件：星闪——镲片/高频能量提升线条亮度（强度 ×vpParams.highEvent）；
+        // lineAlpha 映射基础/边缘不透明度档位（dark 0.36/0.84，light 0.32/0.64）
+        const alpha = (vpParams.lineAlpha / 100) * ((dark ? 0.36 : 0.32) + (1 - Math.abs(off)) * (dark ? 0.84 : 0.64))
+          + mix * binVal * 0.2 + highDrive * 0.3 * vpParams.highEvent
 
         const freq = 0.007 + li * 0.00055
 
         ctx.beginPath()
-        ctx.strokeStyle = edgeGradient(ctx, w, lineC, Math.min(1, alpha))
+        ctx.strokeStyle = edgeGradient(ctx, w, lineC, Math.min(1, alpha), vpParams.edgeFade)
         // bass 事件同时加粗线条（冲击感）
-        ctx.lineWidth = 1 + mix * binVal * 0.8 + bassDrive * 0.6
+        ctx.lineWidth = 1 + mix * binVal * 0.8 + bassDrive * 0.6 * vpParams.bassEvent
         for (let x = 0; x <= w; x += 3) {
           const n = Math.sin(freq * x + vpDraw.idlePhase + li * 0.75)
             + 0.33 * Math.sin(freq * 2.4 * x + vpDraw.idlePhase * 1.35 + li * 1.15)
@@ -586,15 +829,17 @@ export function LiuliHeaderVoiceprint() {
 
       // 中央主波（辉光焦点，同 liuli_echo 参数；high 事件提升辉光亮度）
       ctx.shadowColor = rgba(lineC, dark ? 0.9 : 0.45)
-      ctx.shadowBlur = dark ? 20 : 6
+      // glow（0-100）映射辉光模糊半径：dark = 0.4×glow（50 → 20），light = 0.12×glow（50 → 6）
+      ctx.shadowBlur = dark ? 0.4 * vpParams.glow : 0.12 * vpParams.glow
       ctx.beginPath()
-      ctx.strokeStyle = edgeGradient(ctx, w, lineC, Math.min(1, (dark ? 1 : 0.7) + highDrive * 0.25))
+      ctx.strokeStyle = edgeGradient(ctx, w, lineC, Math.min(1, (dark ? 1 : 0.7) + highDrive * 0.25 * vpParams.highEvent), vpParams.edgeFade)
       const tex = vpDraw.specSmooth ?? freqData
       const mainBin = Math.floor(tex.length * 0.25)
       // oxlint-disable-next-line typescript/no-non-null-assertion -- mainBin is a quarter of tex.length
       const mainVal = tex[mainBin]! / 255
       ctx.lineWidth = 2 + mix * mainVal * 1.5
-      const mainAmp = (46 * ampScale * (1 - vpDraw.presence * 0.8) + mix * mainVal * h * 0.2) * (1 + vpParams.beatGain * vpDraw.punch)
+      const mainAmp = (vpParams.mainAmp * ampScale * (1 - vpDraw.presence * 0.8) + mix * mainVal * h * 0.2)
+        * (1 + vpParams.beatGain * vpDraw.punch) * vpParams.amplitude
       for (let x = 0; x <= w; x += 2) {
         const n = Math.sin(0.0105 * x + vpDraw.idlePhase * 0.58)
           + 0.3 * Math.sin(0.026 * x + vpDraw.idlePhase * 1.08)
@@ -673,9 +918,11 @@ export function LiuliHeaderVoiceprint() {
 
 /* ── 监听按钮 ───────────────────────────────────────────────────── */
 
-/** 监听按钮：渲染在 titleRow 工具区（主题切换一侧），与背景 canvas 共享引擎。 */
+/** 监听按钮：渲染在 titleRow 工具区（主题切换一侧），与背景 canvas 共享引擎。
+ *  总开关（vp_enabled）关闭时直接不渲染（连同按钮一起隐藏）。 */
 export function LiuliHeaderAudioButton() {
-  const { listening, error } = useSyncExternalStore(vpSubscribe, vpGetState)
+  const { listening, error, enabled } = useSyncExternalStore(vpSubscribe, vpGetState)
+  if (!enabled) return null
   return (
     <span className={css.btnWrap} title={listening ? '正在监听系统音量' : '点击监听系统音量'}>
       <button
@@ -753,6 +1000,75 @@ export function LiuliHeaderChrome() {
       <LiuliHeaderAudioButton />
       <LiuliHeaderThemeToggle />
     </>
+  )
+}
+
+/* ── 全屏切换 ───────────────────────────────────────────────────── */
+
+function isFullscreenNow(): boolean {
+  return typeof document !== 'undefined' && document.fullscreenElement !== null
+}
+
+function toggleFullscreen(): void {
+  if (typeof document === 'undefined') return
+  if (document.fullscreenElement !== null) {
+    void document.exitFullscreen().catch(() => { /* 退出被拒则保持当前状态 */ })
+    return
+  }
+  const el = document.documentElement
+  if (typeof el.requestFullscreen === 'function') {
+    void el.requestFullscreen().catch(() => { /* 无全屏权限/被拒则保持当前状态 */ })
+  }
+}
+
+/**
+ * 全屏按钮 + F11 快捷键。注入 `conversation.session.header.utilities`，
+ * 以最高 order 排在工具区最右端（header 右上角）。图标用 Material
+ * fullscreen / fullscreen_exit，随全屏状态切换；F11 拦截浏览器原生
+ * 全屏行为统一走 Fullscreen API（纯 Web 与 DSH Desktop 一致）。
+ */
+export function LiuliHeaderFullscreen() {
+  const isFullscreen = useSyncExternalStore(
+    (listener) => {
+      document.addEventListener('fullscreenchange', listener)
+      return () => { document.removeEventListener('fullscreenchange', listener) }
+    },
+    isFullscreenNow,
+  )
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'F11') return
+      // 拦截浏览器原生 F11 全屏（否则与 Fullscreen API 双触发互相抵消）；
+      // 按住连发时只切一次（repeat 事件仅 preventDefault，不重复 toggle）。
+      e.preventDefault()
+      if (!e.repeat) toggleFullscreen()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('keydown', onKey) }
+  }, [])
+
+  return (
+    <button
+      type="button"
+      className={css.toggle}
+      aria-label={isFullscreen ? '退出全屏' : '进入全屏'}
+      aria-pressed={isFullscreen}
+      title={isFullscreen ? '退出全屏（F11）' : '进入全屏（F11）'}
+      onClick={() => toggleFullscreen()}
+    >
+      {isFullscreen ? (
+        /* Material fullscreen_exit */
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true">
+          <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
+        </svg>
+      ) : (
+        /* Material fullscreen */
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true">
+          <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
+        </svg>
+      )}
+    </button>
   )
 }
 

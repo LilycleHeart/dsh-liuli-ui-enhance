@@ -26,14 +26,6 @@ function MaterialIcon({ d, size = 24, className }: IconProps & { d: string }) {
   )
 }
 
-/** Material description（计划/文档）。 */
-export const NotepadTextIcon = (props: IconProps) => (
-  <MaterialIcon
-    {...props}
-    d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"
-  />
-)
-
 /** Material chat（辅助对话）。 */
 export const MessageSquareTextIcon = (props: IconProps) => (
   <MaterialIcon
@@ -50,14 +42,6 @@ export const BotIcon = (props: IconProps) => (
   />
 )
 
-/** Material account_tree（子智能体目录）。 */
-export const ListTreeIcon = (props: IconProps) => (
-  <MaterialIcon
-    {...props}
-    d="M22 11V3h-8v4h-2V3H4v8h8V7h2v4h8zm-10 0H6V5h6v6zm8 0h-6V5h6v6zm-8 6v4h8v-8h-8v4zm-2 0H6v4h6v-4z"
-  />
-)
-
 /** Material public（浏览器）。 */
 export const GlobeIcon = (props: IconProps) => (
   <MaterialIcon
@@ -71,30 +55,6 @@ export const FileDiffIcon = (props: IconProps) => (
   <MaterialIcon
     {...props}
     d="M12 2a3 3 0 0 1 3 3c0 1.3-.84 2.4-2 2.82v3.36a3.002 3.002 0 0 1 2 2.82 3 3 0 1 1-6 0c0-1.3.84-2.4 2-2.82V7.82A3.008 3.008 0 0 1 9 5a3 3 0 0 1 3-3zm0 12a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"
-  />
-)
-
-/** Material map（Treemapping）。 */
-export const MapIcon = (props: IconProps) => (
-  <MaterialIcon
-    {...props}
-    d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z"
-  />
-)
-
-/** Material palette（画板）。 */
-export const PaletteIcon = (props: IconProps) => (
-  <MaterialIcon
-    {...props}
-    d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"
-  />
-)
-
-/** Material timeline（模型调用轨迹）。 */
-export const WaypointsIcon = (props: IconProps) => (
-  <MaterialIcon
-    {...props}
-    d="M23 8c0 1.1-.9 2-2 2-.18 0-.35-.02-.51-.07l-3.56 6.55c.05.16.07.34.07.52 0 1.1-.9 2-2 2s-2-.9-2-2c0-.18.02-.36.07-.52l-3.56-6.55c-.16.05-.33.07-.51.07s-.35-.02-.51-.07l-3.56 6.55c.05.16.07.34.07.52 0 1.1-.9 2-2 2s-2-.9-2-2c0-.18.02-.36.07-.52L2.07 9.93C1.91 9.98 1.73 10 1.56 10 .66 10 0 9.34 0 8.44S.66 7 1.56 7s1.56.66 1.56 1.56c0 .18-.02.36-.07.52l3.56 6.55c.16-.05.33-.07.51-.07s.35.02.51.07l3.56-6.55c-.05-.16-.07-.34-.07-.52 0-1.1.9-2 2-2s2 .9 2 2c0 .18-.02.36-.07.52l3.56 6.55c.16-.05.33-.07.51-.07 1.1 0 2 .9 2 2z"
   />
 )
 
@@ -175,13 +135,5 @@ export const FolderIcon = (props: IconProps) => (
   <MaterialIcon
     {...props}
     d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"
-  />
-)
-
-/** Material menu_book（仓库 Wiki）。 */
-export const RepoWikiIcon = (props: IconProps) => (
-  <MaterialIcon
-    {...props}
-    d="M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1zm0 13.5c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v11.5z"
   />
 )

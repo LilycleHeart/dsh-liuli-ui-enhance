@@ -209,6 +209,49 @@ try {
     return active !== undefined && active.getAttribute('data-side-pane-tab-id') === 'git' && label === '上一轮更改'
   })()`))
 
+  // T14b（回归）：驱动展开后用户仍可手动切换来源。旧 bug：reviewRequest
+  // effect 依赖 reviewPath（身份随 source/git/datasets 等重建），每次重跑都会
+  // 把旧驱动请求重新应用 → 来源被弹回「上一轮更改」，表现为“选项无法切换”。
+  // 此处切到「未暂存」后等待足够时间（让任何 effect 重跑都发生），标签必须
+  // 稳定停留在新值。菜单是 body portal，需在整个 document 里找菜单项。
+  const menuOpened = await evalJs(`(() => {
+    const panel = document.querySelector('[data-liuli-review-panel]')
+    if (!panel) return false
+    const trigger = panel.querySelector('button[class*="sourceTrigger"]')
+    if (!(trigger instanceof HTMLElement)) return false
+    trigger.click()
+    return true
+  })()`)
+  check('T14b source trigger opens menu', menuOpened === true)
+  await sleep(300)
+  const menuItems = await evalJs(`(() => {
+    const panel = document.querySelector('[data-liuli-review-panel]')
+    if (!panel) return null
+    return [...document.querySelectorAll('button[class*="sourceMenuItem"]')].map(el => String(el.textContent || '').trim())
+  })()`)
+  check('T14b menu lists all sources', Array.isArray(menuItems) && menuItems.length >= 4, JSON.stringify(menuItems))
+  const clickedUnstaged = await evalJs(`(() => {
+    const panel = document.querySelector('[data-liuli-review-panel]')
+    if (!panel) return false
+    const items = [...document.querySelectorAll('button[class*="sourceMenuItem"]')]
+    const target = items.find(el => String(el.textContent || '').trim() === '未暂存')
+    if (!(target instanceof HTMLElement)) return false
+    target.click()
+    return true
+  })()`)
+  check('T14b switches to 未暂存', clickedUnstaged === true)
+  await sleep(300)
+  const labelT0 = await evalJs(`(() => {
+    const panel = document.querySelector('[data-liuli-review-panel]')
+    return panel ? (panel.querySelector('[class*="sourceTriggerLabel"]')?.textContent || '') : ''
+  })()`)
+  await sleep(1500) // 留足时间让任何 effect 重跑发生（旧代码会在此弹回「上一轮更改」）
+  const labelT1 = await evalJs(`(() => {
+    const panel = document.querySelector('[data-liuli-review-panel]')
+    return panel ? (panel.querySelector('[class*="sourceTriggerLabel"]')?.textContent || '') : ''
+  })()`)
+  check('T14b source switch survives drive re-applies', labelT0 === '未暂存' && labelT1 === '未暂存', `t0=${labelT0} t1=${labelT1}`)
+
   // T13：非前端文件（README.md）编辑 → 不驱动
   await resetTurn()
   await sleep(600)

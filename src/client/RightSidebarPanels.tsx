@@ -1,11 +1,11 @@
 /**
- * 右侧边栏面板：文件树 / Wiki / 命令中心。（Git 图谱已由 FileReviewPanel 取代）
+ * 右侧边栏面板：文件树 / 命令中心。（Git 图谱已由 FileReviewPanel 取代）
  * 组件全部为自包含 React 面板，通过 /liuli-sidebar/* 读取 Host 数据；
  * 样式走 RightSidebarPanels.module.css（CSS Modules）。
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  fetchSidebarGit, fetchSidebarTree, fetchSidebarWiki,
+  fetchSidebarGit, fetchSidebarTree,
   type SidebarGitPayload, type SidebarGitStatusRow, type SidebarTreeEntry, type SidebarTreePayload,
 } from './right-sidebar-api.ts'
 import css from './RightSidebarPanels.module.css'
@@ -385,78 +385,3 @@ export function FileTreePanel({ sessionId, onOpenFile, onAddFileToChat, onOpenPa
 }
 
 /* ── Git 图谱已由 FileReviewPanel（审查文件：全文 + diff）取代 ── */
-
-/* ── Wiki 面板 ── */
-
-export interface WikiPanelProps {
-  sessionId?: string | undefined
-  onOpenFile?: ((path: string, rel: string) => void) | undefined
-}
-
-/** 生成式架构导读：README 摘录 + 顶层模块地图（文件可点回源码）。 */
-export function WikiPanel({ sessionId, onOpenFile }: WikiPanelProps) {
-  const [payload, setPayload] = useState<Awaited<ReturnType<typeof fetchSidebarWiki>> | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (sessionId === undefined) return
-    const controller = new AbortController()
-    fetchSidebarWiki(sessionId, controller.signal)
-      .then((p) => { setPayload(p); setError(p.ok ? null : (p.error ?? '加载失败')) })
-      .catch((reason: unknown) => {
-        if (controller.signal.aborted) return
-        setError(reason instanceof Error ? reason.message : String(reason))
-      })
-    return () => { controller.abort() }
-  }, [sessionId])
-
-  const root = payload?.root ?? ''
-  const relOf = (path: string): string => root === '' ? path : path.slice(root.length).replace(/^\//, '')
-
-  return (
-    <div className={css.panelBody}>
-      <div className={css.panelToolbar}>
-        <span className={css.panelTitle}>仓库 Wiki</span>
-        {payload?.title !== undefined && <span className={css.branchBadge}>{payload.title}</span>}
-        {payload?.readmePath !== undefined && (
-          <button
-            type="button"
-            className={css.wikiFileLink}
-            onClick={() => { onOpenFile?.(payload.readmePath ?? '', relOf(payload.readmePath ?? '')) }}
-          >
-            README 源码
-          </button>
-        )}
-      </div>
-      <div className={css.wikiReadme}>
-        {error !== null && <div className={css.panelEmpty}>{error}</div>}
-        {(payload?.readme ?? []).map((line, index) => <p key={index} className={css.wikiLine}>{line}</p>)}
-        {payload?.readme !== undefined && payload.readme.length === 0 && (
-          <div className={css.panelEmpty}>没有 README 文件</div>
-        )}
-      </div>
-      <div className={css.wikiModules}>
-        {(payload?.modules ?? []).map((module) => {
-          return (
-            <div key={module.name} className={css.wikiModule}>
-              <div className={css.wikiModuleName}>{module.name}</div>
-              <div className={css.wikiModuleFiles}>
-                {module.files.length === 0 && '（无文件）'}
-                {module.files.slice(0, 6).map((file) => (
-                  <button
-                    type="button"
-                    key={file.path}
-                    className={css.wikiFileLink}
-                    onClick={() => { onOpenFile?.(file.path, relOf(file.path)) }}
-                  >
-                    {file.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}

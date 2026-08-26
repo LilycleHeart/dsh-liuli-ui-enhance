@@ -53,12 +53,54 @@ interface HostSession {
   ): void
 }
 
-interface HostElectronMain {
-  desktopCapturer: HostDesktopCapturer
-  session: { defaultSession: HostSession }
+/** Electron 的 session 模块（defaultSession + fromPartition）。 */
+interface HostSessionModule {
+  defaultSession: HostSession
+  fromPartition(partition: string): HostSession
 }
 
+/** webContents 最小面：取所属 session（用于对现存/新建渲染器补装 handler）。 */
+interface HostWebContents {
+  session: HostSession
+}
+
+interface HostElectronMain {
+  desktopCapturer: HostDesktopCapturer
+  session: HostSessionModule
+  webContents?: { getAllWebContents(): HostWebContents[] }
+  app?: {
+    on(event: string, listener: (event: unknown, contents: HostWebContents) => void): unknown
+    off?(event: string, listener: (event: unknown, contents: HostWebContents) => void): unknown
+  }
+}
+
+/**
+ * DSH Desktop 主窗口渲染器所在 session partition（2.0.3 起）。
+ * 见 anywhere-labs/dsh-desktop `dsh-plugin-desktop/src/window-options.ts`：
+ * `DESKTOP_RENDERER_SESSION_PARTITION = 'persist:dsh-desktop-renderer'`，主窗口
+ * webPreferences.partition 固定用它。仅给 defaultSession 装 handler 收不到
+ * 主窗口的 getDisplayMedia 请求（Electron 无 handler 时纯音频/无授权直接抛
+ * NotSupportedError）。这里不写死依赖，安装时同时覆盖 defaultSession、
+ * 该 partition 与现存/新建 webContents 的 session（幂等）。
+ */
+const DESKTOP_RENDERER_SESSION_PARTITION = 'persist:dsh-desktop-renderer'
+
+/** 已装 handler 的 session（幂等集合，卸载时逐一复位）。 */
+const installedSessions = new Set<HostSession>()
+
 let electronPromise: Promise<HostElectronMain | undefined> | undefined
+
+/**
+ * 系统回环音频 handler 是否已实际装到目标 session。
+ * 探针路由据此如实上报（index.ts 注释契约：未装 handler 时 available:false），
+ * 避免「Electron + win32 就报可用、实际未授权」的误导诊断。
+ */
+let loopbackInstalled = false
+
+/** 当前是否已安装系统回环音频 handler（供 /liuli-audio 探针判断）。 */
+export function isLoopbackInstalled(): boolean {
+  return loopbackInstalled
+}
 
 /** 尝试加载 Electron 主进程 API；非 Electron 环境返回 undefined。 */
 async function loadElectron(): Promise<HostElectronMain | undefined> {
@@ -116,17 +158,12 @@ function currentPlatform(): string {
 }
 
 /**
- * 安装系统音频监听处理器（仅 Electron + Windows）。
- * @returns 卸载函数：把 handler 复位为默认（null），插件卸载时调用。
+ * 给单个 session 安装回环音频 handler（幂等：同一 session 只装一次）。
  */
-export async function installSystemAudioCapture(): Promise<() => void> {
-  const electron = await loadElectron()
-  if (electron === undefined) return () => {}
-  // `audio: 'loopback'` 仅 Windows 受支持；其余平台不装 handler，
-  // 让 getDisplayMedia 保持 Electron 默认行为（macOS 走系统选择器）。
-  if (currentPlatform() !== 'win32') return () => {}
-  const { session, desktopCapturer } = electron
-  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+function installHandlerOn(session: HostSession, desktopCapturer: HostDesktopCapturer): void {
+  if (installedSessions.has(session)) return
+  installedSessions.add(session)
+  session.setDisplayMediaRequestHandler((request, callback) => {
     const streams: HostDisplayMediaStreams = {}
     if (request.audioRequested) streams.audio = 'loopback'
     if (!request.videoRequested) {
@@ -141,8 +178,53 @@ export async function installSystemAudioCapture(): Promise<() => void> {
       })
       .catch(() => { callback(streams) })
   })
+}
+
+/** 收集当前所有应覆盖的 session（defaultSession + 桌面渲染器 partition + 现存 webContents）。 */
+function collectTargetSessions(electron: HostElectronMain): HostSession[] {
+  const sessions = new Set<HostSession>()
+  sessions.add(electron.session.defaultSession)
+  try {
+    sessions.add(electron.session.fromPartition(DESKTOP_RENDERER_SESSION_PARTITION))
+  } catch { /* 旧版无 fromPartition 则跳过 */ }
+  try {
+    for (const wc of electron.webContents?.getAllWebContents() ?? []) {
+      sessions.add(wc.session)
+    }
+  } catch { /* 忽略 */ }
+  return [...sessions]
+}
+
+/**
+ * 安装系统音频监听处理器（仅 Electron + Windows）。
+ * 覆盖 defaultSession、桌面渲染器 partition（persist:dsh-desktop-renderer）与
+ * 现存/新建 webContents 的 session：DSH Desktop 2.0.3 起主窗口渲染器使用
+ * persist:dsh-desktop-renderer partition，只装 defaultSession 收不到请求。
+ * @returns 卸载函数：把 handler 复位为默认（null），插件卸载时调用。
+ */
+export async function installSystemAudioCapture(): Promise<() => void> {
+  const electron = await loadElectron()
+  if (electron === undefined) return () => {}
+  // `audio: 'loopback'` 仅 Windows 受支持；其余平台不装 handler，
+  // 让 getDisplayMedia 保持 Electron 默认行为（macOS 走系统选择器）。
+  if (currentPlatform() !== 'win32') return () => {}
+  const { desktopCapturer } = electron
+  for (const session of collectTargetSessions(electron)) {
+    installHandlerOn(session, desktopCapturer)
+  }
+  // 新窗口/新 webContents 出现时补装 handler（幂等，重复 session 不会二次安装）。
+  const onWebContentsCreated = (_event: unknown, contents: HostWebContents): void => {
+    installHandlerOn(contents.session, desktopCapturer)
+  }
+  try { electron.app?.on('web-contents-created', onWebContentsCreated) } catch { /* 忽略 */ }
+  loopbackInstalled = true
   return () => {
-    try { session.defaultSession.setDisplayMediaRequestHandler(null) } catch { /* 会话已销毁则忽略 */ }
+    loopbackInstalled = false
+    try { electron.app?.off?.('web-contents-created', onWebContentsCreated) } catch { /* 忽略 */ }
+    for (const session of installedSessions) {
+      try { session.setDisplayMediaRequestHandler(null) } catch { /* 会话已销毁则忽略 */ }
+    }
+    installedSessions.clear()
   }
 }
 
@@ -169,6 +251,12 @@ export function audioCaptureRoute(): WebRoute {
         }
         if (currentPlatform() !== 'win32') {
           sendJson(res, 200, { available: false, capture: 'getDisplayMedia', reason: 'loopback 仅 Windows 支持' })
+          return
+        }
+        if (!loopbackInstalled) {
+          // index.ts 契约：Electron+win32 但 handler 未装（unofficial.desktop 关闭等），
+          // 不如实上报会让前端误走「已授权回环」路径，报错文案不准确。
+          sendJson(res, 200, { available: false, capture: 'getDisplayMedia', reason: 'loopback handler 未安装' })
           return
         }
         sendJson(res, 200, { available: true, capture: 'loopback' })

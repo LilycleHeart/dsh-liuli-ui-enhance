@@ -215,7 +215,7 @@ overflow: hidden;
 
 ### 5.1 标准亚克力卡片配方（`.panel` 配方）
 
-适用于：`PreviewPanel.panel`、`DockWorkspace.pane / .floatWindow`、`DockShellFrame.paneCard / .floatWindow`、侧栏根、详情预览面板。
+适用于：`PreviewPanel.panel`、`DockShellFrame.pane / .paneCard / .floatWindow`、侧栏根、详情预览面板。
 
 ```css
 .card {
@@ -301,7 +301,7 @@ overflow: hidden;
 
 #### 6.1.1 图标按钮（最常用）
 
-参考：`PreviewPanel.stripBtn / .navBtn / .openBtn`、`WindowControls.btn`、`DockWorkspace.headerBtn`。
+参考：`PreviewPanel.stripBtn / .navBtn / .openBtn`、`WindowControls.btn`。
 
 ```css
 .iconBtn {
@@ -350,7 +350,7 @@ overflow: hidden;
 
 #### 6.1.3 工具 / 描边按钮
 
-参考 `DockWorkspace.toolBtn`、`FloatBall.tool`、`LiuliAppearance.selector`：
+参考 `FloatBall.tool`、`LiuliAppearance.selector`、`dock-panels` 面板工具按钮：
 
 ```css
 .toolBtn {
@@ -469,7 +469,7 @@ CSS Modules 内普通面板只用 `edgeBottom` 类；区域表面镜像用 `:glo
 
 ### 6.3 标签条与 Tab chip
 
-参考 `PreviewPanel.tabStrip / .tab`、`DockWorkspace.tabStrip / .tabChip`：
+参考 `PreviewPanel.tabStrip / .tab`、`DockShellFrame.tabStrip / .tabChip`：
 
 - 标签条：高 **48px**，`padding: 0 12px`，`border-bottom: 1px solid var(--dsw-alias-border-l1)`，横向滚动隐藏滚动条。
 - Chip：`flex: 1 1 156px; min-width: 64px; max-width: 156px; height: 28px; border-radius: 8px`。
@@ -480,7 +480,7 @@ CSS Modules 内普通面板只用 `edgeBottom` 类；区域表面镜像用 `:glo
 
 ### 6.4 输入框
 
-参考 `PreviewPanel.browserInput / .responsiveInput`、`DockWorkspace.slotInput`、`RightSidebarPanels.searchBox`、`HistoryLoadRow.numInput`、`SidePaneExtraPanels.chatInput`。
+参考 `PreviewPanel.browserInput / .responsiveInput`、`DockShellFrame.slotInput`、`RightSidebarPanels.searchBox`、`HistoryLoadRow.numInput`、`SidePaneExtraPanels.chatInput`。
 
 **标准配方**：
 
@@ -618,7 +618,6 @@ CSS Modules 内普通面板只用 `edgeBottom` 类；区域表面镜像用 `:glo
 | --- | --- | --- |
 | 宿主手柄层 | 50–60 | 详情拖拽手柄、sash、窗口控制 |
 | 命令中心 / 文件对话框 | 1400 / 1500 | `RightSidebarPanels.commandOverlay`、`PreviewPanel.fileDialogOverlay` |
-| 工作台全屏层 | 2147482000 | `DockWorkspace.layer` |
 | 浮动窗口 | 2147482400 | `.floatWindow` |
 | 布局菜单 | 2147482450 | `DockShellFrame.menuCard` |
 | **标准弹出层** | **2147482500** | 右键菜单、TurnFileCard 打开方式菜单、dropIndicator |
@@ -630,7 +629,7 @@ CSS Modules 内普通面板只用 `edgeBottom` 类；区域表面镜像用 `:glo
 | 拾取 hover 卡 | 2147483100 | `FloatBall.hoverCard` |
 | 拾取结果卡 | 2147483200 | `FloatBall.infoCard` |
 
-原则：普通弹出层一律 2147482500；比它更“系统级”的（工作台、悬浮球、拾取）才用 2147482xxx 高位段；宿主层保持 50–60。
+原则：普通弹出层一律 2147482500；比它更“系统级”的（浮动窗口、布局菜单、悬浮球、拾取）才用 2147482xxx 高位段；宿主层保持 50–60。
 
 ---
 
@@ -698,7 +697,6 @@ CSS Modules 内普通面板只用 `edgeBottom` 类；区域表面镜像用 `:glo
 | advanced 无边框模式差异 | `src/client/index.ts`（`DESKTOP_ADVANCED_CSS`） |
 | 卡片配方母版 | `src/client/PreviewPanel.module.css`（`.panel`） |
 | 标签条 / Tab chip 母版 | `src/client/PreviewPanel.module.css`（`.tabStrip` / `.tab`） |
-| 工作台卡片 / 工具按钮 / 拖拽视觉 | `src/client/DockWorkspace.module.css` |
 | 零侵入 dock 布局 / 贴边镜像 / sash | `src/client/DockShellFrame.module.css` |
 | 悬浮球 / 工具面板 / 拾取卡 | `src/client/FloatBall.module.css` |
 | 窗口控制按钮 | `src/client/WindowControls.module.css` |
@@ -708,5 +706,5 @@ CSS Modules 内普通面板只用 `edgeBottom` 类；区域表面镜像用 `:glo
 | 审查面板（源切换 / diff / 右键菜单） | `src/client/FileReviewPanel.module.css` |
 | 设置页控件（滑块 / 开关 / 选择器 / 壁纸） | `src/client/LiuliAppearance.module.css` |
 | 设置行（Appearance 主题行 / 功能分区重试与历史加载） | `src/client/LiuliAppearanceRow.module.css`、`HistoryLoadRow.module.css`、`ModelRetryRow.module.css` |
-| 终端 / 轨迹 / 画板 / 计划 / 辅助对话 | `src/client/SidePaneExtraPanels.module.css` |
-| 工作台面板内容 | `src/client/dock-panels.module.css` |
+| 终端 / 开发者工具 / 辅助对话 | `src/client/SidePaneExtraPanels.module.css` |
+| 布局面板内容 | `src/client/dock-panels.module.css` |

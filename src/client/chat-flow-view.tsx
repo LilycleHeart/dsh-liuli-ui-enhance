@@ -14,12 +14,18 @@
  *
  * 全部视觉组件取自 @deepseek-ai/dsh-client-ui-primitives（平台模块，运行时由
  *  loader 模块表提供，与宿主同一实例），样式参数逐项对照官方 bundle。
+ *
+ * 级联接入：assistant 消息容器是子列（data-liuli-chat-flow），其内部每个块
+ * （text / reasoning / image / 未知块）各自挂 data-liuli-chat-anchor-key 锚点；
+ * 文本块额外标记 data-liuli-cascade-text，观察器（liuli-transition.ts）收集其
+ * markdown 块级元素（段落、代码块、列表等）逐段入场，文本不再整块一次动画。
  */
 
-import { useMemo, useState, type ReactNode } from 'react'
+import { useId, useMemo, useState, type ReactNode } from 'react'
 import {
   MarkdownText, JsonBlock, TerminalBlock, ReadBlock, DiffBlock,
   SearchBlock, WebBlock, DisclosureRow, StateDot,
+  IconThinkOutline14, IconApiOutline14, IconBrowseOutline16, IconEditOutline16, IconSearchOutline16, IconSparkle16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ConversationSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
 import css from './chat-flow-view.module.css'
@@ -44,7 +50,7 @@ function ThinkRow({ text, running }: { text: string; running: boolean }) {
   return (
     <div className={css.thinkRow} data-state={running ? 'running' : 'ok'}>
       <DisclosureRow
-        icon={<span className={css.thinkIcon} aria-hidden="true">🧠</span>}
+        icon={<IconThinkOutline14 size={14} />}
         title="Think"
         open={expanded}
         expandable
@@ -58,31 +64,61 @@ function ThinkRow({ text, running }: { text: string; running: boolean }) {
   )
 }
 
-/** assistant 节点的 blocks 渲染（复刻 AssistantMarkdown 分派）。 */
-function AssistantBlocks({ blocks, streaming }: {
+/** 工具执行卡片的 leading 图标：与官方 dsh-client-ui-tool 的 VARIANT_ICONS
+ *  同款（ok/运行态用变体图标；error 态由 StateDot 接管，见 ToolRow.leadingFor）。 */
+const TOOL_VARIANT_ICONS: Record<string, ReactNode> = {
+  terminal: <IconApiOutline14 size={14} />,
+  read: <IconBrowseOutline16 size={14} />,
+  diff: <IconEditOutline16 size={14} />,
+  search: <IconSearchOutline16 size={14} />,
+  web: <IconSparkle16 size={14} />,
+  default: <IconSparkle16 size={14} />,
+}
+
+/** assistant 节点的 blocks 渲染（复刻 AssistantMarkdown 分派）。
+ *  每个块包一层级联锚点（text / reasoning / image / 未知块）；文本块额外
+ *  标记 data-liuli-cascade-text：观察器收集其内部 markdown 块级元素
+ *  （段落、代码块、列表、引用、表格、标题）逐段入场，而不是整块一次动画。 */
+function AssistantBlocks({ blocks, streaming, prefix }: {
   blocks: readonly unknown[]
   streaming: boolean
+  prefix: string
 }): ReactNode {
   const last = blocks.length - 1
   if (!streaming && !blocks.some(b => (b as { kind?: string }).kind !== 'tool-call')) return null
   const out: ReactNode[] = []
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i] as { kind?: string } & Record<string, unknown>
+    const blockKey = `${prefix}:b${i}`
     switch (block.kind) {
       case 'text':
-        out.push(<MarkdownText key={i} text={typeof block.text === 'string' ? block.text : ''} streaming={streaming} />)
+        out.push(
+          <div key={i} className={css.textBlock} data-liuli-chat-anchor-key={blockKey} data-liuli-cascade-text="">
+            <MarkdownText text={typeof block.text === 'string' ? block.text : ''} streaming={streaming} />
+          </div>,
+        )
         break
       case 'reasoning':
-        out.push(<ThinkRow key={i} text={typeof block.text === 'string' ? block.text : ''} running={streaming && i === last} />)
+        out.push(
+          <div key={i} className={css.thinkBlock} data-liuli-chat-anchor-key={blockKey}>
+            <ThinkRow text={typeof block.text === 'string' ? block.text : ''} running={streaming && i === last} />
+          </div>,
+        )
         break
       case 'image':
-        out.push(<div key={i} className={css.imageBlock}>（图片）</div>)
+        out.push(
+          <div key={i} className={css.imageBlock} data-liuli-chat-anchor-key={blockKey}>（图片）</div>,
+        )
         break
       case 'tool-call':
         // 工具执行由独立 tool-result 节点呈现（与官方一致：AssistantMarkdown 跳过）
         break
       default:
-        out.push(<JsonBlock key={i} label="未知内容块" payload={block} />)
+        out.push(
+          <div key={i} className={css.jsonBlock} data-liuli-chat-anchor-key={blockKey}>
+            <JsonBlock label="未知内容块" payload={block} />
+          </div>,
+        )
     }
   }
   return <>{out}</>
@@ -104,7 +140,7 @@ function toolSummary(node: { isError: boolean; error?: { name: string; code: str
 }
 
 /** tool-result 节点的卡片渲染（复刻官方 ToolRow：状态点 + 标题 + 折叠 body）。 */
-function ToolResultCard({ node }: { node: { kind: string; callId: string; call: { name: string; argsRaw: string } | null; content: readonly unknown[]; isError: boolean; error?: { name: string; code: string } | undefined; callView?: { card?: string } | null; resultView?: { card?: string } | null; subCalls?: readonly unknown[] } }) {
+function ToolResultCard({ anchorKey, node }: { anchorKey: string; node: { kind: string; callId: string; call: { name: string; argsRaw: string } | null; content: readonly unknown[]; isError: boolean; error?: { name: string; code: string } | undefined; callView?: { card?: string } | null; resultView?: { card?: string } | null; subCalls?: readonly unknown[] } }) {
   const [expanded, setExpanded] = useState(false)
   const title = node.call?.name ?? node.callId.slice(0, 8)
   const view = node.resultView?.card ?? node.callView?.card
@@ -176,7 +212,7 @@ function ToolResultCard({ node }: { node: { kind: string; callId: string; call: 
   }
 
   return (
-    <div className={css.toolCard} data-state={state}>
+    <div className={css.toolCard} data-state={state} data-liuli-chat-anchor-key={anchorKey}>
       <button
         type="button"
         className={css.toolRowBtn}
@@ -185,7 +221,9 @@ function ToolResultCard({ node }: { node: { kind: string; callId: string; call: 
         onClick={() => { setExpanded(v => !v) }}
       >
         <span className={css.toolLeading}>
-          <StateDot state={node.isError ? 'error' : 'done'} />
+          {node.isError
+            ? <StateDot state="error" />
+            : (TOOL_VARIANT_ICONS[view ?? ''] ?? TOOL_VARIANT_ICONS.default)}
         </span>
         <span className={css.toolTitle}>{title}</span>
         {summary !== '' && (
@@ -208,9 +246,9 @@ function ToolResultCard({ node }: { node: { kind: string; callId: string; call: 
 }
 
 /** user 消息：官方三层结构（userRow → userStack → bubble）。 */
-function UserBubble({ text }: { text: string }) {
+function UserBubble({ anchorKey, text }: { anchorKey: string; text: string }) {
   return (
-    <div className={css.userRow}>
+    <div className={css.userRow} data-liuli-chat-anchor-key={anchorKey}>
       <div className={css.userStack}>
         <div className={css.bubble}>{text}</div>
       </div>
@@ -218,54 +256,61 @@ function UserBubble({ text }: { text: string }) {
   )
 }
 
-/** 完整信息流节点渲染：按顺序输出 user / assistant / tool-result 等。 */
+/** 完整信息流节点渲染：按顺序输出 user / assistant / tool-result 等。
+ *  外层列挂 data-liuli-chat-flow、行根节点挂 data-liuli-chat-anchor-key
+ *  （useId 前缀保证跨实例唯一），即可接入 liuli 级联入场动画（观察器要求
+ *  锚点须为列的直接子元素，见 liuli-transition.ts）。assistant 消息再套一层
+ *  子列：消息内各块（文本/Think/图片/未知块）各自锚定，文本块经
+ *  data-liuli-cascade-text 按 markdown 块级元素逐段级联。 */
 export function ChatFlowView({ snap }: { snap: ConversationSnapshot | undefined }): ReactNode {
+  const surfaceId = useId()
   return useMemo(() => {
     if (snap === undefined) return null
     const out: ReactNode[] = []
     for (const node of snap.nodes) {
       const n = node as { kind: string; seq: number } & Record<string, unknown>
+      const anchorKey = `${surfaceId}:${n.seq}`
       switch (n.kind) {
         case 'user':
         case 'steering': {
           const text = contentText((n.content as readonly unknown[]) ?? [])
-          if (text.trim() !== '') out.push(<UserBubble key={n.seq} text={text} />)
+          if (text.trim() !== '') out.push(<UserBubble key={n.seq} anchorKey={anchorKey} text={text} />)
           break
         }
         case 'assistant': {
           const blocks = (n.blocks as readonly unknown[]) ?? []
           if (blocks.length > 0) {
             out.push(
-              <div key={n.seq} className={css.assistantMsg}>
-                <AssistantBlocks blocks={blocks} streaming={false} />
+              <div key={n.seq} className={css.assistantMsg} data-liuli-chat-flow="">
+                <AssistantBlocks blocks={blocks} streaming={false} prefix={`${surfaceId}:${n.seq}`} />
               </div>,
             )
           }
           break
         }
         case 'tool-result':
-          out.push(<ToolResultCard key={n.seq} node={n as never} />)
+          out.push(<ToolResultCard key={n.seq} anchorKey={anchorKey} node={n as never} />)
           break
         case 'context': {
           const text = contentText((n.content as readonly unknown[]) ?? [])
-          if (text.trim() !== '') out.push(<div key={n.seq} className={css.contextRow}>{text.slice(0, 200)}</div>)
+          if (text.trim() !== '') out.push(<div key={n.seq} className={css.contextRow} data-liuli-chat-anchor-key={anchorKey}>{text.slice(0, 200)}</div>)
           break
         }
         case 'turn-error': {
-          out.push(<div key={n.seq} className={css.errorRow}>⚠ {(n.message as string) ?? '错误'}</div>)
+          out.push(<div key={n.seq} className={css.errorRow} data-liuli-chat-anchor-key={anchorKey}>⚠ {(n.message as string) ?? '错误'}</div>)
           break
         }
         case 'command': {
           const text = contentText((n.content as readonly unknown[]) ?? [])
-          out.push(<div key={n.seq} className={css.commandRow}>/ {(text || '命令').slice(0, 120)}</div>)
+          out.push(<div key={n.seq} className={css.commandRow} data-liuli-chat-anchor-key={anchorKey}>/ {(text || '命令').slice(0, 120)}</div>)
           break
         }
         default:
           break
       }
     }
-    return <div className={css.flow}>{out}</div>
-  }, [snap])
+    return <div className={css.flow} data-liuli-chat-flow="">{out}</div>
+  }, [snap, surfaceId])
 }
 
 /** 流式 partial（运行中的回答尾巴）：只渲染 assistant blocks。 */
@@ -273,12 +318,13 @@ export function ChatFlowPartial({ partial, running }: {
   partial: { blocks?: readonly unknown[] } | null | undefined
   running: boolean
 }): ReactNode {
+  const surfaceId = useId()
   if (partial === null || partial === undefined) return null
   const blocks = partial.blocks ?? []
   if (blocks.length === 0) return null
   return (
-    <div className={css.assistantMsg} data-streaming="">
-      <AssistantBlocks blocks={blocks} streaming={running} />
+    <div className={css.assistantMsg} data-streaming="" data-liuli-chat-flow="">
+      <AssistantBlocks blocks={blocks} streaming={running} prefix={`${surfaceId}:partial`} />
     </div>
   )
 }

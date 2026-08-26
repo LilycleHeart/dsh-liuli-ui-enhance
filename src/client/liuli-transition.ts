@@ -1,8 +1,10 @@
 /**
  * 会话切换/新消息入场动画：官方 harness 的挂类逻辑在 ChatNodeSeat /
  * AssistantMarkdown 组件内部（插件无法修改组件源码），本模块用
- * MutationObserver 在消息列（[data-chat-flow]）的新增节点
- * （[data-chat-anchor-key]）上挂入场类，动画定义在 liuli.css。
+ * MutationObserver 在消息列（官方 [data-chat-flow]，以及本插件自绘的
+ * 信息流 [data-liuli-chat-flow]，两者列结构等价）的新增节点
+ * （官方 [data-chat-anchor-key] / 自绘 [data-liuli-chat-anchor-key]，
+ * 均须是列的直接子元素）上挂入场类，动画定义在 liuli.css。
  *
  * - 切换会话：消息列整批重挂载 → 按 DOM 顺序分配级联延迟（stagger）；
  * - 流式输出：每条新消息各自入场（无延迟）；
@@ -13,8 +15,22 @@
  *   tool-call 的展开区）还会渲染一批无 kind 的嵌套锚点，若一并收集，
  *   同一事件会被重复挂类、级联延迟被嵌套节点占用——表现为“漏网之鱼”
  *   与顺序错乱；
+ * - 例外：带 data-liuli-cascade-text 的文本级联容器（自绘信息流的文本块）
+ *   是**刻意**收集的——容器整体在收集期隐藏，其内部 markdown 块级元素
+ *   （顶层段落/代码块/列表/引用/表格/标题）展开为级联单元逐段入场，
+ *   而不是把整段文本当一个块一次性播放；
  * - 一次整批挂载会被 React 拆成多个 MutationObserver 回调（并发/分帧
  *   提交），用合并窗口把窗口内的挂载并入同一批，级联延迟不因分帧重置；
+ * - 切换会话/整体重载会先移除旧锚点再挂新内容：移除被归属到**列**并
+ *   记录 removedAt，窗口内（VIEW_SWITCH_WINDOW_MS）同列追加视为
+ *   「新视图」——不做同 key 快速重挂载抑制（A→B→A、seq 复用的 key 也
+ *   照样重新级联），更不会出现多批次只播第一批、其余整块出现的问题；
+ * - 不存在「批量冷却」：pending 只收集本批新增锚点，从不对既有行重播，
+ *   冷却反而会让分批渲染/切换的部分组件丢失动画；
+ * - 同 key 快速重挂载（加载完成替换、React 替换重挂载）仍由 removedKeys
+ *   抑制不重播；视图切换时按 isConnected 用新节点顶替旧视图残留的
+ *   pending 项，同 key 不阻塞新内容；removedKeys 是全局 Map，自绘面用
+ *   useId 前缀的 key 避免跨实例冲突；
  * - 级联顺序按 compareDocumentPosition 的文档序，而不是节点深度；
  * - 动画结束/取消后清理 data-liuli-entered 标记，重挂载或节点复用可
  *   再次入场（不清理则同一节点永久失去动画资格）；
@@ -37,11 +53,13 @@ const CASCADE_CAP_MS = 600
 /** 批量挂载合并窗口：窗口内多次 mutation 回调并入同一批统一级联（ms）。 */
 const BATCH_WINDOW_MS = 400
 /** 最近移除锚点 key 的保留窗口：同 key 在窗口内重新挂载视为「加载完成替换」，
- *  不再重播入场动画（避免对话页加载完后又播一次）。 */
-const REMOVED_KEY_TTL_MS = 4000
-/** 同列批量动画冷却：一次批量入场后，短时间内同列继续批量挂载（历史分批渲染）
- *  不再重播；只对批量追加生效（单条流式不受影响）。覆盖加载尾巴的批量追加。 */
-const COLUMN_BATCH_COOLDOWN_MS = 15000
+ *  不再重播入场动画（避免对话页加载完后又播一次）。仅对「无视图切换上下文」
+ *  的整列重挂载生效；列内移除后的追加走视图切换路径，不受此抑制。 */
+const REMOVED_KEY_TTL_MS = 2500
+/** 视图切换窗口：列内锚点被移除后，该窗口内同列追加的新内容视为「切换/重载
+ *  进来的新视图」——不做同 key 重挂载抑制（快速 A→B→A、自绘面 seq 复用的
+ *  key 都重新级联），统一按新内容入场。覆盖切换时新消息分批挂载的整个加载期。 */
+const VIEW_SWITCH_WINDOW_MS = 15000
 /** 列创建后的初始稳定窗口：窗口内到达的锚点按防抖合并（React 分帧提交会被并成
  *  同一批级联），避免首屏与「加载完成追加」被拆成两批、后批无动画直接显示。 */
 const INITIAL_SETTLE_WINDOW_MS = 3000
@@ -49,6 +67,31 @@ const INITIAL_SETTLE_WINDOW_MS = 3000
  *  配合「收集即隐藏」使用：锚点从挂载起就是透明待入场状态，动画晚播也不会
  *  先显示默认内容再消失重播。 */
 const INITIAL_SETTLE_MS = 400
+
+/** 消息列选择器：官方会话列 [data-chat-flow]，以及本插件自绘信息流
+ *  （侧边栏助手 / /btw 答案卡）的 [data-liuli-chat-flow]。两者列结构等价：
+ *  锚点都必须是列的直接子元素。 */
+const FLOW_SELECTOR = '[data-chat-flow], [data-liuli-chat-flow]'
+
+/** 文本级联容器标记：锚点带此属性时，收集容器内部 markdown 块级元素
+ *  （段落/代码块/列表/引用/表格/标题）作为级联单元逐段入场，而不是把
+ *  整个文本块当一个整体播一次动画。容器本身在收集期间隐藏、flush 时
+ *  恢复显示，单元用 animation-fill-mode: backwards 在各自延迟期内保持
+ *  from 关键帧（不可见），因此不会出现「先显示 → 又消失重播」。 */
+const CASCADE_TEXT_ATTR = 'data-liuli-cascade-text'
+/** 文本级联的块级单元选择器（markdown 顶层块元素）。 */
+const TEXT_UNIT_SELECTOR = 'p, pre, ul, ol, table, blockquote, h1, h2, h3, h4, h5, h6'
+
+/** 是否消息锚点：官方 [data-chat-anchor-key] 或自绘 [data-liuli-chat-anchor-key]。 */
+function isAnchor(el: HTMLElement): boolean {
+  return el.hasAttribute('data-chat-anchor-key') || el.hasAttribute('data-liuli-chat-anchor-key')
+}
+
+/** 读取锚点 key（两种属性二选一；removedKeys 是全局 Map，自绘面用
+ *  useId 前缀的 key 避免跨实例冲突）。 */
+function anchorKeyOf(el: HTMLElement): string {
+  return el.getAttribute('data-chat-anchor-key') ?? el.getAttribute('data-liuli-chat-anchor-key') ?? ''
+}
 
 /** 读取当前生效的过渡效果（与设置页同一持久化键）。 */
 function currentEffect(): LiuliTransitionEffect {
@@ -94,12 +137,15 @@ function byDocumentOrder(a: HTMLElement, b: HTMLElement): number {
 }
 
 type ColumnState = {
-  /** 窗口内收集到的待入场锚点（按 data-chat-anchor-key 去重）。 */
+  /** 窗口内收集到的待入场锚点（按 key 去重）。 */
   pending: Map<string, HTMLElement>
+  /** 文本级联容器（收集期间隐藏、flush 时恢复显示，其内部块级单元逐段动画）。 */
+  textGroups: Set<HTMLElement>
   /** 合并窗口定时器。 */
   timer: ReturnType<typeof setTimeout> | null
-  /** 上次批量入场动画的时间戳（performance.now 基准）；用于同列冷却。 */
-  lastBatchAt: number
+  /** 最近一次「列内锚点被移除」的时间戳（performance.now 基准；-Infinity 表示
+   *  从未移除）。移除后同列追加视为视图切换（见 VIEW_SWITCH_WINDOW_MS）。 */
+  removedAt: number
   /** 列状态创建时间（performance.now 基准）；用于初始稳定窗口判断。 */
   createdAt: number
 }
@@ -122,24 +168,24 @@ export function startLiuliTransition(): () => void {
   const directAnchors = (col: HTMLElement): HTMLElement[] => {
     const anchors: HTMLElement[] = []
     for (const child of col.children) {
-      if (child instanceof HTMLElement && child.hasAttribute('data-chat-anchor-key')) anchors.push(child)
+      if (child instanceof HTMLElement && isAnchor(child)) anchors.push(child)
     }
     return anchors
   }
 
-  /** 从新增/移除节点中提取列的直接子锚点（对称处理 added 与 removed）。 */
+  /** 从新增节点中提取列的直接子锚点（仅 added 使用；移除路径单独归属到列）。 */
   const anchorsOfNode = (node: HTMLElement): HTMLElement[] => {
-    if (node.matches('[data-chat-flow]')) {
+    if (node.matches(FLOW_SELECTOR)) {
       // 列整批重挂载
       return directAnchors(node)
     }
-    if (node.hasAttribute('data-chat-anchor-key') && node.parentElement?.matches('[data-chat-flow]')) {
+    if (isAnchor(node) && node.parentElement?.matches(FLOW_SELECTOR)) {
       // 列的直接子锚点
       return [node]
     }
     // 列的祖先容器整批挂载：取容器内各列的直接子锚点
     const anchors: HTMLElement[] = []
-    for (const col of node.querySelectorAll<HTMLElement>('[data-chat-flow]')) {
+    for (const col of node.querySelectorAll<HTMLElement>(FLOW_SELECTOR)) {
       anchors.push(...directAnchors(col))
     }
     return anchors
@@ -155,6 +201,12 @@ export function startLiuliTransition(): () => void {
       columns.delete(col)
       return
     }
+    // 先恢复收集期间隐藏的文本级联容器；其内部单元按各自延迟
+    // （backwards 填充）逐段入场，容器恢复显示不会「先透出再消失」。
+    if (state.textGroups.size > 0) {
+      for (const wrapper of state.textGroups) wrapper.style.removeProperty('opacity')
+      state.textGroups.clear()
+    }
     if (state.pending.size === 0) return
     const effect = currentEffect()
     const ordered = [...state.pending.values()].sort(byDocumentOrder)
@@ -169,7 +221,6 @@ export function startLiuliTransition(): () => void {
     // 否则长会话切换时 180+ 个元素同时启动动画，主线程/合成器非常卡顿；
     // 视口外元素滚动到时已经就绪，用户不会感知。
     let visibleIndex = 0
-    let animatedCount = 0
     const viewportBottom = window.innerHeight
     ordered.forEach((el) => {
       const rect = el.getBoundingClientRect()
@@ -182,40 +233,71 @@ export function startLiuliTransition(): () => void {
       // 视口内：按文档序递增 delay（30ms 步进、600ms cap）。
       const delay = batch ? Math.min(visibleIndex * CASCADE_STEP_MS, CASCADE_CAP_MS) : 0
       visibleIndex += 1
-      animatedCount += 1
       applyEnter(el, effect, delay)
     })
-    if (batch && animatedCount > 0) state.lastBatchAt = now()
   }
 
   const observer = new MutationObserver((mutations) => {
-    // 清理过期的 removed key 记录
     const t = now()
+    // 清理过期的 removed key 记录
     for (const [key, at] of removedKeys) {
       if (t - at > REMOVED_KEY_TTL_MS) removedKeys.delete(key)
     }
 
-    // 先记录本批被移除的锚点：同 key 稍后重新挂载视为替换，不重播动画。
-    // 同时记录本批是否存在「锚点移除」——切换会话/替换重挂载会先移除旧锚点，
-    // 此时冷却护栏不应生效（只有纯追加的历史分批渲染才走同列冷却）。
-    let hasRemovedAnchors = false
+    // 记录「列内锚点被移除」：切换会话/整体重载会先移除旧锚点，同列稍后追加
+    // 的新内容据此识别为「新视图」——不做同 key 抑制、不丢弃动画资格。
+    // 被移除锚点的 key 同时进 removedKeys（供整列重挂载路径的加载替换识别）。
+    // 若列本身已随整批移除（detached），其状态无后续用途，直接清掉
+    // （含隐藏中的文本容器恢复），避免切换会话后残留过期列状态。
+    const markColumnRemoval = (col: HTMLElement): void => {
+      if (!col.isConnected) {
+        const stale = columns.get(col)
+        if (stale !== undefined) {
+          if (stale.timer !== null) clearTimeout(stale.timer)
+          for (const wrapper of stale.textGroups) wrapper.style.removeProperty('opacity')
+          columns.delete(col)
+        }
+        return
+      }
+      let state = columns.get(col)
+      if (state === undefined) {
+        state = { pending: new Map(), textGroups: new Set(), timer: null, removedAt: t, createdAt: t }
+        columns.set(col, state)
+      } else {
+        state.removedAt = t
+      }
+    }
     for (const mutation of mutations) {
       const target = mutation.target instanceof HTMLElement ? mutation.target : null
       for (const removed of mutation.removedNodes) {
         if (!(removed instanceof HTMLElement)) continue
-        // 被移除的单个锚点 parentElement 已为 null，须借助 mutation.target
-        // 判断它原本是否直接挂在 [data-chat-flow] 列下。
-        if (removed.hasAttribute('data-chat-anchor-key') && target?.matches('[data-chat-flow]')) {
-          hasRemovedAnchors = true
-          const key = removed.dataset.chatAnchorKey ?? ''
+        if (isAnchor(removed) && target?.matches(FLOW_SELECTOR)) {
+          // 列的直接子锚点被移除：列即 target（removed 的 parentElement 已为 null）
+          const key = anchorKeyOf(removed)
           if (key !== '') removedKeys.set(key, t)
+          markColumnRemoval(target)
           continue
         }
-        const removedAnchors = anchorsOfNode(removed)
-        if (removedAnchors.length > 0) hasRemovedAnchors = true
-        for (const anchor of removedAnchors) {
-          const key = anchor.dataset.chatAnchorKey ?? ''
-          if (key !== '') removedKeys.set(key, t)
+        if (removed.matches(FLOW_SELECTOR)) {
+          // 列整批重挂载：记录其直接锚点，并清理该列及其内嵌子列（assistant
+          // 消息子列等）的过期状态
+          for (const anchor of directAnchors(removed)) {
+            const key = anchorKeyOf(anchor)
+            if (key !== '') removedKeys.set(key, t)
+          }
+          markColumnRemoval(removed)
+          for (const inner of removed.querySelectorAll<HTMLElement>(FLOW_SELECTOR)) {
+            markColumnRemoval(inner)
+          }
+          continue
+        }
+        // 列的祖先容器整批移除：归属到容器内各列
+        for (const col of removed.querySelectorAll<HTMLElement>(FLOW_SELECTOR)) {
+          for (const anchor of directAnchors(col)) {
+            const key = anchorKeyOf(anchor)
+            if (key !== '') removedKeys.set(key, t)
+          }
+          markColumnRemoval(col)
         }
       }
     }
@@ -229,36 +311,99 @@ export function startLiuliTransition(): () => void {
     const effect = currentEffect()
     if (effect === 'none') return
 
-    // 先收集本批全部「列直接子锚点」，用于区分批量追加与单条流式。
+    // 先收集本批全部「列直接子锚点」。文本级联容器（data-liuli-cascade-text）
+    // 不直接入列：容器整体隐藏，其内部 markdown 块级元素展开为级联单元（见下）。
     const batchAnchors: Array<{ anchor: HTMLElement; col: HTMLElement; key: string }> = []
+    const textGroupWrappers: Array<{ wrapper: HTMLElement; col: HTMLElement }> = []
     for (const node of addedQueue) {
       if (!(node instanceof HTMLElement)) continue
       for (const anchor of anchorsOfNode(node)) {
         const col = anchor.parentElement
-        if (col === null || !col.matches('[data-chat-flow]')) continue
-        batchAnchors.push({ anchor, col, key: anchor.dataset.chatAnchorKey ?? '' })
+        if (col === null || !col.matches(FLOW_SELECTOR)) continue
+        if (anchor.hasAttribute(CASCADE_TEXT_ATTR)) {
+          textGroupWrappers.push({ wrapper: anchor, col })
+          continue
+        }
+        batchAnchors.push({ anchor, col, key: anchorKeyOf(anchor) })
       }
     }
-    const totalAdded = batchAnchors.length
 
-    for (const { anchor, col, key } of batchAnchors) {
-      // 1) 同 key 刚被移除又挂载（React 替换重挂载）：直接显示，不重播。
-      const removedAt = key !== '' ? removedKeys.get(key) : undefined
-      if (removedAt !== undefined && t - removedAt <= REMOVED_KEY_TTL_MS) {
-        removedKeys.delete(key)
-        continue
-      }
+    // 列状态实用函数
+    const stateOf = (col: HTMLElement): ColumnState => {
       let state = columns.get(col)
       if (state === undefined) {
-        state = { pending: new Map(), timer: null, lastBatchAt: -Infinity, createdAt: t }
+        state = { pending: new Map(), textGroups: new Set(), timer: null, removedAt: -Infinity, createdAt: t }
         columns.set(col, state)
       }
-      // 2) 同列刚播过一批动画且本批是「纯批量追加」（历史分批渲染的后续
-      //    批次）：直接显示，不重播。单条流式（totalAdded === 1）始终动画；
-      //    切换会话/替换会先移除旧锚点，走 removedKeys 或正常动画路径。
-      if (!hasRemovedAnchors && totalAdded > 1 && t - state.lastBatchAt <= COLUMN_BATCH_COOLDOWN_MS) continue
-      // 同 key 只保留先收集到的节点（同一事件只入场一次）。
-      if (key !== '' && state.pending.has(key)) continue
+      return state
+    }
+    /** 视图切换：该列在窗口内被移除过锚点，这批追加属于换进来的「新视图」。 */
+    const isViewSwitch = (state: ColumnState): boolean =>
+      state.removedAt !== -Infinity && t - state.removedAt <= VIEW_SWITCH_WINDOW_MS
+
+    // 文本级联容器展开：容器本身收集期间隐藏（不透出文本），内部「最外层」
+    // 块级单元（排除嵌套在其它单元内的，如 blockquote 里的 p、ul 里的 li）
+    // 作为锚点逐段入场，单元 key 用 `<容器key>:u<j>` 保证全局唯一。
+    // 视图切换（换会话）时不做同 key 抑制——新会话的文本照样逐段级联；
+    // 非切换的同 key 快速重挂载（加载完成替换）整体跳过不重播。
+    for (const { wrapper, col } of textGroupWrappers) {
+      const state = stateOf(col)
+      const wrapperKey = anchorKeyOf(wrapper)
+      if (isViewSwitch(state)) {
+        if (wrapperKey !== '') removedKeys.delete(wrapperKey)
+      } else {
+        const removedAt = wrapperKey !== '' ? removedKeys.get(wrapperKey) : undefined
+        if (removedAt !== undefined && t - removedAt <= REMOVED_KEY_TTL_MS) {
+          removedKeys.delete(wrapperKey)
+          continue
+        }
+      }
+      const matched = wrapper.querySelectorAll<HTMLElement>(TEXT_UNIT_SELECTOR)
+      const units: HTMLElement[] = []
+      for (const unit of matched) {
+        if (units.some((p) => p.contains(unit))) continue
+        units.push(unit)
+      }
+      if (units.length === 0) continue
+      // 收集即隐藏：等待合并期间容器不透出文本（单元的 backwards 填充会在
+      // 各自延迟期内保持不可见；flush 恢复容器显示后不会「先显示再消失」）。
+      if (!reduceMotionQuery.matches) wrapper.style.opacity = '0'
+      state.textGroups.add(wrapper)
+      for (let j = 0; j < units.length; j++) {
+        const unit = units[j]
+        if (unit === undefined) continue
+        batchAnchors.push({ anchor: unit, col, key: `${wrapperKey}:u${j}` })
+      }
+      // 保证 flush 一定会发生：即使单元随后被去重跳过，
+      // 容器也要恢复显示（否则文本永久透明）。
+      if (t - state.createdAt < INITIAL_SETTLE_WINDOW_MS) {
+        if (state.timer !== null) clearTimeout(state.timer)
+        state.timer = setTimeout(() => flush(col), INITIAL_SETTLE_MS)
+      } else if (state.timer === null) {
+        state.timer = setTimeout(() => flush(col), BATCH_WINDOW_MS)
+      }
+    }
+
+    for (const { anchor, col, key } of batchAnchors) {
+      const state = stateOf(col)
+      const viewSwitch = isViewSwitch(state)
+      if (viewSwitch) {
+        // 视图切换：同 key 快速重挂载抑制作废（新对话/新内容复用相同 key
+        // （如自绘面 `<surfaceId>:<seq>` 序号从头开始）也重新级联入场）。
+        if (key !== '') removedKeys.delete(key)
+      } else {
+        // 同 key 刚被移除又挂载（React 替换重挂载/整列重挂载的加载完成替换）：
+        // 直接显示，不重播。
+        const removedAt = key !== '' ? removedKeys.get(key) : undefined
+        if (removedAt !== undefined && t - removedAt <= REMOVED_KEY_TTL_MS) {
+          removedKeys.delete(key)
+          continue
+        }
+      }
+      // 同 key 只保留先收集到的节点（同一事件只入场一次）；若已有条目是旧视图
+      // 残留（已卸载），用新节点顶替，不阻塞新内容。
+      const existing = key !== '' ? state.pending.get(key) : undefined
+      if (existing !== undefined && existing.isConnected) continue
       // 收集即隐藏：等待合并期间不让锚点以默认状态先显示，避免动画晚播时
       // 出现「先显示 → 又消失重播」的两次加载观感。reduce motion 时不隐藏。
       if (!reduceMotionQuery.matches) anchor.style.opacity = '0'

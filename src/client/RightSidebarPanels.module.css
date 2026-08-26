@@ -1,4 +1,4 @@
-/* 右侧边栏面板：命令中心 / 文件树 / Git / Wiki —— 琉璃材质风格 */
+/* 右侧边栏面板：命令中心 / 文件树 / Git —— 琉璃材质风格 */
 
 .panelBody {
   flex: 1;
@@ -275,53 +275,6 @@
   white-space: pre;
 }
 
-/* Wiki */
-.wikiReadme {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.wikiLine {
-  margin: 0;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dsw-alias-label-primary, inherit);
-}
-
-.wikiModules {
-  flex: none;
-  max-height: 40%;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.wikiModule {
-  padding: 6px 8px;
-  border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.18));
-  border-radius: var(--liuli-radius-sm, 10px);
-  background: rgba(var(--liuli-acrylic-rgb), 0.35);
-}
-
-.wikiModuleName {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--dsw-alias-brand-primary, #0079bf);
-}
-
-.wikiModuleFiles {
-  font-size: 11px;
-  color: var(--dsw-alias-label-secondary, inherit);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* 命令中心 */
 .commandOverlay {
   position: fixed;
@@ -522,24 +475,6 @@
   white-space: nowrap;
   font-family: var(--ds-font-family-code, ui-monospace, monospace);
   color: var(--dsw-alias-label-primary, inherit);
-}
-
-/* Wiki 源码文件链接 */
-.wikiFileLink {
-  display: inline-block;
-  margin: 1px 4px 1px 0;
-  padding: 2px 7px;
-  border: 1px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 28%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 8%, transparent);
-  color: var(--dsw-alias-brand-primary, #0079bf);
-  font-size: 11px;
-  line-height: 16px;
-  cursor: pointer;
-}
-
-.wikiFileLink:hover {
-  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 16%, transparent);
 }
 
 .loadMoreBtn {

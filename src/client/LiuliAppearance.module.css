@@ -221,6 +221,11 @@
   transform: translateX(18px);
 }
 
+.toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .colorWrap {
   display: flex;
   gap: 8px;
@@ -295,6 +300,48 @@
   font-size: 13px;
   font-weight: 500;
   color: var(--dsw-alias-label-secondary);
+}
+
+/* 高级设置折叠区（声纹参数）：默认收起，展开才显示参数行 */
+.vpAdvanced {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.vpAdvancedHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 160ms var(--ds-ease-in-out), color 160ms var(--ds-ease-in-out),
+    border-color 160ms var(--ds-ease-in-out);
+}
+
+.vpAdvancedHeader:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.vpAdvancedChevron {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+  transition: transform 200ms var(--ds-ease-in-out);
+}
+
+.vpAdvancedChevronOpen {
+  transform: rotate(180deg);
 }
 
 .wallpaperRow {

@@ -9,8 +9,9 @@
  * - 关闭语义：关闭激活标签 → 激活同位右邻；关闭最后一个标签 → 面板收起；
  *   最近关闭上限 8（Roe）；浏览器标签重开时换新 id；
  * - 浏览器标签多实例（browser:<uid>）：新增菜单复用已有浏览器标签，
- *   会话产物链接导航新开标签；同源页面加载后取 document.title 作为标签标题；
- * - 面板类型：Treemapping / 仓库 Wiki / 审查(git) / 浏览器 / 代码查看；
+ *   会话产物链接/自动驱动复用同源已有浏览器标签导航并激活、无同源标签才新开；
+ *   同源页面加载后取 document.title 作为标签标题；
+ * - 面板类型：审查(git) / 浏览器 / 代码查看 / 终端 / 开发者工具 / 辅助对话；
  *   图标统一使用 Material Design 风格（fill currentColor）；
  * - 概览弹层（w-72）：搜索（DSH 加权排序：title 前缀 120/词界 90/包含 70/hint 40/类型 20）
  *   + 打开的标签页（相对时间+关闭钮）+ 最近关闭的标签页（点击重开）；
@@ -30,17 +31,16 @@ import {
   webviewBrowser, type GeometryLoopDispose, type WebviewTabState,
 } from './browser-webview.ts'
 import {
-  CommandPalette, FileTreePanel, WikiPanel, type CommandPaletteCommand,
+  CommandPalette, type CommandPaletteCommand,
 } from './RightSidebarPanels.tsx'
 import { fetchSidebarTree } from './right-sidebar-api.ts'
 import {
-  BugIcon, ChevronsDownIcon, FileCodeCornerIcon, FileDiffIcon, GlobeIcon, ListTreeIcon, MapIcon,
-  MessageSquareTextIcon, NotepadTextIcon, PanelRightCloseIcon, PanelRightOpenIcon, PaletteIcon,
-  PlusIcon, RepoWikiIcon, SearchIcon as SearchGlyph, SquareTerminalIcon, WaypointsIcon,
+  BugIcon, ChevronsDownIcon, FileCodeCornerIcon, FileDiffIcon, GlobeIcon,
+  MessageSquareTextIcon, PanelRightCloseIcon, PanelRightOpenIcon, PlusIcon,
+  SearchIcon as SearchGlyph, SquareTerminalIcon,
 } from './SidePaneIcons.tsx'
 import {
-  DeveloperToolsPanel, PlanPanel, SideChatPanel, SubagentPanel, TerminalPanel, TrajectoryPanel,
-  WhiteboardPanel, type SidePaneHostAccess,
+  DeveloperToolsPanel, SideChatPanel, TerminalPanel, type SidePaneHostAccess,
 } from './SidePaneExtraPanels.tsx'
 import { FileReviewPanel, type ReviewPanelRequest } from './FileReviewPanel.tsx'
 import { REVIEW_FILE_EVENT } from './review-bus.ts'
@@ -199,8 +199,7 @@ export function normalizeBrowserUrl(raw: string): string | undefined {
 
 /** 面板类型：DSH 侧边面板在 DSH 内的可实现集合。 */
 export type SidePaneTabType =
-  | 'treemapping' | 'repo-wiki' | 'git' | 'browser' | 'code-viewer'
-  | 'terminal' | 'developer-tools' | 'trajectory' | 'whiteboard' | 'plan' | 'subagents' | 'side-chat'
+  | 'git' | 'browser' | 'code-viewer' | 'terminal' | 'developer-tools' | 'side-chat'
 
 /** 一个侧边面板标签。 */
 export interface SidePaneTab {
@@ -213,7 +212,7 @@ export interface SidePaneTab {
   path?: string
   /** browser：当前 URL。 */
   url?: string
-  /** browser：页面标题（同源时取 document.title）；terminal/whiteboard/side-chat：显示名。 */
+  /** browser：页面标题（同源时取 document.title）；terminal/side-chat：显示名。 */
   title?: string
   /** browser：页面 favicon（webview 引擎 page-favicon-updated，DSH faviconUrl 对应）。 */
   favicon?: string
@@ -239,6 +238,12 @@ interface PanePersist {
 }
 
 const LS_KEY = 'liuli:side-pane'
+/** 每会话独立标签持久化键：`liuli:side-pane.<sessionId>`；无会话上下文回退全局键。 */
+function sidePanePersistKey(sessionId: string | undefined): string {
+  return sessionId !== undefined && sessionId !== '' ? LS_KEY + '.' + sessionId : LS_KEY
+}
+/** 已移除的面板类型（旧持久化数据里可能残留，加载时丢弃）。 */
+const REMOVED_TAB_TYPES = new Set<string>(['treemapping', 'repo-wiki', 'trajectory', 'whiteboard', 'plan', 'subagents'])
 /** 跨组件挂载的上次会话 id（details slot 重挂组件时保留，供会话状态记忆判断切换）。 */
 let moduleLastSessionId: string | undefined = (() => {
   try { return localStorage.getItem('liuli:last-session') ?? undefined } catch { return undefined }
@@ -255,18 +260,18 @@ const WIDTH_DEFAULT_RATIO = 0.45
 /** 浏览器标签 uid（DSH：browser:<random>）。 */
 let browserUid = 0
 
-function loadPersist(): PanePersist {
+/** 解析持久化 JSON；损坏/空数据回退空标签组。 */
+function parsePersist(raw: string | null): PanePersist {
   const fallback: PanePersist = { v: 2, tabs: [], activeTabId: '', recentClosed: [], width: 0 }
+  if (raw === null || raw === '') return fallback
   try {
-    const raw = localStorage.getItem(LS_KEY)
-    if (raw === null || raw === '') return fallback
     const parsed = JSON.parse(raw) as Partial<PanePersist> & { maximized?: boolean }
     if (parsed === null || typeof parsed !== 'object') return fallback
     return {
       v: 2,
-      tabs: Array.isArray(parsed.tabs) ? parsed.tabs.filter((t): t is SidePaneTab => t !== null && typeof t === 'object' && typeof t.id === 'string' && typeof t.type === 'string') : [],
+      tabs: Array.isArray(parsed.tabs) ? parsed.tabs.filter((t): t is SidePaneTab => t !== null && typeof t === 'object' && typeof t.id === 'string' && typeof t.type === 'string' && !REMOVED_TAB_TYPES.has(t.type)) : [],
       activeTabId: typeof parsed.activeTabId === 'string' ? parsed.activeTabId : '',
-      recentClosed: Array.isArray(parsed.recentClosed) ? parsed.recentClosed.filter((c): c is ClosedTabEntry => c !== null && typeof c === 'object' && typeof (c as ClosedTabEntry).closedAt === 'number') : [],
+      recentClosed: Array.isArray(parsed.recentClosed) ? parsed.recentClosed.filter((c): c is ClosedTabEntry => c !== null && typeof c === 'object' && typeof (c as ClosedTabEntry).closedAt === 'number' && !REMOVED_TAB_TYPES.has((c as ClosedTabEntry).tab?.type ?? '')) : [],
       width: typeof parsed.width === 'number' && Number.isFinite(parsed.width) ? parsed.width : 0,
     }
   } catch {
@@ -274,8 +279,33 @@ function loadPersist(): PanePersist {
   }
 }
 
-function savePersist(state: PanePersist): void {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(state)) } catch { /* 配额满则放弃 */ }
+/** 加载指定会话的标签组（每会话独立）。无存档时执行一次性迁移：旧全局键
+ * `liuli:side-pane` 的标签组被首个访问的会话收养为自身专属（收养后清除全局键，
+ * 保证各会话之间不再共享），其余会话从空标签组开始。 */
+function loadPersist(sessionId: string | undefined): PanePersist {
+  const key = sidePanePersistKey(sessionId)
+  let raw: string | null = null
+  try { raw = localStorage.getItem(key) } catch { /* 忽略 */ }
+  if (raw !== null && raw !== '') return parsePersist(raw)
+  if (key !== LS_KEY) {
+    // 一次性迁移：旧全局标签组收养为当前会话专属。
+    try {
+      const legacy = localStorage.getItem(LS_KEY)
+      if (legacy !== null && legacy !== '') {
+        const state = parsePersist(legacy)
+        if (state.tabs.length > 0 || state.recentClosed.length > 0 || state.activeTabId !== '') {
+          localStorage.setItem(key, JSON.stringify(state))
+          localStorage.removeItem(LS_KEY)
+          return state
+        }
+      }
+    } catch { /* 忽略 */ }
+  }
+  return parsePersist(null)
+}
+
+function savePersist(state: PanePersist, sessionId: string | undefined): void {
+  try { localStorage.setItem(sidePanePersistKey(sessionId), JSON.stringify(state)) } catch { /* 配额满则放弃 */ }
 }
 
 /** 相对时间（DSH ZS：刚刚 / x分钟前 / x小时前 / x天前）。 */
@@ -292,16 +322,10 @@ function relativeTime(ts: number, now: number): string {
 /** 标签标题（DSH V5 对应）。 */
 function tabTitle(tab: SidePaneTab): string {
   switch (tab.type) {
-    case 'treemapping': return 'Treemapping'
-    case 'repo-wiki': return '仓库 Wiki'
     case 'git': return '审查文件'
     case 'browser': return tab.title?.trim() || '浏览器'
     case 'terminal': return tab.title?.trim() || '终端'
     case 'developer-tools': return '开发者工具'
-    case 'trajectory': return '模型调用轨迹'
-    case 'whiteboard': return tab.title?.trim() || '画板'
-    case 'plan': return '计划'
-    case 'subagents': return '子智能体目录'
     case 'side-chat': return tab.title?.trim() || '辅助对话'
     case 'code-viewer': {
       const rel = tab.rel ?? ''
@@ -321,16 +345,10 @@ function tabHint(tab: SidePaneTab): string {
 /** 类型标签（DSH GKt：概览检索的类型字段）。 */
 function tabTypeLabel(tab: SidePaneTab): string {
   switch (tab.type) {
-    case 'treemapping': return 'Treemapping'
-    case 'repo-wiki': return '仓库 Wiki'
     case 'git': return '审查文件'
     case 'browser': return '浏览器'
     case 'terminal': return '终端'
     case 'developer-tools': return '开发者工具'
-    case 'trajectory': return '模型调用轨迹'
-    case 'whiteboard': return '画板'
-    case 'plan': return '计划'
-    case 'subagents': return '子智能体目录'
     case 'side-chat': return '辅助对话'
     case 'code-viewer': return '代码查看'
   }
@@ -343,16 +361,10 @@ function TabIcon({ tab, size = 14 }: { tab: SidePaneTab; size?: number }) {
     return <img src={tab.favicon} alt="" width={size} height={size} style={{ borderRadius: 3, flex: 'none' }} />
   }
   switch (tab.type) {
-    case 'treemapping': return <MapIcon size={size} />
-    case 'repo-wiki': return <RepoWikiIcon size={size} />
     case 'git': return <FileDiffIcon size={size} />
     case 'browser': return <GlobeIcon size={size} />
     case 'terminal': return <SquareTerminalIcon size={size} />
     case 'developer-tools': return <BugIcon size={size} />
-    case 'trajectory': return <WaypointsIcon size={size} />
-    case 'whiteboard': return <PaletteIcon size={size} />
-    case 'plan': return <NotepadTextIcon size={size} />
-    case 'subagents': return <ListTreeIcon size={size} />
     case 'side-chat': return <MessageSquareTextIcon size={size} />
     case 'code-viewer': return <FileCodeCornerIcon size={size} />
   }
@@ -363,9 +375,8 @@ function makeBrowserTab(url: string): SidePaneTab {
   return { id: `browser:${Date.now().toString(36)}-${browserUid}`, type: 'browser', openedAt: Date.now(), url }
 }
 
-/** 多实例面板的 uid（terminal/whiteboard/side-chat 各自计数）。 */
+/** 多实例面板的 uid（terminal/side-chat 各自计数）。 */
 let terminalUid = 0
-let whiteboardUid = 0
 let sideChatUid = 0
 
 function makeTab(type: SidePaneTabType, extra?: Partial<SidePaneTab>): SidePaneTab {
@@ -375,9 +386,6 @@ function makeTab(type: SidePaneTabType, extra?: Partial<SidePaneTab>): SidePaneT
   } else if (type === 'terminal') {
     terminalUid += 1
     base.id = `terminal:${Date.now().toString(36)}-${terminalUid}`
-  } else if (type === 'whiteboard') {
-    whiteboardUid += 1
-    base.id = `whiteboard:${Date.now().toString(36)}-${whiteboardUid}`
   } else if (type === 'side-chat') {
     sideChatUid += 1
     base.id = `side-chat:${Date.now().toString(36)}-${sideChatUid}`
@@ -539,8 +547,6 @@ export interface PreviewDetailsPanelProps {
   closeDetails?: () => void
   /** 把拾取的元素作为引用 chip 插入当前会话输入框。 */
   insertElement: (info: PickedElement) => void
-  /** 把文件路径作为引用插入当前会话输入框。 */
-  addFileToChat?: (path: string) => void
   /** 用宿主默认应用打开路径。 */
   openPath?: (path: string) => void
   /** 新建会话。 */
@@ -564,11 +570,11 @@ export interface PreviewDetailsPanelProps {
  */
 export function PreviewDetailsPanel({
   sessionId, openDetails, closeDetails, insertElement,
-  addFileToChat, openPath, startSession, pickDirectory, toggleTheme,
+  openPath, startSession, pickDirectory, toggleTheme,
   prevSession, nextSession, host,
 }: PreviewDetailsPanelProps) {
   const [open, setOpen] = useState(previewOpen)
-  const [persist, setPersist] = useState<PanePersist>(loadPersist)
+  const [persist, setPersist] = useState<PanePersist>(() => loadPersist(sessionId))
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [overviewOpen, setOverviewOpen] = useState(false)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
@@ -586,6 +592,10 @@ export function PreviewDetailsPanel({
   const lastSession = useRef<string | undefined>(moduleLastSessionId)
   const dragTab = useRef<string | null>(null)
   const resizing = useRef(false)
+  /** 当前会话 id 的 ref 镜像：各种 setPersist 保存块直接读它定位持久化键，
+   *  避免把 sessionId 逐个塞进 useCallback 依赖。 */
+  const sessionRef = useRef(sessionId)
+  sessionRef.current = sessionId
 
   const { tabs, activeTabId, recentClosed, width } = persist
   const activeTab = tabs.find(t => t.id === activeTabId) ?? tabs[0]
@@ -597,7 +607,7 @@ export function PreviewDetailsPanel({
   const patch = useCallback((p: Partial<PanePersist>) => {
     setPersist(prev => {
       const next = { ...prev, ...p }
-      savePersist(next)
+      savePersist(next, sessionRef.current)
       return next
     })
   }, [])
@@ -637,6 +647,9 @@ export function PreviewDetailsPanel({
   openRef.current = previewOpen
   const widthRef = useRef(width)
   widthRef.current = width
+  /** 标签组内存态镜像：会话切换时把当前标签落盘到旧会话键、再载入新会话标签组。 */
+  const persistRef = useRef(persist)
+  persistRef.current = persist
   // 用户主动开合时即时写入会话存档（宽度取 advanced 布局的 liuli:details-width，
   // 否则用本面板持久化 width）。这样切走时不会被宿主自动收起覆盖成 false。
   const saveOpenState = useCallback((v: boolean) => {
@@ -682,10 +695,16 @@ export function PreviewDetailsPanel({
       try {
         localStorage.setItem('liuli:side-pane-session:' + prev, JSON.stringify({ open: prevOpen, width: savedWidth }))
       } catch { /* 配额/隐私模式则放弃 */ }
+      // 标签组归属旧会话：离开前把当前标签（含激活项/最近关闭/宽度）落盘到旧会话键，
+      // 保证每个会话侧边栏独立标签页互不共存。
+      savePersist(persistRef.current, prev)
     }
     lastSession.current = sessionId
     moduleLastSessionId = sessionId
     try { localStorage.setItem('liuli:last-session', sessionId ?? '') } catch { /* 忽略 */ }
+    // 进入：载入新会话的标签组。details 槽位在会话切换时通常整体重挂（useState 初始值
+    // 已按新会话加载），此处兜底「原地换 sessionId」路径，确保两种切换方式标签组都换掉。
+    setPersist(loadPersist(sessionId))
     // 进入：恢复该会话状态
     let restored: { open?: boolean; width?: number } | null = null
     try {
@@ -730,7 +749,7 @@ export function PreviewDetailsPanel({
         ? prev.tabs.map(t => t.id === tab.id ? tab : t)
         : [...prev.tabs, tab]
       const next: PanePersist = { ...prev, tabs: nextTabs, activeTabId: tab.id }
-      savePersist(next)
+      savePersist(next, sessionRef.current)
       return next
     })
   }, [])
@@ -770,7 +789,7 @@ export function PreviewDetailsPanel({
       const closed: ClosedTabEntry[] = [{ tab: target, closedAt: Date.now() }, ...prev.recentClosed].slice(0, RECENT_CLOSED_MAX)
       if (rest.length === 0) {
         const next: PanePersist = { ...prev, tabs: [], activeTabId: '', recentClosed: closed }
-        savePersist(next)
+        savePersist(next, sessionRef.current)
         return next
       }
       const activeStill = rest.some(t => t.id === prev.activeTabId)
@@ -778,7 +797,7 @@ export function PreviewDetailsPanel({
         ? prev.activeTabId
         : (rest[Math.min(index, rest.length - 1)]?.id ?? '')
       const next: PanePersist = { ...prev, tabs: rest, recentClosed: closed, activeTabId: nextActive }
-      savePersist(next)
+      savePersist(next, sessionRef.current)
       return next
     })
     if (willBeEmpty) collapsePane()
@@ -797,7 +816,7 @@ export function PreviewDetailsPanel({
         recentClosed: [...closedOthers.reverse(), ...prev.recentClosed].slice(0, RECENT_CLOSED_MAX),
         activeTabId: id,
       }
-      savePersist(next)
+      savePersist(next, sessionRef.current)
       return next
     })
   }, [])
@@ -814,7 +833,7 @@ export function PreviewDetailsPanel({
         activeTabId: '',
         recentClosed: [...closedAll.reverse(), ...prev.recentClosed].slice(0, RECENT_CLOSED_MAX),
       }
-      savePersist(next)
+      savePersist(next, sessionRef.current)
       return next
     })
     collapsePane()
@@ -839,7 +858,7 @@ export function PreviewDetailsPanel({
         activeTabId: revived.id,
         recentClosed: prev.recentClosed.filter(c => c.tab.id !== id),
       }
-      savePersist(next)
+      savePersist(next, sessionRef.current)
       return next
     })
   }, [])
@@ -854,7 +873,7 @@ export function PreviewDetailsPanel({
       if (moved === undefined) return prev
       nextTabs.splice(to, 0, moved)
       const next = { ...prev, tabs: nextTabs }
-      savePersist(next)
+      savePersist(next, sessionRef.current)
       return next
     })
   }, [])
@@ -871,12 +890,12 @@ export function PreviewDetailsPanel({
       const existing = prev.tabs.find(t => t.type === 'browser')
       if (existing !== undefined) {
         const next: PanePersist = { ...prev, activeTabId: existing.id }
-        savePersist(next)
+        savePersist(next, sessionRef.current)
         return next
       }
       const fresh = makeBrowserTab('about:blank')
       const next: PanePersist = { ...prev, tabs: [...prev.tabs, fresh], activeTabId: fresh.id }
-      savePersist(next)
+      savePersist(next, sessionRef.current)
       return next
     })
     setAddMenuOpen(false)
@@ -898,12 +917,6 @@ export function PreviewDetailsPanel({
     setAddMenuOpen(false)
   }, [openTab, nextNumberedTitle])
 
-  /** 新开一个画板标签（多实例，DSH Cae 对应）。 */
-  const openWhiteboard = useCallback(() => {
-    openTab(makeTab('whiteboard', { title: nextNumberedTitle('画板', 'whiteboard') }))
-    setAddMenuOpen(false)
-  }, [openTab, nextNumberedTitle])
-
   /** 新开一个辅助对话标签（多实例；子会话在面板内 fork）。 */
   const openSideChat = useCallback((initialPrompt?: string) => {
     const tab = makeTab('side-chat', {
@@ -920,7 +933,7 @@ export function PreviewDetailsPanel({
       const target = prev.tabs.find(t => t.id === tabId)
       if (target === undefined || target.childSessionId === childSessionId) return prev
       const next: PanePersist = { ...prev, tabs: prev.tabs.map(t => t.id === tabId ? { ...t, childSessionId } : t) }
-      savePersist(next)
+      savePersist(next, sessionRef.current)
       return next
     })
   }, [])
@@ -938,7 +951,7 @@ export function PreviewDetailsPanel({
           return rest
         }),
       }
-      savePersist(next)
+      savePersist(next, sessionRef.current)
       return next
     })
   }, [])
@@ -953,16 +966,29 @@ export function PreviewDetailsPanel({
     return () => { window.removeEventListener(SIDE_CHAT_OPEN_EVENT, onOpenSideChat) }
   }, [openSideChat])
 
-  /** DSH z/Iae：URL 导航（产物链接）→ 总是新开浏览器标签。 */
+  /** DSH z/Iae：URL 导航（webview 弹窗等）→ 总是新开浏览器标签。 */
   const openBrowserUrl = useCallback((url: string) => {
     openTab(makeBrowserTab(url))
   }, [openTab])
+
+  /** 打开或复用浏览器标签：同源已有浏览器标签 → 导航复用并**激活**（让用户直接
+   *  看到页面，避免每次点击产物链接都新开一个窗口造成标签爆炸）；否则新开标签。
+   *  会话内点击前端产物（PREVIEW_NAVIGATE_EVENT）与自动驱动（AUTO_DRIVE_
+   *  BROWSER_EVENT）共用，保证两条「给侧边栏浏览器喂 URL」的路径语义一致。 */
+  const openOrReuseBrowserUrl = useCallback((url: string) => {
+    const existing = tabs.find(t => t.type === 'browser' && t.url !== undefined && sameOrigin(t.url, url))
+    if (existing !== undefined) {
+      openTab({ ...existing, url })
+    } else {
+      openBrowserUrl(url)
+    }
+  }, [tabs, openBrowserUrl, openTab])
 
   /** 浏览器标签内导航：更新同标签 URL（DSH aoe 对应）。 */
   const navigateBrowserTab = useCallback((id: string, url: string) => {
     setPersist(prev => {
       const next: PanePersist = { ...prev, tabs: prev.tabs.map(t => t.id === id && t.type === 'browser' ? { ...t, url } : t) }
-      savePersist(next)
+      savePersist(next, sessionRef.current)
       return next
     })
   }, [])
@@ -973,7 +999,7 @@ export function PreviewDetailsPanel({
       const target = prev.tabs.find(t => t.id === id)
       if (target === undefined || target.type !== 'browser' || target.title === title) return prev
       const next: PanePersist = { ...prev, tabs: prev.tabs.map(t => t.id === id ? { ...t, title } : t) }
-      savePersist(next)
+      savePersist(next, sessionRef.current)
       return next
     })
   }, [])
@@ -984,7 +1010,7 @@ export function PreviewDetailsPanel({
       const target = prev.tabs.find(t => t.id === id)
       if (target === undefined || target.type !== 'browser' || target.favicon === favicon) return prev
       const next: PanePersist = { ...prev, tabs: prev.tabs.map(t => t.id === id ? { ...t, favicon } : t) }
-      savePersist(next)
+      savePersist(next, sessionRef.current)
       return next
     })
   }, [])
@@ -993,10 +1019,6 @@ export function PreviewDetailsPanel({
   const openCodeViewer = useCallback((path: string, rel: string) => {
     openTab(makeTab('code-viewer', { path, rel }))
   }, [openTab])
-
-  const previewFile = useCallback((path: string, rel: string): void => {
-    openCodeViewer(path, rel)
-  }, [openCodeViewer])
 
   /* ── 快捷键：Ctrl/Cmd+K 命令中心，Ctrl/Cmd+Alt+B 切换面板（DSH 切换右侧面板） ── */
 
@@ -1026,21 +1048,23 @@ export function PreviewDetailsPanel({
     return () => { window.removeEventListener('keydown', onKey, true) }
   }, [togglePane])
 
-  /* ── 会话内点击前端产物：新开浏览器标签并展开（DSH z） ── */
+  /* ── 会话内点击前端产物：复用同源浏览器标签并展开（DSH z） ── */
 
   useEffect(() => {
     const onNavigate = (e: Event): void => {
       const detail = (e as CustomEvent<{ url?: string }>).detail
       const url = detail?.url
       if (url === undefined || url === '') return
-      openBrowserUrl(url)
+      // 复用同源已有浏览器标签并激活（让用户直接看到页面，不重复开窗）；
+      // 没有同源标签才新开。
+      openOrReuseBrowserUrl(url)
       setPreviewOpen(true)
       saveOpenState(true)
       openDetails?.()
     }
     window.addEventListener(PREVIEW_NAVIGATE_EVENT, onNavigate)
     return () => { window.removeEventListener(PREVIEW_NAVIGATE_EVENT, onNavigate) }
-  }, [openDetails, openBrowserUrl])
+  }, [openDetails, openOrReuseBrowserUrl])
 
   /* ── 轮次卡片「审查」：打开侧栏并切到审查文件标签、选中目标文件 ── */
 
@@ -1094,18 +1118,11 @@ export function PreviewDetailsPanel({
       setPreviewOpen(true)
       saveOpenState(true)
       openDetails?.()
-      const existing = tabs.find(t => t.type === 'browser' && t.url !== undefined && sameOrigin(t.url, url))
-      if (existing !== undefined) {
-        // 复用同源已有标签并**激活**（让用户直接看到页面），URL 更新为最新目标；
-        // 纯 navigateBrowserTab 只改 URL 不激活，用户会停在原标签上看不到前端。
-        openTab({ ...existing, url })
-      } else {
-        openBrowserUrl(url)
-      }
+      openOrReuseBrowserUrl(url)
     }
     window.addEventListener(AUTO_DRIVE_BROWSER_EVENT, onAutoDrive)
     return () => { window.removeEventListener(AUTO_DRIVE_BROWSER_EVENT, onAutoDrive) }
-  }, [tabs, openBrowserUrl, openTab, openDetails, saveOpenState])
+  }, [openDetails, openOrReuseBrowserUrl])
 
   /* ── agent CLI open --show：browser:show-* 引擎标签 → 侧边栏可见（轮询桥接）。
      浏览器引擎标签与 GUI 标签共用同一 id 空间；只有 agent 显式 `open --show`
@@ -1370,30 +1387,6 @@ export function PreviewDetailsPanel({
       run: () => { setFileDialogOpen(true) },
     },
     {
-      id: 'search-files',
-      label: '搜索文件',
-      hint: '切到 Treemapping 并按文件名 / 路径实时筛选',
-      shortcut: 'Ctrl F',
-      run: () => {
-        openSingleton('treemapping')
-        window.setTimeout(() => {
-          document.querySelector<HTMLInputElement>('[data-liuli-file-search]')?.focus()
-        }, 0)
-      },
-    },
-    {
-      id: 'treemapping',
-      label: 'Treemapping',
-      hint: '工作区文件树与变更地图',
-      run: () => { openSingleton('treemapping') },
-    },
-    {
-      id: 'wiki',
-      label: '仓库 Wiki',
-      hint: '生成式架构导读',
-      run: () => { openSingleton('repo-wiki') },
-    },
-    {
       id: 'git',
       label: '审查',
       hint: 'Git 状态与只读提交历史图',
@@ -1485,17 +1478,9 @@ export function PreviewDetailsPanel({
     items.push({ id: 'terminal', label: '终端', icon: <SquareTerminalIcon size={16} />, run: () => { openTerminal() } })
     items.push({ id: 'browser', label: '浏览器', icon: <GlobeIcon size={16} />, run: () => { openBrowserFromMenu() } })
     if (!has('developer-tools')) items.push({ id: 'developer-tools', label: '开发者工具', icon: <BugIcon size={16} />, run: () => { openSingleton('developer-tools') } })
-    items.push({ id: 'whiteboard', label: '画板', icon: <PaletteIcon size={16} />, run: () => { openWhiteboard() } })
-    if (sessionId !== undefined && host !== undefined) {
-      if (!has('plan')) items.push({ id: 'plan', label: '计划', icon: <NotepadTextIcon size={16} />, run: () => { openSingleton('plan') } })
-      if (!has('trajectory')) items.push({ id: 'trajectory', label: '模型调用轨迹', icon: <WaypointsIcon size={16} />, run: () => { openSingleton('trajectory') } })
-      if (!has('subagents')) items.push({ id: 'subagents', label: '子智能体目录', icon: <ListTreeIcon size={16} />, run: () => { openSingleton('subagents') } })
-    }
-    if (!has('treemapping')) items.push({ id: 'treemapping', label: 'Treemapping', icon: <MapIcon size={16} />, run: () => { openSingleton('treemapping') } })
-    if (!has('repo-wiki')) items.push({ id: 'repo-wiki', label: '仓库 Wiki', icon: <RepoWikiIcon size={16} />, run: () => { openSingleton('repo-wiki') } })
     items.push({ id: 'open-file', label: '打开文件…', icon: <FileCodeCornerIcon size={16} />, run: () => { setAddMenuOpen(false); setFileDialogOpen(true) } })
     return items
-  }, [tabs, sessionId, host, openSingleton, openBrowserFromMenu, openTerminal, openWhiteboard, openSideChat])
+  }, [tabs, sessionId, host, openSingleton, openBrowserFromMenu, openTerminal, openSideChat])
 
   /* ── 渲染 ── */
 
@@ -1521,7 +1506,7 @@ export function PreviewDetailsPanel({
           dragTab.current = tab.id
           e.dataTransfer.setData('application/x-liuli-pane-tab', tab.id)
           // 有布局对应类型的标签额外写入 dock 拖拽桥 MIME：拖到 Dockable 布局
-          // （琉璃工作台 / DockShell）时由布局侧 drop 接收并放入布局落点。
+          // （DockShell）时由布局侧 drop 接收并放入布局落点。
           if (sideTabToDockPanel(tab) !== undefined) {
             e.dataTransfer.setData(SIDE_TAB_MIME, serializeSideTab(tab))
           }
@@ -1633,15 +1618,6 @@ export function PreviewDetailsPanel({
               className={css.tabPane + (active ? '' : ' ' + css.tabPaneInactive)}
               aria-hidden={active ? undefined : true}
             >
-              {tab.type === 'treemapping' && (
-                <FileTreePanel
-                  sessionId={sessionId}
-                  onOpenFile={previewFile}
-                  onAddFileToChat={addFileToChat}
-                  onOpenPath={openPath}
-                />
-              )}
-              {tab.type === 'repo-wiki' && <WikiPanel sessionId={sessionId} onOpenFile={previewFile} />}
               {tab.type === 'git' && (
                 <FileReviewPanel
                   sessionId={sessionId}
@@ -1672,22 +1648,10 @@ export function PreviewDetailsPanel({
                 />
               )}
               {tab.type === 'terminal' && (
-                <TerminalPanel sessionId={sessionId} title={tabTitle(tab)} />
+                <TerminalPanel sessionId={sessionId} />
               )}
               {tab.type === 'developer-tools' && host !== undefined && (
                 <DeveloperToolsPanel sessionId={sessionId} host={host} />
-              )}
-              {tab.type === 'trajectory' && host !== undefined && (
-                <TrajectoryPanel sessionId={sessionId} host={host} />
-              )}
-              {tab.type === 'whiteboard' && (
-                <WhiteboardPanel boardId={tab.id} />
-              )}
-              {tab.type === 'plan' && host !== undefined && (
-                <PlanPanel sessionId={sessionId} host={host} />
-              )}
-              {tab.type === 'subagents' && host !== undefined && (
-                <SubagentPanel sessionId={sessionId} host={host} />
               )}
               {tab.type === 'side-chat' && host !== undefined && (
                 <SideChatPanel
@@ -1695,7 +1659,6 @@ export function PreviewDetailsPanel({
                   host={host}
                   childSessionId={tab.childSessionId}
                   onChildCreated={(childId) => { setSideChatChild(tab.id, childId) }}
-                  title={tabTitle(tab)}
                   initialPrompt={tab.initialPrompt}
                   onPromptConsumed={() => { clearSideChatPrompt(tab.id) }}
                 />
@@ -2399,14 +2362,13 @@ function loadResponsiveConfig(): ResponsiveConfig {
 /**
  * 是否被 DOM 覆盖层遮挡：Electron 原生 WebContentsView 永远绘制在 DOM 之上
  * （z-index 无效），任何浮现在浏览器区域上方的 DOM 元素——浮动窗口、菜单、
- * 弹层、对话框、工作台等——都会被原生视图盖住、无法看到/点击（表现为
+ * 弹层、对话框、覆盖层等——都会被原生视图盖住、无法看到/点击（表现为
  * "进入视口区域后还是点不了"）。检测到遮挡即返回 true，geometry 上报据此
  * 隐藏原生视图、给上层 DOM 让位。浏览器自身在覆盖层内（o.contains）不算
- * 遮挡（如浏览器面板被浮动/置入工作台）。
+ * 遮挡（如浏览器面板被浮动/置入 dock 布局）。
  */
 const BROWSER_OVERLAY_SELECTOR = [
   '[data-testid="dock-float"]',
-  '[data-testid="dock-workspace"]',
   '[data-testid="dock-menu-card"]',
   '[data-testid="dock-modal"]',
   '[role="menu"]',
@@ -3747,7 +3709,7 @@ export interface CodeViewerPanelProps {
   onOpenPath?: ((path: string) => void) | undefined
 }
 
-/** 代码查看面板（iframe /preview）；导出供 Dockable Workspace 复用。 */
+/** 代码查看面板（iframe /preview）；导出供 Dockable 布局复用。 */
 export function CodeViewerPanel({ sessionId, rel, path, onOpenPath }: CodeViewerPanelProps) {
   const src = sessionId === undefined || sessionId === null || rel === ''
     ? 'about:blank'

@@ -1,5 +1,5 @@
-﻿// 验证：设置页让位修复（工作台自动收起 + 浮动窗口隐藏 + 快捷键守卫）
-import { spawn } from 'node:child_process'
+// 验证：设置页让位修复（advanced shell 浮动窗口隐藏 + body 标记）
+import { execSync, spawn } from 'node:child_process'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -58,7 +58,7 @@ const results = []
 const check = (name, pass, detail = '') => { results.push({ name, pass: !!pass }); console.log((pass ? 'PASS' : 'FAIL') + ' ' + name + (detail ? ' :: ' + String(detail).slice(0, 140) : '')) }
 const openSettings = () => evalJs('(() => { const b = Array.from(document.querySelectorAll("button")).find(el => { const a = el.getAttribute("aria-label") || ""; const t = (el.textContent || "").trim(); return a.includes("设置") || a === "Settings" || t === "设置" }); if (!b) return false; b.click(); return true })()')
 const settingsOpen = () => evalJs('document.body.hasAttribute("data-liuli-settings-open")')
-const dockOpen = () => evalJs('document.querySelector("[data-testid=dock-workspace]") !== null')
+const closeSettings = () => evalJs('(() => { const b = Array.from(document.querySelectorAll("button")).find(el => { const a = el.getAttribute("aria-label") || ""; const t = (el.textContent || "").trim(); const c = String(el.className); return a.includes("关闭设置") || a === "Close settings" || (t === "关闭" && c.includes("close")) }); if (b) { b.click(); return true } return false })()')
 
 try {
   await connect()
@@ -76,38 +76,23 @@ try {
   check('V1b body 有 data-liuli-settings-open', await settingsOpen())
   check('V1c 设置页模态可见（中心命中 overlay 内元素）', await evalJs('(() => { const el = document.elementFromPoint(innerWidth / 2, innerHeight / 2); return !!el?.closest?.("[class*=_overlay]") })()'))
 
-  // V2: 设置页打开时按 Ctrl+Alt+W → 工作台不应打开
-  await evalJs("window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW', ctrlKey: true, altKey: true, bubbles: true }))")
-  await sleep(800)
-  check('V2 设置页打开时快捷键不开工作台', (await dockOpen()) === false)
-
-  // V3: 关闭设置页 → 标记消失，此时快捷键可开工作台
-  await evalJs('(() => { const b = Array.from(document.querySelectorAll("button")).find(el => { const a = el.getAttribute("aria-label") || ""; const t = (el.textContent || "").trim(); const c = String(el.className); return a.includes("关闭设置") || a === "Close settings" || (t === "关闭" && c.includes("close")) }); if (b) { b.click(); return true } return false })()')
-  await sleep(600)
-  check('V3 关闭设置页后标记消失', (await settingsOpen()) === false)
-  await evalJs("window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW', ctrlKey: true, altKey: true, bubbles: true }))")
-  await sleep(800)
-  check('V3b 设置页关闭后快捷键可开工作台', await dockOpen())
-
-  // V4: 工作台开着时打开设置页 → 工作台自动收起
-  await openSettings()
-  await sleep(1200)
-  check('V4 工作台开着时打开设置页', (await settingsOpen()) === true)
-  check('V4b 工作台自动收起', (await dockOpen()) === false)
-
-  // V5: advanced 模式浮动窗口在设置页打开时隐藏
+  // V2: advanced 模式浮动窗口在设置页打开时隐藏
   if (MODE === 'advanced') {
-    // 先关设置页，开工作台（DockShellFrame 浮动窗口在 advanced 下由树面板浮动而来）
-    await evalJs('(() => { const b = Array.from(document.querySelectorAll("button")).find(el => { const a = el.getAttribute("aria-label") || ""; const t = (el.textContent || "").trim(); const c = String(el.className); return a.includes("关闭设置") || a === "Close settings" || (t === "关闭" && c.includes("close")) }); if (b) { b.click(); return true } return false })()')
+    // 关闭设置页后重新打开（DockShellFrame 浮动窗口在 advanced 下由树面板浮动而来）
+    await closeSettings()
     await sleep(600)
-    // 打开设置页后再检查浮动窗口是否已隐藏（无浮动窗口时跳过）
     await openSettings()
     await sleep(1000)
     const floatVisible = await evalJs('(() => { const f = document.querySelector("[data-testid=dock-float]"); if (!f) return "no-float"; const cs = getComputedStyle(f); return cs.visibility + " / " + cs.pointerEvents })()')
-    check('V5 设置页打开时浮动窗口隐藏（或无浮动窗口）', floatVisible === 'no-float' || floatVisible.startsWith('hidden'), String(floatVisible))
+    check('V2 设置页打开时浮动窗口隐藏（或无浮动窗口）', floatVisible === 'no-float' || floatVisible.startsWith('hidden'), String(floatVisible))
   }
 
-  // V6: 页面零报错（收集异常）
+  // V3: 关闭设置页 → 标记消失
+  await closeSettings()
+  await sleep(600)
+  check('V3 关闭设置页后标记消失', (await settingsOpen()) === false)
+
+  // V4: 页面零报错（收集异常）
   const failed = results.filter(r => !r.pass)
   console.log('SUMMARY: ' + (results.length - failed.length) + '/' + results.length + ' passed')
   if (failed.length > 0) console.log('FAILED: ' + failed.map(x => x.name).join(' | '))
@@ -118,4 +103,3 @@ try {
   try { chrome.kill() } catch { /* ignore */ }
   try { execSync('taskkill /PID ' + chrome.pid + ' /T /F', { stdio: 'ignore' }) } catch { /* ignore */ }
 }
-

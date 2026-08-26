@@ -15,7 +15,7 @@
 <br>
 <br>
 
-A **Material Design 3 × Fluent 2** fusion theme plugin for DeepSeek Harness: dynamic color, wallpaper frosted glass, voice visualization, and Dockable workspaces.
+A **Material Design 3 × Fluent 2** fusion theme plugin for DeepSeek Harness: dynamic color, wallpaper frosted glass, and voice visualization.
 
 </div>
 
@@ -29,7 +29,6 @@ A **Material Design 3 × Fluent 2** fusion theme plugin for DeepSeek Harness: dy
 - 🖼️ Wallpaper & frosted materials
 - 🔊 Voice visualization
 - 🌗 Day/night switch
-- 🧩 Dockable workspace
 - 🖥️ Right sidebar
 - 🌐 Embedded browser
 - 🎛️ Frameless window controls

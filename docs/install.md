@@ -60,15 +60,19 @@ pnpm install:desktop:npm
 `pnpm patch:desktop` 会：
 
 1. 备份 `resources/app.asar` 为 `app.asar.bak-frameless`；
-2. 在 `resources/app.asar.unpacked/lib/` 下动态查找 `electron-runtime-*.js`（客户端升级会换 hash 文件名）并修改：
-   - win32 无边框：把 advanced 窗口的 `titleBarStyle: "hidden"` + `titleBarOverlay` 改为 `frame: false`；
+2. 动态定位 `electron-runtime-*.js`（客户端升级会换 hash 文件名，**两种客户端布局都支持**）：
+   - 旧布局：文件在 `resources/app.asar.unpacked/lib/` 磁盘目录（unpacked 条目），直接修改磁盘文件；
+   - 新布局：文件被打包进 `resources/app.asar` 内部（packed 条目），脚本会读出内容、打补丁后**解包**写到 `app.asar.unpacked/lib/`，并把 asar 头条目从打包改为 unpacked（让 Electron 改从磁盘读取）；
+3. 修改 runtime 内容：
+   - win32 无边框：把主窗口的 `titleBarStyle: "hidden"` + `titleBarOverlay` 改为 `frame: false`（新布局用 `autoHideMenuBar` 锚定主窗口块，不误伤 auxiliary 对话框）；
    - 浏览器 webviewTag：把 advanced/compatibility 主窗口 `webPreferences` 补上 `webviewTag: true`（内嵌浏览器用 `<webview>` DOM 标签承载，拉伸时由 CSS `overflow:hidden` 裁剪，不溢出容器）；
-3. 重建 `resources/app.asar` 并同步 integrity；
-4. 写入 `resources/app.asar.patched`。
+4. 重建 `resources/app.asar`（新头 + 原内容区原样接回，offset 相对内容起点不受头部长度变化影响）并同步 integrity；
+5. 写入 `resources/app.asar.patched`。
 
 > 安装目录查找顺序：`DSH_DESKTOP_DIR` 环境变量 → 正在运行的 DSH Desktop 进程路径 → 默认安装路径。
 > 若 `pnpm patch:desktop` 经 DSH Desktop 的 runtime-commands 运行（node 被解析为 Electron 内置 node），
 > 脚本会自动改由系统 node 重新执行，避免 ASAR 钩子干扰。
+> 还原：`node scripts/patch-desktop-frameless.mjs --revert`（逐字恢复原 titleBarOverlay 配置并移除 webviewTag）。
 
 ### 手动安装
 
@@ -177,7 +181,6 @@ pnpm build
 node demo/test-dock-model.ts
 
 # 单项 GUI / 行为验证（多数需要已安装并运行的 DSH Desktop 或 dev server）
-node demo/verify-dock-gui.mjs
 node demo/verify-dock-shell-gui.mjs
 node demo/verify-webview.mjs
 node demo/verify-webview-gui.mjs
@@ -202,7 +205,6 @@ src/
     liuli.css              # 主题令牌与全局覆盖样式源
     liuli-css.ts           # liuli.css 的字符串化拷贝（运行时注入用）
     dock-model.ts          # Dockable 布局纯函数模型（有单测）
-    DockWorkspace.tsx      # 全屏 Dockable 工作台
     dock-shell-frame.tsx   # advanced 模式下将宿主三列布局改造为 dockable
     PreviewPanel.tsx       # 右侧边栏 / 标签面板主壳
     RightSidebarPanels.tsx # 文件树 / Git / Wiki 等标签内容

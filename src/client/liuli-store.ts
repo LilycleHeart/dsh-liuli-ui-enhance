@@ -9,6 +9,7 @@ import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-run
 import { LIULI_SETTINGS_DEFAULTS, type LiuliSettings } from '../liuli-settings.ts'
 import { MODEL_RETRY_DEFAULTS, type ModelRetryState } from './model-retry-store.ts'
 import { HISTORY_LOAD_DEFAULT_BATCHES, type HistoryLoadState } from './history-load-store.ts'
+import { THINKING_FILL_DEFAULTS, type ThinkingFillState } from './thinking-fill-store.ts'
 
 /** 槽位 store 状态。 */
 export interface LiuliStoreState {
@@ -20,6 +21,8 @@ export interface LiuliStoreState {
   modelRetry: ModelRetryState
   /** 切换会话默认历史加载量状态（功能分区）。 */
   historyLoad: HistoryLoadState
+  /** 思考等级自动补全行状态（功能分区）。 */
+  thinkingFill: ThinkingFillState
 }
 
 type LiuliStoreActions = {
@@ -27,6 +30,7 @@ type LiuliStoreActions = {
   syncWallpaper: (draft: LiuliStoreState, wallpaper: string | null) => void
   syncModelRetry: (draft: LiuliStoreState, patch: Partial<ModelRetryState>) => void
   syncHistoryLoad: (draft: LiuliStoreState, patch: Partial<HistoryLoadState>) => void
+  syncThinkingFill: (draft: LiuliStoreState, patch: Partial<ThinkingFillState>) => void
 }
 
 /** 声明琉璃设置 section 的状态与写入面。 */
@@ -48,6 +52,7 @@ export function createLiuliStore(): EngineStoreHandle<LiuliStoreState, LiuliStor
         status: 'idle',
         error: '',
       },
+      thinkingFill: { ...THINKING_FILL_DEFAULTS },
     }),
     actions: {
       syncSettings: (d, settings, revision) => {
@@ -61,6 +66,7 @@ export function createLiuliStore(): EngineStoreHandle<LiuliStoreState, LiuliStor
       },
       syncModelRetry: (d, patch) => { Object.assign(d.modelRetry, patch) },
       syncHistoryLoad: (d, patch) => { Object.assign(d.historyLoad, patch) },
+      syncThinkingFill: (d, patch) => { Object.assign(d.thinkingFill, patch) },
     },
   })
 }
