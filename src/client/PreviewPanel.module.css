@@ -750,9 +750,12 @@
   background: color-mix(in srgb, var(--dsw-alias-brand-primary) 65%, transparent);
 }
 
-/* advanced dock 模式下宽度由 DockShellFrame 的 sash 接管，左缘这条 5px
-   手柄已冗余（视觉线由 panel 左描边承担，但手柄会拦截左缘命中），隐藏。 */
-:global(body[data-dsh-desktop-mode="advanced"]) .resizeHandle {
+/* dock 模式（advanced 桌面壳与 Web 壳）下宽度由 DockShellFrame 的 sash 接管，
+   左缘这条 5px 手柄已冗余（视觉线由 panel 左描边承担，但手柄会拦截左缘命中），
+   隐藏。门控 [data-testid="dock-shell"] 只在琉璃 dock 帧内命中（兼容模式
+   原生 details 列不受影响）；body[data-dsh-desktop-mode] 规则保留给 advanced。 */
+:global(body[data-dsh-desktop-mode="advanced"]) .resizeHandle,
+:global([data-testid="dock-shell"]) .resizeHandle {
   display: none !important;
 }
 

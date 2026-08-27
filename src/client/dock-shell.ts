@@ -12,6 +12,7 @@ import {
   createPanel, emptyLayout, findParentSplit, findTabsContaining, flattenSameDirSplits, makeTabsNode, nextId, normalizeSizes, parseDockLayout, removePanel,
   type DockLayout, type PanelInstance,
 } from './dock-model.ts'
+import { initialWebLayoutState, webLayoutActions } from './web-host-layout.ts'
 
 /* ── 几何常量（对齐官方 ui-layout 契约，仅作文档参考） ── */
 
@@ -35,6 +36,11 @@ export const DETAILS_MAX_RATIO = 0.88
 /** 会话列最小宽度（与 index.ts DESKTOP_ADVANCED_CSS 中的 min-width 同步；
  *  对齐宿主 computeColumns 的 640 参考宽度，避免详情 sash 把会话压得过窄）。 */
 export const CONVERSATION_MIN = 640
+
+/** 官方 AppFrame 的侧栏窄视口自动收起断点（LG，1024px）。advanced 模式下由
+ *  桌面 layout 服务内部处理；Web 模式下由琉璃的 narrow 监视器喂给同构 store。
+ *  语义实现在 web-host-layout.ts（纯逻辑、可单测），此处转出供 index.ts 引用。 */
+export { SIDEBAR_AUTO_COLLAPSE } from './web-host-layout.ts'
 
 /* ── 区域面板类型 ── */
 
@@ -82,6 +88,62 @@ export interface HostLayoutFace {
   setSidebar(width: number): void
   /** 详情宽度（宿主 clamp 300..520）。 */
   setDetails(width: number): void
+}
+
+/* ── Web（兼容模式/纯浏览器）宿主布局面 ──
+   官方 AppFrame（dsh-client-ui-layout）与桌面 advanced 壳声明同一套 slot
+   （root + sidebar/conversation/details/shell.overlay），DockShellFrame 在
+   Web UI 下同样以 priority -1 接管 root cell。接管后官方 layout store 不再
+   驱动任何可见 UI，而 ctx.layout（LayoutController）的 toggleSidebar /
+   openDetails / closeDetails 仍被 ui-sidebar 折叠按钮、ui-conversation 详情
+   开合等外部调用方使用 —— 琉璃提供 LayoutState 契约的同构 store（语义在
+   web-host-layout.ts，逐条对齐官方 createLayoutStore），并经官方
+   LayoutController.attachPanels（公开的重注册路径，AppFrame 自己的 inject
+   hook 就走它）把面板动作重定向到该 store：外部调用方写琉璃 store，
+   DockShellFrame 经 face 订阅同一状态，行为与 advanced 模式一致。
+   本插件卸载 / root entry 失去 cell 时，官方 AppFrame 重新渲染并重新
+   attachPanels 绑回自己的 store（自愈，无需琉璃清理）。 */
+
+/** 烘焙动作集（框架已把 draft 参数绑定掉；即 store.actions 的形状，
+ *  供官方 LayoutController.attachPanels 重定向）。 */
+export type WebLayoutBakedActions = {
+  setSidebar: (px: number) => void
+  setDetails: (px: number) => void
+  toggleSidebar: () => void
+  setNarrow: (narrow: boolean) => void
+  openDetails: () => void
+  closeDetails: () => void
+}
+
+export interface WebHostLayout {
+  /** 宿主布局可读/可写面（交给 DockShellFrame 的 hostLayout prop）。 */
+  face: HostLayoutFace
+  /** 烘焙动作集（供 ctx.layout 的 attachPanels 重定向）。 */
+  bakedActions: WebLayoutBakedActions
+  /** 视口窄化喂入（官方 AppFrame 的 setNarrow 职责；Web 下帧占满视口）。 */
+  setNarrow(narrow: boolean): void
+}
+
+/** 创建 Web 模式宿主布局面（index.ts 在非 advanced 环境调用；每 fiber 一次）。 */
+export function createWebHostLayout(): WebHostLayout {
+  const handle = defineStore({
+    init: initialWebLayoutState,
+    actions: webLayoutActions,
+  })
+  const store = handle.create()
+  return {
+    face: {
+      subscribe: listener => store.subscribe(listener),
+      getSnapshot: () => store.getSnapshot(),
+      toggleSidebar: () => { store.actions.toggleSidebar() },
+      openDetails: () => { store.actions.openDetails() },
+      closeDetails: () => { store.actions.closeDetails() },
+      setSidebar: width => { store.actions.setSidebar(width) },
+      setDetails: width => { store.actions.setDetails(width) },
+    },
+    bakedActions: store.actions,
+    setNarrow: narrow => { store.actions.setNarrow(narrow) },
+  }
 }
 
 /* ── 默认布局：[侧边栏 | 会话 | 详情] ──

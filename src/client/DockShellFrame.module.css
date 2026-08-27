@@ -1,8 +1,10 @@
 /* DockShellFrame（视觉零侵入 dockable 布局）样式。
-   区域表面/框架/标题栏/缩放手柄全部复用桌面插件 ADVANCED_STYLES 的
-   dshDesktop* 类；本文件只承载 dock 机制自身的结构与新出现的交互件
+   区域表面/框架/标题栏/缩放手柄在 advanced 模式复用桌面插件 ADVANCED_STYLES 的
+   dshDesktop* 类（Web UI 下由 index.ts WEB_DOCK_SHELL_CSS 提供等价壳结构）；
+   本文件只承载 dock 机制自身的结构与新出现的交互件
    （合并标签条/抓握点/布局菜单/浮动窗口/拖拽视觉），默认布局观感与
-   原生 advanced shell 保持一致。 */
+   原生 advanced shell 保持一致。帧作用域规则统一挂在
+   [data-testid="dock-shell"]（advanced 与 Web 两种壳都渲染该标记）。 */
 
 /* ── 帧体：dock 画布。无边框改造后不再有 32px caption 行，画布从第 1 行
       起占满整个桌面 frame 网格（1 / -1 横跨全部行）。窗口拖拽区改由
@@ -147,56 +149,58 @@
   border-radius: var(--liuli-radius, 14px) !important;
 }
 
-/* 详细页 surface padding：左/右边缘贴边，中间四边留白；下方无卡片时底部触底。 */
-:global(body[data-dsh-desktop-mode="advanced"] .dshDesktopFrame .dshDesktopDetailsSurface) {
+/* 详细页 surface padding：左/右边缘贴边，中间四边留白；下方无卡片时底部触底。
+   门控用帧自身 [data-testid="dock-shell"]（advanced 桌面壳与 Web 壳都会渲染），
+   不再用 body[data-dsh-desktop-mode] —— Web 模式下桌面壳属性不存在。 */
+:global([data-testid="dock-shell"] .dshDesktopDetailsSurface) {
   padding-top: var(--liuli-dock-padding, 8px) !important;
 }
 
-:global(body[data-dsh-desktop-mode="advanced"] .dshDesktopFrame:not([data-details-collapsed]) .dshDesktopDetailsSurface[data-edge-left]) {
+:global([data-testid="dock-shell"]:not([data-details-collapsed]) .dshDesktopDetailsSurface[data-edge-left]) {
   padding-left: 0 !important;
   padding-right: var(--liuli-dock-padding, 8px) !important;
 }
 
-:global(body[data-dsh-desktop-mode="advanced"] .dshDesktopFrame:not([data-details-collapsed]) .dshDesktopDetailsSurface[data-edge-right]) {
+:global([data-testid="dock-shell"]:not([data-details-collapsed]) .dshDesktopDetailsSurface[data-edge-right]) {
   padding-left: var(--liuli-dock-padding, 8px) !important;
   padding-right: 0 !important;
 }
 
-:global(body[data-dsh-desktop-mode="advanced"] .dshDesktopFrame:not([data-details-collapsed]) .dshDesktopDetailsSurface:not([data-edge-left]):not([data-edge-right])) {
+:global([data-testid="dock-shell"]:not([data-details-collapsed]) .dshDesktopDetailsSurface:not([data-edge-left]):not([data-edge-right])) {
   padding-left: var(--liuli-dock-padding, 8px) !important;
   padding-right: var(--liuli-dock-padding, 8px) !important;
 }
 
-:global(body[data-dsh-desktop-mode="advanced"] .dshDesktopFrame:not([data-details-collapsed]) .dshDesktopDetailsSurface[data-edge-bottom]) {
+:global([data-testid="dock-shell"]:not([data-details-collapsed]) .dshDesktopDetailsSurface[data-edge-bottom]) {
   padding-bottom: 0 !important;
 }
 
-:global(body[data-dsh-desktop-mode="advanced"] .dshDesktopFrame:not([data-details-collapsed]) .dshDesktopDetailsSurface:not([data-edge-bottom])) {
+:global([data-testid="dock-shell"]:not([data-details-collapsed]) .dshDesktopDetailsSurface:not([data-edge-bottom])) {
   padding-bottom: var(--liuli-dock-padding, 8px) !important;
 }
 
 /* 收起态：details shard 宽 0，surface 必须左右 0 padding，否则 content-box
    的 16px 左右 padding 会漏出 32px 的“边”。 */
-:global(body[data-dsh-desktop-mode="advanced"] .dshDesktopFrame[data-details-collapsed] .dshDesktopDetailsSurface) {
+:global([data-testid="dock-shell"][data-details-collapsed] .dshDesktopDetailsSurface) {
   padding: var(--liuli-dock-padding, 8px) 0 0 0 !important;
 }
 
 /* 详细页内卡圆角：贴边侧直角，非贴边侧圆角；底部只在下方无卡片时触底。 */
-:global(body[data-dsh-desktop-mode="advanced"] .dshDesktopFrame .dshDesktopDetailsSurface:not([data-edge-right]) [data-preview-panel]) {
+:global([data-testid="dock-shell"] .dshDesktopDetailsSurface:not([data-edge-right]) [data-preview-panel]) {
   border-top-right-radius: var(--liuli-radius, 14px) !important;
 }
 
-:global(body[data-dsh-desktop-mode="advanced"] .dshDesktopFrame .dshDesktopDetailsSurface:not([data-edge-bottom]):not([data-edge-right]) [data-preview-panel]) {
+:global([data-testid="dock-shell"] .dshDesktopDetailsSurface:not([data-edge-bottom]):not([data-edge-right]) [data-preview-panel]) {
   border-bottom-right-radius: var(--liuli-radius, 14px) !important;
 }
 
-:global(body[data-dsh-desktop-mode="advanced"] .dshDesktopFrame .dshDesktopDetailsSurface:not([data-edge-bottom]):not([data-edge-left]) [data-preview-panel]) {
+:global([data-testid="dock-shell"] .dshDesktopDetailsSurface:not([data-edge-bottom]):not([data-edge-left]) [data-preview-panel]) {
   border-bottom-left-radius: var(--liuli-radius, 14px) !important;
 }
 
 /* 对话页在上下堆叠中位于顶部/中部时，按第一条规范恢复四边留白与底部圆角
    （全局 active 规则默认让会话卡底部触底，这里仅对下方还有卡片的会话列撤销）。 */
-:global(body[data-dsh-desktop-mode="advanced"] .dshDesktopFrame .dshDesktopConversationSurface[data-has-below] [data-conversation-scroll]) {
+:global([data-testid="dock-shell"] .dshDesktopConversationSurface[data-has-below] [data-conversation-scroll]) {
   border-bottom-left-radius: var(--liuli-radius, 14px) !important;
   border-bottom-right-radius: var(--liuli-radius, 14px) !important;
   margin-bottom: 0 !important;

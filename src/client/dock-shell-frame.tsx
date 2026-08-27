@@ -106,6 +106,15 @@ const DRAG_THRESHOLD = 5
 const PANE_CARD_MIN_W = 240
 const PANE_CARD_MIN_H = 160
 
+/** 当前是否运行在 DSH Desktop advanced（无边框）壳内（URL 参数由桌面壳注入）。
+ *  Web UI（兼容模式/纯浏览器）下琉璃帧渲染 data-shell-mode="web" 标记，
+ *  WEB_DOCK_SHELL_CSS 据此提供桌面 ADVANCED_STYLES 缺位时的等价壳样式。 */
+export function isAdvancedShell(): boolean {
+  try {
+    return new URLSearchParams(window.location.search).get('dsh-desktop-mode') === 'advanced'
+  } catch { return false }
+}
+
 /** 会话 header 的定位选择器：官方槽位容器（display:contents）直下 header，或 phase 直下 header。
  *  不要用 `div[data-phase] header` 全量匹配 —— 提问卡片（QuestionComposer/PlanReviewPanel）
  *  内部也是 <header> 标签，会被误认成会话 header 搬进页头面板（表现为提问弹出时
@@ -1644,6 +1653,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     <div
       className="dshDesktopFrame"
       data-desktop-platform={platform}
+      data-shell-mode={isAdvancedShell() ? undefined : 'web'}
       data-sidebar-collapsed={sidebarCollapsed || undefined}
       data-details-collapsed={hostPanels.details === 0 || undefined}
       data-testid="dock-shell"

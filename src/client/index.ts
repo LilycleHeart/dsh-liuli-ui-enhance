@@ -87,8 +87,8 @@ import { BtwAnswerHost, BTW_ANSWER_EVENT } from './BtwAnswer.tsx'
 import { addPanel as addDockPanel } from './dock-model.ts'
 import { DockShellFrame, DOCK_MENU_TOGGLE_EVENT, setDockHostBridge } from './dock-shell-frame.tsx'
 import {
-  createDockShellStore, defaultShellLayout, exportDockJSON, importDockJSON,
-  listShellSlotNames, loadShellSlotByName, saveShellDock, saveShellSlotByName,
+  createDockShellStore, createWebHostLayout, defaultShellLayout, exportDockJSON, importDockJSON,
+  listShellSlotNames, loadShellSlotByName, saveShellDock, saveShellSlotByName, SIDEBAR_AUTO_COLLAPSE,
   type HostLayoutFace,
 } from './dock-shell.ts'
 
@@ -264,6 +264,41 @@ const DESKTOP_ADVANCED_CSS = [
   '  pointer-events: none !important;',
   '}',
 ].join('\n')
+
+/** Web（兼容模式/纯浏览器）Dockable 布局壳样式。
+ *  桌面插件的 ADVANCED_STYLES 只在 DSH Desktop 的 advanced 壳注入，Web UI 下
+ *  不存在；DockShellFrame 在 Web 下接管 root 时需要等价的壳结构（帧网格/表面/
+ *  覆盖层）与外观配方（表面透明/去分割线/贴边直角）。全部规则以
+ *  [data-testid="dock-shell"][data-shell-mode="web"]（仅琉璃 Web dock 帧渲染）
+ *  为根作用域：原生 advanced 壳（dock 开或关）与兼容模式 AppFrame 均不含该
+ *  标记，零影响；advanced 模式的同名配方继续走 DESKTOP_ADVANCED_CSS。 */
+const WEB_DOCK_SHELL_CSS = [
+  '/* ── Web Dockable 布局壳（结构：桌面 ADVANCED_STYLES 的最小等价物）── */',
+  '[data-testid="dock-shell"][data-shell-mode="web"] {',
+  '  position: relative; display: grid; grid-template-rows: 100%; width: 100%; height: 100%; overflow: hidden; background: transparent;',
+  '}',
+  '[data-testid="dock-shell"][data-shell-mode="web"] .dshDesktopMacCaptionRow { display: none; }',
+  '[data-testid="dock-shell"][data-shell-mode="web"] .dshDesktopSidebarSurface {',
+  '  position: relative; min-width: 0; overflow: hidden; background: transparent; border-right: none;',
+  '}',
+  '[data-testid="dock-shell"][data-shell-mode="web"] .dshDesktopUpstreamSidebar { box-sizing: border-box; width: 100%; height: 100%; }',
+  '[data-testid="dock-shell"][data-shell-mode="web"] .dshDesktopConversationSurface {',
+  '  min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: transparent;',
+  '}',
+  '[data-testid="dock-shell"][data-shell-mode="web"] .dshDesktopDetailsSurface {',
+  '  min-width: 0; min-height: 0; overflow: hidden; background: transparent; border-left: none;',
+  '}',
+  '[data-testid="dock-shell"][data-shell-mode="web"] .dshDesktopOverlay { position: absolute; z-index: 1000; inset: 0; pointer-events: none; }',
+  '[data-testid="dock-shell"][data-shell-mode="web"] .dshDesktopOverlay > * { pointer-events: auto; }',
+  '/* ── Web 外观配方（镜像 DESKTOP_ADVANCED_CSS 的 dock 相关规则）── */',
+  '[data-testid="dock-shell"][data-shell-mode="web"] [class*="_shard"]:has([data-region-pane="region:conversation"]) { min-width: 0 !important; }',
+  '[data-testid="dock-shell"][data-shell-mode="web"] .dshDesktopConversationSurface { min-width: 0 !important; }',
+  '[data-testid="dock-shell"][data-shell-mode="web"] [class*="_detailsCol"] [class*="_panel"] { border-left: none !important; }',
+  '[data-testid="dock-shell"][data-shell-mode="web"] .dshDesktopDetailsSurface { padding-bottom: 0 !important; }',
+  '[data-testid="dock-shell"][data-shell-mode="web"] [class*="_detailsCol"] [data-preview-panel] { border-radius: var(--liuli-radius, 14px) 0 0 0 !important; }',
+  '[data-testid="dock-shell"][data-shell-mode="web"] .dshDesktopDetailsSurface[data-edge-left] [data-preview-panel] { border-radius: 0 var(--liuli-radius, 14px) 0 0 !important; }',
+  '[data-testid="dock-shell"][data-shell-mode="web"] [class*="_sidebarCol"] > div > [class*="_root"] { width: 100% !important; }',
+].join('\n')
 /** 解析元素选择器引用（ui-preview 同构：ref = JSON.stringify(PickedElement)）。 */
 function parseLiuliRef(raw: string): PickedElement {
   try {
@@ -296,7 +331,7 @@ function injectThemeCss(): void {
   const style = document.createElement('style')
   style.id = STYLE_ID
   style.setAttribute('data-liuli-theme', '')
-  style.textContent = liuliCss + '\n' + WIDE_MODE_CSS + '\n' + SETTINGS_DEFER_CSS + '\n' + DESKTOP_ADVANCED_CSS
+  style.textContent = liuliCss + '\n' + WIDE_MODE_CSS + '\n' + SETTINGS_DEFER_CSS + '\n' + DESKTOP_ADVANCED_CSS + '\n' + WEB_DOCK_SHELL_CSS
   document.head.appendChild(style)
 }
 
@@ -396,10 +431,10 @@ export function apply(ctx: ClientContext): void {
   // ── 让兼容模式配方（[class*="_frame"]/"_sidebarCol"/"_centerCol"/"_detailsCol"）直接命中 ──
   // advanced 模式下宿主 shell（.dshDesktopFrame 网格）替换上游 AppFrame，
   // 哈希结构类全部消失导致琉璃大部分样式失效；给 shell 表面挂同名别名类即可复用配方。
+  // Web 模式下 Dockable 布局接管 root 时同理（琉璃自己的帧渲染同一批 dshDesktop*
+  // 元素）；兼容模式原生 AppFrame（dock 关闭）没有这些元素，观察为无害空转。
   ctx.effect(() => {
     if (!unofficial('layout')) return () => {}
-    const mode = new URLSearchParams(window.location.search).get('dsh-desktop-mode')
-    if (mode !== 'advanced') return () => {}
     const ALIASES: Array<[string, string]> = [
       ['.dshDesktopFrame', 'liuli_frame'],
       ['.dshDesktopUpstreamSidebar', 'liuli_sidebarCol'],
@@ -427,15 +462,52 @@ export function apply(ctx: ClientContext): void {
     }
   }, 'dsh-liuli-ui-enhance: advanced shell alias classes')
 
-  // ── Dockable 布局 shell（advanced 模式）：把桌面 advanced shell 的既有布局改造成可停靠布局 ──
+  // ── Dockable 布局 shell（advanced 桌面壳 / Web UI 两种环境）：把宿主既有布局改造成可停靠布局 ──
   // advanced 模式下官方 ui-layout 被禁用；桌面 shell（dsh-plugin-desktop）提供 layout 服务
-  // 并占用 root slot（AdvancedFrame）。琉璃以更低的渲染优先级（priority -1）接管 root slot，
+  // 并占用 root slot（AdvancedFrame）。Web UI（兼容模式/纯浏览器）下官方 ui-layout 的
+  // AppFrame 声明同一套 slot（root + sidebar/conversation/details/shell.overlay）。
+  // 琉璃以更低的渲染优先级（priority -1）接管 root slot，
   // 并覆盖 layout 服务指向自己的 dock store —— 三大区域（侧边栏/会话/详情）成为可拖拽面板：
   // 拖拽/四向拆分/边缘与面板内停靠/浮动窗口/标签页合并/sash 缩放 + Workspace 保存/恢复。
-  // 子 slot（sidebar/conversation/details/shell.overlay）的声明仍归桌面 shell，
-  // 本插件借 ctx.slots.inject('sidebar') 等到声明落地后再注册 root 占用者，避免重复声明。
-  if (new URLSearchParams(window.location.search).get('dsh-desktop-mode') === 'advanced' && unofficial('layout')) {
+  // 子 slot（sidebar/conversation/details/shell.overlay）的声明归桌面 shell（advanced）
+  // 或官方 AppFrame（Web），本插件借 ctx.slots.inject('sidebar') 等到声明落地后再注册
+  // root 占用者，避免重复声明。
+  if (unofficial('layout')) {
+    const isAdvancedShell = new URLSearchParams(window.location.search).get('dsh-desktop-mode') === 'advanced'
     const shellHandle = createDockShellStore().create()
+    // 宿主布局面：advanced 用桌面 layout 服务（须带 getSnapshot/subscribe 完整面）；
+    // Web 用琉璃同构 store（createWebHostLayout），并把官方 LayoutController 的
+    // 面板动作经 attachPanels（公开重注册路径）重定向到该 store —— ui-sidebar 折叠
+    // 按钮、ui-conversation 详情开合等外部调用方继续生效；本插件卸载后官方
+    // AppFrame 重新渲染会重新 attach 绑回自己的 store（自愈）。
+    let hostLayout: HostLayoutFace = ctx.layout as unknown as HostLayoutFace
+    /** root 注册 inject 工厂内的动作重定向（与官方 AppFrame 的 inject hook
+     *  attachPanels 同路径、同时机）：inject 在 entry 每次渲染组合时运行，
+     *  保证了「渲染 root cell 的那个 entry 最后一次 attach」——琉璃 cell 被
+     *  abdicate 回退官方 AppFrame 时，官方 inject 自动把控制器绑回官方 store。 */
+    let attachWebLayout: (() => void) | undefined
+    const advancedFaceReady = isAdvancedShell
+      && typeof (ctx.layout as unknown as { getSnapshot?: unknown }).getSnapshot === 'function'
+      && typeof (ctx.layout as unknown as { subscribe?: unknown }).subscribe === 'function'
+    if (!advancedFaceReady) {
+      const webLayout = createWebHostLayout()
+      hostLayout = webLayout.face
+      attachWebLayout = () => {
+        ;(ctx.layout as unknown as { attachPanels?: (actions: unknown) => void }).attachPanels?.(webLayout.bakedActions)
+      }
+      // 尽早重定向一次（官方 AppFrame 若先渲染过，会在这里被覆盖回来）。
+      ctx.effect(() => {
+        attachWebLayout?.()
+        return () => {}
+      }, 'dsh-liuli-ui-enhance: web layout actions redirect')
+      // 窄视口喂 narrow（官方 AppFrame 的 setNarrow 职责；Web 下帧占满视口）。
+      ctx.effect(() => {
+        const onResize = (): void => { webLayout.setNarrow(window.innerWidth < SIDEBAR_AUTO_COLLAPSE) }
+        onResize()
+        window.addEventListener('resize', onResize)
+        return () => { window.removeEventListener('resize', onResize) }
+      }, 'dsh-liuli-ui-enhance: web layout narrow watcher')
+    }
     // 对话页双容器：把 conversation 面板里的 header 槽位容器与正文滚动容器
     // 标记为两个并列容器（CSS 驱动布局），会话切换/面板重挂时由 body 级观察补标记。
     ctx.effect(() => startConversationSplit(), 'dsh-liuli-ui-enhance: conversation header/body split')
@@ -495,9 +567,15 @@ export function apply(ctx: ClientContext): void {
         name: 'root' as const,
         priority: -1,
         children: {},
-        // 宿主 layout 服务（桌面 DesktopLayoutState）经 inject 钩子递进帧层：
-        // 帧层订阅其宽度/narrow 状态，开合动作走它的 toggleSidebar/openDetails/closeDetails。
-        inject: () => ({ dockShell: shellHandle, hostLayout: ctx.layout as unknown as HostLayoutFace }),
+        // 宿主 layout 服务（advanced：桌面 DesktopLayoutState；Web：琉璃同构
+        // store 的 face）经 inject 钩子递进帧层：帧层订阅其宽度/narrow 状态，
+        // 开合动作走它的 toggleSidebar/openDetails/closeDetails。
+        inject: () => {
+          // Web 模式：与本 entry 的每次渲染组合同步重定向官方控制器动作
+          // （见 attachWebLayout 注释；advanced 下为 undefined 不动作）。
+          attachWebLayout?.()
+          return { dockShell: shellHandle, hostLayout }
+        },
       }
       const disposeRegistration = ctx.slots.register(
         rootOptions as typeof rootOptions & { children: RootChildren },

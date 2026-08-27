@@ -138,8 +138,9 @@ export interface LiuliSettings {
   /** 非官方增强总开关：关闭后仅保留官方扩展点功能（主题/声纹/设置页），
    *  全部非官方（侵入式/观察式）功能不挂载，用于与其它插件冲突时一键降级。 */
   unofficial_enabled: boolean
-  /** Dockable 布局改造：advanced 模式接管宿主 root slot（三栏可拖拽/拆分/浮动）、
-   *  会话页头独立面板、conversation-split、桌面 shell 别名类挂载。 */
+  /** Dockable 布局改造：接管宿主 root slot（三栏可拖拽/拆分/浮动；DSH Desktop
+   *  advanced 壳与 Web UI 纯浏览器两种环境）、会话页头独立面板、conversation-split、
+   *  桌面 shell 别名类挂载。 */
   unofficial_layout: boolean
   /** 桌面宿主补丁：自动补丁 DSH Desktop（无边框 / 内嵌 webviewTag）、页面内窗口按钮、
    *  /liuli-window 窗口控制路由、系统回环音频授权；关闭时自动还原已打的补丁
