@@ -156,6 +156,7 @@ docs/
     - 新能力默认纳入「非官方增强」开关组（见 `docs/features.md` 兼容表），关闭时**完全不挂载**（不留观察器、不接管布局）；总开关 `unofficial_enabled` 关闭后只保留官方扩展点功能。
     - 不移动 React 管理的宿主 DOM、不抢占 root slot（除非在 `unofficial_layout` 开关下）、不写全局 `* { ... }` 规则；观察宿主用 MutationObserver + rAF 节流，离开时清理。
     - 验证：新功能上线前检查与其它插件共存（另一插件的面板/样式不被破坏、本插件各开关关闭后界面干净、无前缀泄漏到全局）。
+15. **git 分支约定（用户指定）**：日常所有改动默认在 `beta` 分支上进行（commit 与 push 都走 `origin/beta`），**不提交、不推送 `master`**；`master` 只作为稳定发布分支，除非用户明确要求，否则不切换到 master、不 cherry-pick/merge 到 master。开工前先确认当前分支是 `beta`（`git rev-parse --abbrev-ref HEAD`），若不是先 `git switch beta` 再动代码。
 
 ## 关键避坑
 
