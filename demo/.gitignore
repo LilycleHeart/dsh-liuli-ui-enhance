@@ -1,7 +1,0 @@
-# 测试音频文件不入库（从本机 CloudMusic / Downloads 加载即可）
-*.wav
-*.mp3
-*.flac
-*.data
-# 自测截图产物
-*.png
