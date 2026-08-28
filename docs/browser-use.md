@@ -41,24 +41,38 @@
 
 ## ops CDP 操作面（可操作调试）
 
-`POST /liuli-browser/ops`，body `{ tabId, method, params }`，返回
-`{ ok: true, value }` / `{ ok: false, error: { code, message } }`。
+`POST /liuli-browser/ops`，body `{ tabId, method, params }`（可带 `sessionId`
+做会话隔离），返回 `{ ok: true, value }` / `{ ok: false, error: { code, message } }`。
 
 - **tabId**：引擎标签 id（`agent:*` / `browser:*`）；`webview` /
   `webview:<url子串>` 解析侧边栏 `<webview>` 承载的 guest（webviewTag 开启时
   侧边栏浏览器走 DOM webview，不建引擎标签）。
-- **方法**：`snapshot`（ariaSnapshot，mode `ai`（带 `[ref=eN]`）/`yaml`）、
-  `elementInfo`、`click`（真实按下/抬起）、`type`/`fill`、`press`、`hover`（合成）、
-  `scroll`、`select`、`check`/`uncheck`、`evaluate`（isolated world）、`playwright`
-  （domSnapshot/elementInfo/evaluate/locator）、`getState`/`navigate`/`back`/
-  `forward`/`reload`/`stop`/`newTab`/`closeTab`/`list`/`screenshot`/
-  `browserViewportSet`/`browserViewportReset`。
+- **方法**：`snapshot`（ariaSnapshot，mode `ai`（带 `[ref=eN]`）/`yaml`，**自动
+  合并 child frame(iframe) 段落并全局重编号 ref**）、`elementInfo`、`click`（真实
+  按下/抬起；iframe 内自动切合成 click——OOPIF 的 Input 不转发）、`type`/`fill`、
+  `press`、`hover`（合成）、`scroll`、`select`、`check`/`uncheck`、`evaluate`
+  （isolated world，可 `frameId`）、`waitFor`（selector 可见性/表达式轮询）、
+  `drag`（from/to 均支持 ref/selector/坐标）、`cua`（坐标模式
+  click/scroll/keypress/drag）、`getDialog`/`handleDialog`（对话框历史与一次性
+  应答策略）、`playwright`（domSnapshot/elementInfo/evaluate/locator）、
+  `getState`/`navigate`/`back`/`forward`/`reload`/`stop`/`newTab`/`closeTab`/
+  `list`/`screenshot`/`browserViewportSet`/`browserViewportReset`。
+- **iframe**：child frame 惰性建隔离 world 并注入；快照分段合并（`[frame f:<id>
+  url=…]` 标注），ref 全局唯一并路由到所属 frame；iframe 内坐标经
+  `DOM.getFrameOwner` 换算;`evaluate` 可 `frameId:'f:<id>'` 指定 frame。
+- **会话隔离**：`--session <id>` / env `LIULI_DSH_SESSION_ID` / body
+  `sessionId` 创建的标签归属该会话,其它会话 `list` 不到、操作 404;无主
+  (GUI 创建/不带 session)标签为公共。
 - aria 快照的 `[ref=eN]` 跨请求可用：isolated world 同名复用同一
   executionContext，注入实例（`globalThis.__liuliPlaywrightInjected`）常驻；
   导航后失效，重新 snapshot 即恢复。
-- 真实输入前引擎会把屏外/隐藏的视图临时垫进窗口（GUI 之下 + 1024×768），
-  否则 Input 命中不了任何元素；操作完按原几何复位，GUI 承载不受影响。
-- 自测：`node demo/verify-browser-ops.mjs`（T1..T26，全部经 CDP 桥，需
+- 真实输入前引擎会把屏外/隐藏的视图临时垫进窗口（GUI 之下 + 1024×768，等
+  合成器出帧），否则 Input 命中不了任何元素；操作完按原几何复位，GUI 承载
+  不受影响。
+- **标签恢复与驱逐**：引擎标签列表持久化到 `~/.liuli-theme/browser-tabs.json`，
+  DSH 重启后自动按记录 URL 重建；标签超 32 个时自动关最久未用的 `agent:*`
+  标签（GUI 桥接标签不动）。
+- 自测：`node demo/verify-browser-ops.mjs`（T1..T41，全部经 CDP 桥，需
   调试模式 DSH）。
 
 ## 外部 CLI 与 CDP 桥（Host fence）

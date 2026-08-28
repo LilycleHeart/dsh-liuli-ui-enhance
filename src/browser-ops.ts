@@ -50,9 +50,10 @@ export interface BrowserOpsDeps {
   /**
    * 真实输入(Input.*)前把标签视图垫进窗口:屏外/隐藏视图没有合成帧,
    * mousePressed/Released 不挂死但 hit test 不命中(实测 click 不触发 onclick)。
-   * 引擎实现为「垫 GUI 之下 + 1024×768」,restore 时按原几何复位。
+   * 引擎实现为「垫 GUI 之下 + 1024×768」并等待合成器出帧——垫层后立即点击
+   * 会命中旧空白帧,iframe 等延迟合成的内容全部 miss;restore 时按原几何复位。
    */
-  prepareTabSurface(tabId: string): void
+  prepareTabSurface(tabId: string): Promise<void> | void
   restoreTabSurface(tabId: string): void
 }
 
@@ -65,6 +66,7 @@ export type OpsResult =
 export const OPS_METHODS = [
   'snapshot', 'elementInfo', 'click', 'type', 'fill', 'press', 'hover', 'scroll',
   'select', 'check', 'uncheck', 'evaluate', 'playwright',
+  'waitFor', 'drag', 'cua', 'getDialog', 'handleDialog',
 ] as const
 
 /** Playwright InjectedScript 构造参数(对齐 zcode PlaywrightLocatorEngine.inject)。 */
@@ -95,18 +97,15 @@ interface OpsSession {
   attached: boolean
   frameId: string | null
   contextId: number | null
+  /** child frame → 其隔离 world contextId(iframe 支持;惰性构建,失效重建)。 */
+  children: Map<string, { contextId: number | null }>
+  /** 全局 ref → (frameId, world 内 localRef):snapshot 重编号时建立,ref 定位路由用。 */
+  refMap: Map<string, { frameId: string | null; localRef: string }>
 }
 
 const ok = (value: unknown): OpsResult => ({ ok: true, value })
 const fail = (code: string, message: string): OpsResult => ({ ok: false, error: { code, message } })
 
-/** ref 优先于 selector;都没有报错。 */
-function selectorFrom(params: Record<string, unknown>): string | undefined {
-  const ref = typeof params.ref === 'string' && params.ref !== '' ? params.ref : undefined
-  if (ref !== undefined) return ref.startsWith('aria-ref=') ? ref : `aria-ref=${ref}`
-  const selector = typeof params.selector === 'string' && params.selector !== '' ? params.selector : undefined
-  return selector
-}
 
 /** 精简按键映射(单字符自动推导;对齐 playwright usKeyboardLayout 常用子集)。 */
 const KEY_DEFS: Record<string, { key: string; code: string; vk: number; text?: string }> = {
@@ -165,7 +164,7 @@ export function createBrowserOps(deps: BrowserOpsDeps) {
   async function ensureAttached(wc: OpsWebContents): Promise<OpsSession> {
     let session = sessions.get(wc)
     if (session === undefined) {
-      session = { attached: false, frameId: null, contextId: null }
+      session = { attached: false, frameId: null, contextId: null, children: new Map(), refMap: new Map() }
       sessions.set(wc, session)
     }
     if (!session.attached) {
@@ -179,6 +178,8 @@ export function createBrowserOps(deps: BrowserOpsDeps) {
             s.attached = false
             s.frameId = null
             s.contextId = null
+            s.children.clear()
+            s.refMap.clear()
           }
         })
       }
@@ -209,10 +210,19 @@ export function createBrowserOps(deps: BrowserOpsDeps) {
     const world = await cdp(wc, 'Page.createIsolatedWorld', { frameId: session.frameId, grantUniveralAccess: false, worldName: WORLD_NAME }, 8000)
     const contextId = (world as { executionContextId?: number }).executionContextId
     if (typeof contextId !== 'number') throw new Error('unable to create locator world')
-    // source 经 Runtime.callFunctionOn 以 JSON 参数传入(不经代码字符串形态):
-    // tsdown/rolldown 会把「字符串常量拼接」折叠回模板字面量且不转义其中的
-    // `${`/反引号(实测注入 26 项全挂的根因),参数传递彻底绕开该重写;
-    // eval(src) 是直接 eval,在函数作用域内求值,module 变量可见。
+    await injectIntoContext(wc, contextId)
+    session.contextId = contextId
+    return contextId
+  }
+
+  /**
+   * 在指定 executionContext 注入 InjectedScript 实例(幂等)。
+   * source 经 Runtime.callFunctionOn 以 JSON 参数传入(不经代码字符串形态):
+   * tsdown/rolldown 会把「字符串常量拼接」折叠回模板字面量且不转义其中的
+   * `${`/反引号(实测注入 26 项全挂的根因),参数传递彻底绕开该重写;
+   * eval(src) 是直接 eval,在函数作用域内求值,module 变量可见。
+   */
+  async function injectIntoContext(wc: OpsWebContents, contextId: number): Promise<void> {
     const created = await cdp(wc, 'Runtime.callFunctionOn', {
       functionDeclaration: '(function (src, cfg, gname) {'
         + 'if (globalThis[gname]) return true;'
@@ -228,13 +238,16 @@ export function createBrowserOps(deps: BrowserOpsDeps) {
       returnByValue: true,
     }, 20000)
     if ((created as { result?: { value?: unknown } })?.result?.value !== true) throw new Error('unable to initialize playwright injected runtime')
-    session.contextId = contextId
-    return contextId
   }
 
   /** world 内求值(returnByValue;exceptionDetails 转错误消息)。 */
   async function evalWorld(wc: OpsWebContents, session: OpsSession, expression: string, timeoutMs = 10000): Promise<any> {
     const contextId = await ensureWorld(wc, session)
+    return evalInContext(wc, contextId, expression, timeoutMs)
+  }
+
+  /** 指定 executionContext 求值(returnByValue;exceptionDetails 转错误消息)。 */
+  async function evalInContext(wc: OpsWebContents, contextId: number, expression: string, timeoutMs = 10000): Promise<any> {
     const response = await cdp(wc, 'Runtime.evaluate', { expression, contextId, returnByValue: true, awaitPromise: true }, timeoutMs)
     const detail = (response as { exceptionDetails?: { exception?: { description?: string; value?: unknown }; text?: string } }).exceptionDetails
     if (detail !== undefined) {
@@ -244,9 +257,106 @@ export function createBrowserOps(deps: BrowserOpsDeps) {
     return (response as { result?: { value?: unknown } })?.result?.value
   }
 
-  /** 解析 ref/selector → 校验可交互 → 返回元素中心与描述(click 前置共用)。 */
-  async function resolveActionable(wc: OpsWebContents, session: OpsSession, selector: string, states: string[]): Promise<{ x: number; y: number; tag: string; text: string }> {
-    const probe = await evalWorld(wc, session, `(async () => {
+  /** frameId null = 主 frame world;否则 child frame 的 world(惰性建,失效重建)。 */
+  async function evalFrameWorld(wc: OpsWebContents, session: OpsSession, frameId: string | null, expression: string, timeoutMs = 10000): Promise<any> {
+    if (frameId === null) return evalWorld(wc, session, expression, timeoutMs)
+    let child = session.children.get(frameId)
+    if (child === undefined) {
+      child = { contextId: null }
+      session.children.set(frameId, child)
+    }
+    if (child.contextId !== null) {
+      try {
+        const alive = await cdp(wc, 'Runtime.evaluate', { expression: WORLD_ALIVE_PROBE, contextId: child.contextId, returnByValue: true }, 3000)
+        if ((alive as { result?: { value?: unknown } })?.result?.value === true) return evalInContext(wc, child.contextId, expression, timeoutMs)
+      } catch { /* context 失效,重建 */ }
+      child.contextId = null
+    }
+    const world = await cdp(wc, 'Page.createIsolatedWorld', { frameId, grantUniveralAccess: false, worldName: WORLD_NAME }, 8000)
+    const contextId = (world as { executionContextId?: number }).executionContextId
+    if (typeof contextId !== 'number') throw new Error(`unable to create locator world for frame ${frameId}`)
+    await injectIntoContext(wc, contextId)
+    child.contextId = contextId
+    return evalInContext(wc, contextId, expression, timeoutMs)
+  }
+
+  /**
+   * ref/selector → 目标 frame + world 内 selector。ref 优先查全局 refMap
+   * (snapshot 重编号时建立)路由到所属 frame;params.frameId('f:<frameId>')
+   * 可显式指定 frame;默认主 frame。
+   */
+  function targetFrom(session: OpsSession, params: Record<string, unknown>): { selector: string; frameId: string | null } {
+    const ref = typeof params.ref === 'string' && params.ref !== '' ? params.ref : undefined
+    if (ref !== undefined) {
+      const mapped = session.refMap.get(ref)
+      if (mapped !== undefined) return { selector: mapped.localRef.startsWith('aria-ref=') ? mapped.localRef : `aria-ref=${mapped.localRef}`, frameId: mapped.frameId }
+      return { selector: ref.startsWith('aria-ref=') ? ref : `aria-ref=${ref}`, frameId: null }
+    }
+    const frameId = typeof params.frameId === 'string' && params.frameId.startsWith('f:') ? params.frameId.slice(2) : null
+    const selector = typeof params.selector === 'string' && params.selector !== '' ? params.selector : undefined
+    return { selector: selector ?? '', frameId }
+  }
+
+  /**
+   * iframe 坐标换算:child frame 内元素的 getBoundingClientRect 相对该 frame
+   * 视口,须叠加父 frame 中 <iframe> 元素的位置(DOM.getFrameOwner → resolveNode
+   * → callFunctionOn 取 owner rect)。一层换算覆盖绝大多数场景。
+   */
+  async function offsetForFrame(wc: OpsWebContents, frameId: string | null): Promise<{ dx: number; dy: number }> {
+    if (frameId === null) return { dx: 0, dy: 0 }
+    try {
+      const owner = await cdp(wc, 'DOM.getFrameOwner', { frameId }, 5000)
+      const backendNodeId = (owner as { backendNodeId?: number })?.backendNodeId
+      if (typeof backendNodeId !== 'number') return { dx: 0, dy: 0 }
+      const node = await cdp(wc, 'DOM.resolveNode', { backendNodeId }, 5000)
+      const objectId = (node as { object?: { objectId?: string } })?.object?.objectId
+      if (objectId === undefined) return { dx: 0, dy: 0 }
+      const rectResp = await cdp(wc, 'Runtime.callFunctionOn', {
+        objectId,
+        functionDeclaration: '(function () { const r = this.getBoundingClientRect(); return JSON.stringify({ left: r.left, top: r.top }) })',
+        returnByValue: true,
+      }, 5000)
+      const rect = JSON.parse(String((rectResp as { result?: { value?: unknown } })?.result?.value ?? '{}')) as { left?: number; top?: number }
+      return { dx: Math.round(rect.left ?? 0), dy: Math.round(rect.top ?? 0) }
+    } catch {
+      return { dx: 0, dy: 0 }
+    }
+  }
+
+  /** 快照 YAML 重编号:各 frame 的 [ref=eN] 全局唯一化并记录路由映射。 */
+  function renumberRefs(yaml: string, frameId: string | null, counter: { n: number }, map: Map<string, { frameId: string | null; localRef: string }>): string {
+    return yaml.replace(/\[ref=(e\d+)\]/g, (_m, localRef: string) => {
+      const globalRef = 'e' + counter.n
+      counter.n += 1
+      map.set(globalRef, { frameId, localRef })
+      return `[ref=${globalRef}]`
+    })
+  }
+
+  /**
+   * child frame 内点击:OOPIF(跨源 iframe)是独立进程 target,主 frame 的
+   * Input.dispatchMouseEvent 不转发进 iframe(实测坐标命中但不触发 onclick);
+   * 用 world 内合成 click(DOM 层 mousedown/mouseup + el.click()),onclick 等
+   * handler 可靠触发。scrollIntoView 先把元素滚进 iframe 视口。
+   */
+  async function frameClick(wc: OpsWebContents, session: OpsSession, frameId: string, selector: string): Promise<{ found: boolean; tag?: string }> {
+    const r = await evalFrameWorld(wc, session, frameId, `(() => {
+      const el = ${QUERY_ONE(selector)}
+      if (el === null) return { found: false }
+      el.scrollIntoView({ block: 'center' })
+      const r = el.getBoundingClientRect()
+      const opts = { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, view: el.ownerDocument.defaultView }
+      el.dispatchEvent(new MouseEvent('mousedown', opts))
+      el.dispatchEvent(new MouseEvent('mouseup', opts))
+      el.click()
+      return { found: true, tag: el.tagName.toLowerCase() }
+    })()`, 8000)
+    return (r ?? { found: false }) as { found: boolean; tag?: string }
+  }
+
+  /** 解析 ref/selector → 校验可交互 → 返回元素中心与描述(click 前置共用;frame 感知)。 */
+  async function resolveActionable(wc: OpsWebContents, session: OpsSession, selector: string, states: string[], frameId: string | null = null): Promise<{ x: number; y: number; tag: string; text: string }> {
+    const probe = await evalFrameWorld(wc, session, frameId, `(async () => {
       const inj = globalThis.${INJECTED_GLOBAL}
       const el = ${QUERY_ONE(selector)}
       if (el === null) return { found: false }
@@ -265,7 +375,9 @@ export function createBrowserOps(deps: BrowserOpsDeps) {
     if (probe === null || typeof probe !== 'object') throw new Error('element probe failed')
     if (probe.found !== true) throw new Error(`element not found: ${selector}`)
     if (probe.problem) throw new Error(`element not actionable: ${probe.problem}`)
-    return { x: Math.round(probe.x), y: Math.round(probe.y), tag: probe.tag, text: probe.text }
+    // child frame 内坐标叠加父 iframe 元素偏移(Input 是页面级 hit test,须视口坐标)。
+    const offset = await offsetForFrame(wc, frameId)
+    return { x: Math.round(probe.x) + offset.dx, y: Math.round(probe.y) + offset.dy, tag: probe.tag, text: probe.text }
   }
 
   /** 真实按下/抬起(完整 click;绝不发 mouseMoved——挂死坑,见模块注释)。 */
@@ -278,16 +390,13 @@ export function createBrowserOps(deps: BrowserOpsDeps) {
     if (double) await round(2)
   }
 
-  /** 键序:keydown → char → keyup(可打印键带 text)。 */
+  /** 键序:keydown(带 text,单字符靠它落字)→ keyup;keyDown 已插入字符,不再发 char(会双写)。 */
   async function dispatchKey(wc: OpsWebContents, key: string, modifiers = 0): Promise<void> {
     const upper = key.length === 1 ? key.toUpperCase() : ''
     const def = KEY_DEFS[key] ?? (key.length === 1 ? { key, code: upper === key ? '' : `Key${upper}`, vk: upper.charCodeAt(0), text: key } : undefined)
     if (def === undefined) throw new Error(`unsupported key: ${key}`)
     const base = { key: def.key, code: def.code, windowsVirtualKeyCode: def.vk, nativeVirtualKeyCode: def.vk, modifiers }
-    await cdp(wc, 'Input.dispatchKeyEvent', { type: 'keyDown', ...base }, 5000)
-    if (def.text !== undefined) {
-      await cdp(wc, 'Input.dispatchKeyEvent', { type: 'char', text: def.text, key: def.key, code: def.code, windowsVirtualKeyCode: def.vk, nativeVirtualKeyCode: def.vk, modifiers }, 5000)
-    }
+    await cdp(wc, 'Input.dispatchKeyEvent', { type: 'keyDown', ...base, ...(def.text !== undefined ? { text: def.text } : {}) }, 5000)
     await cdp(wc, 'Input.dispatchKeyEvent', { type: 'keyUp', ...base }, 5000)
   }
 
@@ -296,20 +405,56 @@ export function createBrowserOps(deps: BrowserOpsDeps) {
   async function opSnapshot(wc: OpsWebContents, session: OpsSession, params: Record<string, unknown>): Promise<OpsResult> {
     const mode = params.mode === 'yaml' ? 'yaml' : 'ai'
     const ref = typeof params.ref === 'string' && params.ref !== '' ? params.ref : undefined
-    const yaml = await evalWorld(wc, session, `(() => {
+    // 局部快照(ref 定位到具体元素):在 ref 所属 frame 的 world 内执行。
+    if (ref !== undefined) {
+      const tgt = targetFrom(session, { ref })
+      const yaml = await evalFrameWorld(wc, session, tgt.frameId, `(() => {
+        const inj = globalThis.${INJECTED_GLOBAL}
+        const target = ${QUERY_ONE(tgt.selector)} ?? document.body
+        return inj.ariaSnapshot(target, { mode: ${JSON.stringify(mode)} })
+      })()`, 20000)
+      return ok({ mode, yaml: typeof yaml === 'string' ? yaml : String(yaml ?? '') })
+    }
+    // 全页快照:主 frame + 各 child frame(iframe)分段合并,[ref=eN] 全局唯一化,
+    // 映射存 session.refMap 供后续 op 的 ref 路由(iframe 支持)。
+    const counter = { n: 1 }
+    const map = new Map<string, { frameId: string | null; localRef: string }>()
+    const mainYaml = await evalFrameWorld(wc, session, null, `(() => {
       const inj = globalThis.${INJECTED_GLOBAL}
-      const target = ${ref === undefined ? 'document.body' : `${QUERY_ONE(ref.startsWith('aria-ref=') ? ref : `aria-ref=${ref}`)} ?? document.body`}
-      return inj.ariaSnapshot(target, { mode: ${JSON.stringify(mode)} })
+      return inj.ariaSnapshot(document.body, { mode: ${JSON.stringify(mode)} })
     })()`, 20000)
-    return ok({ mode, yaml: typeof yaml === 'string' ? yaml : String(yaml ?? '') })
+    let yaml = renumberRefs(typeof mainYaml === 'string' ? mainYaml : String(mainYaml ?? ''), null, counter, map)
+    const childFrames: Array<{ frameId: string; url: string }> = []
+    const collect = (node: unknown): void => {
+      const n = node as { childFrames?: Array<{ frame?: { id?: string; url?: string }; childFrames?: unknown[] }> }
+      for (const c of n?.childFrames ?? []) {
+        if (c?.frame?.id !== undefined) childFrames.push({ frameId: c.frame.id, url: String(c.frame.url ?? '') })
+        collect(c)
+      }
+    }
+    const tree = await cdp(wc, 'Page.getFrameTree', undefined, 8000)
+    collect((tree as { frameTree?: unknown }).frameTree)
+    for (const cf of childFrames) {
+      try {
+        const childYaml = await evalFrameWorld(wc, session, cf.frameId, `(() => {
+          const inj = globalThis.${INJECTED_GLOBAL}
+          return inj.ariaSnapshot(document.body, { mode: ${JSON.stringify(mode)} })
+        })()`, 20000)
+        yaml += `\n\n[frame f:${cf.frameId} url=${cf.url}]\n` + renumberRefs(String(childYaml ?? ''), cf.frameId, counter, map)
+      } catch (cause) {
+        yaml += `\n\n[frame f:${cf.frameId} url=${cf.url}] 快照失败: ${cause instanceof Error ? cause.message : String(cause)}`
+      }
+    }
+    session.refMap = map
+    return ok({ mode, yaml, frames: childFrames.length })
   }
 
   async function opElementInfo(wc: OpsWebContents, session: OpsSession, params: Record<string, unknown>): Promise<OpsResult> {
-    const selector = selectorFrom(params)
-    if (selector === undefined) return fail('bad_params', 'elementInfo 需要 ref 或 selector')
-    const info = await evalWorld(wc, session, `(() => {
+    const tgt = targetFrom(session, params)
+    if (tgt.selector === '') return fail('bad_params', 'elementInfo 需要 ref 或 selector')
+    const info = await evalFrameWorld(wc, session, tgt.frameId, `(() => {
       const inj = globalThis.${INJECTED_GLOBAL}
-      const el = ${QUERY_ONE(selector)}
+      const el = ${QUERY_ONE(tgt.selector)}
       if (el === null) return null
       const r = el.getBoundingClientRect()
       const tag = el.tagName.toLowerCase()
@@ -328,19 +473,30 @@ export function createBrowserOps(deps: BrowserOpsDeps) {
         selector: inj.generateSelectorSimple ? inj.generateSelectorSimple(el) : undefined,
       }
     })()`, 10000)
-    if (info === null || info === undefined) return fail('not_found', `element not found: ${selector}`)
+    if (info === null || info === undefined) return fail('not_found', `element not found: ${tgt.selector}`)
     return ok(info)
   }
 
   async function opClick(wc: OpsWebContents, session: OpsSession, tabId: string, params: Record<string, unknown>): Promise<OpsResult> {
-    const selector = selectorFrom(params)
-    if (selector === undefined) return fail('bad_params', 'click 需要 ref 或 selector')
+    const { selector, frameId } = targetFrom(session, params)
+    if (selector === '') return fail('bad_params', 'click 需要 ref 或 selector')
     ensureWindowSurface()
+    // child frame(OOPIF):Input 不从主 frame 转发,用 world 内合成 click。
+    if (frameId !== null) {
+      await deps.prepareTabSurface(tabId)
+      try {
+        const r = await frameClick(wc, session, frameId, selector)
+        if (r.found !== true) return fail('not_found', `element not found in frame: ${selector}`)
+        return ok({ frame: frameId, clicked: true, tag: r.tag })
+      } finally {
+        deps.restoreTabSurface(tabId)
+      }
+    }
     // 不含 'stable':它需要 rAF 两帧,屏外/隐藏视图的 rAF 挂起会永不完成
     // (agent 无 carrier 标签常在屏外);visible/enabled 是同步检查。
-    deps.prepareTabSurface(tabId)
+    await deps.prepareTabSurface(tabId)
     try {
-      const probe = await resolveActionable(wc, session, selector, ['visible', 'enabled'])
+      const probe = await resolveActionable(wc, session, selector, ['visible', 'enabled'], frameId)
       await dispatchClick(wc, probe.x, probe.y, typeof params.button === 'string' ? params.button : 'left', params.double === true)
       return ok({ x: probe.x, y: probe.y, tag: probe.tag, text: probe.text })
     } finally {
@@ -350,17 +506,28 @@ export function createBrowserOps(deps: BrowserOpsDeps) {
 
   /** fill/type 共用:真实 click 聚焦 → injected.fill 设值 → 'needsinput' 补 insertText → 校验兜底。 */
   async function opFill(wc: OpsWebContents, session: OpsSession, tabId: string, params: Record<string, unknown>): Promise<OpsResult> {
-    const selector = selectorFrom(params)
+    const { selector, frameId } = targetFrom(session, params)
     const text = typeof params.text === 'string' ? params.text : typeof params.value === 'string' ? params.value : undefined
-    if (selector === undefined || text === undefined) return fail('bad_params', 'fill/type 需要 ref|selector 与 text')
+    if (selector === '' || text === undefined) return fail('bad_params', 'fill/type 需要 ref|selector 与 text')
     ensureWindowSurface()
-    deps.prepareTabSurface(tabId)
+    await deps.prepareTabSurface(tabId)
     try {
-      // 先真实 click 聚焦:isolated world 的 focusNode 不建立输入管线焦点,
-      // 直接 insertText 会落到空焦点(webview guest 实测落空)。
-      const focusProbe = await resolveActionable(wc, session, selector, ['visible', 'enabled'])
-      await dispatchClick(wc, focusProbe.x, focusProbe.y)
-      const fillResult = await evalWorld(wc, session, `(() => {
+      // 先聚焦:主 frame 用真实 click(Input 管线);child frame 用 world 内
+      // focusNode(OOPIF 的 Input 不转发,且 insertText 也到不了 child——
+      // needsinput 时 child frame 直接靠末尾的 objectId 设值兜底)。
+      if (frameId !== null) {
+        await evalFrameWorld(wc, session, frameId, `(() => {
+          const el = ${QUERY_ONE(selector)}
+          if (el === null) return false
+          el.scrollIntoView({ block: 'center' })
+          el.focus()
+          return true
+        })()`, 8000)
+      } else {
+        const focusProbe = await resolveActionable(wc, session, selector, ['visible', 'enabled'], frameId)
+        await dispatchClick(wc, focusProbe.x, focusProbe.y)
+      }
+      const fillResult = await evalFrameWorld(wc, session, frameId, `(() => {
         const inj = globalThis.${INJECTED_GLOBAL}
         const el = ${QUERY_ONE(selector)}
         if (el === null) return { found: false }
@@ -368,19 +535,24 @@ export function createBrowserOps(deps: BrowserOpsDeps) {
       })()`, 10000)
       if (fillResult === null || typeof fillResult !== 'object' || fillResult.found !== true) return fail('not_found', `element not found: ${selector}`)
       if (typeof fillResult.result === 'string' && fillResult.result.startsWith('error:')) return fail('not_fillable', fillResult.result)
-      if (fillResult.result === 'needsinput') {
+      if (fillResult.result === 'needsinput' && frameId === null) {
         await cdp(wc, 'Input.insertText', { text }, 5000)
       }
     } finally {
       deps.restoreTabSurface(tabId)
     }
     // 校验读回;insertText 因焦点链落空时,用 objectId + callFunctionOn 主世界设值兜底。
-    const readBack = await evalWorld(wc, session, `(() => {
+    const readBack = await evalFrameWorld(wc, session, frameId, `(() => {
       const el = ${QUERY_ONE(selector)}
       return el === null ? null : ('value' in el ? String(el.value).slice(0, 300) : (el.textContent || '').slice(0, 300))
     })()`, 5000)
     if (readBack !== text) {
-      const holder = await cdp(wc, 'Runtime.evaluate', { expression: QUERY_ONE(selector), contextId: session.contextId, returnByValue: false }, 5000)
+      // objectId 兜底:元素须在所属 frame 的 world 里解析(child frame 时 contextId 不同)。
+      const frameCtx = frameId === null
+        ? session.contextId
+        : session.children.get(frameId)?.contextId ?? null
+      if (frameCtx === null) return fail('not_found', `element not found: ${selector}`)
+      const holder = await cdp(wc, 'Runtime.evaluate', { expression: QUERY_ONE(selector), contextId: frameCtx, returnByValue: false }, 5000)
       const objectId = (holder as { result?: { objectId?: string } })?.result?.objectId
       if (objectId === undefined) return fail('not_found', `element not found: ${selector}`)
       await cdp(wc, 'Runtime.callFunctionOn', {
@@ -397,7 +569,7 @@ export function createBrowserOps(deps: BrowserOpsDeps) {
         returnByValue: true,
       }, 5000)
     }
-    const value = await evalWorld(wc, session, `(() => {
+    const value = await evalFrameWorld(wc, session, frameId, `(() => {
       const el = ${QUERY_ONE(selector)}
       return el === null ? null : ('value' in el ? String(el.value).slice(0, 300) : (el.textContent || '').slice(0, 300))
     })()`, 5000)
@@ -407,30 +579,52 @@ export function createBrowserOps(deps: BrowserOpsDeps) {
   async function opPress(wc: OpsWebContents, session: OpsSession, tabId: string, params: Record<string, unknown>): Promise<OpsResult> {
     const key = typeof params.key === 'string' ? params.key : undefined
     if (key === undefined) return fail('bad_params', 'press 需要 key')
-    const selector = selectorFrom(params)
+    const { selector, frameId } = targetFrom(session, params)
     ensureWindowSurface()
-    if (selector !== undefined) {
-      // 聚焦点击走真实输入管线,同样需要可见表面。
-      deps.prepareTabSurface(tabId)
-      try {
-        const probe = await resolveActionable(wc, session, selector, ['visible', 'enabled'])
-        await dispatchClick(wc, probe.x, probe.y)
-      } finally {
-        deps.restoreTabSurface(tabId)
+    // 聚焦点击与按键必须同一表面唤醒周期:restore 会丢 Chromium 焦点,
+    // 分开两个周期时按键落到无焦点视图被丢弃(实测)。
+    deps.prepareTabSurface(tabId)
+    try {
+      const modifiers = typeof params.modifiers === 'number' ? params.modifiers : 0
+      const keys = key.includes('+') ? key.split('+') : [key]
+      if (frameId !== null) {
+        // OOPIF:world 内聚焦 + 合成 KeyboardEvent(浏览器默认行为如表单提交不触发,
+        // best-effort);真实 dispatchKey 只到主 frame。
+        if (selector !== '') {
+          await evalFrameWorld(wc, session, frameId, `(() => {
+            const el = ${QUERY_ONE(selector)}
+            if (el === null) return false
+            el.scrollIntoView({ block: 'center' }); el.focus()
+            return true
+          })()`, 8000)
+        }
+        for (const single of keys) {
+          await evalFrameWorld(wc, session, frameId, `(() => {
+            const el = document.activeElement ?? document.body
+            el.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(single)}, bubbles: true, cancelable: true }))
+            el.dispatchEvent(new KeyboardEvent('keyup', { key: ${JSON.stringify(single)}, bubbles: true }))
+            return true
+          })()`, 8000)
+        }
+      } else {
+        if (selector !== '') {
+          const probe = await resolveActionable(wc, session, selector, ['visible', 'enabled'], frameId)
+          await dispatchClick(wc, probe.x, probe.y)
+        }
+        for (const single of keys) await dispatchKey(wc, single, modifiers)
       }
+    } finally {
+      deps.restoreTabSurface(tabId)
     }
-    const modifiers = typeof params.modifiers === 'number' ? params.modifiers : 0
-    const keys = key.includes('+') ? key.split('+') : [key]
-    for (const single of keys) await dispatchKey(wc, single, modifiers)
     return ok({ pressed: key })
   }
 
   async function opHover(wc: OpsWebContents, session: OpsSession, params: Record<string, unknown>): Promise<OpsResult> {
-    const selector = selectorFrom(params)
-    if (selector === undefined) return fail('bad_params', 'hover 需要 ref 或 selector')
+    const { selector, frameId } = targetFrom(session, params)
+    if (selector === '') return fail('bad_params', 'hover 需要 ref 或 selector')
     // 真实 mouseMoved 在屏外/隐藏/遮挡视图上永久挂死(不可恢复),这里用合成
     // mouseover/mousemove/mouseenter best-effort(与 CLI 既有 hover 语义一致)。
-    const result = await evalWorld(wc, session, `(() => {
+    const result = await evalFrameWorld(wc, session, frameId, `(() => {
       const el = ${QUERY_ONE(selector)}
       if (el === null) return { found: false }
       const r = el.getBoundingClientRect()
@@ -448,11 +642,11 @@ export function createBrowserOps(deps: BrowserOpsDeps) {
     const dx = typeof params.x === 'number' ? Math.round(params.x) : 0
     const dy = typeof params.y === 'number' ? Math.round(params.y) : 0
     if (dx === 0 && dy === 0) return fail('bad_params', 'scroll 需要 x 或 y')
-    const selector = selectorFrom(params)
+    const { selector, frameId } = targetFrom(session, params)
     ensureWindowSurface()
-    const result = await evalWorld(wc, session, `(() => {
+    const result = await evalFrameWorld(wc, session, frameId, `(() => {
       const inj = globalThis.${INJECTED_GLOBAL}
-      const el = ${selector === undefined ? 'null' : QUERY_ONE(selector)}
+      const el = ${selector === '' ? 'null' : QUERY_ONE(selector)}
       const target = el ?? document.scrollingElement ?? document.documentElement
       if (target === null) return { ok: false, error: 'no scroll target' }
       target.scrollBy(${dx}, ${dy})
@@ -463,11 +657,11 @@ export function createBrowserOps(deps: BrowserOpsDeps) {
   }
 
   async function opSelect(wc: OpsWebContents, session: OpsSession, params: Record<string, unknown>): Promise<OpsResult> {
-    const selector = selectorFrom(params)
+    const { selector, frameId } = targetFrom(session, params)
     const values = Array.isArray(params.values) ? params.values.filter((v): v is string => typeof v === 'string') : undefined
-    if (selector === undefined || values === undefined || values.length === 0) return fail('bad_params', 'select 需要 ref|selector 与 values(字符串数组)')
+    if (selector === '' || values === undefined || values.length === 0) return fail('bad_params', 'select 需要 ref|selector 与 values(字符串数组)')
     ensureWindowSurface()
-    const result = await evalWorld(wc, session, `(() => {
+    const result = await evalFrameWorld(wc, session, frameId, `(() => {
       const inj = globalThis.${INJECTED_GLOBAL}
       const el = ${QUERY_ONE(selector)}
       if (el === null) return { found: false }
@@ -482,10 +676,10 @@ export function createBrowserOps(deps: BrowserOpsDeps) {
 
   /** check/uncheck:读状态,需要时走真实 click(checkbox/radio 原生切换)。 */
   async function opCheck(wc: OpsWebContents, session: OpsSession, tabId: string, params: Record<string, unknown>, desired: boolean): Promise<OpsResult> {
-    const selector = selectorFrom(params)
-    if (selector === undefined) return fail('bad_params', `${desired ? 'check' : 'uncheck'} 需要 ref 或 selector`)
+    const { selector, frameId } = targetFrom(session, params)
+    if (selector === '') return fail('bad_params', `${desired ? 'check' : 'uncheck'} 需要 ref 或 selector`)
     ensureWindowSurface()
-    const probe = await evalWorld(wc, session, `(() => {
+    const probe = await evalFrameWorld(wc, session, frameId, `(() => {
       const el = ${QUERY_ONE(selector)}
       if (el === null) return { found: false }
       if (!('checked' in el)) return { found: true, error: 'element has no checked state' }
@@ -495,10 +689,15 @@ export function createBrowserOps(deps: BrowserOpsDeps) {
     if (probe === null || typeof probe !== 'object' || probe.found !== true) return fail('not_found', `element not found: ${selector}`)
     if (probe.error) return fail('not_checkable', probe.error)
     if (probe.checked !== desired) {
-      deps.prepareTabSurface(tabId)
+      await deps.prepareTabSurface(tabId)
       try {
-        const actionable = await resolveActionable(wc, session, selector, ['visible', 'enabled'])
-        await dispatchClick(wc, actionable.x, actionable.y)
+        if (frameId !== null) {
+          // OOPIF:world 内合成 click(checkbox 原生切换由 click 触发)。
+          await frameClick(wc, session, frameId, selector)
+        } else {
+          const actionable = await resolveActionable(wc, session, selector, ['visible', 'enabled'], frameId)
+          await dispatchClick(wc, actionable.x, actionable.y)
+        }
       } finally {
         deps.restoreTabSurface(tabId)
       }
@@ -511,9 +710,11 @@ export function createBrowserOps(deps: BrowserOpsDeps) {
     if (expression === undefined || expression.trim() === '') return fail('bad_params', 'evaluate 需要 expression')
     const isolated = params.isolated !== false
     const timeoutMs = typeof params.timeoutMs === 'number' ? Math.min(60000, Math.max(1000, params.timeoutMs)) : 25000
+    // params.frameId('f:<frameId>') 可选:在指定 child frame 的 world 里求值。
+    const frameId = typeof params.frameId === 'string' && params.frameId.startsWith('f:') ? params.frameId.slice(2) : null
     if (isolated) {
       try {
-        return ok({ value: (await evalWorld(wc, session, expression, timeoutMs)) ?? null })
+        return ok({ value: (await evalFrameWorld(wc, session, frameId, expression, timeoutMs)) ?? null })
       } catch (cause) {
         return toResult(cause)
       }
@@ -547,6 +748,169 @@ export function createBrowserOps(deps: BrowserOpsDeps) {
     }
   }
 
+  /* ── waitFor / drag / cua / 对话框 ────────────────────────────── */
+
+  /** Host 侧轮询等待:selector 的可见性状态或表达式为真;不用 'stable'(rAF 挂死坑)。 */
+  async function opWaitFor(wc: OpsWebContents, session: OpsSession, params: Record<string, unknown>): Promise<OpsResult> {
+    const timeoutMs = Math.min(60000, Math.max(500, typeof params.timeoutMs === 'number' ? params.timeoutMs : 10000))
+    const pollMs = Math.min(1000, Math.max(150, typeof params.pollMs === 'number' ? params.pollMs : 300))
+    const expression = typeof params.expression === 'string' && params.expression.trim() !== '' ? params.expression : undefined
+    const { selector, frameId } = targetFrom(session, params)
+    const state = typeof params.state === 'string' ? params.state : 'visible'
+    if (expression === undefined && selector === '') return fail('bad_params', 'waitFor 需要 ref|selector 或 expression')
+    if (expression === undefined && !['visible', 'hidden', 'attached', 'detached'].includes(state)) {
+      return fail('bad_params', `waitFor state 不支持: ${state}(visible/hidden/attached/detached)`)
+    }
+    const deadline = Date.now() + timeoutMs
+    const check = expression !== undefined
+      ? `(() => { const v = (${expression}); return { hit: Boolean(v), detail: String(v).slice(0, 120) } })()`
+      : `(() => {
+        const el = ${QUERY_ONE(selector as string)}
+        const attached = el !== null
+        const visible = attached && el.getClientRects().length > 0
+        return { hit: ${state === 'visible' ? 'visible' : state === 'hidden' ? '!visible' : state === 'attached' ? 'attached' : '!attached'}, detail: 'attached=' + attached + ' visible=' + visible }
+      })()`
+    for (;;) {
+      try {
+        const r = await evalFrameWorld(wc, session, frameId, check, 5000)
+        if (r !== null && typeof r === 'object' && r.hit === true) return ok({ state: expression ? 'expression' : state, detail: r.detail })
+      } catch { /* 单次轮询失败(导航中/世界重建)不算超时,继续 */ }
+      if (Date.now() > deadline) return fail('timeout', `waitFor ${expression ? 'expression' : `${state} ${selector}`} 超时 (${timeoutMs}ms)`)
+      await new Promise(resolve => setTimeout(resolve, pollMs))
+    }
+  }
+
+  /** ref/selector/坐标 → 屏幕点(drag 与 cua 共用;坐标即视口 CSS 像素)。 */
+  async function resolvePoint(wc: OpsWebContents, session: OpsSession, spec: unknown): Promise<{ x: number; y: number }> {
+    if (spec !== null && typeof spec === 'object') {
+      const sx = (spec as Record<string, unknown>).x
+      const sy = (spec as Record<string, unknown>).y
+      if (typeof sx === 'number' && typeof sy === 'number') return { x: Math.round(sx), y: Math.round(sy) }
+      const tgt = targetFrom(session, spec as Record<string, unknown>)
+      if (tgt.selector !== '') {
+        const probe = await resolveActionable(wc, session, tgt.selector, ['visible', 'enabled'], tgt.frameId)
+        return { x: probe.x, y: probe.y }
+      }
+    }
+    throw new Error('需要 {ref|selector} 或 {x,y} 坐标')
+  }
+
+  async function opDrag(wc: OpsWebContents, session: OpsSession, tabId: string, params: Record<string, unknown>): Promise<OpsResult> {
+    ensureWindowSurface()
+    await deps.prepareTabSurface(tabId)
+    try {
+      const from = await resolvePoint(wc, session, params.from)
+      const to = await resolvePoint(wc, session, params.to)
+      const steps = Math.min(30, Math.max(2, typeof params.steps === 'number' ? params.steps : 8))
+      const button = typeof params.button === 'string' ? params.button : 'left'
+      // 表面唤醒后视图可见,mouseMoved 序列可用(可见性是挂死条件的反面);
+      // 单步 1.5s 超时兜底,挂死时快速失败而不是卡满整个 op。
+      await cdp(wc, 'Input.dispatchMouseEvent', { type: 'mousePressed', x: from.x, y: from.y, button, buttons: 1, clickCount: 1 }, 5000)
+      for (let i = 1; i <= steps; i++) {
+        const x = Math.round(from.x + ((to.x - from.x) * i) / steps)
+        const y = Math.round(from.y + ((to.y - from.y) * i) / steps)
+        await cdp(wc, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button, buttons: 1 }, 1500)
+      }
+      await cdp(wc, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x: to.x, y: to.y, button, buttons: 0, clickCount: 1 }, 5000)
+      return ok({ from, to, steps })
+    } finally {
+      deps.restoreTabSurface(tabId)
+    }
+  }
+
+  /** CUA 坐标模式(zcode cuaClick/cuaScroll/cuaKeypress/cuaDrag 对应):直接给视口坐标。 */
+  async function opCua(wc: OpsWebContents, session: OpsSession, tabId: string, params: Record<string, unknown>): Promise<OpsResult> {
+    const action = typeof params.action === 'string' ? params.action : ''
+    ensureWindowSurface()
+    switch (action) {
+      case 'click': {
+        const x = Math.round(typeof params.x === 'number' ? params.x : NaN)
+        const y = Math.round(typeof params.y === 'number' ? params.y : NaN)
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return fail('bad_params', 'cua click 需要 x/y 坐标')
+        const double = params.double === true
+        await deps.prepareTabSurface(tabId)
+        try {
+          await dispatchClick(wc, x, y, typeof params.button === 'string' ? params.button : 'left', double)
+        } finally {
+          deps.restoreTabSurface(tabId)
+        }
+        return ok({ action, x, y })
+      }
+      case 'scroll': {
+        const dx = Math.round(typeof params.xDelta === 'number' ? params.xDelta : 0)
+        const dy = Math.round(typeof params.yDelta === 'number' ? params.yDelta : 0)
+        if (dx === 0 && dy === 0) return fail('bad_params', 'cua scroll 需要 xDelta/yDelta')
+        // 视口滚动用主世界 scrollBy:mouseWheel 在垫层/屏外视图上实测静默无效,
+        // scrollBy 是稳定等效路径(zcode domCuaScroll 同为 JS 滚动)。
+        const resp = await cdp(wc, 'Runtime.evaluate', {
+          expression: `window.scrollBy(${dx}, ${dy}); JSON.stringify({ scrollY: window.scrollY, scrollX: window.scrollX })`,
+          returnByValue: true,
+        }, 5000)
+        const detail = (resp as { exceptionDetails?: { exception?: { description?: string } } }).exceptionDetails
+        if (detail !== undefined) return fail('execution_error', detail.exception?.description ?? 'scroll failed')
+        return ok({ action, dx, dy, detail: (resp as { result?: { value?: unknown } })?.result?.value })
+      }
+      case 'keypress': {
+        const keys = typeof params.keys === 'string' ? params.keys.split('+') : Array.isArray(params.keys) ? params.keys.filter((k): k is string => typeof k === 'string') : []
+        if (keys.length === 0) return fail('bad_params', 'cua keypress 需要 keys')
+        const modifiers = typeof params.modifiers === 'number' ? params.modifiers : 0
+        const focusTarget = targetFrom(session, params)
+        await deps.prepareTabSurface(tabId)
+        try {
+          // 可选聚焦:restore 会丢 Chromium 焦点,聚焦点击与按键必须同一周期。
+          if (focusTarget.selector !== '') {
+            const probe = await resolveActionable(wc, session, focusTarget.selector, ['visible', 'enabled'], focusTarget.frameId)
+            await dispatchClick(wc, probe.x, probe.y)
+          }
+          for (const single of keys) await dispatchKey(wc, single, modifiers)
+        } finally {
+          deps.restoreTabSurface(tabId)
+        }
+        return ok({ action, keys })
+      }
+      case 'drag': return opDrag(wc, session, tabId, params)
+      default: return fail('capability_unsupported', `cua.${action || '?'} 不支持(可用 click/scroll/keypress/drag)`)
+    }
+  }
+
+  /**
+   * 对话框:JS 对话框由页面垫片自动应答(同步阻塞无法等 agent),agent 侧用
+   * handleDialog 预设下一次对话框的应答(一次性消费),getDialog 读历史。
+   */
+  async function opGetDialog(wc: OpsWebContents, params: Record<string, unknown>): Promise<OpsResult> {
+    const unreadOnly = params.unread === true
+    const response = await cdp(wc, 'Runtime.evaluate', {
+      expression: `(() => {
+        const h = (globalThis.__liuliDialogHistory || []).slice()
+        const lastRead = globalThis.__liuliDialogReadIndex || 0
+        const unread = h.slice(lastRead)
+        globalThis.__liuliDialogReadIndex = h.length
+        return JSON.stringify({ history: ${unreadOnly ? 'unread' : 'h'}, unreadCount: unread.length })
+      })()`,
+      returnByValue: true,
+    }, 5000)
+    const detail = (response as { exceptionDetails?: { exception?: { description?: string } } }).exceptionDetails
+    if (detail !== undefined) return fail('execution_error', detail.exception?.description ?? 'getDialog failed')
+    try {
+      return ok(JSON.parse(String((response as { result?: { value?: unknown } })?.result?.value ?? '{}')))
+    } catch {
+      return ok({ history: [], unreadCount: 0 })
+    }
+  }
+
+  async function opHandleDialog(wc: OpsWebContents, params: Record<string, unknown>): Promise<OpsResult> {
+    const policy: Record<string, unknown> = {}
+    if (typeof params.accept === 'boolean') policy.accept = params.accept
+    if (typeof params.promptText === 'string') policy.promptText = params.promptText
+    if (Object.keys(policy).length === 0) return fail('bad_params', 'handleDialog 需要 accept 和/或 promptText')
+    const response = await cdp(wc, 'Runtime.evaluate', {
+      expression: `(() => { globalThis.__liuliDialogPolicy = ${JSON.stringify(policy)}; return true })()`,
+      returnByValue: true,
+    }, 5000)
+    if ((response as { result?: { value?: unknown } })?.result?.value !== true) return fail('execution_error', 'handleDialog failed')
+    return ok({ policy })
+  }
+
   /** ops 路由入口:分发到各 op;engine 在路由层先消化导航/标签/截图/视口类。 */
   async function handle(wc: OpsWebContents, tabId: string, method: string, params: Record<string, unknown>): Promise<OpsResult> {
     if (!OPS_METHODS.includes(method as (typeof OPS_METHODS)[number])) {
@@ -567,6 +931,11 @@ export function createBrowserOps(deps: BrowserOpsDeps) {
         case 'uncheck': return await opCheck(wc, session, tabId, params, false)
         case 'evaluate': return await opEvaluate(wc, session, params)
         case 'playwright': return await opPlaywright(wc, session, tabId, params)
+        case 'waitFor': return await opWaitFor(wc, session, params)
+        case 'drag': return await opDrag(wc, session, tabId, params)
+        case 'cua': return await opCua(wc, session, tabId, params)
+        case 'getDialog': return await opGetDialog(wc, params)
+        case 'handleDialog': return await opHandleDialog(wc, params)
         default: return fail('capability_unsupported', `unknown op method: ${method}`)
       }
     } catch (cause) {

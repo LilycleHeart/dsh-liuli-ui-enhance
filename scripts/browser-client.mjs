@@ -45,7 +45,10 @@ import { cdpFetchJson } from './browser-bridge.mjs'
 const BASE = process.env.LIULI_BROWSER_BASE ?? 'http://127.0.0.1:7336'
 /** LIULI_BROWSER_VIA=cdp:全部请求经主进程 inspector 桥中转(过服务端 fence)。 */
 const VIA = (process.env.LIULI_BROWSER_VIA ?? '').toLowerCase()
-const args = process.argv.slice(2)
+/** 会话隔离(scope):--session <id> 或 LIULI_DSH_SESSION_ID;有主标签只对所属会话可见。 */
+const args0 = process.argv.slice(2)
+const SESSION = (args0.includes('--session') ? args0[args0.indexOf('--session') + 1] : undefined) ?? process.env.LIULI_DSH_SESSION_ID ?? ''
+const args = args0.filter((a, i) => !(a === '--session' || (args0[i - 1] === '--session')))
 const command = args[0] ?? 'help'
 
 function fail(message) {
@@ -73,7 +76,11 @@ async function getJson(path) {
 }
 
 async function postJson(path, body) {
-  const payload = { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(body) }
+  // scope 隔离:--session/env 存在时给建标签与 ops 请求注入 sessionId。
+  const payloadBody = SESSION !== '' && (path === '/liuli-browser/ops' || path === '/liuli-browser/tabs')
+    ? { ...body, sessionId: SESSION }
+    : body
+  const payload = { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(payloadBody) }
   if (path === '/liuli-browser/ops') payload.execTimeout = 70000
   if (VIA === 'cdp') return cdpFetchJson(path, { ...payload, method: 'POST' })
   return directJson(path, payload)
@@ -148,13 +155,10 @@ async function run() {
       return
     }
     case 'list': {
-      const caps = await getJson('/liuli-browser/capabilities')
-      const rows = []
-      for (const tabId of caps.tabs ?? []) {
-        const st = await getJson('/liuli-browser/tabs/state?id=' + encodeURIComponent(tabId))
-        rows.push({ tabId, ...st.state })
-      }
-      console.log(JSON.stringify(rows, null, 2))
+      // 走 ops list(scope 过滤:--session 有主标签只对所属会话可见)。
+      const resp = await postJson('/liuli-browser/ops', { tabId: '-', method: 'list' })
+      if (resp.ok !== true) fail('list failed: ' + JSON.stringify(resp))
+      console.log(JSON.stringify(resp.value, null, 2))
       return
     }
     case 'open': {

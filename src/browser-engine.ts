@@ -17,6 +17,9 @@
  * Electron API 用本地结构化声明（monorepo 不安装 electron 包，无法取官方
  * 类型；结构化声明同时兼容主进程 import/require 两种取法）。
  */
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { dirname, join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import { createBrowserOps, OPS_METHODS, type ElectronDebugger, type OpsResult } from './browser-ops.ts'
@@ -107,18 +110,37 @@ const VIEWPORT_MAX_H = 2160
 /**
  * 客户页 JS 对话框垫片（DSH embeddedBrowserJavaScriptDialog 预加载的轻量实现）。
  * 真实 webview 里 alert/confirm/prompt 默认弹原生模态框并阻塞自动化；垫片改为
- * 自动应答（confirm 接受、prompt 返回默认值）并经 console.info 上报，Host 侧
- * 用 console-message 事件转发为 SSE dialog 事件供渲染端提示。
+ * 自动应答（confirm/prompt 可被 ops handleDialog 预设的一次性策略覆盖，默认
+ * confirm 接受、prompt 返回默认值）并经 console.info 上报，Host 侧用
+ * console-message 事件转发为 SSE dialog 事件供渲染端提示；同时记录环形历史
+ * 供 ops getDialog 读取（agent 感知页面弹了什么、应答了什么）。
  */
 const DIALOG_SHIM_SCRIPT = `(() => {
   if (window.__liuliDialogShim) return
   window.__liuliDialogShim = true
-  const send = (kind, message) => {
-    try { console.info('[liuli-dialog] ' + kind + ': ' + String(message).slice(0, 300)) } catch { /* 忽略 */ }
+  const send = (kind, message, response) => {
+    try {
+      const h = window.__liuliDialogHistory || (window.__liuliDialogHistory = [])
+      h.push({ kind, message: String(message).slice(0, 300), response, at: Date.now() })
+      if (h.length > 20) h.shift()
+      console.info('[liuli-dialog] ' + kind + ': ' + String(message).slice(0, 300))
+    } catch { /* 忽略 */ }
   }
-  window.alert = (message) => { send('alert', message) }
-  window.confirm = (message) => { send('confirm', message); return true }
-  window.prompt = (message, fallback) => { send('prompt', message); return fallback === undefined ? null : fallback }
+  window.alert = (message) => { send('alert', message, 'ok') }
+  window.confirm = (message) => {
+    const p = window.__liuliDialogPolicy
+    const accept = p && typeof p.accept === 'boolean' ? p.accept : true
+    if (p) delete window.__liuliDialogPolicy
+    send('confirm', message, accept ? 'accept' : 'dismiss')
+    return accept
+  }
+  window.prompt = (message, fallback) => {
+    const p = window.__liuliDialogPolicy
+    const text = p && typeof p.promptText === 'string' ? p.promptText : (fallback === undefined ? null : fallback)
+    if (p) delete window.__liuliDialogPolicy
+    send('prompt', message, text === null ? 'null' : String(text))
+    return text
+  }
 })()`
 
 /** 单个浏览器标签：一个 WebContentsView + 状态镜像。 */
@@ -138,6 +160,10 @@ interface EngineTab {
   generation: number
   /** 恢复用最近 URL（DSH render-process-gone 原位重建语义）。 */
   lastRequestedUrl: string
+  /** 最近活动时间（驱逐调度用：超限时关最久未用的 agent 标签）。 */
+  lastActivityAt: number
+  /** 归属会话（scope 隔离；null = 公共标签，所有会话可见可操作）。 */
+  ownerSessionId: string | null
 }
 
 export interface BrowserEngine {
@@ -237,7 +263,7 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
   const opsSurfaces = new Set<string>()
   const ops = createBrowserOps({
     findWindow,
-    prepareTabSurface: (tabId: string): void => {
+    prepareTabSurface: async (tabId: string): Promise<void> => {
       const tab = tabs.get(tabId)
       const win = findWindow()
       if (tab === undefined || win === undefined) return
@@ -251,6 +277,8 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
         tab.view.setVisible(true)
         tab.view.setBounds({ x: 0, y: 0, width: 1024, height: 768 })
         opsSurfaces.add(tabId)
+        // 等合成器出帧:垫层后立即点击会命中旧空白帧,iframe 等延迟合成的内容全 miss。
+        await new Promise(resolve => setTimeout(resolve, 320))
       } catch { /* 窗口已销毁等场景忽略 */ }
     },
     restoreTabSurface: (tabId: string): void => {
@@ -423,11 +451,34 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
     pushState(tab)
   }
 
-  const createTab = (id: string, url: string): EngineTab => {
+  /** 引擎标签持久化文件（跨重启恢复；仅记 agent:/browser: 前缀标签）。 */
+  const tabsStorePath = join(homedir(), '.liuli-theme', 'browser-tabs.json')
+  /** 标签上限（简化驱逐：超限时关最久未用的 agent 标签，GUI 桥接标签不动）。 */
+  const TAB_LIMIT = 32
+
+  const persistTabs = (): void => {
+    try {
+      mkdirSync(dirname(tabsStorePath), { recursive: true })
+      const rows = [...tabs.entries()]
+        .filter(([id]) => id.startsWith('agent:') || id.startsWith('browser:'))
+        .map(([id, t]) => ({ id, url: t.lastRequestedUrl !== '' ? t.lastRequestedUrl : t.state.url }))
+      writeFileSync(tabsStorePath, JSON.stringify({ version: 1, savedAt: Date.now(), tabs: rows }, null, 2))
+    } catch { /* 持久化尽力而为 */ }
+  }
+
+  const createTab = (id: string, url: string, ownerSessionId: string | null = null): EngineTab => {
     const existing = tabs.get(id)
     if (existing !== undefined) return existing
     const win = findWindow()
     if (win === undefined) throw new Error('no host window')
+    // 简化驱逐(zcode BrowserTabResidencyCoordinator 的最低限对应):只驱逐无
+    // GUI carrier 的 agent:* 标签里最久未用的;没有候选则允许超限。
+    if (tabs.size >= TAB_LIMIT) {
+      const victim = [...tabs.values()]
+        .filter(t => t.id.startsWith('agent:'))
+        .sort((a, b) => a.lastActivityAt - b.lastActivityAt)[0]
+      if (victim !== undefined) destroyTab(victim.id)
+    }
     const view = makeView()
     const tab: EngineTab = {
       id,
@@ -439,6 +490,8 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
       lastGeoSession: null,
       generation: 0,
       lastRequestedUrl: url !== '' && url !== 'about:blank' ? url : '',
+      lastActivityAt: Date.now(),
+      ownerSessionId,
     }
     wireEvents(tab)
     tabs.set(id, tab)
@@ -447,6 +500,7 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
     if (url !== '' && url !== 'about:blank') {
       view.webContents.loadURL(url).catch(() => { /* did-fail-load 上报 */ })
     }
+    persistTabs()
     return tab
   }
 
@@ -459,6 +513,7 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
     try { if (tab.view.webContents.debugger.isAttached()) tab.view.webContents.debugger.detach() } catch { /* 未附着 */ }
     try { tab.view.webContents.close() } catch { /* 已销毁 */ }
     broadcast({ type: 'closed', tabId: id })
+    persistTabs()
     return true
   }
 
@@ -466,6 +521,19 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
   guestSession.on('will-download', (_e: unknown, item: ElectronDownloadItem) => {
     item.setSaveDialogOptions({ title: '保存文件' })
   })
+
+  // 跨重启恢复:按持久化记录重建上次的引擎标签。延迟 3s 等主窗口就绪
+  // (插件加载可能早于窗口创建);尽力而为,单个失败不影响其它。
+  setTimeout(() => {
+    try {
+      const parsed = JSON.parse(readFileSync(tabsStorePath, 'utf8')) as { tabs?: Array<{ id?: string; url?: string }> }
+      for (const row of parsed.tabs ?? []) {
+        if (typeof row.id === 'string' && typeof row.url === 'string' && row.url !== '' && row.url !== 'about:blank' && !tabs.has(row.id)) {
+          try { createTab(row.id, row.url) } catch { /* 单个恢复失败忽略 */ }
+        }
+      }
+    } catch { /* 无记录或损坏,跳过 */ }
+  }, 3000)
 
   /**
    * 标签页 PNG 截图(既有 /tabs/screenshot 与 ops screenshot 共用)。
@@ -509,10 +577,15 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
    * ops 路由目标解析:引擎标签优先;tabId 形如 'webview' / 'webview:<urlSubstr>'
    * 时解析侧边栏 <webview> 承载(webviewTag 补丁生效时 PreviewPanel 走 DOM webview,
    * 不建引擎标签)的 guest webContents,使 CDP 操作面同一套能力覆盖两种承载。
+   * scope 隔离:有主标签(ownerSessionId ≠ null)只对所属会话可见,其它会话
+   * 视同 unknown tab(与 zcode「list 不到」一致);无主 = 公共。
    */
-  const resolveOpsTarget = (tabId: string): { wc: ElectronWebContents; engineTab?: EngineTab } | undefined => {
+  const resolveOpsTarget = (tabId: string, sessionId: string | undefined): { wc: ElectronWebContents; engineTab?: EngineTab } | undefined => {
     const engineTab = tabs.get(tabId)
-    if (engineTab !== undefined) return { wc: engineTab.view.webContents, engineTab }
+    if (engineTab !== undefined) {
+      if (engineTab.ownerSessionId !== null && engineTab.ownerSessionId !== sessionId) return undefined
+      return { wc: engineTab.view.webContents, engineTab }
+    }
     if (tabId === 'webview' || tabId.startsWith('webview:')) {
       const needle = tabId.startsWith('webview:') ? tabId.slice(8) : ''
       const guest = electron.webContents.getAllWebContents().find(wc =>
@@ -561,7 +634,7 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
         const id = asString(body?.id) ?? ''
         const target = asString(body?.url) ?? ''
         if (id === '') { sendJson(res, 400, { ok: false, error: 'missing id' }); return }
-        const tab = createTab(id, target)
+        const tab = createTab(id, target, asString(body?.sessionId) ?? null)
         sendJson(res, 200, { ok: true, tabId: tab.id, state: tab.state, generation: tab.generation })
         return
       }
@@ -668,11 +741,23 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
 
       if (method === 'POST' && path === '/liuli-browser/ops') {
         const body = await readBody(req)
+        const opSessionId = asString(body?.sessionId)
         const opTabId = asString(body?.tabId) ?? asString(body?.id) ?? ''
-        const target = resolveOpsTarget(opTabId)
+        const opMethod = asString(body?.method) ?? ''
+        // list 不针对具体标签,提前处理(scope 过滤:有主标签只对所属会话可见)。
+        if (opMethod === 'list') {
+          sendJson(res, 200, {
+            ok: true,
+            value: [...tabs.entries()]
+              .filter(([, t]) => t.ownerSessionId === null || t.ownerSessionId === opSessionId)
+              .map(([tabId, t]) => ({ tabId, ...t.state })),
+          })
+          return
+        }
+        const target = resolveOpsTarget(opTabId, opSessionId)
         if (target === undefined) { sendJson(res, 404, { ok: false, error: { code: 'not_found', message: 'unknown tab' } }); return }
         const { wc: targetWc, engineTab: tab } = target
-        const opMethod = asString(body?.method) ?? ''
+        if (tab !== undefined) tab.lastActivityAt = Date.now()
         const params = (body?.params !== null && body?.params !== undefined && typeof body.params === 'object' ? body.params : {}) as Record<string, unknown>
         let result: OpsResult
         switch (opMethod) {
@@ -687,6 +772,7 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
             if (tab !== undefined) {
               tab.lastRequestedUrl = navTarget
               tab.state.error = null
+              persistTabs()
             }
             try {
               await Promise.race([
@@ -713,7 +799,7 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
           case 'newTab': {
             const target = asString(params.url) ?? 'about:blank'
             const newId = 'agent:' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7)
-            const created = createTab(newId, target)
+            const created = createTab(newId, target, opSessionId ?? null)
             result = { ok: true, value: { tabId: created.id, state: created.state } }
             break
           }
@@ -721,9 +807,6 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
             result = tab === undefined
               ? { ok: false, error: { code: 'bad_params', message: 'closeTab 只支持引擎标签(webview 标签请在侧边栏关闭)' } }
               : { ok: true, value: { closed: destroyTab(tab.id) } }
-            break
-          case 'list':
-            result = { ok: true, value: [...tabs.entries()].map(([tabId, t]) => ({ tabId, ...t.state })) }
             break
           case 'screenshot': {
             try {
