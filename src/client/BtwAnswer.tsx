@@ -5,16 +5,18 @@
  *  - 本组件 fork 当前会话得到子会话（立即归档，隐藏于会话列表），把问题
  *    prompt 给子会话（只进子会话，不改变主会话上下文），回答实时渲染成
  *    正文消息流末尾的卡片（容器挂在 [data-chat-flow] 内，与消息同列）；
+ *  - 卡片只渲染「本轮问答」：问题展示在卡片头部，正文从回答节点开始渲染，
+ *    不显示子会话继承的上一轮对话历史；
  *  - 会话切换自动清除卡片；回答不写主会话 graph，刷新即消失。
  */
 
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type {
   ObservableSnapshot, SessionFace, SessionListState,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type { SidePaneHostAccess } from './SidePaneExtraPanels.tsx'
-import { ChatFlowView, ChatFlowPartial } from './chat-flow-view.tsx'
+import { ChatFlowView, ChatFlowPartial, contentText } from './chat-flow-view.tsx'
 import css from './BtwAnswer.module.css'
 
 /** /btw 桥事件名（detail: { question: string }）。 */
@@ -48,6 +50,9 @@ interface BtwCard {
   question: string
   /** fork 出的子会话 id；未就绪时为 undefined。 */
   childId?: string
+  /** prompt 前的子会话节点基线：正文只渲染从该下标开始的节点（本轮问答），
+   *  用于问题节点匹配失败的兜底；上轮对话历史永远不进入卡片。 */
+  baselineNodes?: number
   error?: string
 }
 
@@ -110,6 +115,9 @@ export function BtwAnswerHost({ host, sessionList }: BtwAnswerHostProps) {
           // mux 事件流，快照 nodes 恒空。open() 拉取历史窗口并订阅流，
           // prompt 后的回答才能出现在快照里（open 是幂等的，不切换当前会话）。
           await openSessionFace(face)
+          // 记录 prompt 前的节点基线（子会话继承的上轮对话历史长度）。
+          // 卡片正文从这里开始渲染 —— 上轮对话只作上下文输入，不进卡片。
+          setCards(prev => prev.map(c => (c.id === id ? { ...c, baselineNodes: face.getSnapshot().nodes.length } : c)))
           const content = [{ type: 'text', text: question }] as Parameters<SessionFace['prompt']>[0]
           await face.prompt(content, 'queue')
         } catch (err) {
@@ -155,7 +163,24 @@ function BtwAnswerCard({ card, host, onClose }: { card: BtwCard; host: SidePaneH
   const face = card.childId === undefined ? undefined : host.getSessionFace(card.childId)
   const snap = useSnapshot(face)
   const running = snap?.running === true
-  const hasNodes = snap !== undefined && snap.nodes.length > 0
+
+  // 本轮问答的起点：定位「问题节点」（prompt 发送的文本）之后的回答段。
+  // 问题已在卡片头部展示，正文只渲染回答（含工具结果等）；找不到问题节点
+  // （fork 未就绪 / 历史窗口迟载）时回退到 prompt 前的节点基线 ——
+  // 子会话继承的上轮对话历史只作上下文输入，永远不进入卡片正文。
+  const startIdx = useMemo(() => {
+    if (snap === undefined) return -1
+    // 基线之前是继承的上轮对话：内容可能与问题相同，但绝不可能是本轮提问。
+    const base = card.baselineNodes ?? -1
+    for (let i = snap.nodes.length - 1; i >= 0; i--) {
+      if (i < base) break
+      const n = snap.nodes[i] as { kind?: string; content?: readonly unknown[] }
+      if ((n.kind === 'user' || n.kind === 'steering') && contentText(n.content ?? []) === card.question) return i + 1
+    }
+    return base >= 0 ? base : -1
+  }, [snap, card.question, card.baselineNodes])
+
+  const hasNodes = startIdx >= 0 && snap !== undefined && startIdx < snap.nodes.length
 
   return (
     <div className={css.card} data-liuli-btw-answer="" data-child-id={card.childId ?? ''}>
@@ -174,10 +199,10 @@ function BtwAnswerCard({ card, host, onClose }: { card: BtwCard; host: SidePaneH
       )}
       {/* .answer 是自绘信息流列（内含 ChatFlowView 的 .flow 与流式尾巴），
           挂 data-liuli-chat-flow 让级联观察器识别本列（锚点须为列直接子元素，
-          见 liuli-transition.ts）。 */}
+          见 liuli-transition.ts）。from 跳过问题节点之前的上轮对话历史。 */}
       <div className={css.answer} data-liuli-chat-flow="" data-empty={!hasNodes && !running ? '' : undefined}>
         {hasNodes
-          ? <ChatFlowView snap={snap} />
+          ? <ChatFlowView snap={snap} from={startIdx} />
           : running ? '…' : '（回答为空）'}
         <ChatFlowPartial partial={snap?.partial} running={running} />
       </div>

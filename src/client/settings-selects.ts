@@ -4,12 +4,20 @@
  * 目标：DSH 设置「模型服务商」卡片里的原生 <select>（API 协议 / 新增提供商等，
  * 宿主 class 后缀 `_selectInput`）统一换成琉璃自有的下拉组件观感与交互：
  *   - 宿主 select 原位隐藏（opacity 0，保留布局、可聚焦性与键盘语义，是值的单一来源）；
- *   - 其上方覆盖插件触发器（body portal + fixed，坐标随 scroll/resize/折叠实时同步，
+ *   - 其上方覆盖插件触发器（坐标随 scroll/resize/折叠实时同步，
  *     滚动出可视区或 details 收起时隐藏，避免悬空按钮）；
  *   - 点击打开插件菜单（body portal + fixed，与终端 Shell 选择器同款观感：亚克力/
  *     圆角/勾选/分组头/禁用项，z-index 与其它浮层同档）；
  *   - 选择后经原生 value setter + change/input 事件回写宿主受控表单
  *     （React onChange → setState），不修改、不搬动宿主 DOM，不改宿主源码。
+ *
+ * 触发器挂载与层级（避免盖住其它菜单）：官方设置对话框（role=dialog）渲染在侧栏
+ * 根（z-index:100 层叠单元）内，面板里的宿主菜单（如“重启”下拉，面板上下文内
+ * z 2147483001）在根层级只占 z:100 单元；若触发器以 body portal + 2147482500 全局
+ * 顶层挂载，会把设置面板里所有菜单都盖住。因此触发器挂进设置内容子树（select 所在
+ * 字段容器，z-index 20，仅盖原 select），菜单仍是 body portal 顶层。宿主面板/卡片
+ * 带 backdrop-filter 磨砂，会为 fixed 后代建立包含块，同步坐标按最近的包含块祖先
+ * 原点换算；找不到设置容器时回退 body（保持原观感与顶层层级，z 2147482500）。
  *
  * 兼容性：只处理 class 后缀含 `_selectInput` 的 select（DSH ModelsSection），其余
  * 设置区下拉保持原生；随「非官方增强 → DOM 观察增强」开关挂载（index.ts 里
@@ -61,6 +69,8 @@ interface SelectUpgrade {
   mo: MutationObserver
   details: HTMLDetailsElement | null
   scroller: HTMLElement | null
+  /** 触发器挂载容器：设置内容子树内（select 所在字段），null 表示回退 body。 */
+  zone: HTMLElement | null
 }
 
 interface OpenMenu {
@@ -107,10 +117,59 @@ function findScroller(el: HTMLElement | null): HTMLElement | null {
   return null
 }
 
+/**
+ * 最近的 fixed 定位包含块原点。祖先链上的 transform/perspective/filter/
+ * backdrop-filter/will-change/contain 会为 position:fixed 后代建立包含块
+ * （宿主设置面板/卡片/编辑器都有 backdrop-filter 磨砂层）；触发器挂在设置
+ * 内容子树内时，fixed 坐标须按该包含块原点换算，否则与 select 错位。
+ * 返回包含块 padding 盒的视口坐标（body 直挂时无包含块，为视口原点 (0,0)）。
+ */
+function fixedOrigin(el: HTMLElement): { x: number; y: number } {
+  let cur = el.parentElement
+  while (cur !== null && cur !== document.documentElement) {
+    const cs = getComputedStyle(cur)
+    if (
+      cs.transform !== 'none' ||
+      cs.perspective !== 'none' ||
+      cs.filter !== 'none' ||
+      cs.backdropFilter !== 'none' ||
+      cs.willChange.includes('transform') ||
+      cs.willChange.includes('backdrop-filter') ||
+      /(paint|layout|strict|content)/.test(cs.contain)
+    ) {
+      const r = cur.getBoundingClientRect()
+      const bl = parseFloat(cs.borderLeftWidth) || 0
+      const bt = parseFloat(cs.borderTopWidth) || 0
+      return { x: r.left + bl, y: r.top + bt }
+    }
+    cur = cur.parentElement
+  }
+  return { x: 0, y: 0 }
+}
+
+/**
+ * 挂载/重挂触发器。首选设置内容子树（zone = select 所在字段，z-index 20 盖住
+ * 原 select 但不进入全局浮层级，避免盖住设置面板里的其它菜单）；zone 失效或
+ * 不在设置容器内时回退 body + 类默认顶层 z（2147482500）。
+ */
+function mountTrigger(up: SelectUpgrade): void {
+  const t = up.trigger
+  const z = up.zone
+  if (z !== null && z.isConnected) {
+    z.appendChild(t)
+    t.style.zIndex = '20'
+  } else {
+    document.body.appendChild(t)
+    t.style.zIndex = ''
+  }
+}
+
 /** 触发器坐标随宿主 select 同步；裁切/隐藏时只收不显。 */
 function syncTrigger(up: SelectUpgrade): void {
   const s = up.select
   const t = up.trigger
+  // React 重渲染可能摘掉挂在宿主子树里的外来触发器节点；select 还在就重挂
+  if (!t.isConnected && s.isConnected) mountTrigger(up)
   const hide = (): void => { t.style.display = 'none' }
   if (!s.isConnected) { hide(); return }
   if (up.details !== null && !up.details.open) { hide(); return }
@@ -125,9 +184,11 @@ function syncTrigger(up: SelectUpgrade): void {
     if (top >= bottom - 1 || left >= right - 1) { hide(); return }
     r = new DOMRect(left, top, right - left, bottom - top)
   }
+  // fixed 包含块补偿：视口矩形减去包含块原点（body 挂载时原点为 0）
+  const origin = fixedOrigin(t)
   t.style.display = 'inline-flex'
-  t.style.left = `${r.left}px`
-  t.style.top = `${r.top}px`
+  t.style.left = `${r.left - origin.x}px`
+  t.style.top = `${r.top - origin.y}px`
   t.style.width = `${r.width}px`
   t.style.height = `${r.height}px`
   t.disabled = s.disabled
@@ -149,10 +210,15 @@ function upgrade(select: HTMLSelectElement): void {
   chev.className = C.triggerChevron
   chev.innerHTML = ICON_CHEVRON
   trigger.append(labelEl, chev)
-  document.body.appendChild(trigger)
 
   const details = select.closest('details') as HTMLDetailsElement | null
   const scroller = findScroller(select.parentElement)
+  // 触发器挂载点：宿主设置浮层（dialog/overlay）内的字段容器 —— 让触发器与设置
+  // 内容同处一个层叠上下文，z-index 只取局部值；设置浮层外/找不到容器回退 body
+  const surface = select.closest('[role="dialog"], [class*="_overlay"]')
+  const zone = surface !== null && select.parentElement !== null
+    ? (select.parentElement as HTMLElement)
+    : null
 
   const up: SelectUpgrade = {
     select,
@@ -163,7 +229,10 @@ function upgrade(select: HTMLSelectElement): void {
     mo: null as unknown as MutationObserver,
     details,
     scroller,
+    zone,
   }
+
+  mountTrigger(up)
 
   const ro = new ResizeObserver(() => {
     syncTrigger(up)

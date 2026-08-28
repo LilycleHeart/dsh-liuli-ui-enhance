@@ -17,6 +17,7 @@
  * layout 服务双向联动；dock 树自动保存/恢复（localStorage + 命名槽位 + 导出导入）。
  */
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import type { PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   addPanel, collectTabsNodes, createPanel, findNode, findParentSplit, findTabsContaining, MIN_SIZE, moveFloat, movePanel, panelCount,
@@ -242,6 +243,42 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
   const [addOpen, setAddOpen] = useState(false)
   const [slotName, setSlotName] = useState('')
   const [slotsVersion, setSlotsVersion] = useState(0)
+  // 布局槽位下拉（原生 select 的弹出列表无法被 CSS 主题化，换成插件下拉组件）
+  const [selectedSlot, setSelectedSlot] = useState('')
+  const [slotMenuOpen, setSlotMenuOpen] = useState(false)
+  const [slotMenuPos, setSlotMenuPos] = useState<{ left: number; top: number; width: number } | null>(null)
+  const slotTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const slotMenuRef = useRef<HTMLDivElement | null>(null)
+
+  /** 打开槽位下拉：按触发器实测定位（菜单用 CSS translateY(-100%) 向上展开，
+   *  工作台卡片贴底，向上展开天然不溢出视口，无需实测菜单高度）。 */
+  const openSlotMenu = (): void => {
+    const el = slotTriggerRef.current
+    if (el === null) return
+    const r = el.getBoundingClientRect()
+    setSlotMenuPos({ left: r.left, top: r.top, width: r.width })
+    setSlotMenuOpen(true)
+  }
+
+  // 槽位下拉是 body portal，不随工作台卡片隐藏：外点 / Esc 关闭
+  useEffect(() => {
+    if (!slotMenuOpen) return
+    const onDown = (e: MouseEvent): void => {
+      const t = e.target as Node
+      if (slotMenuRef.current?.contains(t) === true) return
+      if (slotTriggerRef.current?.contains(t) === true) return
+      setSlotMenuOpen(false)
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setSlotMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDown, true)
+    document.addEventListener('keydown', onKey, true)
+    return () => {
+      document.removeEventListener('mousedown', onDown, true)
+      document.removeEventListener('keydown', onKey, true)
+    }
+  }, [slotMenuOpen])
   const [modal, setModal] = useState<null | { kind: 'export' | 'import'; text: string }>(null)
   const [toast, setToast] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -1702,7 +1739,7 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
         <div className={css.menuCard} data-testid="dock-menu-card">
           <div className={css.menuHead}>
             <span className={css.menuTitle}>布局工作台</span>
-            <button type="button" className={css.tabClose} data-testid="dock-menu-close" aria-label="关闭布局菜单" onClick={() => { setMenuOpen(false) }}>×</button>
+            <button type="button" className={css.tabClose} data-testid="dock-menu-close" aria-label="关闭布局菜单" onClick={() => { setMenuOpen(false); setSlotMenuOpen(false) }}>×</button>
           </div>
           <div className={css.menuSection}>
             <button type="button" className={css.menuBtn} data-testid="dock-add-button" onClick={() => { setAddOpen(v => !v) }}>＋ 添加面板</button>
@@ -1740,13 +1777,23 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
               }}>保存</button>
             </div>
             <div className={css.menuRow}>
-              <select className={css.slotSelect} data-testid="dock-slot-select" defaultValue="">
-                <option value="" disabled>选择布局…</option>
-                {slots.map(slot => <option key={slot.name} value={slot.name}>{slot.name}</option>)}
-              </select>
+              <button
+                ref={slotTriggerRef}
+                type="button"
+                className={css.slotSelect}
+                data-testid="dock-slot-select"
+                aria-haspopup="listbox"
+                aria-expanded={slotMenuOpen}
+                onClick={() => { if (slotMenuOpen) setSlotMenuOpen(false); else openSlotMenu() }}
+              >
+                <span className={css.slotSelectLabel}>{selectedSlot === '' ? '选择布局…' : selectedSlot}</span>
+                <span className={css.slotSelectChevron + (slotMenuOpen ? ' ' + css.slotSelectChevronOpen : '')}>
+                  <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path fill="currentColor" d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
+                </span>
+              </button>
               <button type="button" className={css.menuBtn} data-testid="dock-restore-button" onClick={() => {
-                const select = document.querySelector('[data-testid="dock-slot-select"]') as HTMLSelectElement | null
-                const name = select?.value ?? ''
+                setSlotMenuOpen(false)
+                const name = selectedSlot
                 if (name === '') { notify('请先选择要恢复的布局'); return }
                 const loaded = loadShellSlotByName(name)
                 if (loaded !== undefined) { actions.resetShell(); actions.setDock(loaded); notify('已恢复布局：' + name) }
@@ -1760,6 +1807,29 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
             </div>
           </div>
         </div>
+      )}
+      {slotMenuOpen && slotMenuPos !== null && createPortal(
+        <div ref={slotMenuRef} className={css.slotMenu} role="listbox" data-testid="dock-slot-menu" style={{ left: slotMenuPos.left, top: slotMenuPos.top, width: slotMenuPos.width }}>
+          {slots.length === 0 && <div className={css.slotMenuEmpty}>暂无已保存布局</div>}
+          {slots.map(slot => (
+            <button
+              key={slot.name}
+              type="button"
+              role="option"
+              aria-selected={selectedSlot === slot.name}
+              className={css.slotMenuItem + (selectedSlot === slot.name ? ' ' + css.slotMenuItemActive : '')}
+              onClick={() => { setSelectedSlot(slot.name); setSlotMenuOpen(false) }}
+            >
+              <span className={css.slotMenuItemLabel}>{slot.name}</span>
+              {selectedSlot === slot.name && (
+                <span className={css.slotMenuCheck}>
+                  <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path fill="currentColor" d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+                </span>
+              )}
+            </button>
+          ))}
+        </div>,
+        document.body,
       )}
       {modal !== null && (
         <div className={css.modalOverlay} onMouseDown={(e) => { if (e.target === e.currentTarget) setModal(null) }}>

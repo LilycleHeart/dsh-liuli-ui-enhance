@@ -524,7 +524,12 @@ div[aria-label][class*="_card"][class*="_copyable"] * {
    在亮壁纸上会让浅色菜单文字不可读（右键/下拉菜单看起来像"消失"）。
    菜单单独提高到 70% 不透明，仍保留磨砂亚克力质感与噪声。 */
 div[role="menu"],
-div[class*="_menu"],
+/* DockShellFrame 布局工作台 / 导入导出模态不是弹出菜单：class*="_menu" 会
+   误伤其 menuCard/menuHead/menuRow/menuBtn/addMenuItem 等全部类名带 _menu
+   的元素——元素选择器上"到处都是 rgba(27,47,48,0.7)"就是这条规则画的。
+   排除工作台卡片与模态框的内部元素，恢复各自自身的透明/令牌表面（卡片本体
+   保留磨砂亚克力，与浮动卡片一致）；真正的下拉菜单不受影响。 */
+div[class*="_menu"]:not([data-testid="dock-menu-card"] *):not([data-testid="dock-modal"] *),
 ul[class*="_menu"] {
   background-color: rgba(var(--liuli-acrylic-rgb), 0.7);
   background-image: var(--liuli-noise);
@@ -1537,8 +1542,11 @@ div[data-phase='active'] {
   box-shadow: var(--liuli-glow-brand), var(--liuli-shadow) !important;
 }
 
-/* 设置页“已保存”提示去掉背景色，文字用主题色 */
-[role="dialog"] [class*="_savedNotice"] {
+/* 设置页“已保存”提示去掉背景色，文字用主题色。
+   p 元素选择器把特异性提到 (0,2,1)，压过下方 [class*="_save"] 保存按钮规则
+   （(0,2,0)，_savedNotice 同样命中 _save 子串，同特异性时后者按源码顺序胜出，
+   曾把提示染成品牌底色 + 前景反转色）。 */
+[role="dialog"] p[class*="_savedNotice"] {
   background: transparent !important;
   color: var(--dsw-alias-brand-primary) !important;
 }
@@ -1569,13 +1577,15 @@ div[data-phase='active'] {
 }
 
 /* 插件卡保存按钮：官方用 label-primary 反转（深底浅字，视觉像硬编码），
-   改为品牌主按钮（与模型分区保存一致）。 */
-[role="dialog"] [class*="_save"] {
+   改为品牌主按钮（与模型分区保存一致）。
+   :not([class*="_savedNotice"]) 排除“已保存”提示，避免把提示也染成按钮底色
+   （提示规则在上方用 p 选择器单独压过，这里双保险）。 */
+[role="dialog"] [class*="_save"]:not([class*="_savedNotice"]) {
   background: var(--dsw-alias-button-primary-fill) !important;
   color: var(--dsw-alias-label-primary-foreground) !important;
 }
 
-[role="dialog"] [class*="_save"]:hover:not(:disabled) {
+[role="dialog"] [class*="_save"]:not([class*="_savedNotice"]):hover:not(:disabled) {
   background: var(--dsw-alias-button-primary-hover) !important;
 }
 

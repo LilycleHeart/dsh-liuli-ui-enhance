@@ -19,6 +19,9 @@
  * （text / reasoning / image / 未知块）各自挂 data-liuli-chat-anchor-key 锚点；
  * 文本块额外标记 data-liuli-cascade-text，观察器（liuli-transition.ts）收集其
  * markdown 块级元素（段落、代码块、列表等）逐段入场，文本不再整块一次动画。
+ *
+ * from：起始节点下标（可选）。/btw 回答卡只渲染本轮问答——跳过子会话
+ * 继承的上轮对话历史，从下标 from 开始渲染；缺省渲染全部节点。
  */
 
 import { useId, useMemo, useState, type ReactNode } from 'react'
@@ -31,7 +34,7 @@ import type { ConversationSnapshot } from '@deepseek-ai/dsh-client-runtime/clien
 import css from './chat-flow-view.module.css'
 
 /** 文本块（content 数组 → 拼接纯文本）。 */
-function contentText(content: readonly unknown[]): string {
+export function contentText(content: readonly unknown[]): string {
   let text = ''
   for (const block of content) {
     const b = block as { type?: string; text?: string }
@@ -262,12 +265,13 @@ function UserBubble({ anchorKey, text }: { anchorKey: string; text: string }) {
  *  锚点须为列的直接子元素，见 liuli-transition.ts）。assistant 消息再套一层
  *  子列：消息内各块（文本/Think/图片/未知块）各自锚定，文本块经
  *  data-liuli-cascade-text 按 markdown 块级元素逐段级联。 */
-export function ChatFlowView({ snap }: { snap: ConversationSnapshot | undefined }): ReactNode {
+export function ChatFlowView({ snap, from = 0 }: { snap: ConversationSnapshot | undefined; from?: number }): ReactNode {
   const surfaceId = useId()
   return useMemo(() => {
     if (snap === undefined) return null
     const out: ReactNode[] = []
-    for (const node of snap.nodes) {
+    const nodes = from > 0 ? snap.nodes.slice(from) : snap.nodes
+    for (const node of nodes) {
       const n = node as { kind: string; seq: number } & Record<string, unknown>
       const anchorKey = `${surfaceId}:${n.seq}`
       switch (n.kind) {
@@ -310,7 +314,7 @@ export function ChatFlowView({ snap }: { snap: ConversationSnapshot | undefined 
       }
     }
     return <div className={css.flow} data-liuli-chat-flow="">{out}</div>
-  }, [snap, surfaceId])
+  }, [snap, surfaceId, from])
 }
 
 /** 流式 partial（运行中的回答尾巴）：只渲染 assistant blocks。 */

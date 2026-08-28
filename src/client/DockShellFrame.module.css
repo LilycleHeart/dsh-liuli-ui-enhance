@@ -727,16 +727,119 @@
   border-color: var(--dsw-alias-brand-primary, #0079bf);
 }
 
+/* 布局槽位下拉触发器：原生 select 的弹出列表无法 CSS 主题化，已换成插件
+   下拉组件（触发器即本按钮；菜单见下方 .slotMenu，body portal + fixed）。 */
 .slotSelect {
   flex: 1;
   min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
   padding: 4px 6px;
   border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.2));
   border-radius: 8px;
   background: transparent;
   color: var(--dsw-alias-label-primary, inherit);
   font-size: 12px;
+  text-align: left;
   outline: none;
+  cursor: pointer;
+}
+
+.slotSelectLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slotSelectChevron {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  color: var(--dsw-alias-label-tertiary, #888);
+  transition: transform 120ms ease;
+}
+
+.slotSelectChevronOpen {
+  transform: rotate(180deg);
+}
+
+/* 槽位下拉菜单：与全局下拉菜单/工作台卡片一致的 70% 亚克力 + 噪声 + 强磨砂，
+   而不是 surface 实底（否则颜色与卡片/其它菜单不一致）；工作台卡片贴底，
+   恒向上展开（translateY(-100%) 基于自身渲染高度，无需实测菜单高度）。 */
+.slotMenu {
+  position: fixed;
+  z-index: 2147482500;
+  box-sizing: border-box;
+  padding: 4px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.25));
+  border-radius: var(--liuli-radius, 14px);
+  background-color: rgba(var(--liuli-acrylic-rgb), 0.7);
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow-y: auto;
+  max-height: 60vh;
+  outline: none;
+  transform: translateY(calc(-100% - 8px));
+}
+
+.slotMenuItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary, inherit);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  outline: none;
+}
+
+.slotMenuItem:hover {
+  background-color: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.14));
+}
+
+.slotMenuItemActive {
+  background-color: var(--dsw-specific-card-major, rgba(128, 128, 128, 0.18));
+}
+
+.slotMenuItemLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.slotMenuCheck {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  color: var(--dsw-alias-brand-primary, #0079bf);
+}
+
+.slotMenuEmpty {
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary, #888);
+  white-space: nowrap;
 }
 
 /* ── 浮动窗口 ── */

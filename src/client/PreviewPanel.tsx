@@ -220,6 +220,8 @@ export interface SidePaneTab {
   childSessionId?: string
   /** side-chat：首次打开自动发送给子会话的问题（/btw 指令带出，消费后清除）。 */
   initialPrompt?: string
+  /** side-chat：「本轮侧边对话」起点（fork 继承的上轮对话历史不渲染）。 */
+  baselineNodes?: number
 }
 
 /** 最近关闭的标签（概览里可重开）。 */
@@ -933,6 +935,17 @@ export function PreviewDetailsPanel({
       const target = prev.tabs.find(t => t.id === tabId)
       if (target === undefined || target.childSessionId === childSessionId) return prev
       const next: PanePersist = { ...prev, tabs: prev.tabs.map(t => t.id === tabId ? { ...t, childSessionId } : t) }
+      savePersist(next, sessionRef.current)
+      return next
+    })
+  }, [])
+
+  /** 辅助对话起点已捕获 → 写回标签（重开仍生效，上轮对话历史永远不显示）。 */
+  const setSideChatBaseline = useCallback((tabId: string, baseline: number) => {
+    setPersist(prev => {
+      const target = prev.tabs.find(t => t.id === tabId)
+      if (target === undefined || target.baselineNodes === baseline) return prev
+      const next: PanePersist = { ...prev, tabs: prev.tabs.map(t => t.id === tabId ? { ...t, baselineNodes: baseline } : t) }
       savePersist(next, sessionRef.current)
       return next
     })
@@ -1661,6 +1674,8 @@ export function PreviewDetailsPanel({
                   onChildCreated={(childId) => { setSideChatChild(tab.id, childId) }}
                   initialPrompt={tab.initialPrompt}
                   onPromptConsumed={() => { clearSideChatPrompt(tab.id) }}
+                  baselineNodes={tab.baselineNodes}
+                  onBaselineCaptured={(n) => { setSideChatBaseline(tab.id, n) }}
                 />
               )}
             </div>

@@ -6,7 +6,7 @@
  * - 辅助对话：fork 当前会话生成子会话，面板内轻量对话（session.prompt 发送）。
  */
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { IconSendOutline14, IconPlusOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   ObservableSnapshot, SessionFace, SessionId, SessionListState,
@@ -317,6 +317,10 @@ export interface SideChatPanelProps {
   initialPrompt?: string | undefined
   /** initialPrompt 已被消费（面板回写标签清除，避免重开重复发送）。 */
   onPromptConsumed?: (() => void) | undefined
+  /** 「本轮侧边对话」起点：fork 继承的上一轮对话历史不渲染（持久化在标签上）。 */
+  baselineNodes?: number | undefined
+  /** 起点已捕获 → 回写标签持久化：重开仍生效，上轮对话历史永远不显示。 */
+  onBaselineCaptured?: ((baseline: number) => void) | undefined
 }
 
 /** fork 出的子会话默认未 open：客户端没有事件窗口、不订阅 mux 流，
@@ -438,7 +442,7 @@ function ContextMeter({ face }: { face: SessionFace }) {
 }
 
 /** 辅助对话：fork 当前会话生成子会话，面板内收发消息（DSH selection-side-chat 的 DSH 实现）。 */
-export function SideChatPanel({ sessionId, host, childSessionId, onChildCreated, initialPrompt, onPromptConsumed }: SideChatPanelProps) {
+export function SideChatPanel({ sessionId, host, childSessionId, onChildCreated, initialPrompt, onPromptConsumed, baselineNodes, onBaselineCaptured }: SideChatPanelProps) {
   const [draft, setDraft] = useState('')
   const [forkError, setForkError] = useState<string | null>(null)
   const [commandMenuOpen, setCommandMenuOpen] = useState(false)
@@ -446,6 +450,22 @@ export function SideChatPanel({ sessionId, host, childSessionId, onChildCreated,
   const forkingRef = useRef(false)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const initialPromptSent = useRef(false)
+
+  // 「本轮侧边对话」起点：fork 继承的上一轮对话历史只作模型上下文输入，
+  // 面板只渲染起点之后的节点（面板自己发的消息与回答）。标签持久化优先，
+  // 未持久化时在 fork/open 完成后、首次发送前捕获一次，之后不再覆盖。
+  const [baseline, setBaseline] = useState<number | undefined>(baselineNodes)
+  useEffect(() => {
+    if (baselineNodes !== undefined && baselineNodes !== baseline) setBaseline(baselineNodes)
+  }, [baselineNodes, baseline])
+  const captureBaseline = useCallback((face: SessionFace | undefined): number | undefined => {
+    if (baseline !== undefined) return baseline
+    const n = face === undefined ? undefined : face.getSnapshot().nodes.length
+    if (n === undefined) return undefined
+    setBaseline(n)
+    onBaselineCaptured?.(n)
+    return n
+  }, [baseline, onBaselineCaptured])
 
   // 辅助对话可用命令（琉璃注册的 /side /btw；命令菜单点击后把命令文本填入 draft）
   const commands = useMemo(() => [
@@ -464,12 +484,16 @@ export function SideChatPanel({ sessionId, host, childSessionId, onChildCreated,
         // 快照 nodes 恒空。立即 open（幂等，不切换当前会话）让历史窗口
         // 与 mux 事件流就绪，发送后回答才能显示。
         const face = host.getSessionFace(childId)
-        if (face !== undefined) void openSessionFace(face).catch(() => { /* open 失败不阻塞面板 */ })
+        if (face !== undefined) {
+          void openSessionFace(face)
+            .then(() => { captureBaseline(face) })
+            .catch(() => { /* open 失败不阻塞面板 */ })
+        }
         onChildCreated(childId)
       })
       .catch((err: unknown) => { setForkError(err instanceof Error ? err.message : String(err)) })
       .finally(() => { forkingRef.current = false })
-  }, [childSessionId, sessionId, host, onChildCreated])
+  }, [childSessionId, sessionId, host, onChildCreated, captureBaseline])
 
   // 辅助对话的 fork 只存在于标签页：子会话（含旧标签持久化的）始终归档，
   // 不出现在会话列表（幂等；归档后 binding 仍可寻址，prompt 照常工作）。
@@ -499,21 +523,27 @@ export function SideChatPanel({ sessionId, host, childSessionId, onChildCreated,
     initialPromptRef.current = undefined
     const content = [{ type: 'text', text }] as Parameters<SessionFace['prompt']>[0]
     // open 确保事件窗口/订阅就绪后发送（幂等；fork 时已触发过一次）。
-    void openSessionFace(childFace).then(() => childFace.prompt(content, 'queue')).catch(() => childFace.prompt(content, 'queue'))
-  }, [childFace])
+    void openSessionFace(childFace)
+      .then(() => { captureBaseline(childFace); childFace.prompt(content, 'queue') })
+      .catch(() => childFace.prompt(content, 'queue'))
+  }, [childFace, captureBaseline])
 
-  const nodeCount = snap?.nodes.length ?? 0
+  // 可见节点数：起点（继承历史边界）之后的节点；面板只显示本轮侧边对话。
+  const fromIdx = baseline ?? 0
+  const visibleCount = snap === undefined ? 0 : Math.max(0, snap.nodes.length - fromIdx)
 
   useEffect(() => {
     const el = scrollRef.current
     if (el !== null) el.scrollTop = el.scrollHeight
-  }, [nodeCount, snap?.running])
+  }, [visibleCount, snap?.running])
 
   const send = (): void => {
     const text = draft.trim()
     if (text === '' || childFace === undefined) return
     const content = [{ type: 'text', text }] as Parameters<SessionFace['prompt']>[0]
-    void openSessionFace(childFace).then(() => childFace.prompt(content, 'queue')).catch(() => childFace.prompt(content, 'queue'))
+    void openSessionFace(childFace)
+      .then(() => { captureBaseline(childFace); childFace.prompt(content, 'queue') })
+      .catch(() => childFace.prompt(content, 'queue'))
     setDraft('')
   }
 
@@ -534,12 +564,12 @@ export function SideChatPanel({ sessionId, host, childSessionId, onChildCreated,
           流式尾巴都直接挂在它下面（.flow 自身也是列），挂 data-liuli-chat-flow
           让级联观察器识别本列（锚点须为列直接子元素，见 liuli-transition.ts）。 */}
       <div ref={scrollRef} className={css.chatScroll} data-liuli-chat-flow="">
-        {nodeCount === 0 && snap?.partial === undefined && (
+        {visibleCount === 0 && snap?.partial === undefined && (
           <div className={css.devEmpty}>
-            {childSessionId === undefined ? '准备中…' : '从下面输入消息，开始这段辅助对话（它带着当前会话的上下文 fork）'}
+            {childSessionId === undefined ? '准备中…' : '从下面输入消息，开始这段辅助对话（它带着当前会话的上下文 fork，继承的上一轮对话不显示）'}
           </div>
         )}
-        <ChatFlowView snap={snap} />
+        <ChatFlowView snap={snap} from={fromIdx} />
         <ChatFlowPartial partial={snap?.partial} running={snap?.running === true} />
       </div>
       <form ref={composerRef} className={css.chatComposer} onSubmit={(e) => { e.preventDefault(); send() }} data-composer-card="true">
