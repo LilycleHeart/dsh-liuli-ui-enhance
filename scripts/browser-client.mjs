@@ -22,7 +22,16 @@
  *   node browser-client.mjs eval <tab> <js>            # executeJavaScript
  *   node browser-client.mjs shot <tab> [file.png]      # capturePage 截图
  *   node browser-client.mjs close <tab>
+ *   node browser-client.mjs aria <tab> [ai|yaml]       # aria 快照(YAML + [ref=eN])
+ *   node browser-client.mjs info <tab> <ref|selector>  # 元素信息(tag/rect/selector…)
+ *   node browser-client.mjs op <tab> <method> [json]   # CDP 操作面
+ *                                      # click/type/fill/press/hover/scroll/
+ *                                      # select/check/uncheck/evaluate/playwright/
+ *                                      # navigate/newTab/closeTab/list/screenshot/…
  *
+ * 外部进程直连 Host 路由会被服务端 fence 403:设 LIULI_BROWSER_VIA=cdp 走
+ * scripts/browser-bridge.mjs 中转(主进程 inspector 9229 → 页面内同源 fetch;
+ * 需 DSH Desktop 以调试模式启动,见 tools/dsh-debug-launch.cmd)。
  * 无几何上报的 agent 标签保持隐藏（等效 DSH CLI-managed headless CDP：
  * 导航/执行/截图可用，仅不可见）；GUI 侧边栏打开的标签 id 形如 browser:<uid>，
  * 可直接用本 CLI 驱动（IAB 模式）。
@@ -31,8 +40,11 @@
  * 不带 --show 时保持隐藏，适合无头验证（snap/click/shot）。
  */
 import { writeFileSync } from 'node:fs'
+import { cdpFetchJson } from './browser-bridge.mjs'
 
 const BASE = process.env.LIULI_BROWSER_BASE ?? 'http://127.0.0.1:7336'
+/** LIULI_BROWSER_VIA=cdp:全部请求经主进程 inspector 桥中转(过服务端 fence)。 */
+const VIA = (process.env.LIULI_BROWSER_VIA ?? '').toLowerCase()
 const args = process.argv.slice(2)
 const command = args[0] ?? 'help'
 
@@ -41,24 +53,30 @@ function fail(message) {
   process.exit(1)
 }
 
+/** 直连模式:外部 fetch(Host fence 403 时提示切 VIA=cdp)。 */
+async function directJson(path, init) {
+  try {
+    const resp = await fetch(BASE + path, { ...init, signal: AbortSignal.timeout(init?.execTimeout ?? (init?.method === 'POST' ? 20000 : 20000)) })
+    const type = resp.headers.get('content-type') ?? ''
+    if (!type.includes('application/json')) fail('route ' + path + ' 不可用(宿主未启用嵌入式浏览器引擎?需要 DSH Desktop 重启加载新版 dsh-liuli-ui-enhance)')
+    return resp.json()
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause)
+    if (message.includes('403') || message.includes('fence')) fail('直连被拒(' + message + ')——设 LIULI_BROWSER_VIA=cdp 走 inspector 桥中转')
+    throw cause
+  }
+}
+
 async function getJson(path) {
-  const resp = await fetch(BASE + path, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(20000) })
-  const type = resp.headers.get('content-type') ?? ''
-  if (!type.includes('application/json')) fail('route ' + path + ' 不可用（宿主未启用嵌入式浏览器引擎？需要 DSH Desktop 重启加载新版 dsh-liuli-ui-enhance）')
-  return resp.json()
+  if (VIA === 'cdp') return cdpFetchJson(path, { method: 'GET' })
+  return directJson(path, { headers: { accept: 'application/json' } })
 }
 
 async function postJson(path, body) {
-  const isExec = path === '/liuli-browser/tabs/execute'
-  const resp = await fetch(BASE + path, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(isExec ? 30000 : 20000),
-  })
-  const type = resp.headers.get('content-type') ?? ''
-  if (!type.includes('application/json')) fail('route ' + path + ' 不可用（宿主未启用嵌入式浏览器引擎？）')
-  return resp.json()
+  const payload = { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(body) }
+  if (path === '/liuli-browser/ops') payload.execTimeout = 70000
+  if (VIA === 'cdp') return cdpFetchJson(path, { ...payload, method: 'POST' })
+  return directJson(path, payload)
 }
 
 function requireTab() {
@@ -69,6 +87,8 @@ function requireTab() {
 
 /** 等待标签加载完成（did-stop-loading → loading=false，超时返回最后状态）。 */
 async function waitIdle(tab, timeoutMs = 15000) {
+  // webview 承载(侧边栏 <webview> guest)没有引擎状态路由,跳过引擎轮询。
+  if (tab.startsWith('webview')) return { loading: false }
   const deadline = Date.now() + timeoutMs
   let state
   for (;;) {
@@ -294,10 +314,47 @@ async function run() {
       console.log(JSON.stringify({ ok: buf.length > 0, file, bytes: buf.length }))
       return
     }
+    case 'aria': {
+      const tab = requireTab()
+      const mode = args[2] === 'yaml' ? 'yaml' : 'ai'
+      await waitIdle(tab)
+      const resp = await postJson('/liuli-browser/ops', { tabId: tab, method: 'snapshot', params: { mode } })
+      if (resp.ok !== true) fail('aria snapshot failed: ' + JSON.stringify(resp.error))
+      console.log(resp.value.yaml)
+      return
+    }
+    case 'info': {
+      const tab = requireTab()
+      const selector = args[2]
+      if (selector === undefined) fail('缺少 <ref|selector>')
+      const resp = await postJson('/liuli-browser/ops', { tabId: tab, method: 'elementInfo', params: { selector } })
+      console.log(JSON.stringify(resp, null, 2))
+      return
+    }
+    case 'op': {
+      const tab = requireTab()
+      const opMethod = args[2]
+      if (opMethod === undefined) fail('缺少 <method>(click/type/fill/press/hover/scroll/select/check/uncheck/evaluate/playwright/navigate/newTab/closeTab/list/screenshot/getState)')
+      let params = {}
+      if (args[3] !== undefined) {
+        try { params = JSON.parse(args.slice(3).join(' ')) } catch { fail('<json> 参数不是合法 JSON') }
+      }
+      const resp = await postJson('/liuli-browser/ops', { tabId: tab, method: opMethod, params })
+      const isShot = opMethod === 'screenshot' && resp.ok === true
+      if (isShot) {
+        const file = params.out ?? 'liuli-op-' + tab.replace(/[^a-zA-Z0-9_-]/g, '_') + '.png'
+        writeFileSync(file, Buffer.from(resp.value.base64, 'base64'))
+        console.log(JSON.stringify({ ok: true, file, bytes: resp.value.bytes }))
+        return
+      }
+      console.log(JSON.stringify(resp, null, 2))
+      return
+    }
     case 'help':
     default: {
       const header = typeof __filename !== 'undefined' ? '' : ''
-      process.stdout.write(header + '用法见脚本头注释：caps/open/list/state/goto/back/forward/reload/url/title/wait/click/fill/text/snap/eval/shot/close\n')
+      process.stdout.write(header + '用法见脚本头注释：caps/open/list/state/goto/back/forward/reload/url/title/wait/click/fill/text/snap/eval/shot/close/aria/info/op'
+        + (VIA === 'cdp' ? '(VIA=cdp 桥中转)' : '(直连 ' + BASE + ';403 时设 LIULI_BROWSER_VIA=cdp)') + '\n')
     }
   }
 }

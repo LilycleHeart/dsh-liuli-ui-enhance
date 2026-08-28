@@ -19,6 +19,7 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
+import { createBrowserOps, OPS_METHODS, type ElectronDebugger, type OpsResult } from './browser-ops.ts'
 
 /* ── 本引擎用到的 Electron 主进程 API 最小面 ─────────────────────────── */
 
@@ -26,10 +27,14 @@ interface ElectronWebContents {
   on(event: string, listener: (...args: never[]) => void): void
   loadURL(url: string): Promise<void>
   getURL(): string
+  getTitle(): string
+  getType(): string
   reload(): void
   stop(): void
   focus(): void
   close(): void
+  isDestroyed(): boolean
+  isLoading(): boolean
   openDevTools(options?: { mode?: string }): void
   setZoomFactor(factor: number): void
   getZoomFactor(): number
@@ -37,6 +42,8 @@ interface ElectronWebContents {
   capturePage(): Promise<{ toPNG(): Buffer }>
   setWindowOpenHandler(handler: (details: { url: string; disposition: string }) => { action: 'deny' | 'allow' }): void
   navigationHistory: { canGoBack(): boolean; canGoForward(): boolean; goBack(): void; goForward(): void }
+  /** CDP 调试器（browser-ops 操作面挂载点；Electron wc 全量具备）。 */
+  debugger: ElectronDebugger
 }
 
 interface ElectronWebContentsView {
@@ -48,6 +55,10 @@ interface ElectronWebContentsView {
 
 interface ElectronBrowserWindow {
   isDestroyed(): boolean
+  isVisible(): boolean
+  isMinimized(): boolean
+  restore(): void
+  show(): void
   contentView: {
     addChildView(view: ElectronWebContentsView, index?: number): void
     removeChildView(view: ElectronWebContentsView): void
@@ -61,6 +72,7 @@ interface ElectronDownloadItem {
 interface ElectronMain {
   BrowserWindow: { getAllWindows(): ElectronBrowserWindow[] }
   WebContentsView: new (options: { webPreferences: Record<string, unknown> }) => ElectronWebContentsView
+  webContents: { getAllWebContents(): ElectronWebContents[] }
   session: { fromPartition(partition: string): { on(event: 'will-download', listener: (e: unknown, item: ElectronDownloadItem) => void): void } }
   shell: { openExternal(url: string): Promise<void> }
 }
@@ -221,6 +233,34 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
     return gui ?? wins[0]
   }
 
+  /** CDP 操作面（aria 快照 / 真实输入 / world 求值；browser-ops.ts）。 */
+  const opsSurfaces = new Set<string>()
+  const ops = createBrowserOps({
+    findWindow,
+    prepareTabSurface: (tabId: string): void => {
+      const tab = tabs.get(tabId)
+      const win = findWindow()
+      if (tab === undefined || win === undefined) return
+      const geo = tab.geometry
+      if (geo.visible && geo.width >= 4 && geo.height >= 4) return // 已有可见承载
+      try {
+        // 垫到 GUI 之下（index 0）+ 1024×768：输入管线的 hit test 需要合成帧，
+        // 屏外/隐藏视图的 mousePressed/Released 不挂死但不命中（实测不触发 onclick）。
+        win.contentView.removeChildView(tab.view)
+        win.contentView.addChildView(tab.view, 0)
+        tab.view.setVisible(true)
+        tab.view.setBounds({ x: 0, y: 0, width: 1024, height: 768 })
+        opsSurfaces.add(tabId)
+      } catch { /* 窗口已销毁等场景忽略 */ }
+    },
+    restoreTabSurface: (tabId: string): void => {
+      const tab = tabs.get(tabId)
+      if (tab === undefined || !opsSurfaces.delete(tabId)) return
+      raiseView(tab)
+      applyBounds(tab)
+    },
+  })
+
   const applyBounds = (tab: EngineTab): void => {
     const geo = tab.geometry
     const hidden = !geo.visible || geo.width < 4 || geo.height < 4
@@ -263,8 +303,7 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
   }
 
   /** webContents 事件 → 状态镜像 + SSE（did-* 监听一一对应）。 */
-  const wireEvents = (tab: EngineTab): void => {
-    const wc = tab.view.webContents
+  const wireEvents = (tab: EngineTab): void => {    const wc = tab.view.webContents
     wc.on('did-start-loading', () => {
       tab.state.loading = true
       tab.state.error = null
@@ -361,6 +400,7 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
   const rebuildTab = (tab: EngineTab, restoreUrl: string): void => {
     const win = findWindow()
     try { if (win !== undefined) win.contentView.removeChildView(tab.view) } catch { /* 已移除 */ }
+    try { if (tab.view.webContents.debugger.isAttached()) tab.view.webContents.debugger.detach() } catch { /* 未附着 */ }
     try { tab.view.webContents.close() } catch { /* 已销毁 */ }
     tab.generation += 1
     tab.view = makeView()
@@ -416,6 +456,7 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
     tabs.delete(id)
     const win = findWindow()
     try { if (win !== undefined) win.contentView.removeChildView(tab.view) } catch { /* 窗口已销毁 */ }
+    try { if (tab.view.webContents.debugger.isAttached()) tab.view.webContents.debugger.detach() } catch { /* 未附着 */ }
     try { tab.view.webContents.close() } catch { /* 已销毁 */ }
     broadcast({ type: 'closed', tabId: id })
     return true
@@ -426,6 +467,61 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
     item.setSaveDialogOptions({ title: '保存文件' })
   })
 
+  /**
+   * 标签页 PNG 截图(既有 /tabs/screenshot 与 ops screenshot 共用)。
+   * 隐藏/屏外视图不参与合成（capturePage 会返回空图）：临时移进窗口取帧;
+   * 优先垫到 GUI 之下（index 0）避免闪烁;若仍为空再抬到顶层重试一次。
+   */
+  const captureTabPng = async (tab: EngineTab): Promise<Buffer> => {
+    const geo = tab.geometry
+    const hidden = !geo.visible || geo.width < 4 || geo.height < 4
+    const captureOnce = async (): Promise<Buffer> => {
+      const image = await tab.view.webContents.capturePage()
+      return image.toPNG()
+    }
+    if (!hidden) return captureOnce()
+    const win = findWindow()
+    const width = 1024
+    const height = 768
+    const prepare = (index?: number): void => {
+      if (win === undefined) return
+      try {
+        win.contentView.removeChildView(tab.view)
+        win.contentView.addChildView(tab.view, index)
+        tab.view.setVisible(true)
+        tab.view.setBounds({ x: 0, y: 0, width, height })
+      } catch { /* 忽略 */ }
+    }
+    prepare(0)
+    await new Promise(r => setTimeout(r, 280))
+    let png = await captureOnce()
+    if (png.length === 0) {
+      prepare() // 顶层重试（短暂可见）
+      await new Promise(r => setTimeout(r, 280))
+      png = await captureOnce()
+    }
+    raiseView(tab)
+    applyBounds(tab)
+    return png
+  }
+
+  /**
+   * ops 路由目标解析:引擎标签优先;tabId 形如 'webview' / 'webview:<urlSubstr>'
+   * 时解析侧边栏 <webview> 承载(webviewTag 补丁生效时 PreviewPanel 走 DOM webview,
+   * 不建引擎标签)的 guest webContents,使 CDP 操作面同一套能力覆盖两种承载。
+   */
+  const resolveOpsTarget = (tabId: string): { wc: ElectronWebContents; engineTab?: EngineTab } | undefined => {
+    const engineTab = tabs.get(tabId)
+    if (engineTab !== undefined) return { wc: engineTab.view.webContents, engineTab }
+    if (tabId === 'webview' || tabId.startsWith('webview:')) {
+      const needle = tabId.startsWith('webview:') ? tabId.slice(8) : ''
+      const guest = electron.webContents.getAllWebContents().find(wc =>
+        wc.getType() === 'webview' && !wc.isDestroyed() && (needle === '' || wc.getURL().includes(needle)))
+      if (guest !== undefined) return { wc: guest }
+    }
+    return undefined
+  }
+
   const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     if (!isLoopbackCaller(req)) { sendJson(res, 403, { ok: false, error: 'forbidden' }); return }
     const url = new URL(req.url ?? '/', 'http://x')
@@ -434,7 +530,14 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
 
     try {
       if (path === '/liuli-browser/capabilities') {
-        sendJson(res, 200, { ok: true, engine: 'webview', partition: PARTITION, viewport: { min: VIEWPORT_MIN, maxW: VIEWPORT_MAX_W, maxH: VIEWPORT_MAX_H }, tabs: [...tabs.keys()] })
+        sendJson(res, 200, {
+          ok: true,
+          engine: 'webview',
+          partition: PARTITION,
+          viewport: { min: VIEWPORT_MIN, maxW: VIEWPORT_MAX_W, maxH: VIEWPORT_MAX_H },
+          tabs: [...tabs.keys()],
+          ops: ['getState', 'navigate', 'back', 'forward', 'reload', 'stop', 'newTab', 'closeTab', 'list', 'screenshot', 'browserViewportSet', 'browserViewportReset', ...OPS_METHODS],
+        })
         return
       }
 
@@ -557,43 +660,102 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
       if (path === '/liuli-browser/tabs/screenshot') {
         const tab = tabs.get(url.searchParams.get('id') ?? '')
         if (tab === undefined) { sendJson(res, 404, { ok: false, error: 'unknown tab' }); return }
-        // 隐藏/屏外视图不参与合成（capturePage 会返回空图）：临时移进窗口取帧。
-        // 优先垫到 GUI 之下（index 0）避免闪烁；若仍为空再抬到顶层重试一次。
-        const geo = tab.geometry
-        const hidden = !geo.visible || geo.width < 4 || geo.height < 4
-        const captureOnce = async (): Promise<Buffer> => {
-          const image = await tab.view.webContents.capturePage()
-          return image.toPNG()
-        }
-        let png: Buffer
-        if (!hidden) {
-          png = await captureOnce()
-        } else {
-          const win = findWindow()
-          const width = 1024
-          const height = 768
-          const prepare = (index?: number): void => {
-            if (win === undefined) return
-            try {
-              win.contentView.removeChildView(tab.view)
-              win.contentView.addChildView(tab.view, index)
-              tab.view.setVisible(true)
-              tab.view.setBounds({ x: 0, y: 0, width, height })
-            } catch { /* 忽略 */ }
-          }
-          prepare(0)
-          await new Promise(r => setTimeout(r, 280))
-          png = await captureOnce()
-          if (png.length === 0) {
-            prepare() // 顶层重试（短暂可见）
-            await new Promise(r => setTimeout(r, 280))
-            png = await captureOnce()
-          }
-          raiseView(tab)
-          applyBounds(tab)
-        }
+        const png = await captureTabPng(tab)
         res.writeHead(200, { 'content-type': 'image/png', 'content-length': String(png.length), 'cache-control': 'no-store' })
         res.end(png)
+        return
+      }
+
+      if (method === 'POST' && path === '/liuli-browser/ops') {
+        const body = await readBody(req)
+        const opTabId = asString(body?.tabId) ?? asString(body?.id) ?? ''
+        const target = resolveOpsTarget(opTabId)
+        if (target === undefined) { sendJson(res, 404, { ok: false, error: { code: 'not_found', message: 'unknown tab' } }); return }
+        const { wc: targetWc, engineTab: tab } = target
+        const opMethod = asString(body?.method) ?? ''
+        const params = (body?.params !== null && body?.params !== undefined && typeof body.params === 'object' ? body.params : {}) as Record<string, unknown>
+        let result: OpsResult
+        switch (opMethod) {
+          case 'getState':
+            result = { ok: true, value: tab === undefined
+              ? { url: targetWc.getURL(), title: targetWc.getTitle(), loading: targetWc.isLoading(), ready: true, error: null, favicon: null, canGoBack: false, canGoForward: false }
+              : { ...tab.state, generation: tab.generation } }
+            break
+          case 'navigate': {
+            const navTarget = asString(params.url) ?? ''
+            if (navTarget === '') { result = { ok: false, error: { code: 'bad_params', message: 'navigate 需要 url' } }; break }
+            if (tab !== undefined) {
+              tab.lastRequestedUrl = navTarget
+              tab.state.error = null
+            }
+            try {
+              await Promise.race([
+                targetWc.loadURL(navTarget).catch((cause: unknown) => {
+                  const message = cause instanceof Error ? cause.message : String(cause)
+                  if (!message.includes('ERR_ABORTED')) throw cause
+                }),
+                new Promise<never>((_, reject) => setTimeout(() => reject(new Error('navigation timed out (30s)')), 30000)),
+              ])
+              result = { ok: true, value: tab === undefined ? { url: targetWc.getURL() } : { ...tab.state } }
+            } catch (cause) {
+              result = { ok: false, error: { code: 'navigation_error', message: cause instanceof Error ? cause.message : String(cause) } }
+            }
+            break
+          }
+          case 'back': case 'forward': case 'reload': case 'stop': {
+            if (opMethod === 'back') { if (targetWc.navigationHistory.canGoBack()) targetWc.navigationHistory.goBack() }
+            else if (opMethod === 'forward') { if (targetWc.navigationHistory.canGoForward()) targetWc.navigationHistory.goForward() }
+            else if (opMethod === 'reload') targetWc.reload()
+            else targetWc.stop()
+            result = { ok: true, value: tab === undefined ? { url: targetWc.getURL() } : { ...tab.state } }
+            break
+          }
+          case 'newTab': {
+            const target = asString(params.url) ?? 'about:blank'
+            const newId = 'agent:' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7)
+            const created = createTab(newId, target)
+            result = { ok: true, value: { tabId: created.id, state: created.state } }
+            break
+          }
+          case 'closeTab':
+            result = tab === undefined
+              ? { ok: false, error: { code: 'bad_params', message: 'closeTab 只支持引擎标签(webview 标签请在侧边栏关闭)' } }
+              : { ok: true, value: { closed: destroyTab(tab.id) } }
+            break
+          case 'list':
+            result = { ok: true, value: [...tabs.entries()].map(([tabId, t]) => ({ tabId, ...t.state })) }
+            break
+          case 'screenshot': {
+            try {
+              const png = tab === undefined ? (await targetWc.capturePage()).toPNG() : await captureTabPng(tab)
+              result = { ok: true, value: { base64: png.toString('base64'), bytes: png.length } }
+            } catch (cause) {
+              result = { ok: false, error: { code: 'capture_failed', message: cause instanceof Error ? cause.message : String(cause) } }
+            }
+            break
+          }
+          case 'browserViewportSet': {
+            if (tab === undefined) { result = { ok: false, error: { code: 'bad_params', message: '视口控制只支持引擎标签' } }; break }
+            const width = Math.round(Number(params.width) || 0)
+            const height = Math.round(Number(params.height) || 0)
+            const scale = Math.min(4, Math.max(0.25, Number(params.scale) || 1))
+            tab.viewport = width >= VIEWPORT_MIN && height >= VIEWPORT_MIN && width <= VIEWPORT_MAX_W && height <= VIEWPORT_MAX_H
+              ? { width, height, scale }
+              : null
+            applyBounds(tab)
+            result = { ok: true, value: { viewport: tab.viewport } }
+            break
+          }
+          case 'browserViewportReset':
+            if (tab === undefined) { result = { ok: false, error: { code: 'bad_params', message: '视口控制只支持引擎标签' } }; break }
+            tab.viewport = null
+            applyBounds(tab)
+            result = { ok: true, value: { viewport: null } }
+            break
+          default:
+            result = await ops.handle(targetWc, opTabId, opMethod, params)
+        }
+        sendJson(res, 200, result)
         return
       }
 
@@ -647,6 +809,7 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
       for (const id of [...tabs.keys()]) destroyTab(id)
       for (const res of sseClients) { try { res.end() } catch { /* 忽略 */ } }
       sseClients.clear()
+      ops.dispose()
     },
   }
 }
