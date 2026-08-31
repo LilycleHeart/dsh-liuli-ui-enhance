@@ -3,8 +3,23 @@ lib/
 dist/
 *.log
 .DS_Store
-# 临时/调试产物（元素拾取、探针、截图等）
+Thumbs.db
+*.tsbuildinfo
+
+# 临时/调试产物（元素拾取、探针、截图、打包残留等）
 .tmp-*
+.tmp-pack-*/
 preview-gifs/
+
+# IDE / 编辑器
+.idea/
+.vscode/
+*.swp
+
+# 测试 / 覆盖率 / 浏览器自动化产物
+coverage/
+playwright-report/
+test-results/
+
 # demo 验证脚本不入库（仅本地开发调试用）
 demo/
