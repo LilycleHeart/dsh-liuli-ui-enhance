@@ -159,3 +159,20 @@ export function dockPanelToSideTab(panel: {
   }
   return base
 }
+
+/* ── dock 布局面板类型注册表 ──
+ * DockShellFrame 在布局变化时上报树里出现的面板类型集合，侧边栏
+ * （PreviewDetailsPanel）据此判断「审查等标签是否已拆进布局」：已拆出时
+ * 审查请求由 dock 面板承接，不再在侧边栏重开一份（避免同一面板开两处）。 */
+
+let dockPanelTypes: ReadonlySet<string> = new Set()
+
+/** DockShellFrame 上报当前 dock 布局里的面板类型（树 + 浮动窗口）。 */
+export function reportDockPanelTypes(types: ReadonlySet<string>): void {
+  dockPanelTypes = types
+}
+
+/** 侧边栏查询：某类型面板当前是否已在 dock 布局里（拆出/停靠）。 */
+export function hasDockPanelType(type: string): boolean {
+  return dockPanelTypes.has(type)
+}

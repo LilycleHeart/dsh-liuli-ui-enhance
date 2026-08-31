@@ -10,11 +10,11 @@ export interface IconProps {
   className?: string
 }
 
-function MaterialIcon({ d, size = 24, className }: IconProps & { d: string }) {
+function MaterialIcon({ d, size = 24, className, viewBox = '0 0 24 24' }: IconProps & { d: string; viewBox?: string }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
+      viewBox={viewBox}
       width={size}
       height={size}
       fill="currentColor"
@@ -50,11 +50,12 @@ export const GlobeIcon = (props: IconProps) => (
   />
 )
 
-/** Material Git（审查图谱）。 */
+/** Material Symbols difference（审查/文件差异：两张文件卡 + 加减号）。 */
 export const FileDiffIcon = (props: IconProps) => (
   <MaterialIcon
     {...props}
-    d="M12 2a3 3 0 0 1 3 3c0 1.3-.84 2.4-2 2.82v3.36a3.002 3.002 0 0 1 2 2.82 3 3 0 1 1-6 0c0-1.3.84-2.4 2-2.82V7.82A3.008 3.008 0 0 1 9 5a3 3 0 0 1 3-3zm0 12a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"
+    viewBox="0 -960 960 960"
+    d="M490-526h60v-84h84v-60h-84v-84h-60v84h-84v60h84v84Zm-84 156h228v-60H406v60ZM260-160q-24 0-42-18t-18-42v-640q0-24 18-42t42-18h348l232 232v468q0 24-18 42t-42 18H260Zm0-60h520v-442L578-860H260v640ZM140-40q-24 0-42-18t-18-42v-619h60v619h498v60H140Zm120-180v-640 640Z"
   />
 )
 
@@ -66,11 +67,12 @@ export const BugIcon = (props: IconProps) => (
   />
 )
 
-/** Material terminal（终端）。 */
+/** Material Symbols terminal（终端：圆角框内 >_ 提示符）。 */
 export const SquareTerminalIcon = (props: IconProps) => (
   <MaterialIcon
     {...props}
-    d="M4 5h16c.55 0 1 .45 1 1v12c0 .55-.45 1-1 1H4c-.55 0-1-.45-1-1V6c0-.55.45-1 1-1zm3.6 3.2-2.1 2.1 2.1 2.1-1.4 1.4L2.7 10.3l3.5-3.5 1.4 1.4zM21.3 10.3l-3.5 3.5-1.4-1.4 2.1-2.1-2.1-2.1 1.4-1.4 3.5 3.5z"
+    viewBox="0 -960 960 960"
+    d="M140-160q-24 0-42-18t-18-42v-520q0-24 18-42t42-18h680q24 0 42 18t18 42v520q0 24-18 42t-42 18H140Zm0-60h680v-436H140v436Zm160-72-42-42 103-104-104-104 43-42 146 146-146 146Zm190 4v-60h220v60H490Z"
   />
 )
 

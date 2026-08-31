@@ -71,7 +71,7 @@ export interface TerminalPanelProps {
   sessionId?: string | undefined
 }
 
-/** 读取「默认终端」设置值（功能设置页配置；'' = 宿主默认）。
+/** 读取「侧边栏默认终端」设置值（功能设置页配置；'' = 宿主默认）。
  *  旧版终端面板把选择记在 liuli:terminal-shell，这里作一次性迁移兜底。 */
 function terminalShellSetting(): string {
   try {

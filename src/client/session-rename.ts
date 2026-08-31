@@ -10,6 +10,7 @@
  * list 快照的 current 即为目标会话，无需反查行级 sessionId。
  */
 import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import { sanitizeSessionTitle } from './session-title-filter.ts'
 
 /** 行内标题文本：第一个非空、无子元素、不在按钮内的叶子 span（状态点/标记都是 SVG，无文本）。 */
 export function readRowTitle(row: HTMLElement): string | undefined {
@@ -22,6 +23,8 @@ export function readRowTitle(row: HTMLElement): string | undefined {
  * 从会话行 DOM 反查 sessionId（官方行不暴露 data-session-id）。
  * 优先用 current（行 aria-selected=true）；否则按 displayTitle 文本匹配
  * （标题唯一时可靠，插件覆盖方案的已知折中）。
+ * 标题匹配经 sanitizeSessionTitle 归一化：session-title-filter 会把命中元素块的
+ * 行内标题改写为清洗文本，两侧都清洗后仍能对上（常规标题清洗为恒等，零影响）。
  */
 export function resolveSessionId(ctx: Pick<ClientContext, 'sessions'>, row: HTMLElement): SessionId | undefined {
   const snap = ctx.sessions.list.getSnapshot()
@@ -32,22 +35,22 @@ export function resolveSessionId(ctx: Pick<ClientContext, 'sessions'>, row: HTML
   const texts = new Set(
     Array.from(row.querySelectorAll<HTMLElement>('span'))
       .filter(s => s.children.length === 0 && (s.textContent?.trim().length ?? 0) > 0 && s.closest('button') === null)
-      .map(s => (s.textContent ?? '').trim()),
+      .map(s => sanitizeSessionTitle((s.textContent ?? '').trim())),
   )
   for (const id of snap.ids) {
     const s = snap.byId[id]
-    if (s !== undefined && texts.has(s.displayTitle.trim())) return id
+    if (s !== undefined && texts.has(sanitizeSessionTitle(s.displayTitle.trim()))) return id
   }
   return undefined
 }
 
-/** 行内标题 span 定位：文本等于 displayTitle 的叶子 span。 */
+/** 行内标题 span 定位：文本等于 displayTitle 的叶子 span（两侧都经标题清洗归一化）。 */
 export function locateTitleSpan(row: HTMLElement, title: string): HTMLElement | null {
-  const wanted = title.trim()
+  const wanted = sanitizeSessionTitle(title.trim())
   const spans = Array.from(row.querySelectorAll<HTMLElement>('span'))
   const leaf = spans.filter(s => s.children.length === 0)
   // 优先精确匹配标题文本
-  let hit = leaf.find(s => (s.textContent?.trim() ?? '') === wanted)
+  let hit = leaf.find(s => sanitizeSessionTitle((s.textContent?.trim() ?? '')) === wanted)
   if (hit === undefined && wanted === '') {
     // 空标题（新会话）：取第一个不在按钮内的非空叶子 span
     hit = leaf.find(s => (s.textContent?.trim().length ?? 0) > 0 && s.closest('button') === null)

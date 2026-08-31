@@ -32,7 +32,7 @@ export interface LiuliBgArea {
   h: number
 }
 
-/** 终端默认 Shell 选项（'' = 宿主默认；host 端 /liuli-terminal 回退 cmd / bash）。 */
+/** 侧边栏终端默认 Shell 选项（'' = 宿主默认；host 端 /liuli-terminal 回退 cmd / bash）。 */
 export const TERMINAL_SHELL_IDS = ['', 'cmd', 'powershell', 'pwsh', 'bash'] as const
 export type LiuliTerminalShell = (typeof TERMINAL_SHELL_IDS)[number]
 
@@ -133,7 +133,7 @@ export interface LiuliSettings {
   /** 自动驱动侧边栏浏览器（LLM 活动感知）：模型启动 dev server / 写前端文件时
    *  自动在右侧边栏打开浏览器标签展示页面（auto-drive-browser.ts）。 */
   auto_drive_browser: boolean
-  /** 终端默认 Shell（功能设置页配置；'' = 宿主默认 cmd/bash）。 */
+  /** 侧边栏终端默认 Shell（功能设置页配置；'' = 宿主默认 cmd/bash）。 */
   terminal_shell: LiuliTerminalShell
   /** 非官方增强总开关：关闭后仅保留官方扩展点功能（主题/声纹/设置页），
    *  全部非官方（侵入式/观察式）功能不挂载，用于与其它插件冲突时一键降级。 */

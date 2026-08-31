@@ -3,26 +3,28 @@
  *
  * 官方 ui-workspace 的目录行右键菜单（重命名 / 删除工作区）是通过改官方
  * 文件实现的；本模块搬进 dsh-liuli-ui-enhance：document 级 contextmenu 委托，右键
- * 目录行弹出自绘菜单，动作经 ctx.workspaces.rename / ctx.workspaces.delete。
+ * 目录行弹出自绘菜单：在资源管理器中打开（Host /liuli-reveal-workspace 打开工作区
+ * 根目录）/ 重命名（ctx.workspaces.rename）/ 删除（ctx.workspaces.delete）。
  * 未分组桶（ungrouped，无 workspaceId）在列表里匹配不到，自然不弹菜单。
  */
 import type { ClientContext, WorkspaceId } from '@deepseek-ai/dsh-client-runtime/client'
 import { readRowTitle, locateTitleSpan, mountEditor } from './session-rename.ts'
+import { revealWorkspaceInExplorer } from './right-sidebar-api.ts'
 import { ICONS } from './menu-icons.ts'
 
 type Ctx = Pick<ClientContext, 'workspaces'>
 
 /** 从目录行 DOM 反查工作区（标题匹配 items；未分组桶匹配不到 → undefined）。 */
-function resolveWorkspace(ctx: Ctx, row: HTMLElement): { id: WorkspaceId; title: string } | undefined {
+function resolveWorkspace(ctx: Ctx, row: HTMLElement): { id: WorkspaceId; title: string; path: string } | undefined {
   const title = readRowTitle(row)
   if (title === undefined) return undefined
   const items = ctx.workspaces.list.getSnapshot().items
   const ws = items.find(w => w.title.trim() === title)
   if (ws === undefined) return undefined
-  return { id: ws.workspaceId, title: ws.title }
+  return { id: ws.workspaceId, title: ws.title, path: ws.path }
 }
 
-function renderMenu(ctx: Ctx, row: HTMLElement, id: WorkspaceId, title: string, x: number, y: number): void {
+function renderMenu(ctx: Ctx, row: HTMLElement, id: WorkspaceId, title: string, path: string, x: number, y: number): void {
   document.querySelectorAll('[data-liuli-context-menu]').forEach(el => el.remove())
   const menu = document.createElement('div')
   menu.setAttribute('role', 'menu')
@@ -41,6 +43,12 @@ function renderMenu(ctx: Ctx, row: HTMLElement, id: WorkspaceId, title: string, 
     menu.remove()
   }
   const runAction = (action: string): void => {
+    if (action === 'open') {
+      // 在系统文件管理器中打开工作区根目录（Host /liuli-reveal-workspace 解析；
+      // 同时带上已知注册路径，Host 注册表不可用时回退）。
+      void revealWorkspaceInExplorer(id, path)
+      return
+    }
     if (action === 'rename') {
       const span = locateTitleSpan(row, title)
       if (span !== null) mountEditor(span, title, (t) => ctx.workspaces.rename(id, t))
@@ -73,6 +81,7 @@ function renderMenu(ctx: Ctx, row: HTMLElement, id: WorkspaceId, title: string, 
     menu.appendChild(btn)
   }
 
+  appendItem('在资源管理器中打开', 'open', ICONS.folderOpen)
   appendItem('重命名工作区', 'rename', ICONS.edit)
   appendItem('删除工作区', 'delete', ICONS.trash, { danger: true })
 
@@ -113,7 +122,7 @@ export function startWorkspaceContextMenu(ctx: Ctx): () => void {
     if (ws === undefined) return
     e.preventDefault()
     e.stopPropagation()
-    renderMenu(ctx, row, ws.id, ws.title, e.clientX, e.clientY)
+    renderMenu(ctx, row, ws.id, ws.title, ws.path, e.clientX, e.clientY)
   }
   document.addEventListener('contextmenu', onContextMenu, true)
   return () => {

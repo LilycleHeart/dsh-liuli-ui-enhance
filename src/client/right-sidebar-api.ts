@@ -183,3 +183,24 @@ export async function revealSidebarPath(sessionId: string, path: string): Promis
   }
 }
 
+/** 在系统文件管理器中打开工作区根目录（Host 半经 workspaceRegistry 解析注册路径；
+ *  同时带上客户端已知的注册路径，Host 注册表不可用时回退用它）。 */
+export async function revealWorkspaceInExplorer(workspaceId: string, path?: string): Promise<boolean> {
+  const query = new URLSearchParams()
+  if (workspaceId !== '') query.set('workspaceId', workspaceId)
+  if (path !== undefined && path !== '') query.set('path', path)
+  revealToast('正在打开资源管理器…', 'info')
+  try {
+    const response = await fetch('/liuli-reveal-workspace?' + query.toString())
+    if (response.ok) return true
+    const detail = await response.text().catch(() => '')
+    console.warn(`[liuli] /liuli-reveal-workspace failed: ${response.status} ${detail}`)
+    revealToast(`在资源管理器中打开失败：${response.status} ${detail}`, 'error')
+    return false
+  } catch (error) {
+    console.warn('[liuli] /liuli-reveal-workspace unavailable:', error)
+    revealToast(`在资源管理器中打开失败：${error instanceof Error ? error.message : String(error)}`, 'error')
+    return false
+  }
+}
+

@@ -44,9 +44,9 @@ export interface DockPanelDef {
 
 /* ── 16px Material 风格线性图标 ── */
 
-function Icon({ d, filled = true }: { d: string; filled?: boolean }) {
+function Icon({ d, filled = true, viewBox = '0 0 24 24' }: { d: string; filled?: boolean; viewBox?: string }) {
   return (
-    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+    <svg viewBox={viewBox} width="14" height="14" aria-hidden="true">
       <path fill={filled ? 'currentColor' : 'none'} stroke={filled ? 'none' : 'currentColor'} strokeWidth="1.8" d={d} />
     </svg>
   )
@@ -54,8 +54,8 @@ function Icon({ d, filled = true }: { d: string; filled?: boolean }) {
 
 const ICONS = {
   files: 'M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z',
-  git: 'M12 2a3 3 0 0 1 3 3c0 1.3-.84 2.4-2 2.82v3.36a3.002 3.002 0 0 1 2 2.82 3 3 0 1 1-6 0c0-1.3.84-2.4 2-2.82V7.82A3.008 3.008 0 0 1 9 5a3 3 0 0 1 3-3zm0 12a1 1 0 1 0 0 2 1 1 0 0 0 0-2z',
-  terminal: 'M4 5h16c.55 0 1 .45 1 1v12c0 .55-.45 1-1 1H4c-.55 0-1-.45-1-1V6c0-.55.45-1 1-1zm3.6 3.2-2.1 2.1 2.1 2.1-1.4 1.4L2.7 10.3l3.5-3.5 1.4 1.4zM21.3 10.3l-3.5 3.5-1.4-1.4 2.1-2.1-2.1-2.1 1.4-1.4 3.5 3.5z',
+  git: 'M490-526h60v-84h84v-60h-84v-84h-60v84h-84v60h84v84Zm-84 156h228v-60H406v60ZM260-160q-24 0-42-18t-18-42v-640q0-24 18-42t42-18h348l232 232v468q0 24-18 42t-42 18H260Zm0-60h520v-442L578-860H260v640ZM140-40q-24 0-42-18t-18-42v-619h60v619h498v60H140Zm120-180v-640 640Z',
+  terminal: 'M140-160q-24 0-42-18t-18-42v-520q0-24 18-42t42-18h680q24 0 42 18t18 42v520q0 24-18 42t-42 18H140Zm0-60h680v-436H140v436Zm160-72-42-42 103-104-104-104 43-42 146 146-146 146Zm190 4v-60h220v60H490Z',
   code: 'M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z',
   preview: 'M4 6h16v10H4V6zm0-2c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h6v2H8v2h8v-2h-2v-2h6c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2H4z',
   browser: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm7.9 9h-3.4a15.7 15.7 0 0 0-1.2-5.3A8.03 8.03 0 0 1 19.9 11zM12 4.1c.9 1.2 1.9 3.4 2.4 6.9H9.6c.5-3.5 1.5-5.7 2.4-6.9zM4.1 13h3.4c.2 2 .7 3.8 1.2 5.3A8.03 8.03 0 0 1 4.1 13zm3.4-2H4.1a8.03 8.03 0 0 1 4.6-5.3A15.7 15.7 0 0 0 7.5 11zm4.5 8.9c-.9-1.2-1.9-3.4-2.4-6.9h4.8c-.5 3.5-1.5 5.7-2.4 6.9zm3.3-1.6c.6-1.5 1-3.3 1.2-5.3h3.4a8.03 8.03 0 0 1-4.6 5.3z',
@@ -171,9 +171,9 @@ export const DOCK_PANEL_DEFS: DockPanelDef[] = [
   },
   {
     type: 'git',
-    label: '审查文件',
+    label: '审查',
     defaultTitle: '审查',
-    icon: <Icon d={ICONS.git} />,
+    icon: <Icon d={ICONS.git} viewBox="0 -960 960 960" />,
     render: ({ host }) => (
       <FileReviewPanel sessionId={host.sessionId} onOpenPath={host.openPath} />
     ),
@@ -182,7 +182,7 @@ export const DOCK_PANEL_DEFS: DockPanelDef[] = [
     type: 'terminal',
     label: '终端',
     defaultTitle: '终端',
-    icon: <Icon d={ICONS.terminal} />,
+    icon: <Icon d={ICONS.terminal} viewBox="0 -960 960 960" />,
     render: ({ host }) => <TerminalPanel sessionId={host.sessionId} />,
   },
   {

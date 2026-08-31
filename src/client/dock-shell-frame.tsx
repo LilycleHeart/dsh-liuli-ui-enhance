@@ -26,7 +26,8 @@ import {
 } from './dock-model.ts'
 import { DOCK_PANEL_DEFS, panelDef, panelTitle, type DockHostAccess } from './dock-panels.tsx'
 import type { SidePaneHostAccess } from './SidePaneExtraPanels.tsx'
-import { dockPanelToSideTab, markSideTabAccepted, openSidePaneTab, parseSideTab, SIDE_TAB_MIME, sideTabToDockPanel, type SideTabDockPanel } from './side-tab-dock.ts'
+import { dockPanelToSideTab, markSideTabAccepted, openSidePaneTab, parseSideTab, reportDockPanelTypes, SIDE_TAB_MIME, sideTabToDockPanel, type SideTabDockPanel } from './side-tab-dock.ts'
+import { REVIEW_DRIVE_EVENT, REVIEW_FILE_EVENT } from './review-bus.ts'
 import {
   createDockShellStore, defaultShellLayout, exportDockJSON, findRegion, importDockJSON, isRegionPanel,
   listShellSlotNames, loadSavedDock, loadShellSlotByName, regionLabel, saveShellDock,
@@ -170,6 +171,31 @@ function findPanelById(layout: DockLayout, panelId: string): PanelInstance | und
     if (panel !== undefined) return panel
   }
   return undefined
+}
+
+/** 在布局树/浮动窗口里找指定类型的面板（返回容器 id、当前激活面板 id 与面板）。 */
+function findPanelOfType(layout: DockLayout, type: string): { containerId: string; activeId: string | null; panel: PanelInstance } | undefined {
+  for (const node of collectTabsNodes(layout.root)) {
+    const panel = node.tabs.find(p => p.type === type)
+    if (panel !== undefined) return { containerId: node.id, activeId: node.activeId, panel }
+  }
+  for (const float of layout.floats) {
+    const panel = float.tabs.find(p => p.type === type)
+    if (panel !== undefined) return { containerId: float.id, activeId: float.activeId, panel }
+  }
+  return undefined
+}
+
+/** 收集布局树 + 浮动窗口里出现的面板类型（侧边栏据此判断「标签已拆进布局」）。 */
+function collectDockPanelTypes(layout: DockLayout): Set<string> {
+  const types = new Set<string>()
+  for (const node of collectTabsNodes(layout.root)) {
+    for (const panel of node.tabs) types.add(panel.type)
+  }
+  for (const float of layout.floats) {
+    for (const panel of float.tabs) types.add(panel.type)
+  }
+  return types
 }
 
 /** 目标标签组是否是「单面板详情区域」：拖回该组应还原为 SidePane 标签，而不是合并成 dock 标签组。 */
@@ -318,6 +344,46 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
     // 留着只是一条空固定宽条）；默认布局里的 detail 区域一并剔除。
     const layout = isSidebarEnhancementEnabled() ? base : stripRegionPanels(base, REGION_DETAILS)
     actions.setDock(layout)
+  }, [sessionId, actions])
+
+  // 上报 dock 布局里的面板类型：侧边栏据此判断「审查标签已拆进布局」，
+  // 收到审查请求时不再在侧边栏重开一份（避免同一面板开两处）。
+  // 卸载（布局开关关闭等）时清空注册表，侧边栏回退默认行为。
+  useEffect(() => {
+    reportDockPanelTypes(collectDockPanelTypes(dock))
+    return () => { reportDockPanelTypes(new Set()) }
+  }, [dock])
+
+  // 审查请求（轮次卡片「审查」/右键菜单）或驱动请求（LLM 活动自动展开）
+  // 到达时，若 dock 里已有审查面板，激活其所在标签组——拆出后审查由 dock
+  // 面板承接；多标签组里非激活的隐藏审查标签也借此挂载，从而消费 pending
+  // 请求（见 FileReviewPanel 的 consumeReviewRequest/consumeReviewDrive）。
+  useEffect(() => {
+    const activateGitPanel = (): void => {
+      const found = findPanelOfType(shellRef.current.dock, 'git')
+      if (found === undefined || found.activeId === found.panel.id) return
+      actions.setDock(setActivePanel(shellRef.current.dock, found.containerId, found.panel.id))
+    }
+    const sessionMatches = (sid: string | undefined): boolean =>
+      sid === undefined || sid === sessionId
+    const onReview = (e: Event): void => {
+      const detail = (e as CustomEvent<{ sessionId?: string; path: string }>).detail
+      if (detail === undefined || typeof detail.path !== 'string' || detail.path === '') return
+      if (!sessionMatches(detail.sessionId)) return
+      activateGitPanel()
+    }
+    const onDrive = (e: Event): void => {
+      const detail = (e as CustomEvent<{ sessionId?: string }>).detail
+      if (detail === undefined) return
+      if (!sessionMatches(detail.sessionId)) return
+      activateGitPanel()
+    }
+    window.addEventListener(REVIEW_FILE_EVENT, onReview)
+    window.addEventListener(REVIEW_DRIVE_EVENT, onDrive)
+    return () => {
+      window.removeEventListener(REVIEW_FILE_EVENT, onReview)
+      window.removeEventListener(REVIEW_DRIVE_EVENT, onDrive)
+    }
   }, [sessionId, actions])
 
   /** 面板贴边标记（实测几何）：key = data-dock-node，避免嵌套 split / 0 宽 shard 误判。 */

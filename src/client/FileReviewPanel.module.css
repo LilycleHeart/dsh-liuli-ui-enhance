@@ -17,6 +17,7 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
+  padding: 8px;
 }
 
 .sourceWrap {
@@ -295,11 +296,35 @@
   display: block;
 }
 
+/* ── 文件展开动画（grid-template-rows 0fr → 1fr，精确跟随内容高度，
+      DiffPane 可拖拽高度也能平滑过渡） ── */
+
+.expandWrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 220ms var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.expandWrapOpen {
+  grid-template-rows: 1fr;
+}
+
+.expandInner {
+  min-height: 0;
+  overflow: hidden;
+  padding: 2px 0 6px 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .expandWrap {
+    transition: none;
+  }
+}
+
 /* ── 展开的 diff 面板 ── */
 
 .diffPane {
   position: relative;
-  margin: 2px 0 6px 8px;
   height: 220px;
   min-height: 120px;
   max-height: 65vh;

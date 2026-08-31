@@ -16,7 +16,7 @@ import {
   fetchSidebarDiff, fetchSidebarGit, revealSidebarPath, revealToast,
   type SidebarDiffPayload, type SidebarGitChange, type SidebarGitPayload, type SidebarGitSourceId,
 } from './right-sidebar-api.ts'
-import { consumeReviewRequest, REVIEW_FILE_EVENT } from './review-bus.ts'
+import { consumeReviewDrive, consumeReviewRequest, REVIEW_DRIVE_EVENT, REVIEW_FILE_EVENT } from './review-bus.ts'
 import { getLastTurnChanges, subscribeLastTurnChanges } from './turn-file-store.ts'
 import type { FileDiffHunk } from './TurnFileCard.tsx'
 import { resolveDriveTarget, type ReviewPanelRequest } from './review-drive.ts'
@@ -230,8 +230,7 @@ function LastTurnDiffView({ path }: { path: string }) {
 }
 
 /** 可拖拽高度的 diff 容器：底部中央一条精致的拖拽条（隐藏原生 resize 角）。 */
-function DiffPane({ children }: { children: ReactNode }) {
-  const paneRef = useRef<HTMLDivElement | null>(null)
+function DiffPane({ children }: { children: ReactNode }) {  const paneRef = useRef<HTMLDivElement | null>(null)
   const [height, setHeight] = useState(readDiffPaneHeight)
 
   const startResize = (e: ReactPointerEvent<HTMLDivElement>): void => {
@@ -263,6 +262,42 @@ function DiffPane({ children }: { children: ReactNode }) {
     <div ref={paneRef} className={css.diffPane} style={{ height: `${height}px` }}>
       <div className={css.diffScroll}>{children}</div>
       <div className={css.diffResizeHandle} data-testid="review-diff-resize" onPointerDown={startResize} />
+    </div>
+  )
+}
+
+/** 文件行展开/收起动画容器：grid-template-rows 0fr → 1fr 过渡。
+ *  展开时先以 0fr 挂载、下一帧切 1fr 触发动画；收起时先切回 0fr
+ *  播完动画再卸载（保持挂载直至动画结束，避免收起瞬间消失）。 */
+function ExpandableDiff({ open, children }: { open: boolean; children: ReactNode }) {
+  const [mounted, setMounted] = useState(open)
+  const [shown, setShown] = useState(open)
+  const timerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true)
+      // 先以 0fr 挂载，双 rAF 后再加 open class，确保过渡有起点
+      // （单 rAF 可能和 React 18 的批处理同帧，0fr 未落盘就切 1fr 导致无动画）。
+      const raf1 = requestAnimationFrame(() => {
+        const raf2 = requestAnimationFrame(() => {
+          setShown(true)
+        })
+        timerRef.current = raf2
+      })
+      timerRef.current = raf1
+      return () => { if (timerRef.current !== null) { cancelAnimationFrame(timerRef.current); timerRef.current = null } }
+    }
+    setShown(false)
+    // 收起动画结束后卸载，避免内容残留占用。
+    timerRef.current = window.setTimeout(() => { setMounted(false) }, 240)
+    return () => { if (timerRef.current !== null) { clearTimeout(timerRef.current); timerRef.current = null } }
+  }, [open])
+
+  if (!mounted) return null
+  return (
+    <div className={css.expandWrap + (shown ? ' ' + css.expandWrapOpen : '')} aria-hidden={!shown}>
+      <div className={css.expandInner}>{children}</div>
     </div>
   )
 }
@@ -469,20 +504,23 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
   const reviewPath = useCallback((path: string): void => {
     if (git === null) return
     let nextSource = source
-    if (source !== 'last-turn') {
-      const inCurrent = (datasets?.[source]?.sections ?? []).some(section => section.changes.some(change => change.path === path))
-      if (!inCurrent) {
-        const inStaged = (datasets?.staged?.sections ?? []).some(section => section.changes.some(change => change.path === path))
-        if (inStaged) {
-          nextSource = 'staged'
-        } else {
-          const inBranch = (datasets?.branch?.sections ?? []).some(section => section.changes.some(change => change.path === path))
-          if (inBranch) {
-            nextSource = 'branch'
-          } else if (lastTurnChanges.some(change => change.path === path)) {
-            nextSource = 'last-turn'
-          }
-        }
+    // 当前源里没有该文件时，按 unstaged → staged → branch → last-turn 找包含它的源。
+    // 注意：last-turn 不在 datasets 里（来自同步快照 turn-file-store），所以
+    // 「当前源包含」判断要单独走 lastTurnChanges；否则在 last-turn 源上审查一个
+    // 就在该源里的文件也会被误判为不在当前源（原实现的 `if (source !== 'last-turn')`
+    // 守卫更是把整段搜索跳过——「在上一轮更改里审查一个不在该源的文件」永不切源）。
+    const inCurrent = source === 'last-turn'
+      ? lastTurnChanges.some(change => change.path === path)
+      : (datasets?.[source]?.sections ?? []).some(section => section.changes.some(change => change.path === path))
+    if (!inCurrent) {
+      if ((datasets?.unstaged?.sections ?? []).some(section => section.changes.some(change => change.path === path))) {
+        nextSource = 'unstaged'
+      } else if ((datasets?.staged?.sections ?? []).some(section => section.changes.some(change => change.path === path))) {
+        nextSource = 'staged'
+      } else if ((datasets?.branch?.sections ?? []).some(section => section.changes.some(change => change.path === path))) {
+        nextSource = 'branch'
+      } else if (lastTurnChanges.some(change => change.path === path)) {
+        nextSource = 'last-turn'
       }
     }
     if (nextSource !== source) setSource(nextSource)
@@ -492,6 +530,20 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
       if (diffCacheRef.current[key] === undefined) loadDiff(path, nextSource)
     }
   }, [git, source, datasets, lastTurnChanges, loadDiff])
+
+  /** 应用一次「驱动」请求：强制切换来源并展开目标文件（宿主 prop 与
+   *  dock 事件两条路径共用；语义见 review-drive.ts 的 ReviewDriveRequest）。 */
+  const applyDrive = useCallback((driveSource: SidebarGitSourceId, path: string | undefined): void => {
+    setSource(driveSource)
+    if (driveSource === 'last-turn') {
+      // last-turn 快照是同步的（turn-file-store），直接展开目标文件。
+      const changes = getLastTurnChanges()
+      const target = resolveDriveTarget(changes, path)
+      setExpanded(target)
+    } else {
+      setExpanded(path ?? null)
+    }
+  }, [])
 
   // 宿主面板（PreviewDetailsPanel）驱动的审查请求（props 变化）。
   // 带 source 的请求是「LLM 活动驱动」（auto-open-details）：强制切换来源并展开
@@ -507,16 +559,7 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
     if ('source' in reviewRequest) {
       if (reviewRequest.nonce === lastDriveNonce.current) return
       lastDriveNonce.current = reviewRequest.nonce
-      const req = reviewRequest
-      setSource(req.source)
-      if (req.source === 'last-turn') {
-        // last-turn 快照是同步的（turn-file-store），直接展开目标文件。
-        const changes = getLastTurnChanges()
-        const target = resolveDriveTarget(changes, req.path)
-        setExpanded(target)
-      } else {
-        setExpanded(req.path ?? null)
-      }
+      applyDrive(reviewRequest.source, reviewRequest.path)
       return
     }
     if (reviewRequest.nonce === lastPathNonce.current) return
@@ -528,6 +571,8 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
   /** 已消费的 pending 审查路径：兜底请求按路径去重，避免 effect 随
    *  reviewPath 身份重跑时反复重放同一条旧请求（与驱动请求 nonce 同因）。 */
   const consumedPendingPath = useRef<string | null>(null)
+  /** 已消费的 pending 驱动请求：按「来源:路径」去重（同一请求只应用一次）。 */
+  const consumedDriveKey = useRef<string | null>(null)
   // 事件驱动的审查请求（自包含面板兜底：dock 布局实例等）。
   useEffect(() => {
     const pending = consumeReviewRequest()
@@ -541,9 +586,38 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
       if (detail.sessionId !== undefined && detail.sessionId !== sessionId) return
       reviewPath(detail.path)
     }
+    // 驱动请求（LLM 活动自动展开）：仅自包含实例（dock 面板，无 reviewRequest
+    // prop）监听——侧边栏实例的驱动走宿主 prop（reviewRequest），避免双份处理。
+    const onDrive = (e: Event): void => {
+      const detail = (e as CustomEvent<{ sessionId?: string; source: SidebarGitSourceId; path?: string }>).detail
+      if (detail === undefined || typeof detail.source !== 'string') return
+      if (detail.sessionId !== undefined && detail.sessionId !== sessionId) return
+      const key = `${detail.source}:${detail.path ?? ''}`
+      if (consumedDriveKey.current === key) return
+      consumedDriveKey.current = key
+      applyDrive(detail.source, detail.path)
+    }
+    // 晚挂载兜底：面板在驱动事件之后才挂载（如审查面板是标签组里非激活的
+    // 隐藏标签，事件到达时其 FileReviewPanel 尚未挂载）时，消费模块级
+    // pending 驱动请求（DockShellFrame 收到驱动事件会把该标签组激活）。
+    if (reviewRequest === undefined) {
+      const pendingDrive = consumeReviewDrive()
+      if (pendingDrive !== null
+        && (pendingDrive.sessionId === undefined || pendingDrive.sessionId === sessionId)) {
+        const key = `${pendingDrive.source}:${pendingDrive.path ?? ''}`
+        if (consumedDriveKey.current !== key) {
+          consumedDriveKey.current = key
+          applyDrive(pendingDrive.source, pendingDrive.path)
+        }
+      }
+    }
     window.addEventListener(REVIEW_FILE_EVENT, onReview)
-    return () => { window.removeEventListener(REVIEW_FILE_EVENT, onReview) }
-  }, [sessionId, reviewPath])
+    if (reviewRequest === undefined) window.addEventListener(REVIEW_DRIVE_EVENT, onDrive)
+    return () => {
+      window.removeEventListener(REVIEW_FILE_EVENT, onReview)
+      window.removeEventListener(REVIEW_DRIVE_EVENT, onDrive)
+    }
+  }, [sessionId, reviewPath, reviewRequest, applyDrive])
 
   // 右键菜单关闭。
   useEffect(() => {
@@ -663,7 +737,7 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
                     <Chevron />
                   </span>
                 </button>
-                {isExpanded && (
+                <ExpandableDiff open={isExpanded}>
                   <DiffPane>
                     {source === 'last-turn' ? (
                       <LastTurnDiffView path={change.path} />
@@ -685,7 +759,7 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
                       </>
                     )}
                   </DiffPane>
-                )}
+                </ExpandableDiff>
               </div>
             )
           })}

@@ -50,7 +50,7 @@ import {
   LiuliHeaderFullscreen,
 } from './HeaderEffects.tsx'
 import { setTurnRailCommitHandler, TurnRail } from './TurnRail.tsx'
-import { fileChangesDefinition, RoundSummaryCard } from './TurnFileCard.tsx'
+import { fileChangesDefinition, absOf, relOf, RoundSummaryCard } from './TurnFileCard.tsx'
 import { startEditDiffAutoExpand } from './edit-diff-autoplay.ts'
 import { startAutoOpenDetails } from './auto-open-details.ts'
 import { startAutoDriveBrowser } from './auto-drive-browser.ts'
@@ -73,14 +73,17 @@ import { formatSelection, type PickedElement } from './element-picker.ts'
 import { rememberComposerElementInfo, startElementCardDecoration } from './element-card.ts'
 import { startSessionRename } from './session-rename.ts'
 import { startSessionMarkerDecoration } from './session-markers.ts'
+import { startSessionTitleFilter } from './session-title-filter.ts'
 import { startSessionContextMenu } from './session-context-menu.ts'
 import { startSettingsSelectUpgrade } from './settings-selects.ts'
 import { startWorkspaceContextMenu } from './workspace-context-menu.ts'
 import { startWorkspaceNewSessionCollapse } from './workspace-new-session-collapse.ts'
+import { startSidebarLogoDetailsCollapse } from './logo-details-collapse.ts'
+import { startConversationFileContextMenu } from './conversation-file-context-menu.ts'
 import {
-  PreviewDetailsPanel, PreviewButton, PREVIEW_TOGGLE_EVENT, PREVIEW_NAVIGATE_EVENT,
+  PreviewDetailsPanel, PreviewButton, PREVIEW_TOGGLE_EVENT,
   SIDE_CHAT_OPEN_EVENT,
-  resolvePreviewUrl, setPreviewOpen, togglePreviewOpen, setPaneSyncSuppressed,
+  openFrontendFile, setPreviewOpen, togglePreviewOpen, setPaneSyncSuppressed,
 } from './PreviewPanel.tsx'
 import type { SidePaneHostAccess } from './SidePaneExtraPanels.tsx'
 import { BtwAnswerHost, BTW_ANSWER_EVENT } from './BtwAnswer.tsx'
@@ -634,6 +637,14 @@ export function apply(ctx: ClientContext): void {
     return startSessionRename(ctx)
   }, 'dsh-liuli-ui-enhance: session inline rename')
 
+  // ── 会话标题元素引用过滤：元素选择器序列化文本不进侧栏标题/页头展示 ──
+  //    DSH 会话标题由首条用户消息回退生成，首条消息是元素引用时标题会变成
+  //    "[selected element] <div> rect: …"；此处把命中元素块的标题清洗为展示文本。
+  ctx.effect(() => {
+    if (!unofficial('dom')) return () => {}
+    return startSessionTitleFilter(ctx)
+  }, 'dsh-liuli-ui-enhance: session title filter')
+
   // ── 会话标记：localStorage store + 会话行图标装饰 ──
   ctx.effect(() => {
     if (!unofficial('dom')) return () => {}
@@ -652,6 +663,13 @@ export function apply(ctx: ClientContext): void {
     return startWorkspaceContextMenu(ctx)
   }, 'dsh-liuli-ui-enhance: workspace context menu')
 
+  // ── 对话页文件行右键菜单：在资源管理器中打开 / 审查 / 复制绝对/相对路径
+  //    （轮次卡片文件行 + 官方 edit/write 工具行；不改官方代码）──
+  ctx.effect(() => {
+    if (!unofficial('dom')) return () => {}
+    return startConversationFileContextMenu(ctx)
+  }, 'dsh-liuli-ui-enhance: conversation file context menu')
+
   // ── 工作区「新建会话」后右侧详情列回弹：官方点完只开新会话，AppFrame 的自动
   //    closeDetails 只在当前会话切换时触发，详情列保持打开不回；这里等官方流程
   //    结束后若详情列仍展开则收回（advanced 走 dock shard、兼容模式走官方列），
@@ -660,6 +678,15 @@ export function apply(ctx: ClientContext): void {
     if (!unofficial('dom')) return () => {}
     return startWorkspaceNewSessionCollapse(ctx)
   }, 'dsh-liuli-ui-enhance: workspace new session details collapse')
+
+  // ── 侧栏「DeepSeek logo」点击后右侧详细页收回：官方点完只开新会话（回到 blank
+  //    开始页，detailsSession 变 undefined，宿主不触发 closeDetails），右侧详细页
+  //    保持展开；这里等官方流程结束后若详情列仍展开则收回（advanced 走 dock
+  //    shard、兼容模式走官方列），已收起时不动（详见 logo-details-collapse.ts）──
+  ctx.effect(() => {
+    if (!unofficial('dom')) return () => {}
+    return startSidebarLogoDetailsCollapse(ctx)
+  }, 'dsh-liuli-ui-enhance: sidebar logo details collapse')
 
   // ── 设置页原生下拉 → 琉璃组件：DSH「模型服务商」卡片的原生 <select>（API 协议 /
   //    新增提供商等，宿主 class 后缀 _selectInput）统一换成插件下拉（触发器覆盖 +
@@ -1037,22 +1064,51 @@ export function apply(ctx: ClientContext): void {
     })
   }, 'dsh-liuli-ui-enhance: preview open reset on session switch')
 
-  // ── 会话内前端产物点击：拦截本地回环/前端文件链接，切换到预览浏览器模式 ──
+  // ── 会话内前端产物点击：拦截本地回环/前端文件链接与官方工具行的文件按钮，
+  //    前端页面文件默认在右侧详细页打开（/preview 映射走主窗口 iframe 代码查看，
+  //    外部/dev server URL 走侧边栏浏览器标签）──
   ctx.effect(() => {
     if (!unofficial('dom')) return () => {}
     const onDocClick = (e: MouseEvent): void => {
       if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+      // 侧边栏关闭时没有 PREVIEW_NAVIGATE/CODE 监听者，拦截会让点击变成死点击：
+      // 只在侧边栏增强开启时接管。
+      if ((window as unknown as { __liuliSidebarEnabled__?: boolean }).__liuliSidebarEnabled__ !== true) return
       const target = e.target as Element | null
-      const anchor = target?.closest?.('a[href]') as HTMLAnchorElement | null
-      if (anchor === null || anchor === undefined) return
-      // 只劫持会话正文里的链接，避免影响侧栏/设置等其他区域。
-      if (anchor.closest('[data-phase]') === null) return
-      const href = anchor.getAttribute('href') ?? ''
       const sessionId = ctx.sessions.list.getSnapshot().current ?? undefined
-      const url = resolvePreviewUrl(href, sessionId)
-      if (url === undefined) return
-      e.preventDefault()
-      window.dispatchEvent(new CustomEvent(PREVIEW_NAVIGATE_EVENT, { detail: { url } }))
+      const cwd = sessionId === undefined ? undefined : ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd
+
+      // 1) 会话正文里的链接（a[href]）：只劫持 [data-phase] 内的本地回环/前端文件链接。
+      const anchor = target?.closest?.('a[href]') as HTMLAnchorElement | null
+      if (anchor !== null && anchor !== undefined && anchor.closest('[data-phase]') !== null) {
+        const href = anchor.getAttribute('href') ?? ''
+        const rel = href.replace(/^\.\//, '').replace(/^\/+/, '').replace(/\\/g, '/')
+        if (openFrontendFile(sessionId, absOf(rel, cwd), rel)) {
+          e.preventDefault()
+          return
+        }
+      }
+
+      // 2) 官方工具行的文件按钮（fileLink 文本即路径；「打开 <path>」aria-label/title
+      //    即路径）：前端页面文件默认在右侧详细页打开，非前端文件放行给官方 onClick
+      //    （默认编辑器打开）。stopPropagation 阻断 React 根监听上的官方处理器。
+      const fileBtn = target?.closest?.(
+        'button[class*="fileLink"], button[aria-label^="打开 "], button[aria-label^="Open "]',
+      ) as HTMLElement | null
+      if (fileBtn === null || fileBtn === undefined) return
+      if (fileBtn.closest('[data-phase]') === null) return
+      let path = ''
+      if (fileBtn.matches('button[class*="fileLink"]')) {
+        path = (fileBtn.textContent ?? '').trim()
+      } else {
+        const label = fileBtn.getAttribute('aria-label') ?? ''
+        path = label.replace(/^(打开|Open)\s+/, '').trim() || (fileBtn.title ?? '').trim()
+      }
+      if (path === '') return
+      if (openFrontendFile(sessionId, absOf(path, cwd), relOf(path, cwd).replace(/\\/g, '/'))) {
+        e.preventDefault()
+        e.stopPropagation()
+      }
     }
     document.addEventListener('click', onDocClick, true)
     return () => { document.removeEventListener('click', onDocClick, true) }

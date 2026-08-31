@@ -43,11 +43,11 @@ import {
   DeveloperToolsPanel, SideChatPanel, TerminalPanel, type SidePaneHostAccess,
 } from './SidePaneExtraPanels.tsx'
 import { FileReviewPanel, type ReviewPanelRequest } from './FileReviewPanel.tsx'
-import { REVIEW_FILE_EVENT } from './review-bus.ts'
+import { requestReviewDrive, REVIEW_FILE_EVENT } from './review-bus.ts'
 import { AUTO_OPEN_DETAILS_EVENT, type AutoOpenDetailsDetail } from './auto-open-details.ts'
 import { AUTO_DRIVE_BROWSER_EVENT, type AutoDriveBrowserDetail } from './auto-drive-browser.ts'
 import {
-  consumeSideTabAccepted, SIDE_TAB_MIME, SIDE_TAB_OPEN_EVENT, serializeSideTab, sideTabToDockPanel,
+  consumeSideTabAccepted, hasDockPanelType, SIDE_TAB_MIME, SIDE_TAB_OPEN_EVENT, serializeSideTab, sideTabToDockPanel,
 } from './side-tab-dock.ts'
 import css from './PreviewPanel.module.css'
 import { beginResizePerf, endResizePerf, isResizeInProgress } from './resize-perf.ts'
@@ -57,6 +57,10 @@ export const PREVIEW_TOGGLE_EVENT = 'liuli:preview-toggle'
 
 /** 导航事件名：会话内点击前端产物时由全局点击拦截器广播。 */
 export const PREVIEW_NAVIGATE_EVENT = 'liuli:preview-navigate'
+
+/** 代码查看事件名：对话页「打开」/preview 映射的前端页面文件时广播
+ *  （detail: { path, rel }；走主窗口 iframe 的代码查看标签，见 openFrontendFile）。 */
+export const PREVIEW_CODE_EVENT = 'liuli:preview-code'
 
 /** 请求打开一个辅助对话标签（detail: { initialPrompt? }；/side、/btw 指令桥）。 */
 export const SIDE_CHAT_OPEN_EVENT = 'liuli:side-chat-open'
@@ -154,6 +158,43 @@ export function resolvePreviewUrl(raw: string, sessionId: string | undefined): s
   const clean = candidate.replace(/^\.\//, '').replace(/^\/+/, '')
   const encoded = clean.split('/').map(segment => encodeURIComponent(segment)).join('/')
   return `/preview/${encodeURIComponent(sessionId)}/${encoded}`
+}
+
+/**
+ * 打开一个前端页面文件（对话页「打开」入口统一走这里）：
+ * - 映射为 `/preview/…`（DSH 自身静态预览，无 dev server 的本地 HTML）时：
+ *   **Desktop（Electron 壳）下按参考实现（ZCode）同款方式，把本地路径转成
+ *   `file:///` URL 直接在侧边栏浏览器 webview 里打开**——file:// 请求不经过 DSH
+ *   webServer，不存在 renderer-token 门（加载 http://127.0.0.1:端口/preview/…
+ *   会被宿主安全门 403）；纯 Web 没有 webview、iframe 不能加载 file://，回退主窗口
+ *   iframe 的「代码查看」标签（/preview，token 正常注入）。
+ * - 映射为外部 / dev server URL（http://…）时走侧边栏浏览器标签（PREVIEW_NAVIGATE，
+ *   同源标签复用）。
+ * @returns 是否已接管；false 表示不是前端页面文件，调用方应回退默认编辑器打开。
+ */
+export function openFrontendFile(sessionId: string | undefined, path: string, rel: string): boolean {
+  const url = resolvePreviewUrl(rel, sessionId)
+  if (url === undefined) return false
+  if (url.startsWith('/preview/')) {
+    // 绝对本地路径 → file:///…（ZCode Yo() 同款换算：Windows 盘符 / Unix 绝对路径
+    // 都得到 file:/// 三段斜杠）。仅在 Desktop 壳下用（webview 可加载 file://）。
+    const looksAbsolute = /^[A-Za-z]:[\\/]/.test(path) || path.startsWith('/') || path.startsWith('\\\\')
+    if (isDesktopShell() && looksAbsolute) {
+      const t = path.replace(/\\/g, '/')
+      const fileUrl = t.startsWith('/') ? `file://${encodeURI(t)}` : `file:///${encodeURI(t)}`
+      window.dispatchEvent(new CustomEvent(PREVIEW_NAVIGATE_EVENT, { detail: { url: fileUrl } }))
+      return true
+    }
+    window.dispatchEvent(new CustomEvent(PREVIEW_CODE_EVENT, { detail: { path, rel } }))
+  } else {
+    window.dispatchEvent(new CustomEvent(PREVIEW_NAVIGATE_EVENT, { detail: { url } }))
+  }
+  return true
+}
+
+/** 当前页面是否 DSH Desktop（Electron 壳）：渲染 URL 带 dsh-desktop-mode 参数。 */
+function isDesktopShell(): boolean {
+  return new URLSearchParams(window.location.search).get('dsh-desktop-mode') !== null
 }
 
 /**
@@ -324,7 +365,7 @@ function relativeTime(ts: number, now: number): string {
 /** 标签标题（DSH V5 对应）。 */
 function tabTitle(tab: SidePaneTab): string {
   switch (tab.type) {
-    case 'git': return '审查文件'
+    case 'git': return '审查'
     case 'browser': return tab.title?.trim() || '浏览器'
     case 'terminal': return tab.title?.trim() || '终端'
     case 'developer-tools': return '开发者工具'
@@ -347,7 +388,7 @@ function tabHint(tab: SidePaneTab): string {
 /** 类型标签（DSH GKt：概览检索的类型字段）。 */
 function tabTypeLabel(tab: SidePaneTab): string {
   switch (tab.type) {
-    case 'git': return '审查文件'
+    case 'git': return '审查'
     case 'browser': return '浏览器'
     case 'terminal': return '终端'
     case 'developer-tools': return '开发者工具'
@@ -1079,6 +1120,22 @@ export function PreviewDetailsPanel({
     return () => { window.removeEventListener(PREVIEW_NAVIGATE_EVENT, onNavigate) }
   }, [openDetails, openOrReuseBrowserUrl])
 
+  /* ── 对话页「打开」前端页面文件（/preview 映射）：主窗口 iframe 代码查看标签 ── */
+
+  useEffect(() => {
+    const onCode = (e: Event): void => {
+      const detail = (e as CustomEvent<{ path?: string; rel?: string }>).detail
+      const rel = detail?.rel
+      if (typeof rel !== 'string' || rel === '') return
+      setPreviewOpen(true)
+      saveOpenState(true)
+      openDetails?.()
+      openCodeViewer(detail.path ?? '', rel)
+    }
+    window.addEventListener(PREVIEW_CODE_EVENT, onCode)
+    return () => { window.removeEventListener(PREVIEW_CODE_EVENT, onCode) }
+  }, [openCodeViewer, openDetails, saveOpenState])
+
   /* ── 轮次卡片「审查」：打开侧栏并切到审查文件标签、选中目标文件 ── */
 
   useEffect(() => {
@@ -1087,6 +1144,10 @@ export function PreviewDetailsPanel({
       const path = detail?.path
       if (typeof path !== 'string' || path === '') return
       if (detail.sessionId !== undefined && detail.sessionId !== sessionId) return
+      // 审查标签已拆进 dock 布局（或 dock 里已有审查面板）时，审查请求由
+      // dock 面板承接（DockShellFrame 会激活该面板并选中文件），不要在
+      // 侧边栏重开一份（避免「又开了一个」）。
+      if (hasDockPanelType('git')) return
       // 打开 details 列 + 确保「审查文件」标签存在并激活。
       setPreviewOpen(true)
       saveOpenState(true)
@@ -1108,6 +1169,14 @@ export function PreviewDetailsPanel({
       const detail = (e as CustomEvent<AutoOpenDetailsDetail>).detail
       const tab = detail?.tab
       if (tab === undefined) return
+      // 审查标签已在 dock：把驱动请求（切上一轮更改并展开）发给 dock 审查
+      // 面板，不再打开侧边栏重开一份。
+      if (tab === 'git' && hasDockPanelType('git')) {
+        requestReviewDrive(sessionId === undefined || sessionId === null || sessionId === ''
+          ? { source: 'last-turn' }
+          : { sessionId, source: 'last-turn' })
+        return
+      }
       setPreviewOpen(true)
       saveOpenState(true)
       openDetails?.()
@@ -1118,7 +1187,7 @@ export function PreviewDetailsPanel({
     }
     window.addEventListener(AUTO_OPEN_DETAILS_EVENT, onAutoOpen)
     return () => { window.removeEventListener(AUTO_OPEN_DETAILS_EVENT, onAutoOpen) }
-  }, [openDetails, openSingleton, saveOpenState])
+  }, [openDetails, openSingleton, saveOpenState, sessionId])
 
   /* ── 自动驱动浏览器（auto-drive-browser.ts 观察对话流后请求）： ──
      dev server 启动 / 前端文件编辑时展示页面。同源已有浏览器标签 → 导航复用，
@@ -1487,7 +1556,7 @@ export function PreviewDetailsPanel({
     if (sessionId !== undefined && host !== undefined) {
       items.push({ id: 'side-chat', label: '辅助对话', icon: <MessageSquareTextIcon size={16} />, run: () => { openSideChat() } })
     }
-    if (!has('git')) items.push({ id: 'git', label: '审查文件', icon: <FileDiffIcon size={16} />, run: () => { openSingleton('git') } })
+    if (!has('git')) items.push({ id: 'git', label: '审查', icon: <FileDiffIcon size={16} />, run: () => { openSingleton('git') } })
     items.push({ id: 'terminal', label: '终端', icon: <SquareTerminalIcon size={16} />, run: () => { openTerminal() } })
     items.push({ id: 'browser', label: '浏览器', icon: <GlobeIcon size={16} />, run: () => { openBrowserFromMenu() } })
     if (!has('developer-tools')) items.push({ id: 'developer-tools', label: '开发者工具', icon: <BugIcon size={16} />, run: () => { openSingleton('developer-tools') } })

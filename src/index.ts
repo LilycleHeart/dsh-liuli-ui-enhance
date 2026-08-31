@@ -14,7 +14,7 @@ import { createHash } from 'node:crypto'
 import { homedir } from 'node:os'
 import { TextDecoder, promisify } from 'node:util'
 import iconv from 'iconv-lite'
-import { dirname, extname, join as joinPath, relative as relativePath, resolve as resolvePath, sep } from 'node:path'
+import { dirname, extname, isAbsolute as isPathAbsolute, join as joinPath, relative as relativePath, resolve as resolvePath, sep } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
 import type { Context } from '@deepseek-ai/cordis'
@@ -59,6 +59,36 @@ interface HostSessionCwd {
 
 function hostSessions(ctx: Context): { get(id: string): HostSessionCwd | undefined } {
   return (ctx as unknown as { sessions: { get(id: string): HostSessionCwd | undefined } }).sessions
+}
+
+/**
+ * Host 工作区注册表的最小读面（对应 @deepseek-ai/dsh-workspace 的
+ * `Context.workspaceRegistry`）。刻意不 import 该包：它与 dsh-session 一样会把
+ * 类型面拖进本编译单元；这里只声明用到的子集，运行时经上下文解析。
+ * 拿不到服务时路由回退到客户端已知的工作区路径（见 serveRevealWorkspace）。
+ */
+interface HostWorkspaceRegistry {
+  get(id: string): { path: string } | undefined
+}
+
+function hostWorkspaceRegistry(ctx: Context): HostWorkspaceRegistry | undefined {
+  // 官方代码（app.asar 内）访问 workspaceRegistry 也要显式 inject；插件未声明它时，
+  // 属性访问在真实宿主里可能抛「cannot get property without inject」。这里先试属性
+  // 访问，再试 `ctx.get(name, false)`（cordis 不经 inject 的 store 读取），都拿不到
+  // 才返回 undefined（路由回退到客户端已知路径）。
+  try {
+    const direct = (ctx as unknown as { workspaceRegistry?: HostWorkspaceRegistry }).workspaceRegistry
+    if (direct !== undefined) return direct
+  } catch {
+    // 属性访问不可用（未注入/作用域隔离），继续尝试 store 读取。
+  }
+  try {
+    const read = (ctx as unknown as { get?: (name: string, strict?: boolean) => unknown }).get?.('workspaceRegistry', false)
+    if (read !== undefined) return read as HostWorkspaceRegistry
+  } catch {
+    // 同上。
+  }
+  return undefined
 }
 
 const execFile = promisify(execFileCb)
@@ -710,6 +740,8 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.webServer.register(windowControlRoute()), 'dsh-liuli-ui-enhance: /liuli-window route')
   // 审查面板「在资源管理器中打开」：系统文件管理器定位文件（explorer /select 等）。
   ctx.effect(() => ctx.webServer.register(revealRoute(ctx)), 'dsh-liuli-ui-enhance: /liuli-reveal route')
+  // 工作区右键菜单「在资源管理器中打开」：按 workspaceId 解析注册目录并打开系统文件管理器。
+  ctx.effect(() => ctx.webServer.register(revealWorkspaceRoute(ctx)), 'dsh-liuli-ui-enhance: /liuli-reveal-workspace route')
   // 系统音频监听（HeaderEffects.tsx 的「监听系统音量」按钮）：Electron 主进程给
   // defaultSession 装 setDisplayMediaRequestHandler，getDisplayMedia 的 audio 请求
   // 直接授予系统回环音频（audio:'loopback'，仅 Windows）；另提供 /liuli-audio 探测
@@ -1406,6 +1438,100 @@ function revealRoute(ctx: Context): WebRoute {
   }
 }
 
+/* ── /liuli-reveal-workspace：工作区右键「在资源管理器中打开」────────── */
+
+/** 系统「打开文件夹」命令（按平台；区别于 revealInExplorer 的定位/选中文件）。 */
+function openInExplorer(target: string): void {
+  if (process.platform === 'win32') {
+    // 与 /liuli-reveal 不同：这里打开目录本身，不带 /select 前缀；
+    // 单个参数交给 spawn 的 CreateProcess 引号处理，路径含空格也安全。
+    spawn('explorer.exe', [target], { detached: true, stdio: 'ignore' }).unref()
+    return
+  }
+  if (process.platform === 'darwin') {
+    spawn('open', [target], { detached: true, stdio: 'ignore' }).unref()
+    return
+  }
+  spawn('xdg-open', [target], { detached: true, stdio: 'ignore' }).unref()
+}
+
+/** 解析 /liuli-reveal-workspace 请求（Host fence：回环调用方 + 同源 + 注册工作区 id）。 */
+async function serveRevealWorkspace(ctx: Context, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    json(res, 405, { ok: false, error: 'method not allowed' })
+    return
+  }
+  const host = req.headers.host
+  if (host === undefined || !isLoopbackHostname(new URL('http://' + host).hostname)) {
+    json(res, 403, { ok: false, error: 'forbidden' })
+    return
+  }
+  // 跨源拒绝（与 /liuli-quota 同款 fence）：带 Origin 且不同源的请求（如内嵌
+  // 浏览器里的远程网页 no-cors fetch）不允许触发本路由，防止任意本地目录被
+  // 远程页面打开。
+  const origin = req.headers.origin
+  if (origin !== undefined) {
+    const originHost = new URL(origin).host
+    if (originHost !== host) {
+      json(res, 403, { ok: false, error: 'cross-origin request is not allowed' })
+      return
+    }
+  }
+  const url = new URL(req.url ?? '/', 'http://x')
+  const workspaceId = url.searchParams.get('workspaceId') ?? ''
+  const clientPath = url.searchParams.get('path') ?? ''
+  if (workspaceId === '' && clientPath === '') {
+    json(res, 400, { ok: false, error: 'missing workspaceId or path' })
+    return
+  }
+  let target: string | undefined
+  if (workspaceId !== '') {
+    const registry = hostWorkspaceRegistry(ctx)
+    if (registry === undefined) {
+      console.warn('[dsh-liuli-ui-enhance] /liuli-reveal-workspace: workspaceRegistry 服务不可用，回退客户端路径')
+    } else {
+      target = registry.get(workspaceId)?.path
+    }
+    if (target === undefined && clientPath === '') {
+      json(res, 404, { ok: false, error: 'workspace not found' })
+      return
+    }
+  }
+  if (target === undefined) {
+    // 回退：客户端已知的工作区路径（仅回环同源调用方，且必须是绝对路径）。
+    if (!isPathAbsolute(clientPath)) {
+      json(res, 403, { ok: false, error: 'forbidden' })
+      return
+    }
+    target = clientPath
+  }
+  try {
+    const info = await stat(target)
+    if (!info.isDirectory()) {
+      json(res, 404, { ok: false, error: 'not a directory' })
+      return
+    }
+  } catch {
+    json(res, 404, { ok: false, error: 'directory not found' })
+    return
+  }
+  try {
+    openInExplorer(target)
+    json(res, 200, { ok: true })
+  } catch (error) {
+    json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) })
+  }
+}
+
+/** Build the /liuli-reveal-workspace prefix route. */
+function revealWorkspaceRoute(ctx: Context): WebRoute {
+  return {
+    kind: 'prefix',
+    path: '/liuli-reveal-workspace',
+    handler: (req, res) => { void serveRevealWorkspace(ctx, req, res) },
+  }
+}
+
 /* ── /liuli-terminal：WebSocket 终端（侧边面板「终端」标签）────────────── */
 
 const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
@@ -1585,15 +1711,15 @@ function encodeTerminalInput(line: string, encoding: 'gbk' | 'utf-8'): Buffer {
 function terminalShellInstallHint(shell: ResolvedTerminalShell): string {
   switch (shell.id) {
     case 'pwsh':
-      return '请先安装 PowerShell 7（https://github.com/PowerShell/PowerShell），或在「设置 → 功能 → 默认终端」里改选其他 Shell。'
+      return '请先安装 PowerShell 7（https://github.com/PowerShell/PowerShell），或在「设置 → 功能 → 侧边栏默认终端」里改选其他 Shell。'
     case 'bash':
-      return '请先安装 Git for Windows（https://git-scm.com/download/win），或在「设置 → 功能 → 默认终端」里改选其他 Shell。'
+      return '请先安装 Git for Windows（https://git-scm.com/download/win），或在「设置 → 功能 → 侧边栏默认终端」里改选其他 Shell。'
     case 'powershell':
-      return '请检查 Windows PowerShell 是否可用，或在「设置 → 功能 → 默认终端」里改选其他 Shell。'
+      return '请检查 Windows PowerShell 是否可用，或在「设置 → 功能 → 侧边栏默认终端」里改选其他 Shell。'
     case 'cmd':
-      return '请检查系统命令提示符（cmd.exe）是否可用，或在「设置 → 功能 → 默认终端」里改选其他 Shell。'
+      return '请检查系统命令提示符（cmd.exe）是否可用，或在「设置 → 功能 → 侧边栏默认终端」里改选其他 Shell。'
     default:
-      return '请确认已安装对应 Shell，或在「设置 → 功能 → 默认终端」里改选其他 Shell。'
+      return '请确认已安装对应 Shell，或在「设置 → 功能 → 侧边栏默认终端」里改选其他 Shell。'
   }
 }
 

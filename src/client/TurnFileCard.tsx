@@ -10,7 +10,10 @@
  * - 每个有变更的 step 发布一个 `liuli-round-summary` chat 节点（锚在 step/end）；
  * - 节点渲染器只在该 step 是本轮最后节点时渲染卡片，并从会话快照聚合整轮文件；
  * - 卡片：文件名 + DIFF 数量（+加 −删），按钮 审查 / 打开 /
- *   展开图标（打开方式：在资源管理器中打开 · 复制绝对路径 · 复制相对路径）。
+ *   展开图标（打开方式：在资源管理器中打开 · 复制绝对路径 · 复制相对路径）；
+ * - 卡片头可点击展开/收起（localStorage 记忆），收起时显示
+ *   「X 个文件被更改 + 总 diff」；文件行带 data-liuli-* 属性供对话页
+ *   文件右键菜单（conversation-file-context-menu）命中。
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -24,6 +27,7 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { requestReviewFile } from './review-bus.ts'
 import { revealSidebarPath, revealToast, type SidebarGitChange } from './right-sidebar-api.ts'
 import { setLastTurnChanges } from './turn-file-store.ts'
+import { openFrontendFile } from './PreviewPanel.tsx'
 import css from './TurnFileCard.module.css'
 
 /** 一个 diff hunk（与宿主 FileDiff 同构：path/oldText/newText）。 */
@@ -324,14 +328,14 @@ function normPath(p: string): string {
 function isAbsolute(p: string): boolean {
   return p.startsWith('/') || /^[A-Za-z]:[\\/]/.test(p) || p.startsWith('\\\\')
 }
-function relOf(path: string, cwd: string | undefined): string {
+export function relOf(path: string, cwd: string | undefined): string {
   if (cwd === undefined || cwd === '') return path
   const cwdNorm = normPath(cwd)
   const pathNorm = normPath(path)
   if (pathNorm.startsWith(cwdNorm + '/')) return pathNorm.slice(cwdNorm.length + 1)
   return pathNorm
 }
-function absOf(path: string, cwd: string | undefined): string {
+export function absOf(path: string, cwd: string | undefined): string {
   if (isAbsolute(path)) return path
   if (cwd === undefined || cwd === '') return path
   return cwd.replace(/[\\/]+$/, '') + '/' + relOf(path, cwd)
@@ -423,7 +427,13 @@ function FileRow({ file, sessionId, cwd, openFile }: FileRowProps) {
   }
 
   return (
-    <div className={css.fileRow}>
+    <div
+      className={css.fileRow}
+      data-liuli-turn-file=""
+      data-liuli-file-path={file.path}
+      data-liuli-file-cwd={cwd ?? ''}
+      data-liuli-session-id={sessionId ?? ''}
+    >
       <div className={css.fileInfo} title={rel}>
         <span className={css.fileName}>{basenameOf(rel)}</span>
         {dirnameOf(rel) !== '' && <span className={css.fileDir}>{dirnameOf(rel)}</span>}
@@ -436,12 +446,24 @@ function FileRow({ file, sessionId, cwd, openFile }: FileRowProps) {
       <button
         type="button"
         className={css.btn}
-        title="在侧栏审查文件中打开（全文 + diff）"
+        title="在侧栏审查中打开（全文 + diff）"
         onClick={() => { requestReviewFile(sessionId === undefined ? { path: rel } : { sessionId, path: rel }) }}
       >
         审查
       </button>
-      <button type="button" className={css.btn} title="用默认编辑器打开" onClick={() => { openFile(file.path) }}>
+      <button
+        type="button"
+        className={css.btn}
+        title="打开（前端页面在右侧详细页打开：/preview 走代码查看、dev server 走浏览器；其余用默认编辑器）"
+        onClick={() => {
+          // 前端页面文件默认在右侧详细页打开（openFrontendFile：/preview 映射走主
+          // 窗口 iframe 代码查看标签，外部/dev server URL 走侧边栏浏览器标签）；
+          // 非前端文件回退默认编辑器（openFile）。
+          if (!openFrontendFile(sessionId, abs, rel)) {
+            openFile(file.path)
+          }
+        }}
+      >
         打开
       </button>
       <div className={css.menuWrap} ref={menuRef}>
@@ -584,19 +606,55 @@ export function RoundSummaryCard({ node, openFile, useSession, useSessions, sess
     setLastTurnChanges(lastTurnChanges)
   }, [lastTurnChanges])
 
+  // 收起/展开：localStorage 持久化（默认展开，保持既有行为）。
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem('liuli:turn-card-collapsed') === '1' } catch { return false }
+  })
+  const toggleCollapsed = (): void => {
+    setCollapsed(prev => {
+      const next = !prev
+      try { localStorage.setItem('liuli:turn-card-collapsed', next ? '1' : '0') } catch { }
+      return next
+    })
+  }
+  // 整轮总 diff（收起态头部展示：X 个文件被更改 + 总增删行数）。
+  const total = useMemo(() => {
+    let adds = 0
+    let dels = 0
+    for (const file of files) {
+      const stats = diffStats(file.hunks)
+      adds += stats.adds
+      dels += stats.dels
+    }
+    return { adds, dels }
+  }, [files])
+
   if (!isLast || files.length === 0) return null
 
   return (
     <div className={css.root} data-liuli-turn-files="">
-      <div className={css.head}>
+      <button
+        type="button"
+        className={css.head}
+        aria-expanded={!collapsed}
+        title={collapsed ? '展开文件列表' : '收起文件列表'}
+        onClick={toggleCollapsed}
+      >
+        <span className={css.chevron + (collapsed ? ' ' + css.chevronRight : '')}><ExpandIcon /></span>
         <span className={css.title}>本轮修改</span>
-        <span className={css.count}>{files.length} 个文件</span>
-      </div>
-      <div className={css.list}>
-        {files.map(file => (
-          <FileRow key={file.path} file={file} sessionId={effectiveSessionId} cwd={cwd} openFile={openFile} />
-        ))}
-      </div>
+        <span className={css.count}>{files.length} 个文件被更改</span>
+        <span className={css.summary}>
+          {total.adds > 0 && <span className={css.statAdd}>+{total.adds}</span>}
+          {total.dels > 0 && <span className={css.statDel}>−{total.dels}</span>}
+        </span>
+      </button>
+      {!collapsed && (
+        <div className={css.list}>
+          {files.map(file => (
+            <FileRow key={file.path} file={file} sessionId={effectiveSessionId} cwd={cwd} openFile={openFile} />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
