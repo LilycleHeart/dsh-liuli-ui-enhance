@@ -1,7 +1,7 @@
 /**
  * 侧边栏浏览器 CDP 操作面(Host 半)。
  *
- * 参考 zcode-browser-replication/main(CDP-executor / PlaywrightLocatorEngine /
+ * 参考实现源码 browser-replication/main(CDP-executor / PlaywrightLocatorEngine /
  * PlaywrightActions)复刻:把官方 Playwright InjectedScript 经 CDP
  * Page.createIsolatedWorld 注入引擎标签页,提供 aria 快照、元素信息、
  * 真实输入(按下/抬起)、键盘、滚动、下拉、勾选与 world 内求值,供
@@ -57,7 +57,7 @@ export interface BrowserOpsDeps {
   restoreTabSurface(tabId: string): void
 }
 
-/** 统一返回协议(对齐 zcode executeInScope)。 */
+/** 统一返回协议(对齐 参考实现 executeInScope)。 */
 export type OpsResult =
   | { ok: true; value: unknown }
   | { ok: false; error: { code: string; message: string } }
@@ -69,7 +69,7 @@ export const OPS_METHODS = [
   'waitFor', 'drag', 'cua', 'getDialog', 'handleDialog',
 ] as const
 
-/** Playwright InjectedScript 构造参数(对齐 zcode PlaywrightLocatorEngine.inject)。 */
+/** Playwright InjectedScript 构造参数(对齐 参考实现 PlaywrightLocatorEngine.inject)。 */
 const INJECT_CONFIG = {
   browserName: 'chromium',
   customEngines: [] as unknown[],
@@ -88,7 +88,7 @@ const WORLD_ALIVE_PROBE = `Boolean(globalThis.${INJECTED_GLOBAL})`
 
 /**
  * 解析 selector / aria-ref → 元素表达式(注入源 1.59 的 querySelector 只收
- * parseSelector 解析后的对象,对齐 zcode:querySelectorAll(parseSelector(sel))[0])。
+ * parseSelector 解析后的对象,对齐参考实现的 querySelectorAll(parseSelector(sel))[0])。
  */
 const QUERY_ONE = (selector: string): string =>
   `(globalThis.${INJECTED_GLOBAL}.querySelectorAll(globalThis.${INJECTED_GLOBAL}.parseSelector(${JSON.stringify(selector)}), document)[0] ?? null)`
@@ -725,7 +725,7 @@ export function createBrowserOps(deps: BrowserOpsDeps) {
     return ok({ value: (response as { result?: { value?: unknown } })?.result?.value ?? null })
   }
 
-  /** playwright op(zcode 语义薄转调):domSnapshot / elementInfo / evaluate / locator。 */
+  /** playwright op(参考实现 语义薄转调):domSnapshot / elementInfo / evaluate / locator。 */
   async function opPlaywright(wc: OpsWebContents, session: OpsSession, tabId: string, params: Record<string, unknown>): Promise<OpsResult> {
     const action = typeof params.action === 'string' ? params.action : ''
     switch (action) {
@@ -818,7 +818,7 @@ export function createBrowserOps(deps: BrowserOpsDeps) {
     }
   }
 
-  /** CUA 坐标模式(zcode cuaClick/cuaScroll/cuaKeypress/cuaDrag 对应):直接给视口坐标。 */
+  /** CUA 坐标模式(参考实现 cuaClick/cuaScroll/cuaKeypress/cuaDrag 对应):直接给视口坐标。 */
   async function opCua(wc: OpsWebContents, session: OpsSession, tabId: string, params: Record<string, unknown>): Promise<OpsResult> {
     const action = typeof params.action === 'string' ? params.action : ''
     ensureWindowSurface()
@@ -841,7 +841,7 @@ export function createBrowserOps(deps: BrowserOpsDeps) {
         const dy = Math.round(typeof params.yDelta === 'number' ? params.yDelta : 0)
         if (dx === 0 && dy === 0) return fail('bad_params', 'cua scroll 需要 xDelta/yDelta')
         // 视口滚动用主世界 scrollBy:mouseWheel 在垫层/屏外视图上实测静默无效,
-        // scrollBy 是稳定等效路径(zcode domCuaScroll 同为 JS 滚动)。
+        // scrollBy 是稳定等效路径(参考实现 domCuaScroll 同为 JS 滚动)。
         const resp = await cdp(wc, 'Runtime.evaluate', {
           expression: `window.scrollBy(${dx}, ${dy}); JSON.stringify({ scrollY: window.scrollY, scrollX: window.scrollX })`,
           returnByValue: true,

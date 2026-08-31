@@ -111,7 +111,7 @@ export interface SidebarFilePayload {
   error?: string
 }
 
-/** 单文件 git diff 载荷（ZCode 风格审查面板）。 */
+/** 单文件 git diff 载荷（参考实现 风格审查面板）。 */
 export interface SidebarDiffPayload {
   ok: boolean
   root?: string

@@ -1,4 +1,4 @@
-/* 审查文件面板（FileReviewPanel）：ZCode 审查功能对齐 —— 源切换 + 折叠 diff + 右键菜单 */
+/* 审查文件面板（FileReviewPanel）：参考实现 审查功能对齐 —— 源切换 + 折叠 diff + 右键菜单 */
 
 .root {
   flex: 1;

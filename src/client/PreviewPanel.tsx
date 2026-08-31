@@ -163,7 +163,7 @@ export function resolvePreviewUrl(raw: string, sessionId: string | undefined): s
 /**
  * 打开一个前端页面文件（对话页「打开」入口统一走这里）：
  * - 映射为 `/preview/…`（DSH 自身静态预览，无 dev server 的本地 HTML）时：
- *   **Desktop（Electron 壳）下按参考实现（ZCode）同款方式，把本地路径转成
+ *   **Desktop（Electron 壳）下按参考实现同款方式，把本地路径转成
  *   `file:///` URL 直接在侧边栏浏览器 webview 里打开**——file:// 请求不经过 DSH
  *   webServer，不存在 renderer-token 门（加载 http://127.0.0.1:端口/preview/…
  *   会被宿主安全门 403）；纯 Web 没有 webview、iframe 不能加载 file://，回退主窗口
@@ -176,7 +176,7 @@ export function openFrontendFile(sessionId: string | undefined, path: string, re
   const url = resolvePreviewUrl(rel, sessionId)
   if (url === undefined) return false
   if (url.startsWith('/preview/')) {
-    // 绝对本地路径 → file:///…（ZCode Yo() 同款换算：Windows 盘符 / Unix 绝对路径
+    // 绝对本地路径 → file:///…（参考实现 Yo() 同款换算：Windows 盘符 / Unix 绝对路径
     // 都得到 file:/// 三段斜杠）。仅在 Desktop 壳下用（webview 可加载 file://）。
     const looksAbsolute = /^[A-Za-z]:[\\/]/.test(path) || path.startsWith('/') || path.startsWith('\\\\')
     if (isDesktopShell() && looksAbsolute) {
@@ -3066,7 +3066,7 @@ function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitle
 }
 
 /* ── <webview> DOM 标签浏览器面板（webviewTag 开启时） ──
- * zcode 参考实现用 <webview> 自定义元素承载内嵌浏览器：它是真实 DOM 节点，
+ * 参考实现用 <webview> 自定义元素承载内嵌浏览器：它是真实 DOM 节点，
  * 自然被 .carrier 的 overflow:hidden 裁剪，拉伸面板时不会像 WebContentsView
  * 那样溢出容器。Host 侧负责把 BrowserWindow webPreferences.webviewTag 置 true。 */
 

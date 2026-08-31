@@ -590,7 +590,7 @@ export function RoundSummaryCard({ node, openFile, useSession, useSessions, sess
     return mergeTurnFiles(records)
   }, [isLast, locations, nodes, order, turn])
 
-  // 发布给审查面板的「上一轮更改」源（ZCode last-turn 语义）。
+  // 发布给审查面板的「上一轮更改」源（参考实现 last-turn 语义）。
   const lastTurnChanges = useMemo<SidebarGitChange[]>(() => files.map(file => {
     const stats = diffStats(file.hunks)
     const kind: SidebarGitChange['kind'] = stats.adds > 0 && stats.dels > 0 ? 'modified' : stats.adds > 0 ? 'added' : stats.dels > 0 ? 'deleted' : 'modified'

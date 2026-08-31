@@ -471,7 +471,7 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
     if (existing !== undefined) return existing
     const win = findWindow()
     if (win === undefined) throw new Error('no host window')
-    // 简化驱逐(zcode BrowserTabResidencyCoordinator 的最低限对应):只驱逐无
+    // 简化驱逐(参考实现 BrowserTabResidencyCoordinator 的最低限对应):只驱逐无
     // GUI carrier 的 agent:* 标签里最久未用的;没有候选则允许超限。
     if (tabs.size >= TAB_LIMIT) {
       const victim = [...tabs.values()]
@@ -578,7 +578,7 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
    * 时解析侧边栏 <webview> 承载(webviewTag 补丁生效时 PreviewPanel 走 DOM webview,
    * 不建引擎标签)的 guest webContents,使 CDP 操作面同一套能力覆盖两种承载。
    * scope 隔离:有主标签(ownerSessionId ≠ null)只对所属会话可见,其它会话
-   * 视同 unknown tab(与 zcode「list 不到」一致);无主 = 公共。
+   * 视同 unknown tab(与 参考实现「list 不到」一致);无主 = 公共。
    */
   const resolveOpsTarget = (tabId: string, sessionId: string | undefined): { wc: ElectronWebContents; engineTab?: EngineTab } | undefined => {
     const engineTab = tabs.get(tabId)

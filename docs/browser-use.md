@@ -14,7 +14,7 @@
   Playwright InjectedScript（`src/vendor/playwright-injected-script.ts`，提取自
   playwright-core 1.59）注入 `Page.createIsolatedWorld`，提供 aria 快照、
   元素信息、真实输入（click/press/insertText）、键盘、滚动、下拉、勾选与
-  world 内求值——ZCode 桌面端 IAB「可操作调试」能力对应实现。
+  world 内求值——参考实现 桌面端 IAB「可操作调试」能力对应实现。
 - **路由**：`/liuli-browser/capabilities|events|tabs|tabs/action|tabs/geometry|
   tabs/viewport|tabs/state|tabs/screenshot|tabs/execute|open-external|ops`，
   只接受回环调用方。外部进程一律走 CLI 的 `LIULI_BROWSER_VIA=cdp` 桥（见下）。

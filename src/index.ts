@@ -172,7 +172,7 @@ async function sidebarGitStatus(root: string): Promise<SidebarGitStatusRow[] | u
   }
 }
 
-/* ── ZCode 风格审查面板数据模型（sourceOptions / datasets / summary） ── */
+/* ── 参考实现 风格审查面板数据模型（sourceOptions / datasets / summary） ── */
 
 type SidebarGitSourceId = 'unstaged' | 'staged' | 'branch'
 
@@ -265,7 +265,7 @@ function gitChangeKind(code: string): SidebarGitChange['kind'] {
   }
 }
 
-/** 汇总 ZCode 风格 git state（审查面板用）。 */
+/** 汇总 参考实现 风格 git state（审查面板用）。 */
 async function sidebarGitState(root: string): Promise<SidebarGitState> {
   const empty = (): SidebarGitState => ({
     rows: [],
@@ -1243,7 +1243,7 @@ function wholeFileAddedDiff(content: string): string {
   return lines.map(line => '+' + line).join('\n')
 }
 
-/** 读取单个文件的 git diff（ZCode 风格：availability / patch / beforeContent / afterContent）。 */
+/** 读取单个文件的 git diff（参考实现 风格：availability / patch / beforeContent / afterContent）。 */
 async function sidebarFileDiff(root: string, rel: string, source: SidebarGitSourceId = 'unstaged'): Promise<{
   path: string
   diff: string

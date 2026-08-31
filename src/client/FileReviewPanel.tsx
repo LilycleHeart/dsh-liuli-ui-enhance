@@ -1,7 +1,7 @@
 /**
- * 琉璃主题 · 审查文件面板（ZCode 审查功能对齐版）。
+ * 琉璃主题 · 审查文件面板（参考实现 审查功能对齐版）。
  *
- * 对齐 ZCode 侧边面板的「审查(git)」标签（XWt git pane）：
+ * 对齐 参考实现 侧边面板的「审查(git)」标签（XWt git pane）：
  * - 顶栏：源切换（未暂存 / 已暂存）+ 刷新；
  * - 文件列表：每行显示 文件名 + 目录 + +添加/−删除 统计，可折叠；
  * - 展开后内联展示该文件的 diff（未跟踪文本文件展示纯文本内容）；
@@ -33,7 +33,7 @@ export interface FileReviewPanelProps {
   onOpenPath?: ((path: string) => void) | undefined
   /** 宿主面板（PreviewDetailsPanel）驱动的审查请求。 */
   reviewRequest?: ReviewPanelRequest | null
-  /** 在文件树中定位当前文件（ZCode git.changeContext.revealInFileTree 对应）。 */
+  /** 在文件树中定位当前文件（参考实现 git.changeContext.revealInFileTree 对应）。 */
   onRevealInFileTree?: ((path: string) => void) | undefined
 }
 
@@ -302,7 +302,7 @@ function ExpandableDiff({ open, children }: { open: boolean; children: ReactNode
   )
 }
 
-/** 源切换选项（ZCode git.source.* 对应）。 */
+/** 源切换选项（参考实现 git.source.* 对应）。 */
 const SOURCE_LABELS: Record<SidebarGitSourceId, string> = {
   unstaged: '未暂存',
   staged: '已暂存',
@@ -317,7 +317,7 @@ const FALLBACK_SOURCES: Array<{ id: SidebarGitSourceId; disabled: boolean }> = [
   { id: 'last-turn', disabled: false },
 ]
 
-/** ZCode 风格源切换下拉：触发按钮 + body portal 菜单，与插件其它菜单同材质。 */
+/** 参考实现 风格源切换下拉：触发按钮 + body portal 菜单，与插件其它菜单同材质。 */
 function SourceSelect({ value, options, onChange }: {
   value: SidebarGitSourceId
   options: ReadonlyArray<{ id: SidebarGitSourceId; disabled: boolean }>
@@ -403,7 +403,7 @@ function SourceSelect({ value, options, onChange }: {
 }
 
 /**
- * 审查文件面板：ZCode 风格 git 变更审查。
+ * 审查文件面板：参考实现 风格 git 变更审查。
  * @param props - 会话 id、默认编辑器打开回调、宿主审查请求、文件树定位回调。
  */
 export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onRevealInFileTree }: FileReviewPanelProps) {
@@ -457,7 +457,7 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
     setLastTurnChangesState(getLastTurnChanges())
   }), [])
 
-  // Host 不返回 last-turn，客户端把该源补在最后（ZCode 顺序：未暂存/已暂存/全部分支/上一轮）。
+  // Host 不返回 last-turn，客户端把该源补在最后（参考实现 顺序：未暂存/已暂存/全部分支/上一轮）。
   const sourceOptions = useMemo(() => {
     const base = git?.sourceOptions ?? FALLBACK_SOURCES
     return base.some(option => option.id === 'last-turn') ? base : [...base, { id: 'last-turn' as const, disabled: false }]

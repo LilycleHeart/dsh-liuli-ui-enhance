@@ -392,7 +392,7 @@ export function applyFramelessPatch(): void {
       runtimeChanged = true
       console.log(`[dsh-liuli-ui-enhance] 无边框自动补丁：已修补 ${runtime.name} 无边框配置（${mainMatch ? '主窗口标题栏块' : '通用标题栏块'}，原 height: ${heightExpr}）`)
     }
-    // 启用 webviewTag：zcode 参考实现的浏览器用 <webview> DOM 标签承载，
+    // 启用 webviewTag：参考实现的浏览器用 <webview> DOM 标签承载，
     // 由 CSS overflow:hidden 自然裁剪，彻底避免 WebContentsView 溢出容器问题。
     const textAfter = content.toString('utf8')
     if (textAfter.includes('webviewTag: true')) {

@@ -3,7 +3,7 @@
  *
  * TurnFileCard 的 RoundSummaryCard 在渲染「本轮修改」卡片时，把聚合后的
  * 文件列表发布到这里；审查面板（FileReviewPanel）用它在「上一轮更改」
- * 源里展示与 ZCode last-turn 语义一致的文件快照。
+ * 源里展示与 参考实现 last-turn 语义一致的文件快照。
  */
 import type { SidebarGitChange } from './right-sidebar-api.ts'
 
