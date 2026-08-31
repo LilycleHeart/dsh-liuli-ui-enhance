@@ -23,3 +23,7 @@ test-results/
 
 # demo 验证脚本不入库（仅本地开发调试用）
 demo/
+
+# 开发自用、用户用不着的不入库（本地保留，仅供作者开发调试）
+AGENTS.md
+tools/

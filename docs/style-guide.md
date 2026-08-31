@@ -685,7 +685,7 @@ CSS Modules 内普通面板只用 `edgeBottom` 类；区域表面镜像用 `:glo
 - [ ] 动画配 `prefers-reduced-motion` 降级
 - [ ] 若为全局样式：同步 `liuli.css` 与 `liuli-css.ts`
 - [ ] 新增文案同步 `locales.ts`（zh/en 键完整）
-- [ ] 新踩坑写入 `AGENTS.md`「关键避坑」
+- [ ] 新踩坑写入开发约定文档「关键避坑」
 
 ---
 

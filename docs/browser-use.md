@@ -81,7 +81,7 @@ DSH 服务端对外部直连一律 403：`LIULI_BROWSER_VIA=cdp` 让
 `scripts/browser-client.mjs` 全部请求经 `scripts/browser-bridge.mjs` 中转——
 连主进程 inspector（默认 9229，`LIULI_INSPECT_PORT` 可指定），主进程里找主窗口
 `webContents.executeJavaScript` 执行**页面内同源 fetch** 过 fence。
-需 DSH Desktop 以调试模式启动：`tools/dsh-debug-launch.cmd`。
+需 DSH Desktop 以调试模式启动。
 
 ```pwsh
 $env:LIULI_BROWSER_VIA='cdp'
@@ -94,7 +94,7 @@ node scripts/browser-client.mjs op "webview:8931" click '{"ref":"e6"}'
 ## 自测
 
 1. `pnpm exec tsc -b && pnpm run bundle`
-2. Host 半改动需重启 DSH Desktop（调试模式见 tools/dsh-debug-launch.cmd）
+2. Host 半改动需重启 DSH Desktop（调试模式启动）
 3. `node demo/verify-browser-ops.mjs` → T1..T26（ops 全方法 + 正负用例）
 4. GUI 右侧面板 → 浏览器标签：地址栏输入任意站点（含禁嵌入的 Google/GitHub 也可加载）
 5. `node scripts/browser-client.mjs open https://example.com --tab t1` →

@@ -4,7 +4,7 @@
  * DSH 服务端 fence 对外部直连一律 403,CLI / verify 脚本经本模块把请求
  * 中转到运行中的 DSH Desktop:连 --inspect(默认 9229)的主进程 inspector,
  * 在主进程里找到主窗口 webContents,再 executeJavaScript 在页面内执行
- * 同源 fetch(过 fence)。调试模式启动见 tools/dsh-debug-launch.cmd
+ * 同源 fetch(过 fence)。调试模式启动
  * (端口被占时自动顺延,可用 LIULI_INSPECT_PORT 指定实际端口)。
  */
 
@@ -30,7 +30,7 @@ export async function cdpEvalMain(expression, { timeoutMs = 90000 } = {}) {
     if (target?.webSocketDebuggerUrl === undefined) throw new Error('no inspector target')
     wsUrl = target.webSocketDebuggerUrl
   } catch {
-    throw new Error(`连不上主进程 inspector(127.0.0.1:${port})——请用 tools/dsh-debug-launch.cmd 调试模式启动 DSH Desktop,或设 LIULI_INSPECT_PORT 为实际端口`)
+    throw new Error(`连不上主进程 inspector(127.0.0.1:${port})——请用调试模式启动 DSH Desktop,或设 LIULI_INSPECT_PORT 为实际端口`)
   }
   const ws = new WebSocket(wsUrl)
   await new Promise((resolve, reject) => {

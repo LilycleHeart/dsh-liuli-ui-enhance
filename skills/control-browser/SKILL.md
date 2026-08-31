@@ -54,7 +54,7 @@ node "<plugin>/scripts/browser-client.mjs" close t1
 - **外部进程必须走 CDP 桥**：DSH 服务端对外部直连一律 403（Host fence）。
   设 `LIULI_BROWSER_VIA=cdp` 后全部请求经 `scripts/browser-bridge.mjs` 中转
   （主进程 inspector 9229 → 页面内同源 fetch）；需 DSH Desktop 以调试模式启动
-  （`tools/dsh-debug-launch.cmd`，inspector 端口被占顺延时设 `LIULI_INSPECT_PORT`）。
+  （调试模式启动脚本，inspector 端口被占顺延时设 `LIULI_INSPECT_PORT`）。
 - **做前端项目时优先 `open --show`**：CLI 用 `browser:show-<uid>` id 创建标签，GUI
   侧边栏的轮询桥接**只认这个前缀**、会自动展示（用户实时可见）；否则 agent 自建
   标签（`agent:<n>`）不上报几何、保持隐藏但可导航/执行/截图，等效 CLI-managed

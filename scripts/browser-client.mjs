@@ -31,7 +31,7 @@
  *
  * 外部进程直连 Host 路由会被服务端 fence 403:设 LIULI_BROWSER_VIA=cdp 走
  * scripts/browser-bridge.mjs 中转(主进程 inspector 9229 → 页面内同源 fetch;
- * 需 DSH Desktop 以调试模式启动,见 tools/dsh-debug-launch.cmd)。
+ * 需 DSH Desktop 以调试模式启动)。
  * 无几何上报的 agent 标签保持隐藏（等效 DSH CLI-managed headless CDP：
  * 导航/执行/截图可用，仅不可见）；GUI 侧边栏打开的标签 id 形如 browser:<uid>，
  * 可直接用本 CLI 驱动（IAB 模式）。

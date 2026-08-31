@@ -32,7 +32,7 @@ export const inject = ['webServer', 'credentials', 'sessions']
 /**
  * 琉璃扩展命令的最小结构面。刻意不 import @deepseek-ai/dsh-commands：
  * 它的类型面会拖进 dsh-session 的 `Context.sessions: SessionStore` 声明，
- * 与 dsh-client-runtime 浏览器侧的 `ISessions` 声明合并冲突（见 AGENTS.md）。
+ * 与 dsh-client-runtime 浏览器侧的 `ISessions` 声明合并冲突。
  * 这里只声明我们用到的子集，运行时经 ctx.inject(['commands']) 解析。
  */
 interface LiuliCommandRegistry {
