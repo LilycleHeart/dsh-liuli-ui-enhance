@@ -581,6 +581,8 @@ div[role="menu"] [class*="_groupTitle"] {
   background: transparent !important;
 }
 
+/* 注：此处占位层不隐藏 —— 用户要保留提示文字。 */
+
 /* 输入卡内的“命令”圆钮、聊天区“回到底部”按钮：
    从实色容器改为与卡片一致的亚克力表面。
    [class*="_add"] 覆盖官方命令圆钮（hash 尾 _add）；
@@ -1055,6 +1057,18 @@ div[data-phase]::before {
    模糊层同步下探 16px，覆盖卡片延伸出的区域。 */
 div[data-phase='active']::before {
   bottom: -16px;
+}
+
+/* ════════════════════════════════════════════════════════════
+ * 输入面排除：DSH 2.0.4 把输入框从 textarea 换成 contenteditable，
+ * 且编辑器元素带 data-phase={input.phase} 属性 —— 会被壁纸模糊层
+ * div[data-phase]::before 误命中，在草稿区内注入一个 inset:0 的
+ * 磨砂伪元素（开始页输入框中间那条 52px 高的“透明长条”）。
+ * data-placeholder 是输入面专属标记（会话列根没有），据此精确排除：
+ * 输入面不是模糊层的宿主，伪元素整个不渲染。
+ * ════════════════════════════════════════════════════════════ */
+div[data-phase][data-placeholder]::before {
+  content: none !important;
 }
 
 /* 会话列根：自身不画表面，让 frame 背景透出（卡片间隙可见） */
