@@ -11,7 +11,7 @@
  * 会话/cwd 兜底取 sessions 快照当前会话。
  * 挂在「非官方增强 → DOM 观察增强」开关组下，关闭时完全不挂载。
  */
-import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, SessionId } from './compat.ts'
 import { requestReviewFile } from './review-bus.ts'
 import { revealSidebarPath, revealToast } from './right-sidebar-api.ts'
 import { absOf, relOf } from './TurnFileCard.tsx'

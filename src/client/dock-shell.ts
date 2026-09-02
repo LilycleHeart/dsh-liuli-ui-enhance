@@ -7,7 +7,7 @@
  *    订阅宿主 layout 状态驱动 sidebar 收起/详情开合，dock 树驱动面板停靠拓扑；
  *  - Workspace 保存/恢复：dock 树自动落 localStorage（防抖）+ 命名槽位 + 导出/导入。
  */
-import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
+import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-store'
 import {
   createPanel, emptyLayout, findParentSplit, findTabsContaining, flattenSameDirSplits, makeTabsNode, nextId, normalizeSizes, parseDockLayout, removePanel,
   type DockLayout, type PanelInstance,

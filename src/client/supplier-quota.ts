@@ -15,12 +15,12 @@
  * 通用 settings 适配器只做“尽力识别”，字段名不一致时返回 unavailable，
  * 不会影响会话与主题其它功能。
  */
-import type {
-  ConnectionHandle,
-  IApiClient,
-  ModelSelection,
-  SessionId,
-} from '@deepseek-ai/dsh-client-connection/client'
+// 2.0.4：connection.api(IApiClient) 移除，改用 remote-api 适配层（ctx.remote
+// 收敛成旧 llm.providers/settings.describe/settings.mutate 形状）。
+// ModelSelection 从 ui-model-selection 的类型面取；SessionId 从 compat 聚合面取。
+import type { ModelSelection } from '@deepseek-ai/dsh-api-session-controller/types'
+import type { SessionId } from './compat.ts'
+import type { LiuliRemoteApi, ModelDirectoryLike } from './remote-api.ts'
 
 /* ── 展示数据模型 ─────────────────────────────────────────────── */
 
@@ -47,7 +47,7 @@ export interface SupplierQuotaAdapter {
   match(provider: string): boolean
   /** 查询额度；失败可 throw，由控制器转为 error 状态。 */
   fetch(
-    api: IApiClient,
+    api: LiuliRemoteApi,
     ctx: { provider: string; model: string },
   ): Promise<SupplierQuotaData>
 }
@@ -118,26 +118,26 @@ function parseQuotaConfig(provider: string, config: unknown): SupplierQuotaData 
 }
 
 async function fetchFromSettings(
-  api: IApiClient,
+  api: LiuliRemoteApi,
   ctx: { provider: string },
 ): Promise<SupplierQuotaData> {
   try {
     const [providersResponse, settingsResponse] = await Promise.all([
-      api.llm.providers({}),
-      api.settings.describe({}),
+      api.llm.providers(),
+      api.settings.describe(),
     ])
-    if (!providersResponse.result.ok || !settingsResponse.result.ok) {
+    if (!providersResponse.ok || !settingsResponse.ok) {
       return { kind: 'unavailable', provider: ctx.provider }
     }
 
-    const providerView = providersResponse.result.value.providers.find(
+    const providerView = providersResponse.value.providers.find(
       candidate => candidate.provider === ctx.provider,
     )
     if (providerView === undefined) {
       return { kind: 'unavailable', provider: ctx.provider }
     }
 
-    const namespaceView = settingsResponse.result.value.namespaces.find(
+    const namespaceView = settingsResponse.value.namespaces.find(
       candidate => candidate.ns === providerView.settingsNs,
     )
     if (namespaceView === undefined) {
@@ -176,7 +176,7 @@ async function fetchFromHost(provider: string): Promise<SupplierQuotaData> {
 }
 
 /** Host 查询失败或返回 unavailable 时，回退到通用 settings 识别。 */
-async function fetchDeepSeek(api: IApiClient, ctx: { provider: string; model: string }): Promise<SupplierQuotaData> {
+async function fetchDeepSeek(api: LiuliRemoteApi, ctx: { provider: string; model: string }): Promise<SupplierQuotaData> {
   try {
     const data = await fetchFromHost(ctx.provider)
     if (data.kind !== 'unavailable') return data
@@ -236,18 +236,8 @@ export interface SupplierQuotaState {
   updatedAt: number
 }
 
-/** 可选：ui-model-selection 的 per-session directory，用于在模型/供应商切换时自动刷新。 */
-interface SupplierModelStoreLike {
-  subscribe(listener: () => void): () => void
-  getSnapshot(): unknown
-}
-
-interface SupplierModelDirectoryLike {
-  directoryFor(sessionId: SessionId): { store: SupplierModelStoreLike }
-}
-
-let connection: ConnectionHandle | null = null
-let modelDirectory: SupplierModelDirectoryLike | null = null
+let remote: LiuliRemoteApi | null = null
+let modelDirectory: ModelDirectoryLike | null = null
 let currentSessionId: SessionId | null = null
 let unsubscribeModel: (() => void) | null = null
 let refreshGeneration = 0
@@ -273,13 +263,13 @@ function setState(patch: Partial<SupplierQuotaState>): void {
   emit()
 }
 
-/** 由插件 apply 注入 connection；重复调用只更新句柄并触发一次刷新。 */
+/** 由插件 apply 注入 remote 适配层；重复调用只更新引用并触发一次刷新。 */
 export function initSupplierQuota(
-  handle: ConnectionHandle,
-  directory?: unknown,
+  handle: LiuliRemoteApi,
+  directory?: ModelDirectoryLike | null,
 ): void {
-  connection = handle
-  modelDirectory = (directory ?? null) as SupplierModelDirectoryLike | null
+  remote = handle
+  modelDirectory = directory ?? null
   if (currentSessionId !== null) {
     subscribeCurrentModelDirectory()
     void refreshSupplierQuota()
@@ -309,18 +299,25 @@ export function setSupplierQuotaSession(sessionId: SessionId): void {
   void refreshSupplierQuota()
 }
 
-/** 重新查询当前会话的供应商额度（幂等，多调用只保留最后一次结果）。 */
+/** 重新查询当前会话的供应商额度（幂等，多调用只保留最后一次结果）。
+ *  2.0.4：旧 sessions.models RPC 移除；当前模型选择改从 modelDirectories 的
+ *  每会话目录快照读（store.subscribe 已在切会话时驱动本函数重跑）。 */
 export async function refreshSupplierQuota(): Promise<void> {
-  if (connection === null || currentSessionId === null) return
+  if (remote === null || currentSessionId === null) return
   const generation = ++refreshGeneration
   setState({ status: 'loading', error: '' })
 
   try {
-    const response = await connection.api.sessions.models({ sessionId: currentSessionId })
+    const current: ModelSelection | null = modelDirectory === null
+      ? null
+      : modelDirectory.directoryFor(currentSessionId).store.getSnapshot().current
     if (generation !== refreshGeneration) return
-    if (!response.result.ok) throw new Error(response.result.error.message)
+    if (current === null) {
+      // 目录未就绪（catalog 未加载）：不报错，保持 idle 语义等目录回调重跑。
+      setState({ status: 'idle', error: '' })
+      return
+    }
 
-    const current: ModelSelection = response.result.value.current
     const adapter = adapters.find(candidate => candidate.match(current.provider))
     if (adapter === undefined) {
       setState({
@@ -332,7 +329,7 @@ export async function refreshSupplierQuota(): Promise<void> {
       return
     }
 
-    const data = await adapter.fetch(connection.api, {
+    const data = await adapter.fetch(remote, {
       provider: current.provider,
       model: current.model,
     })
@@ -352,7 +349,7 @@ export function disposeSupplierQuota(): void {
   unsubscribeModel?.()
   unsubscribeModel = null
   currentSessionId = null
-  connection = null
+  remote = null
   modelDirectory = null
   refreshGeneration += 1
   state = { ...initialState, updatedAt: Date.now() }

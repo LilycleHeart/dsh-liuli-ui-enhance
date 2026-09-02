@@ -6,7 +6,7 @@
  * 注入节点，故每次列表 / marker 变化后重新装饰（element-card 同款模式）。
  * 反查 sessionId 复用 session-rename.ts 的 resolveSessionId（标题匹配折中）。
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext } from './compat.ts'
 import { resolveSessionId, locateTitleSpan } from './session-rename.ts'
 import { ICONS } from './menu-icons.ts'
 

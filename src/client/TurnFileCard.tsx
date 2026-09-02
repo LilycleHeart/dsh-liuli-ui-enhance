@@ -17,12 +17,12 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { ChatNode } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type { ConversationLocation, ConversationNodeContext, ConversationNodeDefinition } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ChatNode } from '@deepseek-ai/dsh-client-ui-chat/client'
+import type { ConversationLocation, ConversationNodeContext, ConversationNodeDefinition } from './compat.ts'
 // Type-only: pulls the SessionEvent augmentation that adds the code-dispatch
 // child-call lifecycle events (tool/code-dispatch-start / tool/code-dispatch).
 import type {} from '@deepseek-ai/dsh-tools/types'
-import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-client-runtime/client'
+import { isAppendSurfaceEvent } from './compat.ts'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { requestReviewFile } from './review-bus.ts'
 import { revealSidebarPath, revealToast, type SidebarGitChange } from './right-sidebar-api.ts'
@@ -45,19 +45,12 @@ export interface TurnFileRecord {
   hunks: FileDiffHunk[]
 }
 
-/** `card:'diff'` 渲染意图的结构窄化面。 */
+/** `card:'diff'` 渲染意图的结构窄化面（2.0.4：match 不带 view，仅作参数类型）。 */
 interface DiffCardView {
   card: 'diff'
   title?: string
   diffs?: unknown
   locations?: Array<{ path: string }>
-}
-
-/** 结构窄化：只有 `card:'diff'` 的视图才参与。 */
-function asDiffView(view: unknown): DiffCardView | null {
-  if (typeof view !== 'object' || view === null) return null
-  if ((view as { card?: unknown }).card !== 'diff') return null
-  return view as DiffCardView
 }
 
 /** 校验并窄化 diffs 数组（宿主 FileDiff 形状）。 */
@@ -249,7 +242,8 @@ export const fileChangesDefinition: ConversationNodeDefinition<StepFileState> = 
       call: {
         name: match.event.data.name,
         argsRaw: match.event.data.arguments,
-        view: match.view?.for === 'call' ? asDiffView(match.view.view) : null,
+        // 2.0.4：ConversationMatch 不再携带 view——hunks 由 update 时从参数/结果合成。
+        view: null,
       },
       files: [],
       anchorSeq: undefined,
@@ -270,7 +264,7 @@ export const fileChangesDefinition: ConversationNodeDefinition<StepFileState> = 
     if (result.isError === true) return context.state
     const call = context.state.call
     if (call === null) return context.state
-    const resultView = match.view?.for === 'result' ? asDiffView(match.view.view) : null
+    const resultView = null
     const hunks = deriveHunks(call.name, call.argsRaw, call.view, resultView)
     if (hunks === null || hunks.length === 0) return context.state
     return mergeHunks(context, hunks, match.event.seq)
@@ -310,7 +304,7 @@ function mergeHunks(
   return { ...context.state, files, anchorSeq: seq }
 }
 
-declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
+declare module '@deepseek-ai/dsh-client-ui-chat/client' {
   interface ChatNodeDataMap {
     /** 每轮文件变更摘要（琉璃）。 */
     'liuli-round-summary': { turn: number; step: number; files: readonly TurnFileRecord[] }
@@ -554,10 +548,11 @@ function mergeTurnFiles(records: readonly TurnFileRecord[]): TurnFileRecord[] {
  * 轮次结束卡片渲染器：仅当本节点是该轮最后一个节点时渲染，
  * 并从会话快照聚合整轮（各 step）的文件变更。
  */
-export function RoundSummaryCard({ node, openFile, useSession, useSessions, sessionId }: RoundSummaryProps) {
-  const locations = useSession(state => state.chat.locations)
-  const nodes = useSession(state => state.chat.nodes)
-  const order = useSession(state => state.chat.order)
+export function RoundSummaryCard({ node, openFile, useChat, useSessions, sessionId }: RoundSummaryProps) {
+  // 2.0.4：Chat 内容（locations/nodes/order）在 useChat 的 ChatSnapshot 上。
+  const locations = useChat(state => state.locations)
+  const nodes = useChat(state => state.nodes)
+  const order = useChat(state => state.order)
   // 会话回退：conversation.chat.node 的 keyed renderer 在某些渲染路径下可能
   // 拿不到 slot 注入的 sessionId；此时从 sessions 快照取当前会话兜底，
   // 避免「在资源管理器中打开」因 sessionId 为空而静默无操作。

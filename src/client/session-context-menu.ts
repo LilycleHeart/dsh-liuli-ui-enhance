@@ -7,7 +7,7 @@
  * localStorage store，重命名复用 session-rename.ts 的内联输入框，分叉/归档
  * 经 ctx.sessions.fork / ctx.workspaces.archiveSession。
  */
-import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, SessionId } from './compat.ts'
 import { resolveSessionId, readRowTitle, locateTitleSpan, mountEditor } from './session-rename.ts'
 import { getSessionMarker, setSessionMarker, MARKER_LABEL, MARKER_ICON, MARKER_COLOR, type SessionMarker } from './session-markers.ts'
 import { ICONS } from './menu-icons.ts'

@@ -29,8 +29,11 @@ const CSS_VIRTUAL_SUFFIX = '.mjs'
  * with no runtime identity to share (no Symbol/instanceof/singleton state).
  * Everything else under @deepseek-ai/* is either a module-table entry
  * (external) or a leak the purity gate rejects.
+ * 2.0.4（0.1.2-alpha.1）：与上游对齐——util-crypto/util-workspace-path/token-meter
+ * 进入内联白名单；dsh-scope 因 dsh-session 连锁依赖也需内联（上游 INLINE_SAFE
+ * 列表里的 session 自身连锁会带进 scope）。session 的 /surface 子路径为纯函数层。
  */
-export const INLINE_SAFE = /^@deepseek-ai\/dsh-(host-apiproxy|session|llm|tools|brand)(\/|$)/
+export const INLINE_SAFE = /^@deepseek-ai\/dsh-(host-apiproxy|session|llm|tools|brand|util-crypto|util-workspace-path|scope)(\/|$)/
 
 /**
  * Vendored framework libraries: rescoped into @deepseek-ai, so the gate below
@@ -50,19 +53,13 @@ const GENERATED_REMOTE = /^@deepseek-ai\/dsh-[a-z0-9]+(?:-[a-z0-9]+)*\/remote$/
 const SKIP_WORKSPACE_BUILD: UserConfig = { entry: '' }
 
 /**
- * Documented TEMPORARY exemption, not a platform module (hence not in
- * platform.ts): the snapshot-store engine (createSnapshotStore/defineStore/
- * shallowEqual) lives in runtime pending its promotion-time rehoming, and
- * five importers (locale, ui-layout, ui-conversation ×3) ride this single
- * exemption. At runtime the lazy CJS table answers the require natively:
- * runtime is an immediately-tier row, its factory is registered before any
- * dependent bundle materializes. TODO(webload/store-rehome): remove with the
- * store-engine relocation follow-up.
+ * 2.0.4（0.1.2-alpha.1）：store 引擎已从 runtime 正式迁入 dsh-client-store
+ * 平台模块表（上游 PLATFORM_MODULES 一员），旧的 runtime 临时豁免删除。
  */
-const RUNTIME_STORE_EXEMPTION = '@deepseek-ai/dsh-client-runtime/client'
+const STORE_PLATFORM_MODULE = '@deepseek-ai/dsh-client-store'
 
-/** Externals resolved from the loader module table: the platform seed entries plus the documented runtime exemption. */
-export const CLIENT_EXTERNALS: readonly string[] = [...PLATFORM_MODULES, RUNTIME_STORE_EXEMPTION]
+/** Externals resolved from the loader module table: the platform seed entries (store included since 2.0.4). */
+export const CLIENT_EXTERNALS: readonly string[] = [...PLATFORM_MODULES, STORE_PLATFORM_MODULE]
 
 const REPOSITORY_ROOT = fileURLToPath(new URL('..', import.meta.url))
 

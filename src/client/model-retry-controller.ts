@@ -19,9 +19,7 @@
  * 因此即便某供应商 profile 尚未创建也不会误伤：未配置供应商在 save 时
  * 跳过（没有 profile 就没有 retryPolicy 落地点）。
  */
-import type {
-  ConnectionHandle,
-} from '@deepseek-ai/dsh-client-connection/client'
+import type { LiuliRemoteApi, ProviderRoute, SettingsNamespace } from './remote-api.ts'
 import { MODEL_RETRY_DEFAULTS } from './model-retry-store.ts'
 
 /** 宿主 RetryPolicySchema 的 normal 模式 JSON 形状（写侧）。 */
@@ -34,23 +32,6 @@ interface RetryPolicyConfig {
     maxDelayMs: number
     jitterRatio: number
   }
-}
-
-/** llm.providers 行（ConfigurableProviderView）。 */
-interface ProviderRoute {
-  provider: string
-  settingsNs: string
-  settingsPath: string[]
-  active: boolean
-  declared?: boolean
-}
-
-/** settings.describe 命名空间视图（最小读面）。 */
-interface SettingsNamespace {
-  ns: string
-  value: unknown
-  user?: unknown
-  revision: number
 }
 
 /** 在对象树里按 path 取值。 */
@@ -81,17 +62,17 @@ export interface ModelRetrySnapshot {
   nsRevisions: Map<string, number>
 }
 
-let connection: ConnectionHandle | null = null
+let remote: LiuliRemoteApi | null = null
 let snapshot: ModelRetrySnapshot = { routes: [], configuredKeys: new Set(), revision: 0, nsRevisions: new Map() }
 
-/** 注入连接句柄。 */
-export function initModelRetry(handle: ConnectionHandle): void {
-  connection = handle
+/** 注入 remote 适配层。 */
+export function initModelRetry(handle: LiuliRemoteApi): void {
+  remote = handle
 }
 
 /** 释放句柄（插件卸载时调用）。 */
 export function disposeModelRetry(): void {
-  connection = null
+  remote = null
   snapshot = { routes: [], configuredKeys: new Set(), revision: 0, nsRevisions: new Map() }
 }
 
@@ -107,19 +88,19 @@ export async function loadModelRetry(): Promise<{
   jitterRatio: number
   providerCount: number
 }> {
-  if (connection === null) {
+  if (remote === null) {
     return { ...MODEL_RETRY_DEFAULTS, providerCount: 0 }
   }
-  const api = connection.api
+  const api = remote
   const [providersResp, settingsResp] = await Promise.all([
-    api.llm.providers({}),
-    api.settings.describe({}),
+    api.llm.providers(),
+    api.settings.describe(),
   ])
-  if (!providersResp.result.ok || !settingsResp.result.ok) {
+  if (!providersResp.ok || !settingsResp.ok) {
     return { ...MODEL_RETRY_DEFAULTS, providerCount: 0 }
   }
-  const routes = providersResp.result.value.providers as ProviderRoute[]
-  const namespaces = settingsResp.result.value.namespaces as SettingsNamespace[]
+  const routes = providersResp.value.providers as ProviderRoute[]
+  const namespaces = settingsResp.value.namespaces as SettingsNamespace[]
   const nsMap = new Map<string, SettingsNamespace>()
   const nsRevisions = new Map<string, number>()
   for (const ns of namespaces) {
@@ -171,8 +152,8 @@ export async function saveModelRetry(params: {
   maxRetries: number
   initialDelayMs: number
 }): Promise<string | undefined> {
-  if (connection === null) return '连接未就绪'
-  const api = connection.api
+  if (remote === null) return '连接未就绪'
+  const api = remote
 
   // 校验：与宿主 RetryPolicySchema 约束一致（maxRetries 非负整数；initialDelayMs>0）。
   const maxRetries = Math.max(0, Math.floor(Number(params.maxRetries) || 0))
@@ -216,9 +197,9 @@ export async function saveModelRetry(params: {
       ops: entry.ops,
       ...(entry.expectedRevision !== undefined ? { expectedRevision: entry.expectedRevision } : {}),
     })
-    if (!resp.result.ok) return resp.result.error.message
+    if (!resp.ok) return resp.error?.message ?? 'settings.mutate failed'
     // 刷新该 ns 的 revision（后续 op 的乐观锁基准）。
-    snapshot.nsRevisions.set(ns, resp.result.value.revision)
+    if (resp.value !== undefined) snapshot.nsRevisions.set(ns, resp.value.revision)
   }
   return undefined
 }

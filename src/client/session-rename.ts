@@ -9,7 +9,7 @@
  * 双击前首次 click 已同步触发 ctx.sessions.open(id)，故 dblclick 时
  * list 快照的 current 即为目标会话，无需反查行级 sessionId。
  */
-import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, SessionId } from './compat.ts'
 import { sanitizeSessionTitle } from './session-title-filter.ts'
 
 /** 行内标题文本：第一个非空、无子元素、不在按钮内的叶子 span（状态点/标记都是 SVG，无文本）。 */

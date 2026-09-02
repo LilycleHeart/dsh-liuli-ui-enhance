@@ -18,7 +18,7 @@
  * 循环天然停转（不需要 data 标记做去重）。
  * 纯函数部分（sanitizeSessionTitle）可在 Node 直接跑 TS 单测。
  */
-import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, SessionId } from './compat.ts'
 
 /** formatSelection 输出的元素块起始标记（与 element-card.ts 同构）。 */
 const ELEMENT_MARKER = '[selected element]'

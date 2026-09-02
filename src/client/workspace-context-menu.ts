@@ -7,7 +7,7 @@
  * 根目录）/ 重命名（ctx.workspaces.rename）/ 删除（ctx.workspaces.delete）。
  * 未分组桶（ungrouped，无 workspaceId）在列表里匹配不到，自然不弹菜单。
  */
-import type { ClientContext, WorkspaceId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, WorkspaceId } from './compat.ts'
 import { readRowTitle, locateTitleSpan, mountEditor } from './session-rename.ts'
 import { revealWorkspaceInExplorer } from './right-sidebar-api.ts'
 import { ICONS } from './menu-icons.ts'

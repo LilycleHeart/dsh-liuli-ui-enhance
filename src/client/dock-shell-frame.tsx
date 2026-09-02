@@ -250,7 +250,7 @@ function surfaceClass(type: string): string {
 }
 
 /** 框架 root 占用者：视觉零侵入的 dockable 三区域 shell。 */
-export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot }: DockShellFrameProps) {
+export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot, SessionProvider }: DockShellFrameProps) {
   const shell = useSyncExternalStore(dockShell.subscribe, dockShell.getSnapshot)
   const actions = dockShell.actions
   const dock = shell.dock
@@ -980,13 +980,18 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot 
         // 同步，避免绘制前出现空白或重复页头）。
         return <div className={css.conversationHeaderHost} data-liuli-conversation-header-host="" />
       case REGION_DETAILS:
-        // 把会话 id 与宿主开合动作传给 details 面板（PreviewDetailsPanel），
-        // 使其能感知会话切换并按会话记忆展开状态与宽度。
-        return renderSlot('details', {
-          sessionId: detailsSession,
-          openDetails: () => hostLayout.openDetails(),
-          closeDetails: () => hostLayout.closeDetails(),
-        })
+        // 2.0.4：details 是 strict session scope slot，必须在 SessionProvider
+        // 之下渲染（官方 AppFrame 同构）——无会话时 provider 自动渲染 empty，
+        // 不会像直接 renderSlot 那样抛 SlotAssemblyError 打断挂载链。
+        return (
+          <SessionProvider>
+            {renderSlot('details', {
+              sessionId: detailsSession,
+              openDetails: () => hostLayout.openDetails(),
+              closeDetails: () => hostLayout.closeDetails(),
+            })}
+          </SessionProvider>
+        )
       default: {
         const def = panelDef(panel.type)
         if (def === undefined) return <div className={css.paneEmpty}>未知面板类型：{panel.type}</div>

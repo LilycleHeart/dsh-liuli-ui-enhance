@@ -5,7 +5,7 @@
  * historyLoad。modelRetry / historyLoad 原本是通用分区里两行各自的小 store，
  * 归拢进功能分区后合并到这里，避免注册多个槽位 store。
  */
-import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
+import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-store'
 import { LIULI_SETTINGS_DEFAULTS, type LiuliSettings } from '../liuli-settings.ts'
 import { MODEL_RETRY_DEFAULTS, type ModelRetryState } from './model-retry-store.ts'
 import { HISTORY_LOAD_DEFAULT_BATCHES, type HistoryLoadState } from './history-load-store.ts'

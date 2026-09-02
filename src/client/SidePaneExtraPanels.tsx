@@ -10,7 +10,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { IconSendOutline14, IconPlusOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   ObservableSnapshot, SessionFace, SessionId, SessionListState,
-} from '@deepseek-ai/dsh-client-runtime/client'
+} from './compat.ts'
+import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
 import { ChatFlowView, ChatFlowPartial } from './chat-flow-view.tsx'
 import { LIULI_LS_KEY, liuliSettingsOf } from '../liuli-settings.ts'
 import css from './SidePaneExtraPanels.module.css'
@@ -19,8 +20,10 @@ import css from './SidePaneExtraPanels.module.css'
 export interface SidePaneHostAccess {
   /** 会话列表标准 feed。 */
   sessionList: ObservableSnapshot<SessionListState>
-  /** 解析会话的对外面（读 ConversationSnapshot + prompt + projections）。 */
+  /** 解析会话的对外面（prompt + 生命周期快照 + projections）。 */
   getSessionFace: (id: string) => SessionFace | undefined
+  /** 2.0.4：会话的 Chat 内容快照源（legacy.nodes/partial 兼容投影）。 */
+  getChatSnapshot: (id: string) => ObservableSnapshot<ChatSnapshot> | undefined
   /** fork 一个会话，返回子会话 id。 */
   forkSession: (id: string) => Promise<string>
   /** 在主视图打开会话。 */
@@ -248,7 +251,7 @@ export function DeveloperToolsPanel({ sessionId, host }: DeveloperToolsPanelProp
         <Row k="sessionId" v={sessionId ?? '—'} />
         <Row k="标题" v={summary?.displayTitle ?? '—'} />
         <Row k="cwd" v={summary?.cwd ?? '—'} />
-        <Row k="agent preset" v={summary?.agentPreset ?? '—'} />
+        {/* 2.0.4：SessionSummary 移除 agentPreset 字段（会话摘要瘦身）。 */}
         <Row k="状态" v={summary === undefined ? '—' : summary.running ? '运行中' : summary.completed === true ? '已完成' : '空闲'} />
         <Row k="更新于" v={summary === undefined ? '—' : relTime(summary.updatedAt)} />
       </Section>
@@ -458,14 +461,16 @@ export function SideChatPanel({ sessionId, host, childSessionId, onChildCreated,
   useEffect(() => {
     if (baselineNodes !== undefined && baselineNodes !== baseline) setBaseline(baselineNodes)
   }, [baselineNodes, baseline])
-  const captureBaseline = useCallback((face: SessionFace | undefined): number | undefined => {
+  const captureBaseline = useCallback((_face: SessionFace | undefined): number | undefined => {
     if (baseline !== undefined) return baseline
-    const n = face === undefined ? undefined : face.getSnapshot().nodes.length
+    // 2.0.4：节点数从 Chat 内容快照读（legacy.nodes 兼容投影）。
+    const chat = childSessionId === undefined ? undefined : host.getChatSnapshot(childSessionId)
+    const n = chat?.getSnapshot()?.legacy.nodes.length
     if (n === undefined) return undefined
     setBaseline(n)
     onBaselineCaptured?.(n)
     return n
-  }, [baseline, onBaselineCaptured])
+  }, [baseline, onBaselineCaptured, childSessionId, host])
 
   // 辅助对话可用命令（琉璃注册的 /side /btw；命令菜单点击后把命令文本填入 draft）
   const commands = useMemo(() => [
@@ -512,7 +517,11 @@ export function SideChatPanel({ sessionId, host, childSessionId, onChildCreated,
   }, [initialPrompt, onPromptConsumed])
 
   const childFace = childSessionId === undefined ? undefined : host.getSessionFace(childSessionId)
+  // 2.0.4：内容(nodes/partial)与生命周期(running)分家 —— 分别订阅两个源。
+  const chatSnap = useSnapshot(childSessionId === undefined ? undefined : host.getChatSnapshot(childSessionId))
   const snap = useSnapshot(childFace)
+  const nodes = chatSnap?.legacy.nodes
+  const partial = chatSnap?.legacy.partial
 
   useEffect(() => {
     const text = initialPromptRef.current?.trim()
@@ -530,7 +539,7 @@ export function SideChatPanel({ sessionId, host, childSessionId, onChildCreated,
 
   // 可见节点数：起点（继承历史边界）之后的节点；面板只显示本轮侧边对话。
   const fromIdx = baseline ?? 0
-  const visibleCount = snap === undefined ? 0 : Math.max(0, snap.nodes.length - fromIdx)
+  const visibleCount = nodes === undefined ? 0 : Math.max(0, nodes.length - fromIdx)
 
   useEffect(() => {
     const el = scrollRef.current
@@ -564,13 +573,13 @@ export function SideChatPanel({ sessionId, host, childSessionId, onChildCreated,
           流式尾巴都直接挂在它下面（.flow 自身也是列），挂 data-liuli-chat-flow
           让级联观察器识别本列（锚点须为列直接子元素，见 liuli-transition.ts）。 */}
       <div ref={scrollRef} className={css.chatScroll} data-liuli-chat-flow="">
-        {visibleCount === 0 && snap?.partial === undefined && (
+        {visibleCount === 0 && partial === undefined && (
           <div className={css.devEmpty}>
             {childSessionId === undefined ? '准备中…' : '从下面输入消息，开始这段辅助对话（它带着当前会话的上下文 fork，继承的上一轮对话不显示）'}
           </div>
         )}
-        <ChatFlowView snap={snap} from={fromIdx} />
-        <ChatFlowPartial partial={snap?.partial} running={snap?.running === true} />
+        <ChatFlowView snap={chatSnap} from={fromIdx} />
+        <ChatFlowPartial partial={partial} running={snap?.running === true} />
       </div>
       <form ref={composerRef} className={css.chatComposer} onSubmit={(e) => { e.preventDefault(); send() }} data-composer-card="true">
         <div className={css.composerScroll}>

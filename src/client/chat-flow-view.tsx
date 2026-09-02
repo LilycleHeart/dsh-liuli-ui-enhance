@@ -29,9 +29,73 @@ import {
   MarkdownText, JsonBlock, TerminalBlock, ReadBlock, DiffBlock,
   SearchBlock, WebBlock, DisclosureRow, StateDot,
   IconThinkOutline14, IconApiOutline14, IconBrowseOutline16, IconEditOutline16, IconSearchOutline16, IconSparkle16,
+  type DiffBlockLabels, type MarkdownLabels, type ReadBlockLabels,
+  type SearchBlockLabels, type TerminalBlockLabels, type WebBlockLabels,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { ConversationSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
+// 2.0.4：旧 runtime ConversationSnapshot 的对话内容面（nodes/partial/running）
+// 由 ui-chat 的 ChatSnapshot 承担 —— nodes/partial 在 .legacy 兼容投影上，
+// running 语义属于会话生命周期（SessionSnapshot），调用方从 SessionFace 取。
+import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
 import css from './chat-flow-view.module.css'
+
+/* ── 2.0.4 文案适配：primitives 变成 cordis-free，labels 由消费方传入 ──
+ *    （官方 ui-tool 的 primitive-labels.ts 同构；琉璃是中文界面，直接内置中文）。 */
+const MD_LABELS: MarkdownLabels = {
+  code: { copyLabel: '复制', copiedLabel: '已复制' },
+  footnotes: '脚注',
+}
+const TERMINAL_LABELS: TerminalBlockLabels = {
+  signal: s => `信号 ${s}`,
+  exitCode: c => `退出码 ${c}`,
+  running: '运行中',
+  failed: '失败',
+  done: '完成',
+  copy: '复制',
+  copied: '已复制',
+  noOutput: '（无输出）',
+  collapseAria: '折叠',
+  collapse: '收起',
+  expandAria: n => `展开 ${n} 行`,
+  expand: n => `展开 ${n} 行`,
+}
+const READ_LABELS: ReadBlockLabels = {
+  window: (shown, total) => `第 ${shown}/${total} 行`,
+  copy: '复制',
+  copied: '已复制',
+  collapseAria: '折叠',
+  expandAria: n => `展开 ${n} 行`,
+  collapse: '收起',
+  expand: n => `展开其余 ${n} 行`,
+}
+const DIFF_LABELS: DiffBlockLabels = {
+  copy: '复制',
+  copied: '已复制',
+  collapseAria: '折叠',
+  expandAria: n => `展开 ${n} 行`,
+  collapse: '收起',
+  expand: n => `展开其余 ${n} 行`,
+  files: count => count === 1 ? '1 个文件' : `${count} 个文件`,
+}
+const SEARCH_LABELS: SearchBlockLabels = {
+  pathsSummary: (shown, total, truncated) => truncated ? `前 ${shown}/${total} 条路径（截断）` : `${shown}/${total} 条路径`,
+  matchesSummary: (shown, total, files, truncated) => truncated ? `前 ${shown}/${total} 处匹配（截断）` : `${files} 个文件 · ${total} 处匹配`,
+  copy: '复制',
+  copied: '已复制',
+  noResults: '无结果',
+  collapseAria: '折叠',
+  expandAria: n => `展开 ${n} 条`,
+  collapse: '收起',
+  expand: n => `展开其余 ${n} 条`,
+}
+const WEB_LABELS: WebBlockLabels = {
+  noResults: '无结果',
+  sourcesTruncated: '来源已截断',
+  http: 'HTTP',
+  contentTruncated: '内容已截断',
+  markdown: MD_LABELS,
+}
+/** JsonBlock 截断脚注。 */
+const truncatedLabel = (total: number): string => `… 共 ${total} 字符（截断）`
 
 /** 文本块（content 数组 → 拼接纯文本）。 */
 export function contentText(content: readonly unknown[]): string {
@@ -97,7 +161,7 @@ function AssistantBlocks({ blocks, streaming, prefix }: {
       case 'text':
         out.push(
           <div key={i} className={css.textBlock} data-liuli-chat-anchor-key={blockKey} data-liuli-cascade-text="">
-            <MarkdownText text={typeof block.text === 'string' ? block.text : ''} streaming={streaming} />
+            <MarkdownText text={typeof block.text === 'string' ? block.text : ''} streaming={streaming} labels={MD_LABELS} />
           </div>,
         )
         break
@@ -119,7 +183,7 @@ function AssistantBlocks({ blocks, streaming, prefix }: {
       default:
         out.push(
           <div key={i} className={css.jsonBlock} data-liuli-chat-anchor-key={blockKey}>
-            <JsonBlock label="未知内容块" payload={block} />
+            <JsonBlock label="未知内容块" payload={block} truncatedLabel={truncatedLabel} />
           </div>,
         )
     }
@@ -164,6 +228,7 @@ function ToolResultCard({ anchorKey, node }: { anchorKey: string; node: { kind: 
           output={rv?.output ?? text}
           exitCode={rv?.exitCode}
           signal={rv?.signal}
+          labels={TERMINAL_LABELS}
         />
       )
       break
@@ -177,35 +242,36 @@ function ToolResultCard({ anchorKey, node }: { anchorKey: string; node: { kind: 
             lines={rv.lines}
             totalLines={rv.totalLines ?? rv.lines.length}
             lang={rv.lang}
+            labels={READ_LABELS}
           />
         )
       } else {
-        body = <JsonBlock label="read" payload={rv ?? text} />
+        body = <JsonBlock label="read" payload={rv ?? text} truncatedLabel={truncatedLabel} />
       }
       break
     }
     case 'diff': {
       const rv = node.resultView as { diffs?: Array<{ path: string; oldText: string | null; newText: string }> } | null
-      body = <DiffBlock diffs={rv?.diffs ?? []} />
+      body = <DiffBlock diffs={rv?.diffs ?? []} labels={DIFF_LABELS} />
       break
     }
     case 'search': {
       const rv = node.resultView as { shape?: 'matches' | 'paths'; files?: Array<{ path: string; matches: Array<{ lineNumber: number; line: string }> }>; paths?: string[]; truncated?: boolean; total?: number } | null
       if (rv?.shape === 'matches') {
-        body = <SearchBlock kind="matches" files={rv.files ?? []} truncated={rv.truncated ?? false} total={rv.total ?? 0} />
+        body = <SearchBlock kind="matches" files={rv.files ?? []} truncated={rv.truncated ?? false} total={rv.total ?? 0} labels={SEARCH_LABELS} />
       } else if (rv?.shape === 'paths') {
-        body = <SearchBlock kind="paths" paths={rv.paths ?? []} truncated={rv.truncated ?? false} total={rv.total ?? 0} />
+        body = <SearchBlock kind="paths" paths={rv.paths ?? []} truncated={rv.truncated ?? false} total={rv.total ?? 0} labels={SEARCH_LABELS} />
       } else {
-        body = <JsonBlock label="search" payload={rv ?? text} />
+        body = <JsonBlock label="search" payload={rv ?? text} truncatedLabel={truncatedLabel} />
       }
       break
     }
     case 'web': {
       const rv = node.resultView as { kind?: 'search' | 'fetch'; answer?: string; sources?: Array<{ url: string; title?: string; snippet?: string; publishedAt?: string }>; truncated?: boolean; url?: string; statusCode?: number } | null
       if (rv?.kind === 'fetch') {
-        body = <WebBlock kind="fetch" url={rv.url ?? ''} statusCode={rv.statusCode ?? 0} truncated={rv.truncated ?? false} />
+        body = <WebBlock kind="fetch" url={rv.url ?? ''} statusCode={rv.statusCode ?? 0} truncated={rv.truncated ?? false} labels={WEB_LABELS} />
       } else {
-        body = <WebBlock kind="search" answer={rv?.answer} sources={rv?.sources ?? []} truncated={rv?.truncated ?? false} />
+        body = <WebBlock kind="search" answer={rv?.answer} sources={rv?.sources ?? []} truncated={rv?.truncated ?? false} labels={WEB_LABELS} />
       }
       break
     }
@@ -265,12 +331,13 @@ function UserBubble({ anchorKey, text }: { anchorKey: string; text: string }) {
  *  锚点须为列的直接子元素，见 liuli-transition.ts）。assistant 消息再套一层
  *  子列：消息内各块（文本/Think/图片/未知块）各自锚定，文本块经
  *  data-liuli-cascade-text 按 markdown 块级元素逐段级联。 */
-export function ChatFlowView({ snap, from = 0 }: { snap: ConversationSnapshot | undefined; from?: number }): ReactNode {
+export function ChatFlowView({ snap, from = 0 }: { snap: ChatSnapshot | undefined; from?: number }): ReactNode {
   const surfaceId = useId()
   return useMemo(() => {
     if (snap === undefined) return null
     const out: ReactNode[] = []
-    const nodes = from > 0 ? snap.nodes.slice(from) : snap.nodes
+    const allNodes = snap.legacy.nodes
+    const nodes = from > 0 ? allNodes.slice(from) : allNodes
     for (const node of nodes) {
       const n = node as { kind: string; seq: number } & Record<string, unknown>
       const anchorKey = `${surfaceId}:${n.seq}`

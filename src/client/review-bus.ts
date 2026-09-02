@@ -19,19 +19,31 @@ export interface ReviewFileDetail {
   sessionId?: string
   /** 相对会话 cwd 的文件路径。 */
   path: string
+  /** 请求序号（自增）；卡片每次点击唯一，供快速重复请求去重。 */
+  nonce?: number
 }
 
 interface PendingReview {
   readonly path: string
   readonly at: number
+  /** 请求所属会话 id；消费方据此过滤（面板切到新会话后不重放旧请求）。 */
+  readonly sessionId: string | undefined
+  readonly nonce: number
 }
 
 let pendingReview: PendingReview | null = null
+/** 审查请求自增序号：即使同一毫秒内连续点击也能区分（Date.now 精度不够）。 */
+let reviewSeq = 0
 
 /** 广播一次审查请求，并记录 pending 供晚挂载的面板消费。 */
 export function requestReviewFile(detail: ReviewFileDetail): void {
-  pendingReview = { path: detail.path, at: Date.now() }
-  window.dispatchEvent(new CustomEvent(REVIEW_FILE_EVENT, { detail }))
+  const nonce = ++reviewSeq
+  pendingReview = { path: detail.path, at: Date.now(), sessionId: detail.sessionId, nonce }
+  window.dispatchEvent(new CustomEvent<ReviewFileDetail>(REVIEW_FILE_EVENT, {
+    detail: detail.sessionId === undefined
+      ? { path: detail.path, nonce }
+      : { sessionId: detail.sessionId, path: detail.path, nonce },
+  }))
 }
 
 /** 面板挂载时消费最近一次审查请求（拿到即视为已处理）。 */

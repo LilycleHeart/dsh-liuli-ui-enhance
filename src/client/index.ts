@@ -13,8 +13,14 @@
  * 依赖宿主主题服务（@deepseek-ai/dsh-client-ui-theme 的 ctx.theme）：偏好持久化、
  * presenter 应用与 theme/change 事件均由该服务承担，本插件只消费。
  */
-import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
-import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
+// Type-only: SessionId 从 session-controller 的 client 面取（2.0.4 起
+// dsh-client-runtime 拆包；ClientContext 由 cordis Context + 各 client 面的
+// declare merge 组合而来，这里不再有聚合别名）。
+import type { Context } from '@deepseek-ai/cordis'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
+// Type-only: pulls the ISessions/sessions service merge (ctx.sessions).
+import type {} from '@deepseek-ai/dsh-api-session-controller/client'
+import type {} from '@deepseek-ai/dsh-api-workspace-controller/client'
 // Type-only: pulls the forwarded remote event vocabulary for ctx.remote.$on.
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
@@ -25,11 +31,27 @@ import type { ThemePreference } from '@deepseek-ai/dsh-client-ui-theme/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls ui-conversation's header slots + ui-settings' section slot names.
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+// Type-only: ConversationNodeDefinition/Location 等对话节点契约（2.0.4 起从
+// runtime 迁到 ui-conversation/client）。
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+// Type-only: ui-conversation 的 ctx.uiConversation 服务面（events 注册/binding）。
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+// Type-only: ui-session 合并 useSession/useSessions 标准 props（2.0.4 起）。
+import type {} from '@deepseek-ai/dsh-client-ui-session/client'
+// Type-only: ui-workspace 的 ctx.uiWorkspace 服务面（startSession/pickDirectory）。
+import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
+// Type-only: ui-renderer 的 ctx.slots / ctx.uiRenderer 声明（2.0.4 slots 所有权）。
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+// Type-only: ui-chat 合并 useChat 标准 props 与 ChatSnapshot 视图（2.0.4 起）。
+import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 // Type-only: pulls the layout service face (ctx.layout.openDetails/closeDetails + details slot).
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 // Type-only: the input-trigger source roster (element picker reference chip codec).
 import type { InputTriggerSource, ReferenceCodec } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
+// Type-only: ui-model-selection 的 ctx.modelDirectories 服务（supplier quota 消费）。
+import type {} from '@deepseek-ai/dsh-client-ui-model-selection/client'
+import { liuliRemoteApi, liuliModelDirectory } from './remote-api.ts'
 import { LiuliAppearanceSection, type LiuliAppearanceInjected } from './LiuliAppearance.tsx'
 import { LiuliAppearanceRow, type LiuliAppearanceRowInjected } from './LiuliAppearanceRow.tsx'
 import { LiuliFeaturesSection, type LiuliFeaturesInjected } from './LiuliFeaturesSection.tsx'
@@ -95,6 +117,9 @@ import {
   type HostLayoutFace,
 } from './dock-shell.ts'
 
+/** 等价于旧 ClientContext：各 client 面声明合并后的 cordis Context。 */
+type ClientContext = Context
+
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
     /** 琉璃 设置「外观」分区 section 的文案。 */
@@ -114,12 +139,14 @@ export const LIULI_FEATURES_LOCALE_NS = 'liuli-features'
 const STYLE_ID = 'liuli-theme-css'
 // 设置持久化键在 liuli-settings.ts 中定义（HeaderEffects 运行时读取同一键）。
 
-/** Required services: slots/locale for the settings section, theme for the toggle bridge, connection/remote for supplier quota.
+/** Required services: slots/locale for the settings section, theme for the toggle bridge, remote for supplier quota.
  *  layout：advanced 模式由桌面 shell 提供、兼容模式由官方 ui-layout 提供，两种模式都保证在场；
  *  conversation / workspaces：交互能力依赖（引用入输入框 / 打开路径），boot 期由上游插件提供。
+ *  2.0.4 变化：conversationEvents 服务移除（改用 uiConversation.events 注册节点定义），
+ *  connection 不再持有 .api（remote 调用经 ctx.remote.*；modelDirectories 供额度层订阅）。
  *  注意：包级 boot 图依赖（package.json dsh.client.inject）不含 ui-layout / ui-conversation，
  *  避免 advanced 模式下 ui-layout 条目缺席造成的启动图死锁。 */
-export const inject = ['slots', 'locale', 'theme', 'layout', 'sessions', 'workspaces', 'conversation', 'conversationEvents', 'inputTriggers', 'connection', 'remote']
+export const inject = ['slots', 'locale', 'theme', 'layout', 'sessions', 'workspaces', 'conversation', 'uiConversation', 'inputTriggers', 'remote', 'remote.llm', 'remote.settings', 'remote.session', 'modelDirectories']
 
 /** 宽边模式样式：对话信息区在宽屏下撑满可用宽度（提高左右空间利用率）。 */
 const WIDE_MODE_CSS = [
@@ -696,15 +723,15 @@ export function apply(ctx: ClientContext): void {
     return startSettingsSelectUpgrade()
   }, 'dsh-liuli-ui-enhance: settings selects upgrade')
 
-  // ── 供应商额度：注入 connection/remote，供 header 工具区显示当前供应商额度 ──
-  initSupplierQuota(ctx.get('connection') as ConnectionHandle, ctx.get('modelDirectories'))
+  // ── 供应商额度：注入 remote 适配层 + 模型目录，供 header 工具区显示当前供应商额度 ──
+  initSupplierQuota(liuliRemoteApi(ctx), liuliModelDirectory(ctx))
   ctx.effect(() => () => disposeSupplierQuota(), 'dsh-liuli-ui-enhance: supplier quota dispose')
 
-  // ── 模型请求重试：注入 connection，供通用设置区编辑各供应商 retryPolicy ──
-  initModelRetry(ctx.get('connection') as ConnectionHandle)
+  // ── 模型请求重试：注入 remote 适配层，供通用设置区编辑各供应商 retryPolicy ──
+  initModelRetry(liuliRemoteApi(ctx))
   ctx.effect(() => () => disposeModelRetry(), 'dsh-liuli-ui-enhance: model retry dispose')
-  // ── 思考等级自动补全：注入 connection，供「功能」分区一键补全自定义提供商 ──
-  initThinkingFill(ctx.get('connection') as ConnectionHandle)
+  // ── 思考等级自动补全：注入 remote 适配层，供「功能」分区一键补全自定义提供商 ──
+  initThinkingFill(liuliRemoteApi(ctx))
   ctx.effect(() => () => disposeThinkingFill(), 'dsh-liuli-ui-enhance: thinking fill dispose')
   const refreshQuota = (): void => { void refreshSupplierQuota() }
   ctx.effect(() => {
@@ -929,11 +956,44 @@ export function apply(ctx: ClientContext): void {
     }
   }, 'dsh-liuli-ui-enhance: settings overlay defer')
 
+  // 空 Chat 快照回落（ui-chat 的 EMPTY_CHAT_SNAPSHOT 同构；见 getChatSnapshot）。
+  const EMPTY_LIST: readonly never[] = []
+  const EMPTY_CHAT_FALLBACK = {
+    order: EMPTY_LIST,
+    nodes: { get: (): undefined => undefined, values: () => EMPTY_LIST },
+    locations: { getTurn: () => EMPTY_LIST, getStep: () => EMPTY_LIST },
+    navigation: { items: () => EMPTY_LIST },
+    timeline: { turnOrder: EMPTY_LIST, turns: new Map() },
+    legacy: {
+      nodes: EMPTY_LIST,
+      turnTimings: new Map(),
+      turnEnds: new Map(),
+      partial: null,
+      runningCalls: EMPTY_LIST,
+    },
+  } as unknown as import('@deepseek-ai/dsh-client-ui-chat/client').ChatSnapshot
+
   // 扩展面板（辅助对话/开发者工具）的宿主数据面。
   // 定义在 dock shell 之前，供其注入同一份数据面。
   const sidePaneHost: SidePaneHostAccess = {
     sessionList: ctx.sessions.list,
     getSessionFace: id => ctx.sessions.binding(id as SessionId)?.session,
+    // 2.0.4：Chat 内容快照经 uiConversation.binding(id).target('chat') 解析
+    //（与官方 ui-chat 的 chatSource 同构；target 未就绪时快照为 undefined）。
+    getChatSnapshot: (id: string) => {
+      try {
+        // 官方模式同构：target 未就绪时回落空 ChatSnapshot（本地构造，与上游
+        // EMPTY_CHAT_SNAPSHOT 同构——值导入会触发 bundle purity gate）。
+        const target = ctx.uiConversation.binding(id as SessionId).target('chat')
+        return {
+          getSnapshot: () => target.getSnapshot() ?? EMPTY_CHAT_FALLBACK,
+          subscribe: (fn: () => void) => target.subscribe(fn),
+        }
+      } catch {
+        // 会话未列入/未开作用域时 binding 抛错——与 getSessionFace 的 undefined 语义对齐。
+        return undefined
+      }
+    },
     forkSession: async id => {
       // 辅助对话 fork 的会话只存在于标签页：fork 后立即归档，隐藏于会话列表
       // （binding 仍可寻址，prompt 照常工作；归档由 workspace 侧记账）。
@@ -957,7 +1017,9 @@ export function apply(ctx: ClientContext): void {
   // 不碰 cordis；文件入聊天 / 系统打开 / sidePane 数据面经此桥到达宿主服务）。
   setDockHostBridge({
     addFileToChat: insertFileReference,
-    openPath: (path: string) => { void ctx.workspaces.openPath(path) },
+    // 2.0.4：workspaces.openPath 移除，改走 remote.session.openWorkspacePath
+    //（会话 cwd 归宿主解析；path 为绝对路径时原样透传）。
+    openPath: (path: string) => { void ctx.remote.session.openWorkspacePath({ path }) },
     sidePaneHost,
   })
 
@@ -1013,10 +1075,11 @@ export function apply(ctx: ClientContext): void {
           ctx.layout.closeDetails()
         },
         insertElement,
-        openPath: (path: string) => { void ctx.workspaces.openPath(path) },
-        startSession: () => { ctx.workspaces.startSession() },
+        openPath: (path: string) => { void ctx.remote.session.openWorkspacePath({ path }) },
+        // 2.0.4：startSession/pickDirectory 移到 uiWorkspace；create 仍在 workspaces。
+        startSession: () => { ctx.uiWorkspace.startSession() },
         pickDirectory: async () => {
-          const path = await ctx.workspaces.pickDirectory()
+          const path = await ctx.uiWorkspace.pickDirectory()
           if (path !== null && path !== '') await ctx.workspaces.create({ path })
         },
         toggleTheme: () => {
@@ -1575,7 +1638,7 @@ export function apply(ctx: ClientContext): void {
   // 当前 DSH 会话转写没有 turn/start|end 事件（step 化），turnTail 槽不渲染；
   // Definition 按 step 发布 liuli-round-summary 节点，渲染器在本轮最后节点处
   // 展示卡片（文件名 + DIFF 数量 + 审查/打开/展开打开方式）。
-  ctx.effect(() => ctx.conversationEvents.register(fileChangesDefinition), 'dsh-liuli-ui-enhance: file-changes definition')
+  ctx.effect(() => ctx.uiConversation.events.register(fileChangesDefinition), 'dsh-liuli-ui-enhance: file-changes definition')
   ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
     name: 'conversation.chat.node',
     key: 'liuli-round-summary',

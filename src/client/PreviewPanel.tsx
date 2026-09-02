@@ -44,6 +44,7 @@ import {
 } from './SidePaneExtraPanels.tsx'
 import { FileReviewPanel, type ReviewPanelRequest } from './FileReviewPanel.tsx'
 import { requestReviewDrive, REVIEW_FILE_EVENT } from './review-bus.ts'
+import { getLastTurnChanges } from './turn-file-store.ts'
 import { AUTO_OPEN_DETAILS_EVENT, type AutoOpenDetailsDetail } from './auto-open-details.ts'
 import { AUTO_DRIVE_BROWSER_EVENT, type AutoDriveBrowserDetail } from './auto-drive-browser.ts'
 import {
@@ -207,6 +208,14 @@ export function normalizeBrowserUrl(raw: string): string | undefined {
   if (trimmed === '') return undefined
   // about:/data: 原样交给浏览器
   if (/^(about|data):/i.test(trimmed)) return trimmed
+  // file:// 本地文件（Desktop 壳 webview 可加载：地址栏可直接粘贴 file:///…）
+  if (/^file:\/\//i.test(trimmed)) {
+    try {
+      const u = new URL(trimmed)
+      if (u.protocol === 'file:') return u.href
+    } catch { /* 落到 undefined */ }
+    return undefined
+  }
   // 同源相对路径（/preview/...、/plugins/... 等）
   if (trimmed.startsWith('/')) return trimmed
   // 协议相对 //host/path
@@ -1162,7 +1171,13 @@ export function PreviewDetailsPanel({
   /* ── LLM 活动自动展开（auto-open-details.ts 观察对话流后请求）： ──
      打开 details 列 + 激活请求的标签。审查文件（git）标签还会下发驱动请求：
      切到「上一轮更改」来源并展开第一个修改文件（用户要求：驱动时直接看到
-     模型本轮改了什么、改动区域在哪）。 ── */
+     模型本轮改了什么、改动区域在哪）。
+     控制：
+     - 无实际更改不驱动——git 驱动先查 last-turn 快照是否真的非空（写/改文件
+       工具行即使出现，若没有落成文件变更也不会触发跳转）；
+     - 详细页多标签不强制跳转——用户当前在别的标签（如浏览器）时，auto-open
+       不再把激活标签硬切到审查；只有审查标签本身就是当前激活标签时才就地
+       展开 diff。手动点「审查」按钮不受影响（那本来就是用户主动要看）。 ── */
 
   useEffect(() => {
     const onAutoOpen = (e: Event): void => {
@@ -1172,22 +1187,38 @@ export function PreviewDetailsPanel({
       // 审查标签已在 dock：把驱动请求（切上一轮更改并展开）发给 dock 审查
       // 面板，不再打开侧边栏重开一份。
       if (tab === 'git' && hasDockPanelType('git')) {
+        // 无实际上一轮更改时不驱动（B）：不该因为一个空快照就去切/展开。
+        if (getLastTurnChanges().length === 0) return
         requestReviewDrive(sessionId === undefined || sessionId === null || sessionId === ''
           ? { source: 'last-turn' }
           : { sessionId, source: 'last-turn' })
+        return
+      }
+      if (tab === 'git') {
+        // 无实际上一轮更改时不驱动（B）：不该因为一个空快照就去切/展开。
+        if (getLastTurnChanges().length === 0) return
+        // 详细页多标签不强制跳转（C）：审查标签还不存在时创建并激活（首次
+        // auto-open 要让用户看到审查）；已存在但当前用户在看别的标签（如浏览器）
+        // 时，不再把激活标签硬切走——数据（last-turn 快照）已由 TurnFileCard
+        // 发布到 store，审查标签切回来时自然是最新的。只有审查标签本身就是当前
+        // 激活标签才就地展开第一个修改文件。
+        const gitTabExists = tabs.some(t => t.type === 'git')
+        if (gitTabExists && activeTab?.id !== 'git') return
+        setPreviewOpen(true)
+        saveOpenState(true)
+        openDetails?.()
+        openSingleton('git')
+        setReviewRequest({ nonce: Date.now(), source: 'last-turn' })
         return
       }
       setPreviewOpen(true)
       saveOpenState(true)
       openDetails?.()
       openSingleton(tab)
-      if (tab === 'git') {
-        setReviewRequest({ nonce: Date.now(), source: 'last-turn' })
-      }
     }
     window.addEventListener(AUTO_OPEN_DETAILS_EVENT, onAutoOpen)
     return () => { window.removeEventListener(AUTO_OPEN_DETAILS_EVENT, onAutoOpen) }
-  }, [openDetails, openSingleton, saveOpenState, sessionId])
+  }, [openDetails, openSingleton, saveOpenState, sessionId, tabs, activeTab?.id])
 
   /* ── 自动驱动浏览器（auto-drive-browser.ts 观察对话流后请求）： ──
      dev server 启动 / 前端文件编辑时展示页面。同源已有浏览器标签 → 导航复用，
@@ -2837,7 +2868,8 @@ function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitle
   const currentUrl = state?.url ?? ''
   const errorMessage = localError ?? (state?.error ?? null)
   const isEmpty = !loading && errorMessage === null && (currentUrl === '' || currentUrl === 'about:blank') && draft.trim() === ''
-  const isExternalReady = ready && /^https?:\/\//i.test(currentUrl)
+  // http(s)/file 均可外部打开：file 页面（本地 HTML 经「打开」入口）也要能在默认浏览器中打开。
+  const isExternalReady = ready && /^(https?|file):\/\//i.test(currentUrl)
 
   /** 「更多」菜单定位：优先从按钮下方展开（往下开）；下方空间不足时向上回退。
    *  菜单用 body portal + fixed，避免被 dock 面板 paneBody overflow:hidden 裁剪。
@@ -3290,7 +3322,9 @@ function WebviewTagBrowserPanel({ tabId, sessionId, url, active, onNavigate, onT
     setMoreOpen(false)
     const target = stateRef.current?.url ?? ''
     if (target === '' || target === 'about:blank') return
-    window.open(target, '_blank', 'noopener')
+    // 统一走 Host /liuli-browser/open-external：渲染进程 window.open 对
+    // file:// 会被 Chromium 拦截，Host 侧对 file: 转 openPath、http(s) 走 openExternal。
+    void webviewBrowser.openExternal(target)
   }
 
   const cancelPicker = useCallback((): void => {
@@ -3360,7 +3394,7 @@ function WebviewTagBrowserPanel({ tabId, sessionId, url, active, onNavigate, onT
   const currentUrl = state.url ?? ''
   const errorMessage = localError ?? (state.error ?? null)
   const isEmpty = !state.loading && errorMessage === null && (currentUrl === '' || currentUrl === 'about:blank') && draft.trim() === ''
-  const isExternalReady = state.ready && /^https?:\/\//i.test(currentUrl)
+  const isExternalReady = state.ready && /^(https?|file):\/\//i.test(currentUrl)
   const webviewStyle: CSSProperties = responsiveOn
     ? { width: responsive.width, height: responsive.height, background: 'transparent' }
     : { width: '100%', height: '100%', background: 'transparent' }
@@ -3636,6 +3670,9 @@ function IframeBrowserPanel({ sessionId, url, onNavigate, onTitleChange, insertE
     }
     const resolved = normalizeBrowserUrl(trimmed)
     if (resolved === undefined) return
+    // iframe 容器无法加载 file://（浏览器禁止 http 页内嵌本地文件），
+    // file:// 只在 Desktop 壳的 webview 引擎里可打开，这里直接忽略。
+    if (resolved.startsWith('file:')) return
     onNavigate(resolved)
   }
 

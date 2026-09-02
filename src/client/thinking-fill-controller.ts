@@ -28,9 +28,7 @@
  * 只能处理 `llm-pi-ai` 命名空间（dsh-llm-deepseek 的 profile 形状不同，
  * 误写会破坏其配置）。
  */
-import type {
-  ConnectionHandle,
-} from '@deepseek-ai/dsh-client-connection/client'
+import type { LiuliRemoteApi, ProviderRoute, SettingsNamespace } from './remote-api.ts'
 
 /** 补全写入的思考档位（与用户在 settings.yaml 中 token-think 的声明一致）。
  *  `off` 值留空（pi-ai 语义：不思考 = 省略 reasoning 参数）；
@@ -51,23 +49,6 @@ export const THINKING_FILL_COMPAT_PATCH = {
 
 /** 只处理该命名空间（pi-ai 自定义提供商所在地；deepseek 等其它命名空间形状不同）。 */
 const PI_AI_NAMESPACE = 'llm-pi-ai'
-
-/** llm.providers 行（ConfigurableProviderView）。 */
-interface ProviderRoute {
-  provider: string
-  settingsNs: string
-  settingsPath: string[]
-  active: boolean
-  declared?: boolean
-}
-
-/** settings.describe 命名空间视图（最小读面）。 */
-interface SettingsNamespace {
-  ns: string
-  value: unknown
-  user?: unknown
-  revision: number
-}
 
 /** 在对象树里按 path 取值。 */
 export function getObjectPath(root: unknown, path: readonly string[]): unknown {
@@ -372,31 +353,31 @@ export function planAutoFill(
 }
 
 /** 控制器持有的连接句柄。 */
-let connection: ConnectionHandle | null = null
+let remote: LiuliRemoteApi | null = null
 
 /** 注入连接句柄。 */
-export function initThinkingFill(handle: ConnectionHandle): void {
-  connection = handle
+export function initThinkingFill(handle: LiuliRemoteApi): void {
+  remote = handle
 }
 
 /** 释放句柄（插件卸载时调用）。 */
 export function disposeThinkingFill(): void {
-  connection = null
+  remote = null
 }
 
 /** 读取 describe / providers 并扫描待补数量（providerCount/modelCount）。 */
 async function scanNeeds(): Promise<{ providerCount: number; modelCount: number }> {
-  if (connection === null) return { providerCount: 0, modelCount: 0 }
-  const api = connection.api
+  if (remote === null) return { providerCount: 0, modelCount: 0 }
+  const api = remote
   const [providersResp, settingsResp] = await Promise.all([
-    api.llm.providers({}),
-    api.settings.describe({}),
+    api.llm.providers(),
+    api.settings.describe(),
   ])
-  if (!providersResp.result.ok || !settingsResp.result.ok) {
+  if (!providersResp.ok || !settingsResp.ok) {
     return { providerCount: 0, modelCount: 0 }
   }
-  const routes = providersResp.result.value.providers as ProviderRoute[]
-  const namespaces = settingsResp.result.value.namespaces as SettingsNamespace[]
+  const routes = providersResp.value.providers as ProviderRoute[]
+  const namespaces = settingsResp.value.namespaces as SettingsNamespace[]
   const nsMap = new Map<string, SettingsNamespace>()
   for (const ns of namespaces) nsMap.set(ns.ns, ns)
 
@@ -433,17 +414,17 @@ export async function applyThinkingFill(): Promise<{
   filledProviders: number
   filledModels: number
 }> {
-  if (connection === null) return { ok: false, error: '连接未就绪', filledProviders: 0, filledModels: 0 }
-  const api = connection.api
+  if (remote === null) return { ok: false, error: '连接未就绪', filledProviders: 0, filledModels: 0 }
+  const api = remote
   const [providersResp, settingsResp] = await Promise.all([
-    api.llm.providers({}),
-    api.settings.describe({}),
+    api.llm.providers(),
+    api.settings.describe(),
   ])
-  if (!providersResp.result.ok || !settingsResp.result.ok) {
+  if (!providersResp.ok || !settingsResp.ok) {
     return { ok: false, error: '读取提供商配置失败', filledProviders: 0, filledModels: 0 }
   }
-  const routes = providersResp.result.value.providers as ProviderRoute[]
-  const namespaces = settingsResp.result.value.namespaces as SettingsNamespace[]
+  const routes = providersResp.value.providers as ProviderRoute[]
+  const namespaces = settingsResp.value.namespaces as SettingsNamespace[]
   const plan = buildThinkingFillOps(routes, namespaces)
 
   let filledProviders = 0
@@ -458,7 +439,7 @@ export async function applyThinkingFill(): Promise<{
       ops: entry.ops,
       ...(entry.expectedRevision !== undefined ? { expectedRevision: entry.expectedRevision } : {}),
     })
-    if (!resp.result.ok) return { ok: false, error: resp.result.error.message, filledProviders: 0, filledModels: 0 }
+    if (!resp.ok) return { ok: false, error: resp.error?.message ?? 'settings.mutate failed', filledProviders: 0, filledModels: 0 }
   }
   return { ok: true, filledProviders, filledModels }
 }
@@ -503,17 +484,17 @@ export async function autoApplyThinkingFill(): Promise<{
   filledProviders: number
   filledModels: number
 }> {
-  if (connection === null) return { changed: false, filledProviders: 0, filledModels: 0 }
-  const api = connection.api
+  if (remote === null) return { changed: false, filledProviders: 0, filledModels: 0 }
+  const api = remote
   const [providersResp, settingsResp] = await Promise.all([
-    api.llm.providers({}),
-    api.settings.describe({}),
+    api.llm.providers(),
+    api.settings.describe(),
   ])
-  if (!providersResp.result.ok || !settingsResp.result.ok) {
+  if (!providersResp.ok || !settingsResp.ok) {
     return { changed: false, error: '读取提供商配置失败', filledProviders: 0, filledModels: 0 }
   }
-  const routes = providersResp.result.value.providers as ProviderRoute[]
-  const namespaces = settingsResp.result.value.namespaces as SettingsNamespace[]
+  const routes = providersResp.value.providers as ProviderRoute[]
+  const namespaces = settingsResp.value.namespaces as SettingsNamespace[]
   const seen = loadSeenFillKeys()
 
   // 首次运行：基底登记，不写配置。
@@ -537,9 +518,9 @@ export async function autoApplyThinkingFill(): Promise<{
       ops: entry.ops,
       ...(entry.expectedRevision !== undefined ? { expectedRevision: entry.expectedRevision } : {}),
     })
-    if (!resp.result.ok) {
+    if (!resp.ok) {
       // 失败不并入 seen：下次重试；也不做部分提交的 seen 合并。
-      return { changed: false, error: resp.result.error.message, filledProviders: 0, filledModels: 0 }
+      return { changed: false, error: resp.error?.message ?? 'settings.mutate failed', filledProviders: 0, filledModels: 0 }
     }
   }
   // 写入成功（或无可写）后，把本周期处理过的路由并入 seen。

@@ -17,7 +17,7 @@
  * closeDetails 是单向关闭（目标值 0 幂等），与 toggleSidebar 不同没有「已收起时
  * 再调会误展开」的风险；仍先用状态 / DOM 判断「详情已开」再关闭，避免无谓写入。
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext } from './compat.ts'
 // Type-only: 拉取 dsh-client-ui-layout 对 ctx.layout（含 openDetails/closeDetails）的类型合并。
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 

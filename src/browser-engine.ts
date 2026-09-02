@@ -20,6 +20,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import { createBrowserOps, OPS_METHODS, type ElectronDebugger, type OpsResult } from './browser-ops.ts'
@@ -77,7 +78,7 @@ interface ElectronMain {
   WebContentsView: new (options: { webPreferences: Record<string, unknown> }) => ElectronWebContentsView
   webContents: { getAllWebContents(): ElectronWebContents[] }
   session: { fromPartition(partition: string): { on(event: 'will-download', listener: (e: unknown, item: ElectronDownloadItem) => void): void } }
-  shell: { openExternal(url: string): Promise<void> }
+  shell: { openExternal(url: string): Promise<void>; openPath(path: string): Promise<string> }
 }
 
 /** 与渲染端共享的标签状态快照（SSE state 事件载荷）。 */
@@ -866,7 +867,25 @@ export async function createBrowserEngine(): Promise<BrowserEngine | undefined> 
         const target = asString(body?.url) ?? ''
         let parsed: URL | undefined
         try { parsed = new URL(target) } catch { parsed = undefined }
-        if (parsed === undefined || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) {
+        if (parsed === undefined) {
+          sendJson(res, 400, { ok: false, error: 'invalid url' })
+          return
+        }
+        // file:// 本地文件：解码回本机路径交给系统默认程序（.html 即默认浏览器）。
+        // 用 openPath 而非 openExternal：对中文/空格路径更可靠（无编码往返）。
+        if (parsed.protocol === 'file:') {
+          try {
+            const localPath = fileURLToPath(parsed.href)
+            const openError = await shell.openPath(localPath)
+            if (openError !== '') { sendJson(res, 400, { ok: false, error: openError }); return }
+          } catch (cause) {
+            sendJson(res, 400, { ok: false, error: cause instanceof Error ? cause.message : String(cause) })
+            return
+          }
+          sendJson(res, 200, { ok: true })
+          return
+        }
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
           sendJson(res, 400, { ok: false, error: 'invalid url' })
           return
         }

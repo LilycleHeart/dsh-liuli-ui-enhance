@@ -29,6 +29,7 @@
  * 的桥接模式）。
  */
 import type { SidePaneTabType } from './PreviewPanel.tsx'
+import { getLastTurnChanges } from './turn-file-store.ts'
 
 /** 请求展开详细页并激活指定标签的事件名。 */
 export const AUTO_OPEN_DETAILS_EVENT = 'liuli:auto-open-details'
@@ -57,6 +58,8 @@ const USER_TURN_SELECTOR = '[data-chat-anchor-key][data-chat-flow-kind="user"], 
 const SCROLL_SELECTOR = '[data-conversation-scroll]'
 /** 启动/会话切换后的稳定窗口：期间不触发（避开历史批量挂载）。 */
 const SETTLE_MS = 3000
+/** 工具行触发后等待 last-turn 快照非空的最大重试次数（反应臂轮末发布延迟）。 */
+const LAST_TURN_WAIT_MAX = 6
 
 /** 本轮是否已自动展开过（检测到新一轮 user 消息时重置）。 */
 let expandedThisTurn = false
@@ -114,6 +117,8 @@ export function startAutoOpenDetails(): () => void {
   let raf = 0
   let pending = false
   let scrollReplaced = false
+  /** 当前 pending 等待 last-turn 快照非空的重试计数（每次 tool 行触发重置）。 */
+  let lastTurnWaitTicks = 0
 
   const tick = (): void => {
     raf = 0
@@ -122,6 +127,22 @@ export function startAutoOpenDetails(): () => void {
     if (now - startedAt < SETTLE_MS || now - sessionSettledAt < SETTLE_MS) return
     if (dismissed || expandedThisTurn) return
     if (pending) {
+      // 只在实际产生了上一轮文件变更时才驱动：last-turn 快照为空说明
+      // 本轮工具行没有落成任何文件写入（只 read/status/失败/撤销），不应
+      // 展开审查。快照在轮末才发布，这里短间隔重试等待（最多 lastTurnWaitTicks
+      // 次），到了为空则放弃本次 pending——不把「本轮已展开」标记掉，后续
+      // 真有写入时仍可驱动。
+      if (getLastTurnChanges().length === 0) {
+        if (lastTurnWaitTicks < LAST_TURN_WAIT_MAX) {
+          lastTurnWaitTicks += 1
+          schedule()
+        } else {
+          lastTurnWaitTicks = 0
+          pending = false
+        }
+        return
+      }
+      lastTurnWaitTicks = 0
       pending = false
       expandedThisTurn = true
       requestOpen('git')
@@ -146,8 +167,11 @@ export function startAutoOpenDetails(): () => void {
           ? node
           : node.querySelector<HTMLElement>(USER_TURN_SELECTOR)
         if (userAnchor !== null && isNewestAnchor(userAnchor)) expandedThisTurn = false
-        // 工具行 → 收集触发。
-        if (findToolRow(node) !== null) pending = true
+        // 工具行 → 收集触发（新触发重置 last-turn 等待计数）。
+        if (findToolRow(node) !== null) {
+          pending = true
+          lastTurnWaitTicks = 0
+        }
       }
     }
     if (scrollReplaced) {
@@ -156,6 +180,7 @@ export function startAutoOpenDetails(): () => void {
       dismissed = false
       sessionSettledAt = Date.now()
       pending = false
+      lastTurnWaitTicks = 0
     }
     if (pending || scrollReplaced) schedule()
   })

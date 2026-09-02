@@ -18,10 +18,10 @@ import { createPortal } from 'react-dom'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
   AssistantBlock, ChatLocationNodeIndex, ChatNodeStore, ToolCallBlock,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import type { ChatNode } from '@deepseek-ai/dsh-client-ui-conversation/client'
+} from '@deepseek-ai/dsh-client-ui-chat/client'
+import type { ChatNode } from '@deepseek-ai/dsh-client-ui-chat/client'
 // Type-only: pulls the runtime's SessionStandardProps merge (useSession/sessionId).
-import type {} from '@deepseek-ai/dsh-client-runtime/client'
+import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import css from './TurnRail.module.css'
 import { RESIZING_ATTR } from './resize-perf.ts'
 
@@ -224,7 +224,7 @@ function findTurnRowIndexed(index: AnchorIndex, keys: readonly string[]): HTMLEl
   return best
 }
 
-export function TurnRail({ useSession, sessionId }: TurnRailProps) {
+export function TurnRail({ useChat, sessionId }: TurnRailProps) {
   const anchorRef = useRef<HTMLDivElement | null>(null)
   // host = portal 目标（正文卡片 [data-conversation-scroll]，用户要求 rail
   // 的 DOM 父容器是卡片）；phaseRoot = 会话列根 [data-phase]，是 rail/pill
@@ -238,11 +238,13 @@ export function TurnRail({ useSession, sessionId }: TurnRailProps) {
   const [railDocked, setRailDocked] = useState(false)
   const hoverTimer = useRef<number | null>(null)
 
-  const timeline = useSession(s => s.chat.timeline)
-  const locations = useSession(s => s.chat.locations)
-  const nodes = useSession(s => s.chat.nodes)
-  const nodeValues = useSession(s => s.chat.nodes.values())
-  const order = useSession(s => s.chat.order)
+  // 2.0.4：Chat 内容快照不在 SessionSnapshot 上——ui-chat 把 useChat 并进
+  // SessionStandardProps（与 useSession 同级注入），从这里选 ChatSnapshot。
+  const timeline = useChat(s => s.timeline)
+  const locations = useChat(s => s.locations)
+  const nodes = useChat(s => s.nodes)
+  const nodeValues = useChat(s => s.nodes.values())
+  const order = useChat(s => s.order)
 
   useLayoutEffect(() => {
     // anchorRef 挂在 header 内（header.utilities slot），与正文卡片是兄弟，

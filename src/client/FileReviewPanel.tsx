@@ -16,7 +16,7 @@ import {
   fetchSidebarDiff, fetchSidebarGit, revealSidebarPath, revealToast,
   type SidebarDiffPayload, type SidebarGitChange, type SidebarGitPayload, type SidebarGitSourceId,
 } from './right-sidebar-api.ts'
-import { consumeReviewDrive, consumeReviewRequest, REVIEW_DRIVE_EVENT, REVIEW_FILE_EVENT } from './review-bus.ts'
+import { consumeReviewDrive, consumeReviewRequest, REVIEW_DRIVE_EVENT, REVIEW_FILE_EVENT, type ReviewFileDetail } from './review-bus.ts'
 import { getLastTurnChanges, subscribeLastTurnChanges } from './turn-file-store.ts'
 import type { FileDiffHunk } from './TurnFileCard.tsx'
 import { resolveDriveTarget, type ReviewPanelRequest } from './review-drive.ts'
@@ -38,6 +38,13 @@ export interface FileReviewPanelProps {
 }
 
 type DiffKind = 'hunk' | 'add' | 'del' | 'meta' | 'ctx'
+
+/* ── git 状态拉取失败重试 ── */
+
+/** git 状态拉取的失败重试次数（超过后停在空态并提示）。 */
+const GIT_FETCH_MAX_RETRY = 3
+/** 失败重试的基础间隔（毫秒）；按重试次数递增（1x/2x/3x）。 */
+const GIT_FETCH_RETRY_MS = 600
 
 /* ── diff 容器高度记忆（跨文件/跨会话保留） ── */
 
@@ -97,6 +104,18 @@ function basenameOf(path: string): string {
 function dirnameOf(path: string): string {
   const at = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
   return at === -1 ? '' : path.slice(0, at)
+}
+
+/** 定位请求的路径与 git change 的宽松匹配：TurnFileCard 传的是相对会话 cwd 的
+ *  路径，git changes 的 path/workspaceRelativePath 是相对 git root——会话 cwd
+ *  是 git root 的子目录时两者不一致（如卡片传 `a.ts`、git 里是 `sub/a.ts`）。
+ *  先精确匹配，再按「路径后缀」兜底（同 basename 的深层文件也能命中）。 */
+function matchesPath(change: SidebarGitChange, path: string): boolean {
+  const norm = (s: string): string => s.replace(/\\/g, '/')
+  const rel = norm(path)
+  const candidates = [norm(change.path), norm(change.workspaceRelativePath)]
+  if (candidates.some(c => c === rel)) return true
+  return candidates.some(c => c.endsWith('/' + rel))
 }
 
 /** 复制文本到剪贴板（带降级）。 */
@@ -418,6 +437,9 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
   const menuPanelRef = useRef<HTMLDivElement | null>(null)
   const requestSeq = useRef(0)
   const diffCacheRef = useRef<Record<string, SidebarDiffPayload | undefined>>({})
+  /** git 状态拉取的请求序号：会话切换时旧 fetch 的 abort 回调不能覆盖新数据
+   *  （否则 git 被打回 null，pending 兜底定位永远等不到就绪）。 */
+  const gitFetchSeq = useRef(0)
   /** 已应用的「驱动请求」nonce：同一请求只应用一次。effect 依赖中的
    *  reviewPath 身份会随 source/git/datasets 等状态变化而重建，若不加闸，
    *  用户手动切换来源/折叠文件后 effect 重跑会把旧驱动请求重新弹回
@@ -433,20 +455,37 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
   }, [diffCache])
 
   // 拉取 git state（sourceOptions / datasets / summary）。
+  // 失败自动重试（有限次、间隔递增）：审查定位依赖 git 就绪后的 pending 兜底
+  // 重放，一次性失败（网络抖动等）会让「面板激活挂载 → git 未就绪 → 定位请求
+  // 悬空」永久无解；seq 同时挡住会话切换时旧 fetch 的 abort 回调覆盖新数据。
   useEffect(() => {
     if (sessionId === undefined) return
+    let cancelled = false
     const controller = new AbortController()
+    const seq = ++gitFetchSeq.current
     setGit(null)
     setExpanded(null)
     setDiffCache({})
     setError(null)
-    fetchSidebarGit(sessionId, controller.signal, 0)
-      .then(payload => {
-        setGit(payload)
-        if (payload.ok === false) setError(payload.error ?? '加载失败')
-      })
-      .catch(() => { setGit(null) })
-    return () => { controller.abort() }
+    const attempt = (retry: number): void => {
+      fetchSidebarGit(sessionId, controller.signal, 0)
+        .then(payload => {
+          if (cancelled || gitFetchSeq.current !== seq) return
+          setGit(payload)
+          if (payload.ok === false) setError(payload.error ?? '加载失败')
+        })
+        .catch(() => {
+          if (cancelled || gitFetchSeq.current !== seq) return
+          if (retry < GIT_FETCH_MAX_RETRY) {
+            setTimeout(() => attempt(retry + 1), GIT_FETCH_RETRY_MS * (retry + 1))
+          } else {
+            setGit(null)
+            setError('Git 状态加载失败，请重试')
+          }
+        })
+    }
+    attempt(0)
+    return () => { cancelled = true; controller.abort() }
   }, [sessionId])
 
   const root = git?.root
@@ -503,31 +542,52 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
   /** 从轮次卡片等入口跳转：确保源正确、文件展开。 */
   const reviewPath = useCallback((path: string): void => {
     if (git === null) return
+    const findChange = (changes: readonly SidebarGitChange[]): SidebarGitChange | undefined =>
+      changes.find(change => matchesPath(change, path))
+    const changesOf = (id: SidebarGitSourceId): readonly SidebarGitChange[] =>
+      (datasets?.[id]?.sections ?? []).flatMap(section => section.changes)
     let nextSource = source
     // 当前源里没有该文件时，按 unstaged → staged → branch → last-turn 找包含它的源。
     // 注意：last-turn 不在 datasets 里（来自同步快照 turn-file-store），所以
     // 「当前源包含」判断要单独走 lastTurnChanges；否则在 last-turn 源上审查一个
     // 就在该源里的文件也会被误判为不在当前源（原实现的 `if (source !== 'last-turn')`
     // 守卫更是把整段搜索跳过——「在上一轮更改里审查一个不在该源的文件」永不切源）。
-    const inCurrent = source === 'last-turn'
-      ? lastTurnChanges.some(change => change.path === path)
-      : (datasets?.[source]?.sections ?? []).some(section => section.changes.some(change => change.path === path))
-    if (!inCurrent) {
-      if ((datasets?.unstaged?.sections ?? []).some(section => section.changes.some(change => change.path === path))) {
-        nextSource = 'unstaged'
-      } else if ((datasets?.staged?.sections ?? []).some(section => section.changes.some(change => change.path === path))) {
-        nextSource = 'staged'
-      } else if ((datasets?.branch?.sections ?? []).some(section => section.changes.some(change => change.path === path))) {
-        nextSource = 'branch'
-      } else if (lastTurnChanges.some(change => change.path === path)) {
-        nextSource = 'last-turn'
+    // 匹配走 matchesPath（宽松后缀兜底）：卡片传相对 cwd 的路径，git changes 是
+    // 相对 git root，cwd 为 git root 子目录时精确比较会漏，setExpanded 落空。
+    let target = source === 'last-turn'
+      ? findChange(lastTurnChanges)
+      : findChange(changesOf(source))
+    if (target === undefined) {
+      const candidates: Array<[SidebarGitSourceId, readonly SidebarGitChange[]]> = [
+        ['unstaged', changesOf('unstaged')],
+        ['staged', changesOf('staged')],
+        ['branch', changesOf('branch')],
+        ['last-turn', lastTurnChanges],
+      ]
+      for (const [candidateSource, changes] of candidates) {
+        const hit = findChange(changes)
+        if (hit !== undefined) { nextSource = candidateSource; target = hit; break }
       }
     }
+    // 找不到目标文件（git 数据未覆盖当前源、last-turn 快照未同步等）时不要静默
+    // 失败：对已发生的审查点击给出可见反馈，避免「点了完全没反应」。优先回退到
+    // 「上一轮更改」源（轮次卡片就是从这里渲染的，快照通常包含该文件）；连
+    // last-turn 都没有该文件才提示，并保持当前视图不动。
+    if (target === undefined) {
+      const fallback = lastTurnChanges[0]
+      if (fallback !== undefined) {
+        if (source !== 'last-turn') setSource('last-turn')
+        setExpanded(fallback.path)
+      } else {
+        revealToast(`找不到文件「${path}」的 git 变更，可能已提交或还原`, 'error')
+      }
+      return
+    }
     if (nextSource !== source) setSource(nextSource)
-    setExpanded(path)
+    setExpanded(target.path)
     if (nextSource !== 'last-turn') {
-      const key = `${nextSource}:${path}`
-      if (diffCacheRef.current[key] === undefined) loadDiff(path, nextSource)
+      const key = `${nextSource}:${target.path}`
+      if (diffCacheRef.current[key] === undefined) loadDiff(target.path, nextSource)
     }
   }, [git, source, datasets, lastTurnChanges, loadDiff])
 
@@ -568,22 +628,50 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
     reviewPath(reviewRequest.path)
   }, [reviewRequest, reviewPath, git])
 
-  /** 已消费的 pending 审查路径：兜底请求按路径去重，避免 effect 随
-   *  reviewPath 身份重跑时反复重放同一条旧请求（与驱动请求 nonce 同因）。 */
-  const consumedPendingPath = useRef<string | null>(null)
+  /** 已消费的审查请求：按「path@nonce」去重（与 onReview 事件路径共用同一个
+   *  记录），避免 effect 随 reviewPath 身份重跑时反复重放同一条旧请求、以及
+   *  事件路径与 pending 兜底对同一次点击双跑；每次点击 nonce 自增，因此
+   *  「git 未就绪丢过一次」的同一文件再次请求仍可被消费。 */
+  const consumedPendingKey = useRef<string | null>(null)
   /** 已消费的 pending 驱动请求：按「来源:路径」去重（同一请求只应用一次）。 */
   const consumedDriveKey = useRef<string | null>(null)
   // 事件驱动的审查请求（自包含面板兜底：dock 布局实例等）。
   useEffect(() => {
-    const pending = consumeReviewRequest()
-    if (pending !== null && consumedPendingPath.current !== pending.path) {
-      consumedPendingPath.current = pending.path
-      reviewPath(pending.path)
+    // pending 兜底只属于自包含实例（dock 面板，无 reviewRequest prop）：side-tab
+    // 实例的审查请求经 PreviewPanel 转成 reviewRequest prop 进入，若这里也消费
+    // 模块级 pending，会与 prop 分支用两套 nonce（Date.now vs review-bus 自增）
+    // 抢占同一 consumed 记录，造成定位状态不一致。
+    const pending = reviewRequest === undefined ? consumeReviewRequest() : null
+    // git 未就绪时不标记消费：reviewPath 身份随 git 就绪重建后本 effect 重跑，
+    // 再消费同一 pending 完成定位（与宿主 reviewRequest 分支「git 未就绪时
+    // 不标记 nonce」语义一致）。否则 dock 审查面板激活挂载时 git 还在拉取
+    // （git === null），reviewPath 直接 return，定位请求被永久丢弃。
+    if (pending !== null && git !== null
+      && (pending.sessionId === undefined || pending.sessionId === sessionId)) {
+      const key = pending.path + '@' + (pending.nonce ?? 0)
+      if (consumedPendingKey.current !== key) {
+        consumedPendingKey.current = key
+        reviewPath(pending.path)
+      }
     }
+    // 实时审查事件：仅自包含实例（dock 面板，无 reviewRequest prop）监听——
+    // 侧边栏实例的审查经宿主 prop（reviewRequest）进入，双监听会让同一次点击
+    // 被 onReview 实时路径与 reviewRequest 分支各处理一遍，造成定位状态竞争
+    // （第二次点击可能被其中一条吃掉、另一条又因去重跳过，表现为「点不动」）。
     const onReview = (e: Event): void => {
-      const detail = (e as CustomEvent<{ sessionId?: string; path: string }>).detail
+      const detail = (e as CustomEvent<ReviewFileDetail>).detail
       if (detail === undefined || typeof detail.path !== 'string') return
       if (detail.sessionId !== undefined && detail.sessionId !== sessionId) return
+      // git 未就绪时放弃实时路径：requestReviewFile 已写入模块级 pending，
+      // 等 git 就绪后本 effect 重跑会经 consumeReviewRequest 兜底定位。
+      if (git === null) return
+      // 事件去重：事件的 nonce（每次点击自增）与 pending 兜底共用同一个
+      // consumed 记录（path@nonce），避免「onReview 实时路径已定位 + effect
+      // 的 pending 兜底」对同一次点击双跑；不同 nonce 则放行（第二次点击）。
+      const seq = detail.nonce ?? 0
+      const key = detail.path + '@' + seq
+      if (consumedPendingKey.current === key) return
+      consumedPendingKey.current = key
       reviewPath(detail.path)
     }
     // 驱动请求（LLM 活动自动展开）：仅自包含实例（dock 面板，无 reviewRequest
@@ -611,13 +699,16 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
         }
       }
     }
-    window.addEventListener(REVIEW_FILE_EVENT, onReview)
+    // 自包含实例（dock 面板，无 reviewRequest prop）监听两类事件；侧边栏实例
+    // 的事件由 PreviewPanel 的 onReview/onAutoOpen 转成 reviewRequest prop 进入，
+    // 若这里也监听会与 prop 分支双处理同一次点击（定位状态竞争）。
+    if (reviewRequest === undefined) window.addEventListener(REVIEW_FILE_EVENT, onReview)
     if (reviewRequest === undefined) window.addEventListener(REVIEW_DRIVE_EVENT, onDrive)
     return () => {
       window.removeEventListener(REVIEW_FILE_EVENT, onReview)
       window.removeEventListener(REVIEW_DRIVE_EVENT, onDrive)
     }
-  }, [sessionId, reviewPath, reviewRequest, applyDrive])
+  }, [sessionId, reviewPath, reviewRequest, applyDrive, git])
 
   // 右键菜单关闭。
   useEffect(() => {
@@ -660,16 +751,23 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
 
   const refresh = (): void => {
     if (sessionId === undefined) return
+    // 递增 seq 使在途的会话 effect fetch 回调作废（避免旧数据回写）。
+    const seq = ++gitFetchSeq.current
     setGit(null)
     setExpanded(null)
     setDiffCache({})
     setError(null)
     void fetchSidebarGit(sessionId, undefined, 0)
       .then(payload => {
+        if (gitFetchSeq.current !== seq) return
         setGit(payload)
         if (payload.ok === false) setError(payload.error ?? '加载失败')
       })
-      .catch(() => { setGit(null) })
+      .catch(() => {
+        if (gitFetchSeq.current !== seq) return
+        setGit(null)
+        setError('Git 状态加载失败，请重试')
+      })
   }
 
   const summary = git?.summary
