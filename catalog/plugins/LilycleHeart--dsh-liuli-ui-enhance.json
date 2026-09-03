@@ -1,0 +1,12 @@
+{
+  "$schema": "../schema/plugin.schema.json",
+  "id": "LilycleHeart/dsh-liuli-ui-enhance",
+  "name": "dsh-liuli-ui-enhance",
+  "repository": "https://github.com/LilycleHeart/dsh-liuli-ui-enhance",
+  "category": "theme",
+  "description": {
+    "en": "琉璃 (Liuli / glass) UI theme for DeepSeek Harness: frosted-glass translucent surfaces, refined color scheme, and polished interface details that bring a graceful, luminous look to the DSH client.",
+    "zh": "为 DeepSeek Harness 打造的琉璃主题：磨砂玻璃通透质感、精致配色与细腻界面细节，让 DSH 客户端呈现温润流光的美感。"
+  },
+  "added": "2026-09-03"
+}

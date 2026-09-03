@@ -1,0 +1,5 @@
+# dsh bundle patch: 把本插件插入到 profile 的 layer 栈。
+# id 是组合配置树里的稳定行标识；name 是 loader 解析的 npm 包名。后加 layer 按 id 覆盖。
+- insert:
+    - id: dsh-liuli-ui-enhance
+      name: dsh-liuli-ui-enhance
