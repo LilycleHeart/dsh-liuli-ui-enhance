@@ -1,7 +1,7 @@
 {
   "name": "dsh-liuli-ui-enhance",
   "description": "琉璃主题 —— DSH 界面增强插件：M3 动态取色、壁纸磨砂材质、声纹可视化、日/夜切换",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "keywords": [
     "dsh-plugin",
     "deepseek-harness",
