@@ -1071,6 +1071,37 @@ div[data-phase][data-placeholder]::before {
   content: none !important;
 }
 
+/* ════════════════════════════════════════════════════════════
+ * 官方 TurnNavigator 隐藏（无条件）：琉璃自绘的轮次刻度侧边栏（TurnRail，
+ * "对话轮次导航"）已提供完整轮次跳转/commit 引用，官方 ChatView 内自带的
+ * 右侧竖刻 rail（aria-label "轮次导航" / "Turn navigation"）与之重复，
+ * 同一会话会出现左右两条轮次刻度，这里把官方的整条无条件隐藏。
+ * 官方结构：div[class$="_slot"] > nav[class$="_rail"]（局部类名 _slot/_rail
+ * 后缀稳定，hash 前缀随构建变，故用后缀匹配；:has(> nav…)限定为 _slot 的
+ * 直接子 nav，琉璃 rail 是 portal 到正文卡片的无 _slot 包装 nav，不会命中）。
+ * locale 无关，不依赖 aria-label。
+ * 无条件（不随 dom 开关门控）：官方 rail 与琉璃 rail 功能重复是常态，
+ * 之前依赖 body[data-liuli-hide-native-turnrail] 属性（unofficial('dom')
+ * 门控）触发，一旦用户在设置里关掉 dom 分组（localStorage 持久化）属性
+ * 永不设置、官方 rail 原样显示——结构性脆弱。现改为选择器内联判定、
+ * 与 body 属性彻底解耦，style 注入本身无条件，故任何设置下官方 rail 均隐藏。
+ * ════════════════════════════════════════════════════════════ */
+[class$="_slot"]:has(> nav[class$="_rail"]:has([class$="_mark"])) {
+  display: none !important;
+}
+
+/* ════════════════════════════════════════════════════════════
+ * 官方宽度手柄降层（无条件）：ConversationRoot 的左右宽度手柄
+ * （[data-width-handle]，官方 z-index:8，top:0/bottom:0 全高覆盖）盖在
+ * 琉璃 TurnRail（z-index:5）之上，虹吸刻度所在区域的点击（点不到 turnrail）。
+ * 官方手柄的唯一职能是拖拽调宽；把它降到琉璃 rail 之下（z-index:3），
+ * rail 及胶囊在重叠区优先命中，手柄在非重叠区仍可拖拽调宽。
+ * 琉璃 rail 无条件挂载，与手柄的层级冲突恒在，故本规则不随开关门控。
+ * ════════════════════════════════════════════════════════════ */
+[data-width-handle] {
+  z-index: 3 !important;
+}
+
 /* 会话列根：自身不画表面，让 frame 背景透出（卡片间隙可见） */
 div[data-phase] {
   background: transparent !important;

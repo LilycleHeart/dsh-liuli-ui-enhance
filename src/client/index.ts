@@ -623,6 +623,13 @@ export function apply(ctx: ClientContext): void {
     return startLiuliTransition()
   }, 'dsh-liuli-ui-enhance: message transition observer')
 
+  // ── 隐藏官方 TurnNavigator（right-side 竖刻轮次 rail）：琉璃自绘轮次刻度
+  //    侧边栏（TurnRail）已提供完整轮次跳转/commit 引用，官方 ChatView 自带的
+  //    rail 与之重复，同一会话出现左右两条刻度。隐藏规则在 liuli-css.ts 为
+  //    无条件选择器（[class$="_slot"]:has(> nav[class$="_rail"]…)），不依赖
+  //    body 属性门控——之前靠 unofficial('dom') 触发挂属性，用户在设置里关掉
+  //    dom 分组（localStorage 持久化）后官方 rail 就原样显示，现已彻底解耦。 ──
+
   // ── 对话页历史自动加载：上翻到消息列顶部时自动点击“加载更早消息”，
   //    替代手动点击 older 按钮 ──
   ctx.effect(() => {
