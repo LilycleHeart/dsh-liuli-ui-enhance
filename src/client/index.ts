@@ -78,6 +78,7 @@ import { startAutoOpenDetails } from './auto-open-details.ts'
 import { startAutoDriveBrowser } from './auto-drive-browser.ts'
 import { startLiuliTransition } from './liuli-transition.ts'
 import { startAutoLoadHistory } from './auto-load-history.ts'
+import { startHideNativeTurnNavigator } from './hide-native-turnrail.ts'
 import { installResizePerfWatcher } from './resize-perf.ts'
 import { startHeaderTabIndicator } from './header-tab-indicator.ts'
 import { startHeaderTextAnimation } from './header-text-animation.ts'
@@ -625,10 +626,14 @@ export function apply(ctx: ClientContext): void {
 
   // ── 隐藏官方 TurnNavigator（right-side 竖刻轮次 rail）：琉璃自绘轮次刻度
   //    侧边栏（TurnRail）已提供完整轮次跳转/commit 引用，官方 ChatView 自带的
-  //    rail 与之重复，同一会话出现左右两条刻度。隐藏规则在 liuli-css.ts 为
-  //    无条件选择器（[class$="_slot"]:has(> nav[class$="_rail"]…)），不依赖
-  //    body 属性门控——之前靠 unofficial('dom') 触发挂属性，用户在设置里关掉
-  //    dom 分组（localStorage 持久化）后官方 rail 就原样显示，现已彻底解耦。 ──
+  //    rail 与之重复，同一会话出现左右两条刻度。双层机制：
+  //    (1) liuli-css.ts 无条件规则（不改依赖 body 属性门控——之前靠
+  //        unofficial('dom') 挂属性，用户关掉 dom 分组后就原样显示）；
+  //    (2) hide-native-turnrail.ts MutationObserver 内联 display:none 兜底
+  //        （不依赖 :has() 的 JS 遍历，任何设置下官方 rail 均隐藏）。 ──
+  ctx.effect(() => {
+    return startHideNativeTurnNavigator()
+  }, 'dsh-liuli-ui-enhance: hide native turn navigator (js fallback)')
 
   // ── 对话页历史自动加载：上翻到消息列顶部时自动点击“加载更早消息”，
   //    替代手动点击 older 按钮 ──
