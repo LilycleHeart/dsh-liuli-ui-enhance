@@ -603,11 +603,14 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot,
     const tryApply = (attempt: number): void => {
       if (cancelled || headerHeightAppliedRef.current) return
       try {
-        const saved = Number.parseFloat(localStorage.getItem(HEADER_HEIGHT_LS_KEY) ?? '')
-        if (!Number.isFinite(saved) || saved < HEADER_MIN_H || saved > HEADER_MAX_H) {
-          headerHeightAppliedRef.current = true
-          return
-        }
+        const savedRaw = Number.parseFloat(localStorage.getItem(HEADER_HEIGHT_LS_KEY) ?? '')
+        // 默认布局用最小高度：没有有效的高度记忆（首次使用/清空存储）时，
+        // 页头按 pane 最小高度应用，而不是跟随默认布局的静态 0.16 比例
+        // （静态比例无法表达“最小高度”，这里用与 sash 拖拽 clamp 一致的
+        // CONVERSATION_HEADER_MIN_H 作为默认值）。
+        const saved = Number.isFinite(savedRaw) && savedRaw >= HEADER_MIN_H && savedRaw <= HEADER_MAX_H
+          ? savedRaw
+          : CONVERSATION_HEADER_MIN_H
         const current = shellRef.current.dock
         const headerPanel = findRegion(current, REGION_CONVERSATION_HEADER)
         if (headerPanel === undefined || current.root === null) {

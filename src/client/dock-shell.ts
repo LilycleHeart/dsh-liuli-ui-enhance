@@ -162,6 +162,8 @@ export function defaultShellLayout(): DockLayout {
   const middle = makeTabsNode(layout, [conversation])
   const right = makeTabsNode(layout, [details])
   // 会话列 = 页头 / 正文上下两个独立面板（可拖拽、停靠、浮动）。
+  // 页头初始 0.16 只是首帧占位：无高度记忆时 dock-shell-frame 的恢复逻辑
+  // 会把页头按 pane 最小高度（CONVERSATION_HEADER_MIN_H）重新应用。
   const center = {
     id: nextId(layout, 's'),
     kind: 'split' as const,
