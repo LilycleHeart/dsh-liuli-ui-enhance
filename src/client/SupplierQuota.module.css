@@ -28,6 +28,27 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* 窗口额度细进度条（Command Code 的 5 小时 / 每周窗口用；纯装饰，不参与读数）。
+   轨道背景用明确的填充灰色（--dsw-alias-fill-* 不存在时回退到可见的 label-tertiary），
+   否则 .fill 的主题色一盖上去，轨道只剩 10% 透明度的边框色、几乎看不到背景。 */
+.quotaTrack {
+  display: inline-block;
+  width: 28px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--dsw-alias-fill-tsp-secondary, var(--dsw-alias-label-tertiary, rgba(128, 128, 128, 0.24)));
+  overflow: hidden;
+  align-self: center;
+}
+
+.quotaFill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--dsw-alias-brand-primary);
+  transition: width 240ms ease;
+}
+
 .quotaLoading {
   opacity: 0.7;
 }

@@ -51,7 +51,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { InputTriggerSource, ReferenceCodec } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 // Type-only: ui-model-selection 的 ctx.modelDirectories 服务（supplier quota 消费）。
 import type {} from '@deepseek-ai/dsh-client-ui-model-selection/client'
-import { liuliRemoteApi, liuliModelDirectory } from './remote-api.ts'
+import { liuliRemoteApi, liuliModelDirectory, liuliRemoteNamespace } from './remote-api.ts'
 import { LiuliAppearanceSection, type LiuliAppearanceInjected } from './LiuliAppearance.tsx'
 import { LiuliAppearanceRow, type LiuliAppearanceRowInjected } from './LiuliAppearanceRow.tsx'
 import { LiuliFeaturesSection, type LiuliFeaturesInjected } from './LiuliFeaturesSection.tsx'
@@ -83,7 +83,8 @@ import { installResizePerfWatcher } from './resize-perf.ts'
 import { startHeaderTabIndicator } from './header-tab-indicator.ts'
 import { startHeaderTextAnimation } from './header-text-animation.ts'
 import { startConversationSplit } from './conversation-split.ts'
-import { disposeSupplierQuota, initSupplierQuota, refreshSupplierQuota } from './supplier-quota.ts'
+import { disposeSupplierQuota, initSupplierQuota, refreshSupplierQuota, setCommandCodeRemote } from './supplier-quota.ts'
+import { startQuotaTokenInject } from './quota-token-inject.ts'
 import { SupplierQuota } from './SupplierQuota.tsx'
 import { loadHistoryBatches, saveHistoryBatches } from './history-load-store.ts'
 import { initModelRetry, disposeModelRetry, loadModelRetry, saveModelRetry, cacheModelRetryBackoff } from './model-retry-controller.ts'
@@ -735,10 +736,41 @@ export function apply(ctx: ClientContext): void {
     return startSettingsSelectUpgrade()
   }, 'dsh-liuli-ui-enhance: settings selects upgrade')
 
+  // ── 设置页「模型服务商」余额令牌：在 new-api 中转站（zero.cat）的 provider
+  //    编辑表单里注入一行「余额令牌」输入框，站点从表单的 baseURL 自动取 ──
+  ctx.effect(() => {
+    if (!unofficial('dom')) return () => {}
+    return startQuotaTokenInject()
+  }, 'dsh-liuli-ui-enhance: quota token inject')
+
   // ── 供应商额度：注入 remote 适配层 + 模型目录，供 header 工具区显示当前供应商额度 ──
   initSupplierQuota(liuliRemoteApi(ctx), liuliModelDirectory(ctx))
   ctx.effect(() => () => disposeSupplierQuota(), 'dsh-liuli-ui-enhance: supplier quota dispose')
 
+  // ── 第三方 provider 插件额度：Command Code 插件（@mars-sea/dsh-commandcode-provider）
+  //    自己把账户/额度报告挂在 `remote.commandcode` 上。它的挂载时机晚于本插件
+  //    （要等它的 Remote contribution 落地），且随插件启用/停用出现与消失，因此
+  //    这里用 ctx.inject 等待该命名空间服务：出现时把 report 面交给额度控制器，
+  //    卸载时传 null 让额度回退到 unavailable（页头隐藏，不报错）。
+  //    刻意不写进包级 inject：插件缺席时那会让启动图死锁。 ──
+  ctx.effect(() => {
+    const fiber = ctx.inject(['remote.commandcode'], (remoteCtx) => {
+      const namespace = liuliRemoteNamespace(remoteCtx, 'commandcode')
+      setCommandCodeRemote(namespace === null ? null : {
+        // 每次调用都重新取方法：贡献卸载时 gateway 会删掉该属性，
+        // 拿住的旧引用会变成「调用已撤销的 Remote」，这里改为当场判定。
+        report: () => {
+          const method = namespace.report
+          if (typeof method !== 'function') {
+            return Promise.resolve({ ok: false, error: { message: 'commandcode/report remote is not mounted' } })
+          }
+          return method.call(namespace) as Promise<{ ok?: boolean; value?: unknown; error?: { message?: string } }>
+        },
+      })
+      return () => { setCommandCodeRemote(null) }
+    })
+    return () => { void fiber.dispose() }
+  }, 'dsh-liuli-ui-enhance: commandcode quota remote')
   // ── 模型请求重试：注入 remote 适配层，供通用设置区编辑各供应商 retryPolicy ──
   initModelRetry(liuliRemoteApi(ctx))
   ctx.effect(() => () => disposeModelRetry(), 'dsh-liuli-ui-enhance: model retry dispose')

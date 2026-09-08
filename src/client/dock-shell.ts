@@ -49,10 +49,11 @@ export const REGION_CONVERSATION = 'region:conversation'
 export const REGION_CONVERSATION_HEADER = 'region:conversation-header'
 export const REGION_DETAILS = 'region:details'
 
-/** 会话页头面板（pane 卡片）的最小可见高度：78px（用户元素拾取实测
+/** 会话页头面板「内容完整可见」的高度：78px（用户元素拾取实测
  *  x=284 y=4 1257x78，tabs 按钮底部完整可见）。
- *  shard 最小高度 = 78 + 2×dockPad（paneCard 上下 margin 各一份留白），
- *  由 dock-shell-frame 的 childMinPx 在运行时用 --liuli-dock-padding 换算。 */
+ *  与 HeaderEffects 的 HEADER_MIN_H 同值：页头默认高度、拉伸手柄下限、sash
+ *  下限（dock-shell-frame 的 childMinPx）统一取 HEADER_MIN_H，本常量保留为
+ *  布局层的语义参考，改动时需与 HEADER_MIN_H 同步。 */
 export const CONVERSATION_HEADER_MIN_H = 78
 
 export function isRegionPanel(type: string): boolean {
@@ -163,7 +164,7 @@ export function defaultShellLayout(): DockLayout {
   const right = makeTabsNode(layout, [details])
   // 会话列 = 页头 / 正文上下两个独立面板（可拖拽、停靠、浮动）。
   // 页头初始 0.16 只是首帧占位：无高度记忆时 dock-shell-frame 的恢复逻辑
-  // 会把页头按 pane 最小高度（CONVERSATION_HEADER_MIN_H）重新应用。
+  // 会把页头按 HEADER_MIN_H（78，= 拉伸手柄下限）重新应用。
   const center = {
     id: nextId(layout, 's'),
     kind: 'split' as const,

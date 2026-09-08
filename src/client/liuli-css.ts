@@ -1076,17 +1076,19 @@ div[data-phase][data-placeholder]::before {
  * "对话轮次导航"）已提供完整轮次跳转/commit 引用，官方 ChatView 内自带的
  * 右侧竖刻 rail（aria-label "轮次导航" / "Turn navigation"）与之重复，
  * 同一会话会出现左右两条轮次刻度，这里把官方的整条无条件隐藏。
- * 官方结构：div[class$="_slot"] > nav[class$="_rail"]（局部类名 _slot/_rail
- * 后缀稳定，hash 前缀随构建变，故用后缀匹配；:has(> nav…)限定为 _slot 的
- * 直接子 nav，琉璃 rail 是 portal 到正文卡片的无 _slot 包装 nav，不会命中）。
- * locale 无关，不依赖 aria-label。
+ * 官方结构：div[class$="_slot"] > nav（内含 [class*="_mark"] 轮次刻度）。
+ * 只按 _slot 后缀 + 「直接子 nav 内含刻度」判定，刻意**不依赖 nav 自身的
+ * 局部类名**——DSH 2.0.5 起 nav 从 _rail 改名为 _frame
+ * （PvW7sq_slot > nav.PvW7sq_frame > div.PvW7sq_scroller > div.PvW7sq_marks），
+ * 依赖旧类名会让隐藏静默失效。琉璃 rail 是 portal 到正文卡片的无 _slot
+ * 包装 nav，不会命中。locale 无关，不依赖 aria-label。
  * 无条件（不随 dom 开关门控）：官方 rail 与琉璃 rail 功能重复是常态，
  * 之前依赖 body[data-liuli-hide-native-turnrail] 属性（unofficial('dom')
  * 门控）触发，一旦用户在设置里关掉 dom 分组（localStorage 持久化）属性
  * 永不设置、官方 rail 原样显示——结构性脆弱。现改为选择器内联判定、
  * 与 body 属性彻底解耦，style 注入本身无条件，故任何设置下官方 rail 均隐藏。
  * ════════════════════════════════════════════════════════════ */
-[class$="_slot"]:has(> nav[class$="_rail"]:has([class$="_mark"])) {
+[class$="_slot"]:has(> nav:has([class*="_mark"])) {
   display: none !important;
 }
 

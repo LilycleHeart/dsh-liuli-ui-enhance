@@ -32,7 +32,7 @@ import {
   createDockShellStore, defaultShellLayout, exportDockJSON, findRegion, importDockJSON, isRegionPanel,
   listShellSlotNames, loadSavedDock, loadShellSlotByName, regionLabel, saveShellDock,
   saveShellSlotByName, stripRegionPanels, withRegion,
-  CONVERSATION_HEADER_MIN_H, CONVERSATION_MIN, DETAILS_MAX_RATIO, DETAILS_MIN, REGION_CONVERSATION, REGION_CONVERSATION_HEADER, REGION_DETAILS, REGION_SIDEBAR, SIDEBAR_MAX, SIDEBAR_MIN,
+  CONVERSATION_MIN, DETAILS_MAX_RATIO, DETAILS_MIN, REGION_CONVERSATION, REGION_CONVERSATION_HEADER, REGION_DETAILS, REGION_SIDEBAR, SIDEBAR_MAX, SIDEBAR_MIN,
   type HostLayoutFace,
 } from './dock-shell.ts'
 import { HEADER_HEIGHT_LS_KEY, HEADER_MAX_H, HEADER_MIN_H } from './HeaderEffects.tsx'
@@ -134,7 +134,10 @@ function childMinPx(child: DockNode | undefined, dir: 'h' | 'v', dockPad: number
     return dir === 'h' ? CONVERSATION_MIN : PANE_CARD_MIN_H
   }
   if (child.kind === 'tabs' && child.tabs.length === 1 && child.tabs[0]?.type === REGION_CONVERSATION_HEADER) {
-    return dir === 'h' ? PANE_CARD_MIN_W : CONVERSATION_HEADER_MIN_H + dockPad * 2
+    // 下限与「无记忆时的默认高度」统一取 HEADER_MIN_H（78，= 拉伸手柄下限，
+    // 也是 tabs 完整可见的实测高度）：三者同值，打开时的高度就等于手能拖到的
+    // 最小高度，不会出现一拖 sash 就被弹回去的割裂。
+    return dir === 'h' ? PANE_CARD_MIN_W : HEADER_MIN_H + dockPad * 2
   }
   return dir === 'h' ? PANE_CARD_MIN_W : PANE_CARD_MIN_H
 }
@@ -312,8 +315,10 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot,
    *  旧 host 一起被 React 移出 DOM（detached），此时无法再从正文 phase 查到它；
    *  用这个引用把它「抢救」回新 host，否则页头面板出现空白。 */
   const headerRef = useRef<HTMLElement | null>(null)
-  /** 页头高度恢复只应用一次（应用后用户拖拽 sash 会重新写入 localStorage）。 */
-  const headerHeightAppliedRef = useRef(false)
+  /** 页头高度恢复的会话代次：每切换一次会话就 +1，让高度记忆在 JSX 换布局后重新应用。
+   *  （原先用布尔 ref 只在首次挂载应用一次，导致切换会话时新布局的 header v-split
+   *   比例被布局覆盖、而 `liuli:header-height` 记忆不再回写 → “拖拽记忆不生效”。） */
+  const [headerRestoreEpoch, setHeaderRestoreEpoch] = useState(0)
   const dragRef = useRef<{ source: DragSource; title: string; sx: number; sy: number; active: boolean } | null>(null)
   /** HTML5 外部拖入（右侧标签面板标签）的落点指示。 */
   const [htmlDrop, setHtmlDrop] = useState<{ over: DropTarget | null; rect: DragState['overRect'] } | null>(null)
@@ -344,6 +349,8 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot,
     // 留着只是一条空固定宽条）；默认布局里的 detail 区域一并剔除。
     const layout = isSidebarEnhancementEnabled() ? base : stripRegionPanels(base, REGION_DETAILS)
     actions.setDock(layout)
+    // 新布局就绪：让页头高度记忆对本会话重新应用（覆盖布局里的旧 header 比例）。
+    setHeaderRestoreEpoch(epoch => epoch + 1)
   }, [sessionId, actions])
 
   // 上报 dock 布局里的面板类型：侧边栏据此判断「审查标签已拆进布局」，
@@ -594,59 +601,42 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot,
   }, [])
 
   /* ── 恢复页头高度：继承原 HeaderEffects 拉伸手柄的 localStorage 记忆。
-     现在页头/正文是上下两个 dock 面板，页头高度由垂直 split 比例决定；
-     初始化时读取保存高度，换算成比例写回布局（只应用一次，之后由 sash
-     拖拽写回新值）。 ── */
+     现在页头/正文是上下两个 dock 面板，页头高度由垂直 split 比例决定。
+     每次会话切换（headerRestoreEpoch 递增）都重新读取并应用一次，之后再
+     由用户拖拽 sash 写回新值。不再是一次性应用 —— 否则切换会话时新布局的
+     header 比例会覆盖记忆，但记忆又不再回写（“拖拽记忆不生效”）。 ── */
   useLayoutEffect(() => {
-    if (headerHeightAppliedRef.current) return
     let cancelled = false
-    const tryApply = (attempt: number): void => {
-      if (cancelled || headerHeightAppliedRef.current) return
+    let raf = 0
+    // 几何未就绪时用 rAF 重试；给一个上限防止 header 面板永久缺失（如 dock 关闭、
+    // 会话未就绪）时无限空转。正常渲染几帧内就会就绪，覆盖不到这个上限。
+    let attempts = 0
+    const tryApply = (): void => {
+      if (cancelled) return
       try {
         const savedRaw = Number.parseFloat(localStorage.getItem(HEADER_HEIGHT_LS_KEY) ?? '')
         // 默认布局用最小高度：没有有效的高度记忆（首次使用/清空存储）时，
-        // 页头按 pane 最小高度应用，而不是跟随默认布局的静态 0.16 比例
-        // （静态比例无法表达“最小高度”，这里用与 sash 拖拽 clamp 一致的
-        // CONVERSATION_HEADER_MIN_H 作为默认值）。
+        // 页头按 HEADER_MIN_H（78）应用，而不是跟随默认布局的静态 0.16 比例
+        // （静态比例无法表达「最小高度」）。78 同时也是拉伸手柄与 sash 的下限。
         const saved = Number.isFinite(savedRaw) && savedRaw >= HEADER_MIN_H && savedRaw <= HEADER_MAX_H
           ? savedRaw
-          : CONVERSATION_HEADER_MIN_H
+          : HEADER_MIN_H
         const current = shellRef.current.dock
         const headerPanel = findRegion(current, REGION_CONVERSATION_HEADER)
-        if (headerPanel === undefined || current.root === null) {
-          headerHeightAppliedRef.current = true
-          return
-        }
+        if (headerPanel === undefined || current.root === null) return
         const containing = findTabsContaining(current.root, headerPanel.id)
-        if (containing === undefined) {
-          headerHeightAppliedRef.current = true
-          return
-        }
+        if (containing === undefined) return
         const parent = findParentSplit(current.root, containing.node.id)
-        if (parent === undefined || parent.parent.dir !== 'v') {
-          headerHeightAppliedRef.current = true
-          return
-        }
+        if (parent === undefined || parent.parent.dir !== 'v') return
         const splitEl = rootRef.current?.querySelector<HTMLElement>('[data-dock-split="' + parent.parent.id + '"]')
-        if (splitEl === null || splitEl === undefined) {
-          if (attempt < 6) { requestAnimationFrame(() => { tryApply(attempt + 1) }); return }
-          headerHeightAppliedRef.current = true
-          return
-        }
+        if (splitEl === null || splitEl === undefined) { if (attempts++ < 120) { raf = requestAnimationFrame(tryApply) }; return }
         const total = splitEl.getBoundingClientRect().height
-        if (total <= 0) {
-          if (attempt < 6) { requestAnimationFrame(() => { tryApply(attempt + 1) }); return }
-          headerHeightAppliedRef.current = true
-          return
-        }
+        if (total <= 0) { if (attempts++ < 120) { raf = requestAnimationFrame(tryApply) }; return }
         // 恢复高度依赖 dockPad；设置项异步加载，变量没就绪时等一下再应用，
         // 否则会按 fallback 8 多压/少压留白。
         const rawPad = getComputedStyle(document.body).getPropertyValue('--liuli-dock-padding').trim()
         const padNow = Number.parseFloat(rawPad)
-        if (!Number.isFinite(padNow) || padNow <= 0) {
-          if (attempt < 10) { requestAnimationFrame(() => { tryApply(attempt + 1) }); return }
-        }
-        headerHeightAppliedRef.current = true
+        if (!Number.isFinite(padNow) || padNow <= 0) { if (attempts++ < 120) { raf = requestAnimationFrame(tryApply) }; return }
         // saved 是页头卡片（pane）的可视高度；paneCard 上下 margin 各占 1 份
         // --liuli-dock-padding，所以 shard 高度 = pane 高度 + 2 份留白。
         const targetShardHeight = Math.max(HEADER_MIN_H, Math.min(HEADER_MAX_H, saved)) + (Number.isFinite(padNow) && padNow > 0 ? padNow : 8) * 2
@@ -666,13 +656,11 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot,
           node.sizes[dividerIndex] = sizesTotal - na
           actions.setDock(next)
         }
-      } catch {
-        headerHeightAppliedRef.current = true
-      }
+      } catch { /* 布局异常则跳过，不阻塞会话切换 */ }
     }
-    tryApply(0)
-    return () => { cancelled = true }
-  }, [actions])
+    tryApply()
+    return () => { cancelled = true; if (raf !== 0) cancelAnimationFrame(raf) }
+  }, [actions, headerRestoreEpoch])
 
   /* ── 页头面板内的垂直拉伸手柄（HeaderEffects resizer）在独立面板中继续工作：
      拖拽高度通过自定义事件广播，这里实时调整 v split 比例；localStorage 仍由
@@ -1352,6 +1340,30 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot,
         return
       }
       if (sashNoop) return
+      // 页头面板的像素下限低于 MIN_SIZE（12%）：variableShards 没能建立时
+      // （DOM 未就绪 / shard 查询落空等），下面 resizeSplitTo 的 MIN_SIZE clamp
+      // 会把页头卡在 12% 比例（≈106px），拖不到 tabs 完整可见的像素下限。
+      // 相邻任一侧是会话页头时改用像素下限直接写 sizes。
+      const headerSide = isHeaderTabs(beforeChild) ? 'before' : isHeaderTabs(afterChild) ? 'after' : undefined
+      if (headerSide !== undefined) {
+        const next = structuredClone(shellRef.current.dock)
+        const node = findNode(next.root, splitNode.id)
+        if (node !== undefined && node.kind === 'split') {
+          const sizesTotal = (node.sizes[dividerIndex - 1] ?? 0.5) + (node.sizes[dividerIndex] ?? 0.5)
+          const axisPx = dir === 'h' ? rect.width : rect.height
+          const headerNode = headerSide === 'before' ? beforeChild : afterChild
+          const minPx = nodeMinPx(headerNode, dir)
+          const minRatio = axisPx > 0 ? Math.min(0.5, minPx / axisPx) : MIN_SIZE
+          const raw = ratio * sizesTotal
+          const na = headerSide === 'before'
+            ? Math.max(minRatio * sizesTotal, Math.min(sizesTotal, raw))
+            : Math.min(sizesTotal - minRatio * sizesTotal, Math.max(0, raw))
+          node.sizes[dividerIndex - 1] = na
+          node.sizes[dividerIndex] = sizesTotal - na
+          actions.setDock(next)
+        }
+        return
+      }
       actions.setDock(resizeSplitTo(shellRef.current.dock, splitNode.id, dividerIndex, ratio))
     }
     const onUp = (): void => {

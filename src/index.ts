@@ -470,6 +470,103 @@ const DEEPSEEK_BASE_URL = (globalThis as { process?: { env?: Record<string, stri
 const OPENCODE_GO_KEY_REFS = ['OPENCODE_GO_API_KEY', 'OPENCODE_API_KEY']
 const OPENCODE_GO_USAGE_URL = 'https://opencode.ai/zen/go/v1/usage'
 
+/* ── new-api 部署（zero.cat 等中转站）余额 ─────────────────────────
+ * 这类站点由 new-api / one-api 搭建，余额查询走用户接口：
+ *   GET {base}/api/user/self  →  data.quota（quota 单位，非货币）
+ *   GET {base}/api/status     →  data.quota_per_unit（默认 500000 quota = 1 USD）
+ * 鉴权用「系统访问令牌」（access token），不是 sk- 开头的 API key，
+ * 因此单独放一个凭据 ref；令牌只在 Host 侧解析，不进浏览器 bundle。
+ * 注意：绝不能调用 /api/user/token——那个接口会重新生成 access token，
+ * 让用户手里的旧令牌立即失效。
+ */
+const ZEROCAT_TOKEN_REFS = [
+  'ZEROCAT_ACCESS_TOKEN',
+  'ZEROCAT_SYSTEM_TOKEN',
+  'ZERO_ACCESS_TOKEN',
+  'ZERO_SYSTEM_TOKEN',
+]
+/** 站点根地址；自建/换站点时用 ZEROCAT_BASE_URL 覆盖。 */
+const ZEROCAT_BASE_URL = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.ZEROCAT_BASE_URL
+  ?? 'https://zero.cat'
+/** new-api 未暴露 quota_per_unit 时的默认换算率（1 USD = 500000 quota）。 */
+const NEWAPI_DEFAULT_QUOTA_PER_UNIT = 500_000
+/**
+ * zero.cat 类 provider 名匹配：settings 里的 key 可能是 `zerocat` / `zero`，
+ * DSH 也可能给自定义路由加命名空间前缀（如 `pi-ai:zerocat` / `pi-ai/zerocat`），
+ * 故按非字母数字边界做宽松匹配，避免 provider 名写法差异导致适配器落空。
+ */
+const ZEROCAT_PROVIDER_RE = /(?:^|[^a-z0-9])zero(?:cat)?(?:$|[^a-z0-9])/i
+
+function isZeroCatProvider(provider: string): boolean {
+  return ZEROCAT_PROVIDER_RE.test(provider)
+}
+
+/** 站点 host 形状：只接受点分域名（小写、可含连字符，至少两段）。 */
+const NEWAPI_HOST_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/u
+
+/**
+ * 内网 / 回环 / 保留地址。Host 侧要按调用方给的 host 发探测与余额请求，
+ * 必须先挡掉这些，否则本地路由会变成内网探测器（SSRF）。
+ */
+function isPrivateHost(host: string): boolean {
+  if (host === 'localhost' || host.endsWith('.localhost')) return true
+  for (const suffix of ['.local', '.internal', '.lan', '.home', '.corp']) {
+    if (host.endsWith(suffix)) return true
+  }
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/u.exec(host)
+  if (v4 === null) return false
+  const a = Number(v4[1])
+  const b = Number(v4[2])
+  if (a === 0 || a === 10 || a === 127 || a >= 224) return true
+  if (a === 192 && b === 168) return true
+  if (a === 172 && b >= 16 && b <= 31) return true
+  if (a === 169 && b === 254) return true
+  if (a === 100 && b >= 64 && b <= 127) return true
+  return false
+}
+
+/** 规范化并校验 new-api 站点 host；不合法或指向内网时返回 undefined。 */
+function normalizeNewApiHost(rawHost: string): string | undefined {
+  const host = rawHost.trim().toLowerCase().replace(/:\d+$/u, '')
+  if (host === '' || host.length > 253) return undefined
+  if (!NEWAPI_HOST_RE.test(host)) return undefined
+  if (isPrivateHost(host)) return undefined
+  return host
+}
+
+/**
+ * 已知站点的历史凭据 ref（向后兼容，优先于按 host 派生的名字）。
+ * zero.cat 早期用 `ZEROCAT_ACCESS_TOKEN`，保留它以免用户已配的令牌失效。
+ */
+const NEWAPI_REF_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  'zero.cat': ZEROCAT_TOKEN_REFS,
+}
+
+/**
+ * host → 凭据 ref 列表（首个用于写入）。派生名形如
+ * `NEWAPI_TOKEN_API_EXAMPLE_COM`，满足凭据 ref 的 POSIX 标识符语法。
+ */
+function newApiTokenRefs(host: string): readonly string[] {
+  const alias = NEWAPI_REF_ALIASES[host]
+  if (alias !== undefined) return alias
+  return [`NEWAPI_TOKEN_${host.toUpperCase().replace(/[^A-Z0-9]/gu, '_')}`]
+}
+
+/**
+ * 凭据写入面。基类 `CredentialProvider` 的类型面只暴露 resolve/describe 与
+ * 两个 notify（写入取决于当前值，由本地 provider 在文件锁内实现），因此
+ * `write` 只能按运行时形状窄化；服务缺失该方法时路由返回 501 而不是静默失败。
+ * 传 `undefined` 表示清除该 ref。
+ */
+interface CredentialWriter {
+  write(ref: unknown, value?: string): Promise<void>
+}
+
+function credentialWriter(ctx: Context): CredentialWriter | undefined {
+  const service = ctx.credentials as unknown as Partial<CredentialWriter>
+  return typeof service.write === 'function' ? service as CredentialWriter : undefined
+}
+
 interface QuotaBalanceInfo {
   currency?: string
   total_balance?: string
@@ -669,7 +766,123 @@ async function queryOpencodeGo(ctx: Context, provider: string): Promise<QuotaPay
   }
 }
 
+interface NewApiSelfResponse {
+  data?: {
+    /** 剩余额度，单位是 quota（非货币）。 */
+    quota?: number
+    used_quota?: number
+    display_name?: string
+  }
+}
+
+interface NewApiStatusResponse {
+  data?: {
+    quota_per_unit?: number
+    /** USD / CNY / CUSTOM / TOKENS；决定金额与货币符号的呈现方式。 */
+    quota_display_type?: string
+    display_in_currency?: boolean
+    custom_currency_symbol?: string
+    custom_currency_exchange_rate?: number
+    usd_exchange_rate?: number
+  }
+}
+
+/**
+ * new-api 指纹探测：公开的 `/api/status` 会暴露 quota 换算与展示配置，
+ * 这些字段（`quota_per_unit` / `quota_display_type` / `display_in_currency`）
+ * 是 new-api / one-api 系的可靠标志，别的框架不会同时给出。
+ * 任何失败都当作「不是 new-api」，调用方据此决定是否显示余额入口。
+ */
+async function detectNewApi(host: string): Promise<boolean> {
+  try {
+    const response = await fetch(`https://${host}/api/status`, {
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(8_000),
+    })
+    if (!response.ok) return false
+    const data = await response.json() as NewApiStatusResponse
+    const view = data.data
+    if (view === undefined) return false
+    if (typeof view.quota_per_unit === 'number' && view.quota_per_unit > 0) return true
+    if (typeof view.quota_display_type === 'string' && view.quota_display_type !== '') return true
+    return typeof view.display_in_currency === 'boolean'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * new-api / one-api 部署（zero.cat 及其它中转站）的余额查询。
+ *
+ * `data.quota` 是 quota 单位，需要除以站点换算率才是货币金额：
+ * 换算率取 `/api/status` 的 `quota_per_unit`（new-api 默认 500000 = 1 USD）。
+ * 货币符号按 `quota_display_type` 判定 —— 注意 `custom_currency_symbol` 在
+ * 非自定义货币时是占位符 `¤`，不能直接拿来展示；老版本站点没有
+ * `quota_display_type` 时回退到 `display_in_currency` 布尔位。
+ */
+async function queryNewApi(
+  ctx: Context,
+  provider: string,
+  baseUrl: string,
+  tokenRefs: readonly string[],
+): Promise<QuotaPayload> {
+  const token = await resolveFirstCredential(ctx, tokenRefs)
+  if (token === undefined) return unavailable(provider)
+  const base = baseUrl.replace(/\/+$/, '')
+  const self = await fetchJson(`${base}/api/user/self`, token) as NewApiSelfResponse
+  const quota = self.data?.quota
+  if (typeof quota !== 'number' || !Number.isFinite(quota)) return unavailable(provider)
+
+  let perUnit = NEWAPI_DEFAULT_QUOTA_PER_UNIT
+  let displayType = ''
+  let customSymbol = ''
+  let customRate = 1
+  let inCurrency: boolean | undefined
+  try {
+    const status = await fetchJson(`${base}/api/status`, token) as NewApiStatusResponse
+    const data = status.data
+    const unit = data?.quota_per_unit
+    if (typeof unit === 'number' && unit > 0) perUnit = unit
+    if (typeof data?.quota_display_type === 'string') displayType = data.quota_display_type.trim().toUpperCase()
+    if (typeof data?.custom_currency_symbol === 'string') customSymbol = data.custom_currency_symbol.trim()
+    const rate = data?.custom_currency_exchange_rate
+    if (typeof rate === 'number' && rate > 0) customRate = rate
+    if (typeof data?.display_in_currency === 'boolean') inCurrency = data.display_in_currency
+  } catch {
+    // 站点未开放 /api/status 或结构不同：沿用默认换算率与美元符号。
+  }
+
+  // TOKENS：站点按 token 数计价，不换算成货币。
+  if (displayType === 'TOKENS') {
+    return { provider, kind: 'balance', balance: String(quota) }
+  }
+  // 老版本站点：display_in_currency=false 表示按 quota 原值展示。
+  if (displayType === '' && inCurrency === false) {
+    return { provider, kind: 'balance', balance: String(quota) }
+  }
+
+  let currency = '$'
+  let amount = quota / perUnit
+  if (displayType === 'CNY') {
+    currency = '¥'
+  } else if (displayType === 'CUSTOM') {
+    if (customSymbol !== '' && customSymbol !== '¤') currency = customSymbol
+    amount *= customRate
+  }
+
+  return {
+    provider,
+    kind: 'balance',
+    balance: amount.toFixed(2),
+    currency,
+  }
+}
+
 async function queryQuota(ctx: Context, provider: string): Promise<QuotaPayload> {
+  // new-api 系站点先按 provider 名匹配（zerocat / zero，含带命名空间前缀的写法）。
+  if (isZeroCatProvider(provider)) {
+    return queryNewApi(ctx, provider, ZEROCAT_BASE_URL, ZEROCAT_TOKEN_REFS)
+  }
   switch (provider) {
     case 'deepseek':
     case 'deepseek-official':
@@ -702,7 +915,7 @@ export function apply(ctx: Context): void {
     path: '/liuli-quota',
     handler: async (req, res) => {
       try {
-        // 只允许同源页面读取额度；带 Origin 的跨站请求直接拒绝。
+        // 只允许同源页面读写额度；带 Origin 的跨站请求直接拒绝。
         const origin = req.headers.origin
         if (origin !== undefined) {
           const originHost = new URL(origin).host
@@ -713,6 +926,61 @@ export function apply(ctx: Context): void {
           }
         }
         const url = new URL(req.url ?? '/', 'http://localhost')
+
+        // ── new-api 站点面（设置页「模型服务商」注入的输入框与通用余额查询用）──
+        // GET ?detect=<host>：探测该站点是否为 new-api（/api/status 指纹）。
+        const detectHost = url.searchParams.get('detect')
+        if (req.method === 'GET' && detectHost !== null) {
+          const host = normalizeNewApiHost(detectHost)
+          if (host === undefined) {
+            json(res, 400, { ok: false, error: 'invalid or non-public host' })
+            return
+          }
+          json(res, 200, { ok: true, host, newApi: await detectNewApi(host) })
+          return
+        }
+        // GET ?probe=<host>：只回答「该站点的令牌是否已配置」，绝不回显明文。
+        const probeHost = url.searchParams.get('probe')
+        if (req.method === 'GET' && probeHost !== null) {
+          const host = normalizeNewApiHost(probeHost)
+          if (host === undefined) {
+            json(res, 400, { ok: false, error: 'invalid or non-public host' })
+            return
+          }
+          const token = await resolveFirstCredential(ctx, newApiTokenRefs(host))
+          json(res, 200, { ok: true, host, configured: token !== undefined })
+          return
+        }
+        // GET ?host=<host>：按站点查询余额（provider 名与站点无关，通用入口）。
+        const balanceHost = url.searchParams.get('host')
+        if (req.method === 'GET' && balanceHost !== null) {
+          const host = normalizeNewApiHost(balanceHost)
+          if (host === undefined) {
+            json(res, 400, { provider: balanceHost, kind: 'unavailable', error: 'invalid or non-public host' })
+            return
+          }
+          json(res, 200, await queryNewApi(ctx, host, `https://${host}`, newApiTokenRefs(host)))
+          return
+        }
+        // POST {host, token}：写入（token 为空则清除）站点余额令牌。
+        if (req.method === 'POST') {
+          const body = await readJsonBody(req) as { host?: unknown; token?: unknown } | null
+          const rawToken = typeof body?.token === 'string' ? body.token.trim() : ''
+          const host = normalizeNewApiHost(typeof body?.host === 'string' ? body.host : '')
+          if (host === undefined) {
+            json(res, 400, { ok: false, error: 'invalid or non-public host' })
+            return
+          }
+          const writer = credentialWriter(ctx)
+          if (writer === undefined) {
+            json(res, 501, { ok: false, error: 'credentials provider does not support writing' })
+            return
+          }
+          await writer.write(credentialRef(newApiTokenRefs(host)[0] ?? ''), rawToken === '' ? undefined : rawToken)
+          json(res, 200, { ok: true, host, configured: rawToken !== '' })
+          return
+        }
+
         const provider = url.searchParams.get('provider') ?? ''
         if (provider === '') {
           json(res, 400, { error: 'missing provider' })

@@ -1076,7 +1076,15 @@ export function LiuliHeaderFullscreen() {
 
 /** 布局记忆键（localStorage，随浏览器持久化）。 */
 export const HEADER_HEIGHT_LS_KEY = 'liuli:header-height'
-export const HEADER_MIN_H = 52
+/**
+ * 页头高度下限（拉伸手柄 clamp），同时也是**无高度记忆时的默认高度**。
+ *
+ * 78 是用户元素拾取实测值：会话页头 tabs 按钮底部完整可见的最小高度
+ * （实测 x=284 y=4 1257x78）。默认高度、拉伸手柄下限、dock sash 下限
+ * （dock-shell-frame 的 childMinPx）统一取这个值，保证「打开时的高度 =
+ * 手能拖到的最小高度」，不会出现默认比下限还矮、一拖就被弹回去的割裂。
+ */
+export const HEADER_MIN_H = 78
 export const HEADER_MAX_H = 320
 const LS_KEY = HEADER_HEIGHT_LS_KEY
 const MIN_H = HEADER_MIN_H

@@ -28,7 +28,7 @@
 | 📏 header 拉伸 | header 底部垂直拖拽手柄，高度记忆到 localStorage，刷新/切换会话自动恢复 |
 | ⛶ header 全屏 | header 工具区最右端（右上角）Material 图标按钮 + `F11` 快捷键切换浏览器全屏（标准 Fullscreen API，纯 Web 与 DSH Desktop 一致）；进入/退出状态图标联动（fullscreen / fullscreen_exit） |
 | 📐 对话轮次刻度侧边栏 | 琉璃时间线风格：左侧竖线刻度，胶囊沿竖线滑动，显示该轮时间/commit号/摘要，点击刻度跳转对应轮次（仅 Chat 视图显示） |
-| 💳 供应商额度显示 | header 标题区普通文本，跟在 agent preset 标签右侧：套餐供应商显示本月/本周/5小时三项额度，非套餐供应商显示余额；已内置 DeepSeek 余额（`/user/balance`）与 OpenCode Go 套餐（`/zen/go/v1/usage`），密钥经 Host `/liuli-quota` 路由从 credentials/env 读取，不进浏览器 |
+| 💳 供应商额度显示 | header 标题区普通文本，跟在 agent preset 标签右侧：套餐供应商显示本月/本周/5小时三项额度，非套餐供应商显示余额；已内置 DeepSeek 余额（`/user/balance`）、OpenCode Go 套餐（`/zen/go/v1/usage`）、new-api 中转站（zero.cat，`/api/user/self`）余额与 Command Code（5 小时/每周窗口 + 月额度 + 信用），密钥经 Host `/liuli-quota` 路由或对方插件自己的 Host 半读取，不进浏览器 |
 | ⚪ 悬浮工具球 | 常驻悬浮圆点：贴边吸附半隐藏（JS 热区防抖动）、拖拽随行、打开后自动夹进视口；快捷键 `Alt+Shift+E` 唤起 |
 | 🎯 元素选择器 | 悬浮球进入拾取模式后点击任意页面元素，生成引用 chip 插入当前会话输入框（`@` 触发源 + ReferenceCodec）；发送后用户气泡中以简洁卡片展示，悬停展开详情；工具旁提供「插入 / 检查」模式切换小按钮——检查模式下点击元素等价于网页右键「检查」：Host 调用 `webContents.inspectElement(x,y)` 在侧边 DevTools 的 Elements 面板定位该元素；**会话标题过滤**：元素引用序列化文本作为首条消息时，DSH 自动生成的会话标题会变成 "[selected element] <div> rect: …" 机器文本。插件只做展示层过滤：把命中元素块的标题展示面（侧栏会话行、会话页头面包屑、悬停卡、搜索结果、工作区切换器）的叶子文本替换为清洗结果——元素块字段整体剥离、保留块前后的用户文字；纯元素块标题（DSH 只取开头几词、块之后的原话进不了标题）从会话快照 / localStorage 缓存取首条消息里的真实用户文字替代显示，取不到才为空。无「网页元素」占位文案，**不重命名、不改动会话存储的标题**。`unofficial_dom` 组，MutationObserver 装饰，React 重渲染后重新清洗 |
 | 🔍 开发者工具 | 悬浮球新增「开发者工具」（`F12` / `Alt+Shift+I`）：经 Host `/liuli-window` 路由调用 Electron `webContents.openDevTools({ mode:'right' })`，打开/关闭 Chrome F12 式侧边停靠的 DevTools 窗口（再次触发关闭）；纯 Web 部署返回 available:false 并提示改用浏览器 F12 |
@@ -86,8 +86,29 @@
 
 - **DeepSeek**：读取 `DEEPSEEK_API_KEY` / `DEEPSEEK_OFFICIAL_API_KEY`，请求 `https://api.deepseek.com/user/balance` 显示余额。
 - **OpenCode Go**：读取 `OPENCODE_GO_API_KEY` / `OPENCODE_API_KEY`，请求 `https://opencode.ai/zen/go/v1/usage` 显示 5 小时 / 本周 / 本月套餐额度。
+- **new-api / one-api 中转站（zero.cat 及任意同类站点）**：读取该站点的「系统访问令牌」凭据（**不是** `sk-` 开头的 API key），请求 `{base}/api/user/self` 取 `data.quota`，再除以 `{base}/api/status` 的 `quota_per_unit`（默认 500000）换算成货币余额；货币符号按 `quota_display_type` 判定（USD → `$`，CNY → `¥`，CUSTOM → 站点自定义符号，TOKENS → 直接显示 quota）。
+  - **站点自动识别**：provider 名匹配 `zerocat` / `zero`（含 `pi-ai:zerocat` 这类命名空间前缀）时走快速路径，默认站点 `https://zero.cat`（环境变量 `ZEROCAT_BASE_URL` 可覆盖）；其余 provider 由通用兜底读其 `baseURL`，让 Host 侧探一次 `/api/status`，看到 `quota_per_unit` / `quota_display_type` / `display_in_currency` 指纹才认定为 new-api 站点，然后按 host 查询 —— **新增 new-api 站点零配置**。
+  - **凭据 ref 规则**：`zero.cat` 沿用历史 ref `ZEROCAT_ACCESS_TOKEN`（向后兼容）；其它站点按 host 派生 `NEWAPI_TOKEN_<HOST_UPPER_SNAKE>`，例如 `api.example.com` → `NEWAPI_TOKEN_API_EXAMPLE_COM`。
+  - **SSRF 防护**：Host 侧只接受 https 点分域名，拒绝 IP 字面量、`localhost`、`*.local` / `*.internal` 等后缀，以及 10/127/192.168/172.16-31/169.254/100.64 等私网与保留网段。
+  - ⚠️ 切勿调用 `{base}/api/user/token`：该接口会重新生成 access token，让用户手里的旧令牌立即失效。
+- **Command Code（`@mars-sea/dsh-commandcode-provider` 第三方 provider 插件）**：数据由对方插件自己的 Host 半经 `commandcode/report` Remote 提供（它内部打 `/alpha/whoami`、`/alpha/usage/summary`、`/alpha/billing/credits`、`/alpha/billing/subscriptions`），琉璃**不接触其 API 密钥**，只读它已经校验过的展示字段：5 小时窗口与每周窗口显示「已用 / 上限」+ 细进度条（悬停给出重置时间与超限提示）、月额度显示套餐内含额度、信用显示「已购 + 赠送」合计（悬停给出构成明细）。
+  - **接入方式**：`ctx.inject(['remote.commandcode'], …)` 等待对方挂载的命名空间服务，拿到后把 `report()` 交给额度控制器；对方插件停用/卸载时服务消失，回调清理并让页头隐藏额度。刻意不写进包级 `inject`——对方插件缺席时那会让启动图死锁。
+  - **多账户轮换**：报告按账户返回，页头展示当前生效账户（`active`），其次第一个已配置账户；悬停标题带账户名、套餐名与本周期花费。
+  - **刷新节流**：`report()` 一次要打 4 个上游端点，因此结果按 60 秒 TTL 缓存、并发调用合并为一次请求（切会话/设置变更/重连不会变成对上游的轮询）。
+  - **失败表现**：账户全部端点失败时（`blocked`）页头显示「额度不可用」并在悬停给出原因（密钥被拒 401 / 服务 5xx / 网络不可达）；字段缺失则隐藏页头，不报错。
 
 密钥只在 Host 侧 `/liuli-quota` 路由中通过 credentials/env 解析，不会进入浏览器 bundle。
+
+**配置入口**：new-api 站点的「系统访问令牌」可直接在 DSH 设置 →「模型服务商」里配置 —— 琉璃会在 provider 编辑表单（API Key 字段下方）注入一行「余额令牌」输入框，站点地址从表单已有的 baseURL 自动读取并经 Host 探测确认，不用重复输站点，插件也不用登记站点清单。令牌经 Host 侧 `POST /liuli-quota {host, token}` 写入 credentials，浏览器只拿得到「已配置 / 未配置」状态、从不回显明文；留空保存即清除。该注入随「非官方增强 → DOM 观察增强」开关挂载（`quota-token-inject.ts`）。
+
+### 模型请求重试的范围
+
+重试由宿主 `@deepseek-ai/dsh-llm-retry` 在 `agent/request-error` 扩展点上执行，策略取自每个 provider profile 的 `retryPolicy`；`mode: normal` 时**只有 `failure.code` 命中 `retryableCodes` 才会重试**（`lib/index.js` 的 `recover()`）。
+
+- 宿主默认 `retryableCodes` 只有 5 类：`EMPTY_RESPONSE` / `RATE_LIMIT` / `SERVER` / `TIMEOUT` / `TRANSPORT`。
+- pi-ai 适配器（`dsh-llm-pi-ai` 的 `classifyPiAiError`）按错误文本分类：401/403 → `AUTH`，429 → `RATE_LIMIT`，5xx → `SERVER`，timeout → `TIMEOUT`，网络/流中断 → `TRANSPORT`，**其余一律 `PI_AI_ERROR`**；宿主对非 `HarnessError` 抛出值标 `UNKNOWN`。
+- 因此「上游中断 / 流异常结束 / 非标准错误文本」，以及**中转站用 400 报的渠道故障**（→ `INVALID_REQUEST`）默认一次都不重试 —— 这是「本轮运行失败」最常见的来源。
+- 功能分区「模型请求重试」行的开关**「重试上游中断与 400 错误」**开启后，把 `PI_AI_ERROR` / `UNKNOWN` / `INVALID_REQUEST` 并入 `retryableCodes`（写 `RETRY_BASE_CODES + RETRY_EXTRA_CODES`）；关闭时不写该键，回到宿主默认列表（宿主升级后默认变化也能自动跟上）。确定性失败（`AUTH` / `QUOTA_EXCEEDED` / `CONTEXT_WINDOW_EXCEEDED` / `ABORTED`）刻意不纳入。
 
 ## 与宿主 shell 的配合（官方 harness 兼容）
 

@@ -9,7 +9,9 @@
 //   1. 把 dsh-liuli-ui-enhance 写入 ~/.dsh/profiles/desktop/package.json
 //      dependencies（默认把当前源码 pack 成 tarball 后以 file: 安装；
 //      --from-npm 则写版本号）。
-//   2. 确保 ~/.dsh/profiles/desktop/cordis.patch.yml 里注册了 dsh-liuli-ui-enhance。
+//   2. 把插件加入 package.json 的 dsh.profile.bundles（bundle 层注册），
+//      并清理旧版写入 cordis.patch.yml 的 insert 注册块——两处同时注册
+//      会让 DSH 启动时报 duplicate loader entry id。
 //   3. 在 profile 目录执行 pnpm install。
 //
 // 为什么不用 link:：pnpm 对 link: 本地目录不会自动安装插件自身的
@@ -112,6 +114,27 @@ function fail(message) {
   process.exit(1);
 }
 
+/** 清理旧版本安装器写入 cordis.patch.yml 的 insert 注册块。
+ * 现插件由 package.json 的 dsh.profile.bundles 注册；patch 层残留的
+ * 同 ID insert 会导致 DSH 启动报
+ * "duplicate loader entry id \"dsh-liuli-ui-enhance\" in the composed profile"。 */
+function scrubLegacyPatchRegistration() {
+  if (!existsSync(patchPath)) return;
+  const patch = readFileSync(patchPath, 'utf8');
+  const blockRegex = /# 琉璃主题插件（由 scripts\/install-desktop\.mjs 写入）\r?\n- insert:\r?\n\s+- id: dsh-liuli-ui-enhance\r?\n\s+name: 'dsh-liuli-ui-enhance'\s*/g;
+  const cleaned = patch.replace(blockRegex, '');
+  if (cleaned === patch) return;
+  let next = cleaned;
+  const hasEntries = next.split(/\r?\n/).some((line) => /^\s*-\s/.test(line));
+  if (!hasEntries && !/^\s*\[\]\s*$/m.test(next)) {
+    // 清理后没有任何数组条目时补一个 []，保证顶层数组合法（空文件会被解析成 null）
+    next = `${next.trimEnd()}\n\n[]\n`;
+  }
+  if (!next.endsWith('\n')) next = `${next}\n`;
+  writeFileSync(patchPath, next);
+  console.log(`[dsh-liuli-ui-enhance] 已从 ${patchPath} 移除旧版 insert 注册（现由 dsh.profile.bundles 注册）`);
+}
+
 if (!existsSync(profileDir)) {
   fail(
     `找不到 DSH Desktop profile 目录：${profileDir}\n`
@@ -125,44 +148,29 @@ if (!existsSync(packagePath)) {
   );
 }
 
-// 1. 声明插件依赖
+// 1. 声明插件依赖 + bundle 层注册（一次写入 package.json）
 const profilePkg = JSON.parse(readFileSync(packagePath, 'utf8'));
 profilePkg.dependencies ??= {};
 profilePkg.dependencies[pluginName] = depValue;
+
+// 插件注册统一走 package.json 的 dsh.profile.bundles。
+// 不要再往 cordis.patch.yml 写 insert：同一插件在 bundle 层和 patch 层
+// 各注册一次，DSH 启动时 assertUniqueEntryIds 会抛
+// "duplicate loader entry id" 并拒绝启动（2026-09-09 实测踩坑）。
+profilePkg.dsh ??= {};
+profilePkg.dsh.profile ??= {};
+profilePkg.dsh.profile.bundles ??= [];
+if (profilePkg.dsh.profile.bundles.includes(pluginName)) {
+  console.log('[dsh-liuli-ui-enhance] dsh.profile.bundles 已包含插件，跳过');
+} else {
+  profilePkg.dsh.profile.bundles.push(pluginName);
+  console.log('[dsh-liuli-ui-enhance] 已将插件加入 dsh.profile.bundles');
+}
 writeFileSync(packagePath, `${JSON.stringify(profilePkg, null, 2)}\n`);
 console.log(`[dsh-liuli-ui-enhance] 已写入 ${pluginName}: ${depValue} -> ${packagePath}`);
 
-// 2. 确保 cordis.patch.yml 注册插件
-const patchBlock = [
-  '',
-  '# 琉璃主题插件（由 scripts/install-desktop.mjs 写入）',
-  '- insert:',
-  '    - id: dsh-liuli-ui-enhance',
-  `      name: '${pluginName}'`,
-  '',
-].join('\n');
-
-if (!existsSync(patchPath)) {
-  writeFileSync(patchPath, patchBlock.trimStart());
-  console.log(`[dsh-liuli-ui-enhance] 已创建 ${patchPath} 并注册插件`);
-} else {
-  const patch = readFileSync(patchPath, 'utf8');
-  if (patch.includes(`id: dsh-liuli-ui-enhance`) || patch.includes(`name: '${pluginName}'`)) {
-    console.log(`[dsh-liuli-ui-enhance] ${patchPath} 已包含插件注册，跳过`);
-  } else {
-    const lines = patch.split(/\r?\n/);
-    const emptyListIndex = lines.findIndex((line) => line.trim() === '[]');
-    if (emptyListIndex !== -1) {
-      // 全新 profile 默认是 `[]`，直接原位替换为注册块，避免 YAML 双文档/流式与块式混用。
-      lines[emptyListIndex] = patchBlock.trim();
-      writeFileSync(patchPath, `${lines.join('\n')}\n`);
-      console.log(`[dsh-liuli-ui-enhance] 已在 ${patchPath} 写入插件注册（替换空列表）`);
-    } else {
-      writeFileSync(patchPath, `${patch.trimEnd()}\n${patchBlock}\n`);
-      console.log(`[dsh-liuli-ui-enhance] 已在 ${patchPath} 追加插件注册`);
-    }
-  }
-}
+// 2. 清理旧版安装器残留在 cordis.patch.yml 的 insert 注册块（防复发）
+scrubLegacyPatchRegistration();
 
 // 3. 安装依赖
 if (noInstall) {

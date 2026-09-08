@@ -80,10 +80,42 @@ export interface ModelDirectoryLike {
   directoryFor(sessionId: string): { store: { subscribe(fn: () => void): () => void; getSnapshot(): { current: { provider: string; model: string } | null } } }
 }
 
-interface RemoteResultLike<T> {
+/**
+ * 第三方 provider 插件贡献的 Remote 命名空间面。
+ *
+ * DSH 的 Remote 命名空间由插件在自己的 Client 半用 `ctx.remote.$mount()` 挂载，
+ * 服务名是 `remote.<namespace>`（见 dsh-api-gateway 的 `remoteServiceKey`）。
+ * 本插件既不能静态 import 它的类型（第三方包不是本插件的依赖），也不能把它写进
+ * 包级 `inject`（插件缺席会让启动图死锁）。约定：这里只声明「消费方需要的结构
+ * 面」，由 `liuliRemoteNamespace()` 在运行时按形状窄化；缺席时返回 null，消费方
+ * 降级（额度显示隐藏，不报错）。
+ */
+export interface RemoteResultLike<T> {
   readonly ok: boolean
   readonly value?: T
   readonly error?: { message?: string }
+}
+
+/** 任意 Remote 命名空间服务：方法名 → 调用函数（方法由服务动态定义）。 */
+export type RemoteNamespaceLike = Record<string, ((...args: never[]) => unknown) | undefined>
+
+/**
+ * 取 `remote.<namespace>` 命名空间服务（如 `commandcode`）。
+ *
+ * 两条等价路径，先走 traced 服务的 associate 转发（与插件自己用的
+ * `namespaceCtx.remote.commandcode` 同一入口），再退回 `ctx.get()`：
+ * 服务随贡献卸载时两处都会立即消失，因此调用方每次拿到的都是当下状态。
+ * @param ctx - 已 `inject(['remote.<namespace>'])` 的上下文。
+ * @param namespace - Remote 命名空间名（插件自定义）。
+ * @returns 命名空间服务，未挂载时 null。
+ */
+export function liuliRemoteNamespace(ctx: Context, namespace: string): RemoteNamespaceLike | null {
+  const remote = ctx.remote as unknown as Record<string, unknown> | undefined
+  const forwarded = remote?.[namespace]
+  if (typeof forwarded === 'object' && forwarded !== null) return forwarded as RemoteNamespaceLike
+  const service = (ctx as unknown as { get(name: string): unknown }).get(`remote.${namespace}`)
+  if (typeof service !== 'object' || service === null) return null
+  return service as RemoteNamespaceLike
 }
 
 /** 把 Typert RemoteResult 拆包成 ApiResult；网络异常也收敛成 {ok:false}。 */

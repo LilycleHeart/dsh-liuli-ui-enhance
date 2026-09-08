@@ -50,11 +50,14 @@ pnpm install:desktop:npm
 1. 把 `dsh-liuli-ui-enhance` 写入 `~/.dsh/profiles/desktop/package.json` 的 `dependencies`；
    - 本地源码模式：`pnpm pack` 生成 tarball，以 `file:<tarball>` 安装；
    - 这样插件自身的 `dependencies`（`iconv-lite`、`react` 等）会被装进 profile。
-2. 确保 `~/.dsh/profiles/desktop/cordis.patch.yml` 注册了 `dsh-liuli-ui-enhance`；
+2. 把插件加入同文件 `dsh.profile.bundles`（bundle 层注册），并清理旧版写入
+   `cordis.patch.yml` 的 insert 注册块——两处同时注册会让 DSH 启动时报
+   `duplicate loader entry id "dsh-liuli-ui-enhance" in the composed profile`；
 3. 在 desktop profile 目录执行 `pnpm install`。
 
-> **从旧包名 `@deepseek-ai/liuli-theme` 迁移时**：安装器只会追加新注册，不会自动删除旧依赖和旧
-> `cordis.patch.yml` insert 块。如需彻底切换，请手动移除 profile 中的旧插件依赖、旧 insert 块后
+> **从旧包名 `@deepseek-ai/liuli-theme` 迁移时**：安装器会自动清理它自己写入的
+> `dsh-liuli-ui-enhance` 旧 insert 块，但不会删除旧包名 `@deepseek-ai/liuli-theme` 的依赖和
+> insert 块（插件 ID 不同）。如需彻底切换，请手动移除 profile 中的旧插件依赖、旧 insert 块后
 > 再执行 `pnpm install`。
 
 `pnpm patch:desktop` 会：
@@ -88,15 +91,28 @@ pnpm pack --pack-destination /tmp/liuli
 pnpm add file:/tmp/liuli/dsh-liuli-ui-enhance-0.1.0.tgz
 ```
 
-然后确认 `~/.dsh/profiles/desktop/cordis.patch.yml` 里有：
+然后确认 `~/.dsh/profiles/desktop/package.json` 的 `dsh.profile.bundles` 里有
+`"dsh-liuli-ui-enhance"`（`dsh` 结构不存在时手动补全；`dsh-base`/`dsh-web-app`
+等已有条目以实际 profile 为准，只增不改）：
 
-```yaml
-- insert:
-    - id: dsh-liuli-ui-enhance
-      name: 'dsh-liuli-ui-enhance'
+```json
+{
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-web-app",
+        "dsh-liuli-ui-enhance"
+      ]
+    }
+  }
+}
 ```
 
-最后重启 DSH Desktop。移除该注册行即回到素版外观（shell 的外观行降级为直连切换，无圆形遮罩）。
+> **不要**改用 `cordis.patch.yml` 的 `- insert:` 注册：插件已被 bundles 注册时再
+> insert 一次属于重复注册，DSH 启动报 `duplicate loader entry id` 并拒绝启动。
+
+最后重启 DSH Desktop。从 `dsh.profile.bundles` 移除该插件即回到素版外观（shell 的外观行降级为直连切换，无圆形遮罩）。
 
 ### Agent / AI 安装方式（避坑）
 
@@ -116,7 +132,7 @@ pnpm add file:/tmp/liuli/dsh-liuli-ui-enhance-0.1.0.tgz
    - 检测构建依赖（tsc/tsdown）缺失时自动 pnpm install（全新 clone 不先 install 也能成功）
    - pnpm pack 生成 tarball
    - 写入 package.json 的 dependencies（file:<tarball>）
-   - 修复 cordis.patch.yml（全新 profile 的 [] 会被替换为 insert 块）
+   - 把插件加入 package.json 的 dsh.profile.bundles，并清理 cordis.patch.yml 旧 insert 注册
    - 在 profile 目录执行 pnpm install
 
 3. 如果必须手动安装，不要用 link:
@@ -135,12 +151,10 @@ pnpm add file:/tmp/liuli/dsh-liuli-ui-enhance-0.1.0.tgz
    否则启动时报：
    Cannot find package 'dsh-liuli-ui-enhance'
 
-5. 全新 profile 的 cordis.patch.yml 默认是 []
-   不要直接在 [] 后面追加 YAML，会解析失败。
-   应替换为：
-   - insert:
-       - id: dsh-liuli-ui-enhance
-         name: 'dsh-liuli-ui-enhance'
+5. 插件注册一律走 package.json 的 dsh.profile.bundles，不要写 cordis.patch.yml
+   bundle 层已注册的插件再在 patch 层 insert 一次，同一 ID 出现两次即重复注册，
+   DSH 启动报 duplicate loader entry id 并拒绝启动。
+   cordis.patch.yml 保持 []（或只放与插件无关的 patch 条目）。
 
 6. 安装后不需要重启 DSH Desktop
    客户端插件安装到 profile 后，刷新页面即可加载新 bundle；不要主动重启 DSH Desktop（会改变 Web 端口并打断调试）。
@@ -155,7 +169,8 @@ pnpm add file:/tmp/liuli/dsh-liuli-ui-enhance-0.1.0.tgz
 8. 验证清单
    - $DSH_HOME/profiles/desktop/node_modules/dsh-liuli-ui-enhance/lib/index.js 存在
    - $DSH_HOME/profiles/desktop/node_modules/dsh-liuli-ui-enhance/lib/client.js 存在
-   - cordis.patch.yml 包含 dsh-liuli-ui-enhance insert
+   - package.json 的 dsh.profile.bundles 包含 dsh-liuli-ui-enhance
+   - cordis.patch.yml 不含 dsh-liuli-ui-enhance 的 insert 块（重复注册会启动失败）
    - 重启后页面出现 [data-liuli-theme] 和右侧边栏/窗口控制胶囊
 ```
 

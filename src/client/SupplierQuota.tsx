@@ -43,7 +43,7 @@ export function SupplierQuota({ sessionId }: { sessionId: SessionId }) {
     return (
       <span
         className={css.quota}
-        title={`${state.data.provider} 余额`}
+        title={state.data.title ?? `${state.data.provider} 余额`}
       >
         <span className={css.quotaLabel}>余额</span>
         <span className={css.quotaValue}>
@@ -57,14 +57,25 @@ export function SupplierQuota({ sessionId }: { sessionId: SessionId }) {
   return (
     <span
       className={css.quota}
-      title={`${state.data.provider} 套餐额度`}
+      title={state.data.title ?? `${state.data.provider} 套餐额度`}
     >
       {state.data.items.map(item => (
-        <span key={item.key} className={css.quotaItem}>
+        <span key={item.key} className={css.quotaItem} title={item.hint}>
           <span className={css.quotaLabel}>{item.label}</span>
           <span className={css.quotaValue}>{item.value}</span>
+          {/* 有比例时补一条细进度条（Command Code 窗口额度用） */}
+          {item.ratio === undefined ? null : (
+            <span className={css.quotaTrack} aria-hidden="true">
+              <span
+                className={css.quotaFill}
+                style={{ width: `${Math.round(item.ratio * 100)}%` }}
+              />
+            </span>
+          )}
         </span>
       ))}
     </span>
   )
 }
+
+
