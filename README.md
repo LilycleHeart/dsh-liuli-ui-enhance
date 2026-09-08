@@ -55,8 +55,8 @@ pnpm install:desktop
 pnpm patch:desktop      # 推荐：win32 无边框补丁（自动补丁失败不阻断插件）
 ```
 
-> 插件尚未发布到 npm，DSH 内置市场也不接受 GitHub 安装目标；请使用本仓库的
-> `pnpm install:desktop` 手动安装。
+> 插件已发布到 npm（`dsh-liuli-ui-enhance`），可通过 `dsh1024 plugin --profile web add dsh-liuli-ui-enhance` 安装；
+> 本地开发/调试仍推荐用本仓库的 `pnpm install:desktop` 手动安装。
 
 详见 [docs/install.md](docs/install.md)。
 
@@ -65,6 +65,7 @@ pnpm patch:desktop      # 推荐：win32 无边框补丁（自动补丁失败不
 - [功能详解](docs/features.md)
 - [样式规范](docs/style-guide.md)
 - [安装与构建](docs/install.md)
+- [版本发布与分支约定](docs/release.md)
 - [浏览器自动化](docs/browser-use.md)
 
 ## License

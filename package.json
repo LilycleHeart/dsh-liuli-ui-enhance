@@ -55,7 +55,8 @@
     "watch": "tsdown --watch",
     "install:desktop": "node scripts/install-desktop.mjs",
     "install:desktop:npm": "node scripts/install-desktop.mjs --from-npm",
-    "patch:desktop": "node scripts/patch-desktop-frameless.mjs"
+    "patch:desktop": "node scripts/patch-desktop-frameless.mjs",
+    "release": "node scripts/publish.mjs"
   },
   "license": "MIT",
   "repository": {
