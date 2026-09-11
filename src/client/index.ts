@@ -100,6 +100,7 @@ import { startSessionMarkerDecoration } from './session-markers.ts'
 import { startSessionTitleFilter } from './session-title-filter.ts'
 import { startSessionContextMenu } from './session-context-menu.ts'
 import { startSettingsSelectUpgrade } from './settings-selects.ts'
+import { startStatsLineIcons } from './stats-line-icons.ts'
 import { startWorkspaceContextMenu } from './workspace-context-menu.ts'
 import { startWorkspaceNewSessionCollapse } from './workspace-new-session-collapse.ts'
 import { startSidebarLogoDetailsCollapse } from './logo-details-collapse.ts'
@@ -735,6 +736,14 @@ export function apply(ctx: ClientContext): void {
     if (!unofficial('dom')) return () => {}
     return startSettingsSelectUpgrade()
   }, 'dsh-liuli-ui-enhance: settings selects upgrade')
+
+  // ── 会话统计行图标：官方 StatsLine（`28 轮 · 387 步 | LLM … | 缓存命中 …`）
+  //    的每个统计分组前注入一枚 16px Material Symbols 语义图标（仅装饰文本，
+  //    不改宿主内容；React 重渲染后由观察器重新装饰）──
+  ctx.effect(() => {
+    if (!unofficial('dom')) return () => {}
+    return startStatsLineIcons()
+  }, 'dsh-liuli-ui-enhance: stats line icons')
 
   // ── 设置页「模型服务商」余额令牌：在 new-api 中转站（zero.cat）的 provider
   //    编辑表单里注入一行「余额令牌」输入框，站点从表单的 baseURL 自动取 ──
