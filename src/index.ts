@@ -23,6 +23,7 @@ import type { WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
 import { createBrowserEngine } from './browser-engine.ts'
 import { applyFramelessPatch, revertFramelessPatch } from './frameless-patch.ts'
 import { windowControlRoute } from './host-window.ts'
+import { openExternalRoute } from './host-open-external.ts'
 import { audioCaptureRoute, installSystemAudioCapture } from './host-audio.ts'
 
 export const name = 'dsh-liuli-ui-enhance'
@@ -1005,7 +1006,10 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.webServer.register(proxyRoute()), 'dsh-liuli-ui-enhance: /liuli-proxy route')
   // advanced（无边框）模式页面内窗口按钮（WindowControls.tsx）的宿主窗口控制面：
   // GET 查询可用/最大化态，POST 触发 minimize/toggleMaximize/close；纯 Web 返回 available:false。
-  ctx.effect(() => ctx.webServer.register(windowControlRoute()), 'dsh-liuli-ui-enhance: /liuli-window route')
+  ctx.effect(() => ctx.webServer.register(windowControlRoute(ctx)), 'dsh-liuli-ui-enhance: /liuli-window route')
+  // 2.0.9+ utility process 宿主没有主进程 shell 模块，用 child_process 承接
+  // 客户端 <webview> 面板的「在外部打开」（file:/http:/https:/mailto:）。
+  ctx.effect(() => ctx.webServer.register(openExternalRoute()), 'dsh-liuli-ui-enhance: /liuli-browser/open-external route')
   // 审查面板「在资源管理器中打开」：系统文件管理器定位文件（explorer /select 等）。
   ctx.effect(() => ctx.webServer.register(revealRoute(ctx)), 'dsh-liuli-ui-enhance: /liuli-reveal route')
   // 工作区右键菜单「在资源管理器中打开」：按 workspaceId 解析注册目录并打开系统文件管理器。

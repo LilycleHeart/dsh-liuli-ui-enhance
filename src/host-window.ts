@@ -5,19 +5,23 @@
  * 一起消失；页面内按钮（WindowControls.tsx）经本路由调用 Electron 主进程窗口
  * API 补回这三个动作：
  *
- * - GET  /liuli-window              → { available, maximized, fullScreen }
+ * - GET  /liuli-window              → { available, native, maximized, fullScreen, capabilities }
  * - POST /liuli-window { action }   → action: minimize | toggleMaximize | close
  *                                      | toggleDevTools | openDevTools | closeDevTools
  *                                      | inspectElement {x, y}
  *
  * close 走 BrowserWindow.close()，与原生关闭按钮同语义（desktop-shell 的
- * close 处理器会把窗口收进托盘而不是退出）。纯 Web 部署没有 Electron，
- * GET 返回 available:false，前端隐藏按钮。
+ * close 处理器会把窗口收进托盘而不是退出）。2.0.9+ 宿主插件跑在 Electron
+ * utility process，拿不到 BrowserWindow：GET 返回 { available:true,
+ * native:false, capabilities }（close 由渲染进程 window.close() 承接，
+ * minimize/toggleMaximize 前端不渲染），而不是让按钮整组消失；纯 Web 部署
+ * 仍返回 available:false，前端整组隐藏。
  *
  * Electron API 用本地结构化声明（monorepo 不安装 electron 包，无法取官方
  * 类型；与 browser-engine.ts 同款做法）。
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { Context } from '@deepseek-ai/cordis'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 
 /* ── 本路由用到的 Electron 主进程 API 最小面 ─────────────────────────── */
@@ -129,7 +133,7 @@ async function readJsonBody(req: IncomingMessage, limit = 4096): Promise<unknown
  * tree-shake 曾把"仅被 handler 调用一次"的独立 `async function serveWindowControls`
  * 连同其专用 helper 一并误删，只留悬空调用，请求时抛 ReferenceError、
  * webserver catch 兜底返回裸 400。内联后逻辑即 handler 本体，无独立函数可被删。 */
-export function windowControlRoute(): WebRoute {
+export function windowControlRoute(ctx: Context): WebRoute {
   return {
     kind: 'prefix',
     path: '/liuli-window',
@@ -139,18 +143,85 @@ export function windowControlRoute(): WebRoute {
           sendJson(res, 403, { ok: false, error: 'forbidden' })
           return
         }
+        // desktopRuntime 惰性读取（刻意不写进 inject 数组）：2.0.9+ 的 utility
+        // process 宿主里它是唯一还能操作 DevTools 的服务，缺失时该能力降级。
+        const desktopRuntime = ((): { toggleDeveloperTools?: () => unknown } | undefined => {
+          try {
+            const service = (ctx as unknown as { get?: (name: string, strict?: boolean) => unknown }).get?.('desktopRuntime', false)
+            return service !== null && typeof service === 'object' ? service as { toggleDeveloperTools?: () => unknown } : undefined
+          } catch {
+            return undefined
+          }
+        })()
+        const canToggleDevTools = typeof desktopRuntime?.toggleDeveloperTools === 'function'
         const electron = await loadElectron()
         const win = electron === undefined ? undefined : pickWindow(electron)
         if (win === undefined) {
-          // 纯 Web 部署或窗口不可得：前端据此隐藏页面内窗口按钮。
-          sendJson(res, 200, { available: false })
+          // 2.0.9+ 宿主插件跑在 Electron utility process，BrowserWindow 缺席。
+          // 这里不能返回 available:false（那会让页面内按钮整组消失），而是
+          // 「可用但无原生能力」：close 交给渲染进程 window.close()、
+          // minimize/toggleMaximize 由前端不渲染；toggleDevTools 若 desktopRuntime
+          // 可用则仍生效。纯 Web 部署同样落到此分支（前端本就不会渲染到）。
+          if (req.method === 'GET' || req.method === 'HEAD') {
+            sendJson(res, 200, {
+              available: true,
+              native: false,
+              maximized: false,
+              fullScreen: false,
+              capabilities: {
+                minimize: false,
+                toggleMaximize: false,
+                close: true,
+                toggleDevTools: canToggleDevTools,
+                inspectElement: false,
+              },
+            })
+            return
+          }
+          if (req.method !== 'POST') {
+            sendJson(res, 405, { ok: false, error: 'method not allowed' })
+            return
+          }
+          let degradedBody: unknown
+          try {
+            degradedBody = await readJsonBody(req)
+          } catch {
+            sendJson(res, 400, { ok: false, error: 'invalid JSON body' })
+            return
+          }
+          const degradedAction = (degradedBody as { action?: unknown } | null)?.action
+          // 无原生窗口时仍用 HTTP 200 回 {ok:false}：让客户端区分「该动作不支持」
+          // 与「路由本身坏了」。
+          if (degradedAction === 'toggleDevTools' && typeof desktopRuntime?.toggleDeveloperTools === 'function') {
+            try {
+              await desktopRuntime.toggleDeveloperTools()
+              sendJson(res, 200, { ok: true, available: true, native: false })
+            } catch (cause) {
+              sendJson(res, 200, { ok: false, error: cause instanceof Error ? cause.message : String(cause) })
+            }
+            return
+          }
+          if (degradedAction === 'close') {
+            sendJson(res, 200, { ok: false, error: 'close must be handled by the renderer (window.close())' })
+            return
+          }
+          sendJson(res, 200, { ok: false, error: 'native window control unavailable in utility-process host' })
           return
         }
         if (req.method === 'GET' || req.method === 'HEAD') {
           sendJson(res, 200, {
             available: true,
+            native: true,
             maximized: win.isMaximized(),
             fullScreen: win.isFullScreen(),
+            // 原生窗口全能力在位：客户端据此渲染完整按钮组。
+            capabilities: {
+              minimize: true,
+              toggleMaximize: true,
+              close: true,
+              toggleDevTools: true,
+              inspectElement: true,
+            },
           })
           return
         }

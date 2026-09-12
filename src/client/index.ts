@@ -52,6 +52,8 @@ import type { InputTriggerSource, ReferenceCodec } from '@deepseek-ai/dsh-client
 // Type-only: ui-model-selection 的 ctx.modelDirectories 服务（supplier quota 消费）。
 import type {} from '@deepseek-ai/dsh-client-ui-model-selection/client'
 import { liuliRemoteApi, liuliModelDirectory, liuliRemoteNamespace } from './remote-api.ts'
+import type { ObservableSnapshot } from './compat.ts'
+import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
 import { LiuliAppearanceSection, type LiuliAppearanceInjected } from './LiuliAppearance.tsx'
 import { LiuliAppearanceRow, type LiuliAppearanceRowInjected } from './LiuliAppearanceRow.tsx'
 import { LiuliFeaturesSection, type LiuliFeaturesInjected } from './LiuliFeaturesSection.tsx'
@@ -117,7 +119,7 @@ import { DockShellFrame, DOCK_MENU_TOGGLE_EVENT, setDockHostBridge } from './doc
 import {
   createDockShellStore, createWebHostLayout, defaultShellLayout, exportDockJSON, importDockJSON,
   listShellSlotNames, loadShellSlotByName, saveShellDock, saveShellSlotByName, SIDEBAR_AUTO_COLLAPSE,
-  type HostLayoutFace,
+  type HostLayoutFace, type HostLayoutSnapshot,
 } from './dock-shell.ts'
 
 /** 等价于旧 ClientContext：各 client 面声明合并后的 cordis Context。 */
@@ -376,7 +378,7 @@ function injectThemeCss(): void {
  * 任何形状不符都静默返回 false —— 占用者渲染时崩溃会被框架 abdicate，
  * 自动回退到桌面原生 AdvancedFrame（安全降级）。
  */
-function equipRootEntryChildren(ctx: ClientContext): boolean {
+function equipRootEntryChildren(ctx: ClientContext, keys: readonly string[]): boolean {
   try {
     const core = (ctx.slots as unknown as {
       _core?: {
@@ -390,8 +392,10 @@ function equipRootEntryChildren(ctx: ClientContext): boolean {
     const mine = rec.entries.find(e => e.options?.priority === -1 && e.children !== undefined && Object.keys(e.children).length === 0)
     if (mine === undefined) return false
     const table: Record<string, { kind: string; scope: string }> = {}
-    for (const key of ['sidebar', 'conversation', 'details', 'shell.overlay']) {
+    for (const key of keys) {
       const spec = core.spec(key)
+      // 客户端槽位集合可能跨版本变化：任一 key 缺失即整体放弃（宁可回退原生帧，
+      // 也不留下半张声明表让渲染期抛 SlotOwnershipError）。
       if (spec === undefined) return false
       table[key] = { kind: spec.kind, scope: spec.scope }
     }
@@ -400,6 +404,110 @@ function equipRootEntryChildren(ctx: ClientContext): boolean {
   } catch {
     return false
   }
+}
+
+/** 客户端 root 子槽位布局版本：2.0.9 起 advanced 模式把 conversation 改为
+ *  keyed 的 `main`、details 改为 `rightbar`（scope 全部为 root）。 */
+export type SlotLayoutMode = 'v209' | 'legacy'
+
+/** 两代客户端的 root 子槽位 key 列表（顺序无关，仅用于声明表镜像）。 */
+export const SLOT_KEYS: Record<SlotLayoutMode, readonly string[]> = {
+  v209: ['sidebar', 'main', 'rightbar', 'shell.overlay'],
+  legacy: ['sidebar', 'conversation', 'details', 'shell.overlay'],
+}
+
+/**
+ * 宿主 layout 面的版本适配：2.0.9 把「详情列」语义整体改名 rightbar
+ * （`openRightbar(track,fullscreen)` / `closeRightbar` / `setRightbar`，
+ * 快照字段 rightbar/rightbarShown/...），插件内部与 DockShellFrame 沿用
+ * details 语义，这里统一映射一次，消费方无需感知客户端版本差异。
+ * 旧版客户端（2.0.4 线）没有 openRightbar，原样返回。
+ */
+function adaptHostLayout(raw: HostLayoutFace): HostLayoutFace {
+  const r = raw as unknown as {
+    openRightbar?: (track?: boolean, fullscreen?: boolean) => void
+    closeRightbar?: () => void
+    setRightbar?: (width: number) => void
+    getSnapshot?: () => Record<string, unknown>
+  }
+  if (typeof r.openRightbar !== 'function' || typeof r.closeRightbar !== 'function') return raw
+  // 映射结果必须按「底层快照引用」缓存：消费方经 useSyncExternalStore(hostSubscribe,
+  // hostGetSnapshot) 读取，若每次返回新对象会被判定为持续变化 → React 抛 #185
+  // （Maximum update depth exceeded）并让 root 槽位整体崩溃。
+  let mappedFrom: unknown
+  let mapped: HostLayoutSnapshot | undefined
+  return {
+    subscribe: listener => raw.subscribe(listener),
+    getSnapshot: () => {
+      const s = raw.getSnapshot()
+      if (mapped === undefined || s !== mappedFrom) {
+        mappedFrom = s
+        const rec = (s ?? {}) as unknown as Record<string, unknown>
+        mapped = {
+          sidebar: typeof rec.sidebar === 'number' ? rec.sidebar : 0,
+          // 2.0.9 的详情列宽度字段是 rightbar；映射为插件内部沿用的 details。
+          details: typeof rec.rightbar === 'number' ? rec.rightbar : 0,
+          narrow: rec.narrow === true,
+          narrowExpanded: rec.narrowExpanded === true,
+        }
+      }
+      return mapped
+    },
+    toggleSidebar: () => { raw.toggleSidebar() },
+    // track=true 保留用户拖拽记忆的宽度；fullscreen=false 不进入全屏详情。
+    openDetails: () => { r.openRightbar?.(true, false) },
+    closeDetails: () => { r.closeRightbar?.() },
+    setSidebar: width => { raw.setSidebar(width) },
+    setDetails: width => {
+      if (typeof r.setRightbar === 'function') r.setRightbar(width)
+      else raw.setDetails(width)
+    },
+  }
+}
+
+/** 不可用宿主布局面的稳定空快照（引用恒定，供 useSyncExternalStore 安全消费）。 */
+const EMPTY_HOST_LAYOUT: HostLayoutSnapshot = Object.freeze({
+  sidebar: 0,
+  details: 0,
+  narrow: false,
+  narrowExpanded: false,
+}) as HostLayoutSnapshot
+
+/** 宿主详情列开合动作：2.0.9 起 openDetails/closeDetails 改名为
+ *  openRightbar(track,fullscreen)/closeRightbar，这里统一出口。 */
+function layoutDetailsOps(ctx: ClientContext): { open(): void; close(): void } {
+  let l: {
+    openDetails?: () => void
+    closeDetails?: () => void
+    openRightbar?: (track?: boolean, fullscreen?: boolean) => void
+    closeRightbar?: () => void
+  } = {}
+  try {
+    // ctx.layout 的属性访问在 cordis 里受 inject 台账保护（未就绪即抛），
+    // 这里读一次并缓存，失败则整体退化为空实现（详情列开合降级为 no-op）。
+    l = (ctx.layout ?? {}) as typeof l
+  } catch { /* 服务不可用：保持空实现 */ }
+  const useRightbar = typeof l.openRightbar === 'function' && typeof l.closeRightbar === 'function'
+  return {
+    open: () => {
+      try { if (useRightbar) l.openRightbar?.(true, false); else l.openDetails?.() } catch { /* 忽略 */ }
+    },
+    close: () => {
+      try { if (useRightbar) l.closeRightbar?.(); else l.closeDetails?.() } catch { /* 忽略 */ }
+    },
+  }
+}
+
+/**
+ * 探测客户端槽位布局版本：2.0.9+ 声明了 keyed 的 `main` 槽位。
+ * 读不到内部台账（形状变化）时按 legacy 处理，交由 equip 的防御性放弃兜底。
+ */
+export function detectSlotLayout(ctx: ClientContext): SlotLayoutMode {
+  try {
+    const core = (ctx.slots as unknown as { _core?: { spec?: (key: string) => unknown } })._core
+    if (typeof core?.spec === 'function' && core.spec('main') !== undefined) return 'v209'
+  } catch { /* 形状不符按 legacy */ }
+  return 'legacy'
 }
 
 /**
@@ -429,6 +537,13 @@ function unequipRootEntryChildren(ctx: ClientContext): void {
  */
 export function apply(ctx: ClientContext): void {
   injectThemeCss()
+
+  // 客户端槽位布局版本：2.0.9 起 advanced 的 root 子槽位改名/改 kind
+  // （conversation→main(keyed)、details→rightbar），root 声明表与 details
+  // 面板注册名都随之切换；旧版客户端沿用 legacy 结构。
+  const slotLayout = detectSlotLayout(ctx)
+  /** 详情列开合（2.0.9 改名 rightbar 后的统一出口）。 */
+  const detailsOps = layoutDetailsOps(ctx)
 
   // ── 非官方增强开关（兼容其它插件）：启动时同步读取 localStorage，决定以下各
   //    挂载点是否生效。总开关关闭或对应分组关闭时，相应功能完全不挂载（不留
@@ -506,14 +621,34 @@ export function apply(ctx: ClientContext): void {
   // 或官方 AppFrame（Web），本插件借 ctx.slots.inject('sidebar') 等到声明落地后再注册
   // root 占用者，避免重复声明。
   if (unofficial('layout')) {
-    const isAdvancedShell = new URLSearchParams(window.location.search).get('dsh-desktop-mode') === 'advanced'
+    // extended 是同族的桌面壳模式（同样由 DesktopLayoutState 提供 layout 服务），
+    // 一并按 advanced 处理，避免误走 Web 分支。
+    const desktopMode = new URLSearchParams(window.location.search).get('dsh-desktop-mode')
+    const isAdvancedShell = desktopMode === 'advanced' || desktopMode === 'extended'
     const shellHandle = createDockShellStore().create()
     // 宿主布局面：advanced 用桌面 layout 服务（须带 getSnapshot/subscribe 完整面）；
     // Web 用琉璃同构 store（createWebHostLayout），并把官方 LayoutController 的
     // 面板动作经 attachPanels（公开重注册路径）重定向到该 store —— ui-sidebar 折叠
     // 按钮、ui-conversation 详情开合等外部调用方继续生效；本插件卸载后官方
     // AppFrame 重新渲染会重新 attach 绑回自己的 store（自愈）。
-    let hostLayout: HostLayoutFace = ctx.layout as unknown as HostLayoutFace
+    // 2.0.9 起桌面 layout 服务的详情列语义改名 rightbar —— 经适配层映射回
+    // details，DockShellFrame 与其它消费方无需分版本分支。
+    let hostLayout: HostLayoutFace
+    try {
+      hostLayout = adaptHostLayout(ctx.layout as unknown as HostLayoutFace)
+    } catch {
+      // 服务访问失败（未就绪/形状变化）：用空面兜底，帧层读不到宽度但不会崩。
+      // getSnapshot 返回同一常量引用（否则 useSyncExternalStore 会死循环）。
+      hostLayout = {
+        subscribe: () => () => {},
+        getSnapshot: () => EMPTY_HOST_LAYOUT,
+        toggleSidebar: () => {},
+        openDetails: () => {},
+        closeDetails: () => {},
+        setSidebar: () => {},
+        setDetails: () => {},
+      }
+    }
     /** root 注册 inject 工厂内的动作重定向（与官方 AppFrame 的 inject hook
      *  attachPanels 同路径、同时机）：inject 在 entry 每次渲染组合时运行，
      *  保证了「渲染 root cell 的那个 entry 最后一次 attach」——琉璃 cell 被
@@ -548,8 +683,8 @@ export function apply(ctx: ClientContext): void {
     // （开合详情/收起侧栏/菜单开合/面板增删/布局保存恢复导出导入）。
     ctx.effect(() => {
       const hook = {
-        openDetails: () => { ctx.layout.openDetails() },
-        closeDetails: () => { ctx.layout.closeDetails() },
+        openDetails: () => { detailsOps.open() },
+        closeDetails: () => { detailsOps.close() },
         toggleSidebar: () => { ctx.layout.toggleSidebar() },
         toggleMenu: () => { window.dispatchEvent(new CustomEvent(DOCK_MENU_TOGGLE_EVENT)) },
         addPanel: (type: string) => {
@@ -603,18 +738,20 @@ export function apply(ctx: ClientContext): void {
         // 宿主 layout 服务（advanced：桌面 DesktopLayoutState；Web：琉璃同构
         // store 的 face）经 inject 钩子递进帧层：帧层订阅其宽度/narrow 状态，
         // 开合动作走它的 toggleSidebar/openDetails/closeDetails。
+        // slotLayout：2.0.9 起 advanced 子槽位改名（conversation→main keyed、
+        // details→rightbar），帧层按此选择 renderSlot 的 key 与 owner props。
         inject: () => {
           // Web 模式：与本 entry 的每次渲染组合同步重定向官方控制器动作
           // （见 attachWebLayout 注释；advanced 下为 undefined 不动作）。
           attachWebLayout?.()
-          return { dockShell: shellHandle, hostLayout }
+          return { dockShell: shellHandle, hostLayout, slotLayout }
         },
       }
       const disposeRegistration = ctx.slots.register(
         rootOptions as typeof rootOptions & { children: RootChildren },
         DockShellFrame,
       )
-      equipRootEntryChildren(ctx)
+      equipRootEntryChildren(ctx, SLOT_KEYS[slotLayout])
       ctx.effect(() => () => { unequipRootEntryChildren(ctx) }, 'dsh-liuli-ui-enhance: dock shell children release guard')
       return disposeRegistration
     })
@@ -1009,6 +1146,9 @@ export function apply(ctx: ClientContext): void {
     }
   }, 'dsh-liuli-ui-enhance: settings overlay defer')
 
+  /** 每会话 Chat 快照源缓存（引用稳定；见 getChatSnapshot）。 */
+  const chatSnapshotSources = new Map<string, ObservableSnapshot<ChatSnapshot>>()
+
   // 空 Chat 快照回落（ui-chat 的 EMPTY_CHAT_SNAPSHOT 同构；见 getChatSnapshot）。
   const EMPTY_LIST: readonly never[] = []
   const EMPTY_CHAT_FALLBACK = {
@@ -1034,14 +1174,18 @@ export function apply(ctx: ClientContext): void {
     // 2.0.4：Chat 内容快照经 uiConversation.binding(id).target('chat') 解析
     //（与官方 ui-chat 的 chatSource 同构；target 未就绪时快照为 undefined）。
     getChatSnapshot: (id: string) => {
+      const cached = chatSnapshotSources.get(id)
+      if (cached !== undefined) return cached
       try {
-        // 官方模式同构：target 未就绪时回落空 ChatSnapshot（本地构造，与上游
-        // EMPTY_CHAT_SNAPSHOT 同构——值导入会触发 bundle purity gate）。
+        // 官方 ui-chat 的 chatSource 同构：按会话缓存源对象（引用稳定），
+        // 消费方 useSnapshot 的 effect 依赖该引用，每次新建会导致重复订阅。
         const target = ctx.uiConversation.binding(id as SessionId).target('chat')
-        return {
-          getSnapshot: () => target.getSnapshot() ?? EMPTY_CHAT_FALLBACK,
+        const source = {
+          getSnapshot: (): ChatSnapshot => target.getSnapshot() ?? EMPTY_CHAT_FALLBACK,
           subscribe: (fn: () => void) => target.subscribe(fn),
         }
+        chatSnapshotSources.set(id, source)
+        return source
       } catch {
         // 会话未列入/未开作用域时 binding 抛错——与 getSessionFace 的 undefined 语义对齐。
         return undefined
@@ -1080,8 +1224,8 @@ export function apply(ctx: ClientContext): void {
   const togglePreview = (): void => {
     const open = togglePreviewOpen()
     setPaneSyncSuppressed(!open)
-    if (open) ctx.layout.openDetails()
-    else ctx.layout.closeDetails()
+    if (open) detailsOps.open()
+    else detailsOps.close()
     window.dispatchEvent(new CustomEvent(PREVIEW_TOGGLE_EVENT))
   }
   const stepSession = (dir: 1 | -1): void => {
@@ -1117,15 +1261,24 @@ export function apply(ctx: ClientContext): void {
   // ── 右侧边栏（详细页）面板：占用宿主 details 列（priority -1 替换官方工具详情列）。
   //    unofficial_sidebar 关闭时不注册，宿主 details 列还原为官方内容。 ──
   if (unofficial('sidebar')) {
-    ctx.slots.inject('details', () => ctx.slots.register({
-      name: 'details',
+    // 2.0.9：details 槽位改名为 rightbar（scope 由 session 变 root）；
+    // 注册名与 inject key 都随 slotLayout 切换。类型面按旧版 SlotMap 编译
+    // （devDependency 仍是 0.1.2 线），这里按运行时 key 做一次断言。
+    const detailsSlot = slotLayout === 'v209' ? 'rightbar' : 'details'
+    // 必须以「方法调用」形式注入动态 key：ctx.slots 是 cordis 服务代理，
+    // SlotRegistry.inject 内部读 this.ctx —— 把方法取出成别名再调用会丢失
+    // 接收者，抛 TypeError: Cannot read properties of undefined (reading 'ctx')
+    // （2.0.9 实测导致整个插件 entry 应用失败、客户端进入恢复模式）。
+    const slotsDynamic = ctx.slots as unknown as { inject(key: string, fn: () => () => void): void }
+    const registerDetails = (): (() => void) => ctx.slots.register({
+      name: detailsSlot,
       priority: -1,
       inject: () => ({
-        openDetails: () => { ctx.layout.openDetails() },
+        openDetails: () => { detailsOps.open() },
         closeDetails: () => {
           setPaneSyncSuppressed(true)
           setPreviewOpen(false)
-          ctx.layout.closeDetails()
+          detailsOps.close()
         },
         insertElement,
         openPath: (path: string) => { void ctx.remote.session.openWorkspacePath({ path }) },
@@ -1143,7 +1296,8 @@ export function apply(ctx: ClientContext): void {
         nextSession: () => { stepSession(1) },
         host: sidePaneHost,
       }),
-    }, PreviewDetailsPanel))
+    } as never, PreviewDetailsPanel)
+    slotsDynamic.inject(detailsSlot, registerDetails)
   }
 
   // ── /btw 正文回答宿主（body 级 root）：fork 当前会话并发回答，

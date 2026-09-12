@@ -35,12 +35,29 @@ export function isWorkspaceNewSessionLabel(label: string): boolean {
  *  - 兼容模式：跨插件 LayoutController 没有 getSnapshot，回退官方详情列
  *    _detailsCol 的 rect 宽度判断（列常驻挂载，闭合时 0 宽）。 */
 export function isDetailsOpen(ctx: ClientContext): boolean {
-  const face = ctx.layout as unknown as { getSnapshot?: () => { details: number } } | null
+  // 2.0.9：桌面 layout 服务的详情列改名 rightbar（快照字段 rightbar、DOM 列
+  // 标记 data-rightbar-col / *_rightbarCol）；两种客户端形态都要能判开合。
+  const face = ctx.layout as unknown as { getSnapshot?: () => Record<string, unknown> } | null
   const snap = face?.getSnapshot?.()
-  if (snap !== undefined) return snap.details > 0
-  const el = document.querySelector<HTMLElement>('[class*="_detailsCol"]')
+  if (snap !== undefined) {
+    const width = typeof snap.details === 'number'
+      ? snap.details
+      : (typeof snap.rightbar === 'number' ? snap.rightbar : undefined)
+    if (width !== undefined) return width > 0
+  }
+  const el = document.querySelector<HTMLElement>('[data-rightbar-col], [class*="_rightbarCol"], [class*="_detailsCol"]')
   if (el === null) return false
   return el.getBoundingClientRect().width > DETAILS_WIDTH_MIN
+}
+
+/** 关闭宿主详情列（2.0.9 起该动作名从 closeDetails 改为 closeRightbar）。 */
+export function closeHostDetails(ctx: ClientContext): void {
+  const face = ctx.layout as unknown as {
+    closeDetails?: () => void
+    closeRightbar?: () => void
+  } | null
+  if (typeof face?.closeRightbar === 'function') { face.closeRightbar(); return }
+  face?.closeDetails?.()
 }
 
 /**
@@ -61,7 +78,7 @@ export function startWorkspaceNewSessionCollapse(ctx: ClientContext): () => void
     if (!isWorkspaceNewSessionLabel(button.getAttribute('aria-label') ?? '')) return
     window.clearTimeout(timer)
     timer = window.setTimeout(() => {
-      if (isDetailsOpen(ctx)) ctx.layout.closeDetails()
+      if (isDetailsOpen(ctx)) closeHostDetails(ctx)
     }, 0)
   }
   document.addEventListener('click', onDocClick, true)

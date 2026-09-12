@@ -80,10 +80,21 @@ export const DOCK_MENU_TOGGLE_EVENT = 'liuli:dock-menu-toggle'
 
 export type DockShellHandle = ReturnType<ReturnType<typeof createDockShellStore>['create']>
 
+/** 客户端槽位布局版本（与 index.ts 的 SlotLayoutMode 同构）：
+ *  legacy = 2.0.4 线（conversation/details）；v209 = 2.0.9+（main keyed/rightbar）。 */
+export type DockSlotLayout = 'v209' | 'legacy'
+
+/** 宽松 renderSlot 面：2.0.9 的新 key 不在旧版 SlotMap 类型里，按运行时 key 分派。 */
+type LooseRenderSlot = (
+  key: string,
+  owner?: Record<string, unknown>,
+  opts?: { entryKey?: string },
+) => ReactNode
+
 export type DockShellFrameProps =
   & PropsRuntime<'root'>
   & PropsRenderSlots<'sidebar' | 'conversation' | 'details' | 'shell.overlay'>
-  & { dockShell: DockShellHandle; hostLayout: HostLayoutFace }
+  & { dockShell: DockShellHandle; hostLayout: HostLayoutFace; slotLayout?: DockSlotLayout }
 
 interface DragSource {
   kind: 'node' | 'float'
@@ -253,7 +264,8 @@ function surfaceClass(type: string): string {
 }
 
 /** 框架 root 占用者：视觉零侵入的 dockable 三区域 shell。 */
-export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot, SessionProvider }: DockShellFrameProps) {
+export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions, renderSlot, SessionProvider }: DockShellFrameProps) {
+  const renderSlotLoose = renderSlot as unknown as LooseRenderSlot
   const shell = useSyncExternalStore(dockShell.subscribe, dockShell.getSnapshot)
   const actions = dockShell.actions
   const dock = shell.dock
@@ -963,7 +975,10 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot,
       case REGION_SIDEBAR:
         return renderSlot('sidebar', { collapsed: sidebarCollapsed, width: sidebarWidth })
       case REGION_CONVERSATION:
-        return renderSlot('conversation', {})
+        // 2.0.9：对话区槽位是 keyed 的 'main'，用 entryKey 选中 conversation 面板。
+        return slotLayout === 'v209'
+          ? renderSlotLoose('main', {}, { entryKey: 'conversation' })
+          : renderSlot('conversation', {})
       case REGION_CONVERSATION_HEADER:
         // 页头面板只提供宿主容器；官方 ConversationRoot 渲染出的 <header>
         // 由 syncConversationHeader() 在 DOM 层搬入这里（React 仍持有节点引用，
@@ -971,9 +986,18 @@ export function DockShellFrame({ dockShell, hostLayout, useSessions, renderSlot,
         // 同步，避免绘制前出现空白或重复页头）。
         return <div className={css.conversationHeaderHost} data-liuli-conversation-header-host="" />
       case REGION_DETAILS:
-        // 2.0.4：details 是 strict session scope slot，必须在 SessionProvider
-        // 之下渲染（官方 AppFrame 同构）——无会话时 provider 自动渲染 empty，
-        // 不会像直接 renderSlot 那样抛 SlotAssemblyError 打断挂载链。
+        // 2.0.9：details 改名为 rightbar，scope 由 session 变 root（不再需要
+        // SessionProvider 包裹），owner props 换成官方 AdvancedFrame 的三件套。
+        if (slotLayout === 'v209') {
+          return renderSlotLoose('rightbar', {
+            width: detailsWidth,
+            viewportWidth: typeof window === 'undefined' ? 0 : window.innerWidth,
+            canShow: true,
+          })
+        }
+        // legacy（2.0.4）：details 是 strict session scope slot，必须在
+        // SessionProvider 之下渲染（官方 AppFrame 同构）——无会话时 provider
+        // 自动渲染 empty，不会像直接 renderSlot 那样抛 SlotAssemblyError。
         return (
           <SessionProvider>
             {renderSlot('details', {

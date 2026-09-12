@@ -239,6 +239,20 @@ const asNumber = (value: unknown): number | undefined => typeof value === 'numbe
 export async function createBrowserEngine(): Promise<BrowserEngine | undefined> {
   const electron = await loadElectron()
   if (electron === undefined) return undefined
+  // 2.0.9+：宿主插件运行在 Electron utility process，主进程专属 API 全部缺席。
+  // 逐属性探测（loadElectron 可能返回无实际 API 的 shim，不能只看整体是否为
+  // undefined），不可用时降级为「无 host 引擎」，由客户端 <webview>（配合
+  // webviewTag 补丁）承接浏览器功能。
+  const e = electron as unknown as {
+    WebContentsView?: unknown
+    BrowserWindow?: { getAllWindows?: unknown }
+    session?: { fromPartition?: unknown }
+  }
+  if (typeof e.WebContentsView !== 'function'
+    || typeof e.BrowserWindow?.getAllWindows !== 'function'
+    || typeof e.session?.fromPartition !== 'function') {
+    return undefined
+  }
   const { BrowserWindow, WebContentsView, session, shell } = electron
 
   const tabs = new Map<string, EngineTab>()

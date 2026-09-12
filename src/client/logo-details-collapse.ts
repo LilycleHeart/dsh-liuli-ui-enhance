@@ -21,7 +21,7 @@
 import type { ClientContext } from './compat.ts'
 // Type-only: 拉取 dsh-client-ui-layout 对 ctx.layout（含 openDetails/closeDetails）的类型合并。
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import { isDetailsOpen } from './workspace-new-session-collapse.ts'
+import { closeHostDetails, isDetailsOpen } from './workspace-new-session-collapse.ts'
 
 /** 命中侧栏品牌按钮（DeepSeek logo）：logoRow 内的 brand 按钮。 */
 export function isSidebarBrandButton(target: Element | null): boolean {
@@ -46,7 +46,7 @@ export function startSidebarLogoDetailsCollapse(ctx: ClientContext): () => void 
     if (!isSidebarBrandButton(target)) return
     window.clearTimeout(timer)
     timer = window.setTimeout(() => {
-      if (isDetailsOpen(ctx)) ctx.layout.closeDetails()
+      if (isDetailsOpen(ctx)) closeHostDetails(ctx)
     }, 0)
   }
   document.addEventListener('click', onDocClick, true)
