@@ -1023,6 +1023,14 @@ export function apply(ctx: Context): void {
     void installSystemAudioCapture().then((release) => {
       if (disposed) release()
       else dispose = release
+    }).catch((error: unknown) => {
+      // 2.0.9+ 的宿主插件跑在 Electron utility process 里，主进程 API 缺席会让
+      // 该链失败；系统音频只是增强项，任何失败都不得冒泡成未处理 rejection
+      // （Node 默认 --unhandled-rejections=throw 会终止宿主进程）。
+      console.warn(
+        '[dsh-liuli-ui-enhance] 系统音频监听安装失败（已忽略）：',
+        error instanceof Error ? error.message : String(error),
+      )
     })
     return () => {
       disposed = true

@@ -333,6 +333,58 @@ function commitRuntime(
 }
 
 /** 在插件启动时应用无边框补丁（win32 + Electron 下尽力而为，失败不抛错）。 */
+/**
+ * 读客户端 app.asar 内 package.json 的版本号（DSH Desktop 版本），失败返回 undefined。
+ * 用于判断当前客户端是否属于「自动补丁已知不安全」的版本线。
+ */
+function readDesktopVersion(asarPath: string): string | undefined {
+  try {
+    // 关键：读 asar 内部条目内容必须关掉 Electron 的 ASAR 钩子，否则
+    // openSync(app.asar) 会被钩子当作归档内路径处理而失败（readAsarHeader
+    // 自带 withoutAsar，readPackedEntry 没有——这里统一包一层）。
+    return withoutAsar(() => {
+      const { header, contentStart } = readAsarHeader(asarPath)
+      const entry = header.files?.['package.json'] as AsarFileNode | undefined
+      if (entry === undefined) return undefined
+      let raw: Buffer | undefined
+      if (entry.unpacked === true) {
+        const diskPath = joinPath(`${asarPath}.unpacked`, 'package.json')
+        if (existsSync(diskPath)) raw = readFileSync(diskPath)
+      } else if (entry.offset !== undefined) {
+        raw = readPackedEntry(asarPath, entry, contentStart)
+      }
+      if (raw === undefined) return undefined
+      const parsed = JSON.parse(raw.toString('utf8')) as { version?: unknown }
+      return typeof parsed.version === 'string' ? parsed.version : undefined
+    })
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * 自动补丁已知不安全的版本线：DSH Desktop 2.0.5 起改用选择性 ASAR 打包
+ * （`@deepseek-ai/*` 移入 app.asar 内部、宿主插件改在 Electron utility process
+ * 中运行）。把 win32 窗口配置改成 `frame: false` 会让主进程启动即崩溃
+ * （实测退出码 0xFFFF7003），且该补丁由插件在每次启动时自动重打 ——
+ * 一旦打上就形成「启动崩溃 → 修复 → 再崩溃」的循环。
+ * 因此在确认 2.0.5+ 的正确无边框做法之前，不再自动补丁（仅记录提示）。
+ *
+ * 版本号语义：2.0.5 / 2.0.7 / 2.0.9 都是 major=2, minor=0, **patch≥5**，
+ * 所以门槛落在 patch 上，不能写成 minor。
+ * @param version - app.asar 内的客户端版本号，未知时返回 false（沿用旧行为）。
+ */
+function isAutoPatchBlocked(version: string | undefined): boolean {
+  if (version === undefined) return false
+  const parts = version.split('.').map(part => Number.parseInt(part, 10))
+  const [major, minor, patch] = parts
+  if (!Number.isFinite(major) || !Number.isFinite(minor)) return false
+  if ((major as number) > 2) return true
+  if ((major as number) < 2) return false
+  if ((minor as number) > 0) return true
+  return Number.isFinite(patch) && (patch as number) >= 5
+}
+
 export function applyFramelessPatch(): void {
   if (process.platform !== 'win32') return
   if (process.versions.electron === undefined) return
@@ -344,6 +396,17 @@ export function applyFramelessPatch(): void {
 
   const asarPath = joinPath(resourcesDir, 'app.asar')
   const backupPath = joinPath(resourcesDir, 'app.asar.bak-frameless')
+
+  // 2.0.5+ 客户端上自动补丁会破坏主进程启动（见 isAutoPatchBlocked 注释），
+  // 这里在写入前直接跳过：保持 app.asar 原样，客户端可正常启动。
+  const desktopVersion = readDesktopVersion(asarPath)
+  if (isAutoPatchBlocked(desktopVersion)) {
+    console.warn(
+      `[dsh-liuli-ui-enhance] 无边框自动补丁已跳过：客户端 ${desktopVersion} 上该补丁会导致主进程启动失败；`
+      + '当前版本保留原生标题栏（页面内窗口按钮仍可用）。',
+    )
+    return
+  }
 
   // Electron 主进程里 fs 带 ASAR 钩子，直接读写 app.asar 会抛 ENOENT；
   // 整个补丁过程关闭 ASAR 钩子，结束后恢复原值。

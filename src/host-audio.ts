@@ -180,12 +180,18 @@ function installHandlerOn(session: HostSession, desktopCapturer: HostDesktopCapt
   })
 }
 
-/** 收集当前所有应覆盖的 session（defaultSession + 桌面渲染器 partition + 现存 webContents）。 */
+/** 收集当前所有应覆盖的 session（defaultSession + 桌面渲染器 partition + 现存 webContents）。
+ *  DSH 2.0.9 起宿主插件运行在 Electron **utility process** 中，`electron.session` /
+ *  `webContents` 等主进程 API 在此不可用（undefined）——此时直接返回空集合，
+ *  由调用方优雅降级（不装 handler，前端走默认授权流程），不得抛错。 */
 function collectTargetSessions(electron: HostElectronMain): HostSession[] {
   const sessions = new Set<HostSession>()
-  sessions.add(electron.session.defaultSession)
+  // 主进程 API 缺席（2.0.9+ utility process）：无 session 可装，返回空。
+  const sessionModule = electron.session as HostSessionModule | undefined
+  if (sessionModule?.defaultSession === undefined) return []
+  sessions.add(sessionModule.defaultSession)
   try {
-    sessions.add(electron.session.fromPartition(DESKTOP_RENDERER_SESSION_PARTITION))
+    sessions.add(sessionModule.fromPartition(DESKTOP_RENDERER_SESSION_PARTITION))
   } catch { /* 旧版无 fromPartition 则跳过 */ }
   try {
     for (const wc of electron.webContents?.getAllWebContents() ?? []) {
@@ -208,8 +214,13 @@ export async function installSystemAudioCapture(): Promise<() => void> {
   // `audio: 'loopback'` 仅 Windows 受支持；其余平台不装 handler，
   // 让 getDisplayMedia 保持 Electron 默认行为（macOS 走系统选择器）。
   if (currentPlatform() !== 'win32') return () => {}
+  // 2.0.9+ utility process：desktopCapturer / session 不可用 —— 直接降级为
+  // 无 handler（前端 /liuli-audio 探测返回 available:false，走默认授权流程）。
   const { desktopCapturer } = electron
-  for (const session of collectTargetSessions(electron)) {
+  if (desktopCapturer === undefined) return () => {}
+  const targets = collectTargetSessions(electron)
+  if (targets.length === 0) return () => {}
+  for (const session of targets) {
     installHandlerOn(session, desktopCapturer)
   }
   // 新窗口/新 webContents 出现时补装 handler（幂等，重复 session 不会二次安装）。
