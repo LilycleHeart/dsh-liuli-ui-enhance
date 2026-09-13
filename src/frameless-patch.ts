@@ -375,7 +375,9 @@ function readDesktopVersion(asarPath: string): string | undefined {
  * @param version - app.asar 内的客户端版本号，未知时返回 false（沿用旧行为）。
  */
 function isAutoPatchBlocked(version: string | undefined): boolean {
-  if (version === undefined) return false
+  // 版本读不出来时按「受影响」处理：补丁的代价是客户端可能起不来，而收益只是
+  // 外观（原生标题栏 vs 页面内按钮），风险不对称——不确定就跳过。
+  if (version === undefined) return true
   const parts = version.split('.').map(part => Number.parseInt(part, 10))
   const [major, minor, patch] = parts
   if (!Number.isFinite(major) || !Number.isFinite(minor)) return false
@@ -401,9 +403,13 @@ export function applyFramelessPatch(): void {
   // 这里在写入前直接跳过：保持 app.asar 原样，客户端可正常启动。
   const desktopVersion = readDesktopVersion(asarPath)
   if (isAutoPatchBlocked(desktopVersion)) {
+    // 运行期无法自动完成该补丁：改了 asar 头就必须同步 exe 内嵌的
+    // SHA256(header)（Electron 完整性校验），而运行中的 exe 被系统锁定、
+    // 写不进去。必须用离线脚本一次性完成，见提示。
     console.warn(
-      `[dsh-liuli-ui-enhance] 无边框自动补丁已跳过：客户端 ${desktopVersion} 上该补丁会导致主进程启动失败；`
-      + '当前版本保留原生标题栏（页面内窗口按钮仍可用）。',
+      `[dsh-liuli-ui-enhance] 无边框自动补丁已跳过：客户端 ${desktopVersion} 需要离线补丁`
+      + '（改 asar 后必须同步 exe 内嵌完整性哈希，运行中无法写入 exe）。'
+      + '请退出 DSH Desktop 后运行：pnpm patch:desktop（还原：pnpm patch:desktop -- --revert）。',
     )
     return
   }

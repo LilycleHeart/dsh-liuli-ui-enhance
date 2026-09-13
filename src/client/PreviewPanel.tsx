@@ -2331,10 +2331,17 @@ function isWebviewTagSupported(): boolean {
 function startEngineDetect(): void {
   if (engineDetectStarted) return
   engineDetectStarted = true
+  // webviewTag 可用时直接用客户端 <webview>：它自身即完整承载（导航/事件/几何
+  // 都在渲染进程内），不需要宿主引擎上报几何。必须先做这个同步判定——2.0.9 起
+  // 宿主引擎已随 utility-process 化退役，若先探测宿主会得到 null 而误落到 iframe
+  // （iframe 受 X-Frame-Options 限制，大量站点打不开）。
+  if (isWebviewTagSupported()) {
+    engineKindCache = 'webview-tag'
+    for (const listener of engineListeners) listener(engineKindCache)
+    return
+  }
   void detectWebviewEngine().then((caps) => {
-    if (caps === null) engineKindCache = 'iframe'
-    else if (isWebviewTagSupported()) engineKindCache = 'webview-tag'
-    else engineKindCache = 'webview'
+    engineKindCache = caps === null ? 'iframe' : 'webview'
     for (const listener of engineListeners) listener(engineKindCache)
   })
 }

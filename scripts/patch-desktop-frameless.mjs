@@ -78,11 +78,43 @@ function findRunningDesktopDir() {
   }
 }
 
-const installDir = process.env.DSH_DESKTOP_DIR
-  || findRunningDesktopDir()
-  || (process.platform === 'win32'
-    ? join(process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'), 'Programs', 'DSH Desktop')
-    : join(homedir(), 'Applications', 'DSH Desktop.app', 'Contents', 'Resources'));
+/** 候选安装目录里挑一个真的装着客户端资源（resources/app.asar）的。 */
+function hasClientInstall(dir) {
+  return typeof dir === 'string' && dir !== '' && existsSync(join(dir, 'resources', 'app.asar'));
+}
+
+/**
+ * 安装目录查找：DSH_DESKTOP_DIR → 正在运行的进程 → 已知候选路径（逐个校验）。
+ * 客户端可能装在非默认盘（默认路径不存在时旧逻辑会失效并误报「找不到 runtime」）。
+ */
+function resolveInstallDir() {
+  const fromEnv = process.env.DSH_DESKTOP_DIR;
+  if (fromEnv !== undefined && fromEnv !== '') {
+    if (hasClientInstall(fromEnv)) return fromEnv;
+    fail(`DSH_DESKTOP_DIR 指向的目录里没有 resources/app.asar：${fromEnv}`);
+  }
+  const running = findRunningDesktopDir();
+  if (hasClientInstall(running)) return running;
+  if (process.platform !== 'win32') {
+    const mac = join(homedir(), 'Applications', 'DSH Desktop.app', 'Contents', 'Resources');
+    if (existsSync(join(mac, 'app.asar'))) return mac;
+    fail(`未找到 DSH Desktop 安装（可设置 DSH_DESKTOP_DIR 指向安装目录后重试）`);
+  }
+  const candidates = [
+    join(process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'), 'Programs', 'DSH Desktop'),
+    join(process.env.PROGRAMFILES ?? 'C:\Program Files', 'DSH Desktop'),
+    join(process.env['PROGRAMFILES(X86)'] ?? 'C:\Program Files (x86)', 'DSH Desktop'),
+  ];
+  // 其它盘的常见位置（用户可自定安装盘符）
+  for (const drive of ['D:', 'E:', 'F:']) {
+    candidates.push(drive + '/DSH/DSH Desktop', drive + '/DSH Desktop', drive + '/Program Files/DSH Desktop');
+  }
+  const hit = candidates.find(hasClientInstall);
+  if (hit !== undefined) return hit;
+  fail(`未找到 DSH Desktop 安装目录（已试：${candidates.join(' | ')}）；请设置 DSH_DESKTOP_DIR 后重试`);
+}
+
+const installDir = resolveInstallDir();
 
 const resourcesDir = join(installDir, 'resources');
 const asarPath = join(resourcesDir, 'app.asar');
@@ -93,6 +125,109 @@ const libDir = join(resourcesDir, 'app.asar.unpacked', 'lib');
 function fail(message) {
   console.error(`[dsh-liuli-ui-enhance] ${message}`);
   process.exit(1);
+}
+
+/** SHA256 十六进制。 */
+function sha256Hex(buffer) {
+  return createHash('sha256').update(buffer).digest('hex');
+}
+
+/** 读取 asar header 的 JSON 原始字节——Electron 内嵌完整性校验的对象就是这段。 */
+function readHeaderJsonBytes(asarPath) {
+  const fd = openSync(asarPath, 'r');
+  try {
+    const pre = readFullySync(fd, 16, 0);
+    const jsonLength = pre.readUInt32LE(12);
+    return readFullySync(fd, jsonLength, 16);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** 分块查找 ASCII 串，返回偏移（找不到 -1）。 */
+function findAsciiOffset(filePath, needle) {
+  const pattern = Buffer.from(needle, 'utf8');
+  const size = statSync(filePath).size;
+  const chunkSize = 8 * 1024 * 1024;
+  const fd = openSync(filePath, 'r');
+  try {
+    let pos = 0;
+    let carry = Buffer.alloc(0);
+    while (pos < size) {
+      const want = Math.min(chunkSize, size - pos);
+      const chunk = readFullySync(fd, want, pos);
+      const hay = carry.length === 0 ? chunk : Buffer.concat([carry, chunk]);
+      const found = hay.indexOf(pattern);
+      if (found >= 0) return pos - carry.length + found;
+      carry = hay.subarray(Math.max(0, hay.length - pattern.length + 1));
+      pos += want;
+    }
+    return -1;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * 2.0.5+ 客户端：Electron 用 exe 内嵌的 SHA256(asar header JSON) 校验归档完整性。
+ * 补丁重建了 asar 头，必须同步更新 exe 里那个哈希，否则主进程启动即 FATAL
+ * （Integrity check failed for asar archive entry '<header>'）。
+ * 等长十六进制就地替换，不改变 PE 结构与文件大小；首次修改前备份 exe。
+ * @param {string} beforeHex - 修改前 asar 头的 SHA256（十六进制）。
+ * @param {Buffer} afterHeaderJsonBytes - 修改后 asar 头的 JSON 原始字节。
+ */
+function syncExeHeaderHash(beforeHexes, afterHeaderJsonBytes) {
+  const afterHex = sha256Hex(afterHeaderJsonBytes);
+  const candidates = beforeHexes.filter((h) => typeof h === 'string' && h !== '' && h !== afterHex);
+  if (candidates.length === 0) {
+    console.log('[dsh-liuli-ui-enhance] asar 头哈希未变化，无需更新 exe 内嵌完整性');
+    return;
+  }
+  const exeName = process.platform === 'win32' ? 'DSH Desktop.exe' : 'DSH Desktop';
+  const exePath = join(installDir, exeName);
+  if (!existsSync(exePath)) {
+    console.warn(`[dsh-liuli-ui-enhance] 未找到客户端可执行文件 ${exePath}，无法同步内嵌完整性哈希——客户端可能无法启动，请手工核对`);
+    return;
+  }
+  if (findAsciiOffset(exePath, afterHex) >= 0) {
+    console.log('[dsh-liuli-ui-enhance] exe 内嵌完整性哈希已是最新，跳过');
+    return;
+  }
+  let offset = -1;
+  for (const candidate of candidates) {
+    offset = findAsciiOffset(exePath, candidate);
+    if (offset >= 0) break;
+  }
+  if (offset < 0) {
+    console.warn(
+      '[dsh-liuli-ui-enhance] 未在客户端可执行文件里找到已知的头哈希（可能客户端已被更新过）。'
+      + '若客户端无法启动，请用 --revert 还原后重试。',
+    );
+    return;
+  }
+  const exeBackup = `${exePath}.bak-frameless`;
+  if (!existsSync(exeBackup)) {
+    copyFileSync(exePath, exeBackup);
+    console.log(`[dsh-liuli-ui-enhance] 已备份客户端可执行文件 -> ${exeBackup}`);
+  }
+  const fd = openSync(exePath, 'r+');
+  try {
+    // 必须带 position 写入：writeFullySync 只在当前位置顺序写，用于这里会把
+    // 64 字节写到文件开头（毁掉 PE 头，Windows 会拒绝加载该 exe）。
+    const payload = Buffer.from(afterHex, 'utf8');
+    let written = 0;
+    while (written < payload.length) {
+      const n = writeSync(fd, payload, written, payload.length - written, offset + written);
+      if (n <= 0) throw new Error('写入不完整');
+      written += n;
+    }
+  } catch (error) {
+    console.error(`[dsh-liuli-ui-enhance] 写入客户端可执行文件失败（请先完全退出 DSH Desktop 再重试）：${error?.message ?? error}`);
+    process.exit(1);
+  } finally {
+    closeSync(fd);
+  }
+  console.log(`[dsh-liuli-ui-enhance] 已同步 exe 内嵌 asar 头哈希（偏移 ${offset}）`);
 }
 
 function readFullySync(fd, length, position) {
@@ -254,6 +389,78 @@ function findRuntimeNode(header, runtimeName) {
   return node;
 }
 
+// ── 窗口控制通道（无边框模式下移除原生按钮后，页面内按钮需要真正能操作窗口）──
+// 2.0.9 起插件宿主跑在 Electron utility process，拿不到 BrowserWindow；改由主进程
+// 注册 ipcMain 通道（目标窗口用 event.sender 反查，不依赖具体窗口变量）、preload
+// 暴露 contextBridge，渲染器即可直接调用。
+const WINDOW_IPC_NAME = 'liuli-window-control';
+const RUNTIME_IPC_MARK = '[liuli-theme patch] 窗口控制通道';
+const PRELOAD_NAME = 'preload.cjs';
+const PRELOAD_BRIDGE_MARK = '[liuli-theme patch] 窗口控制桥';
+const RUNTIME_IPC_BLOCK = [
+  '',
+  `// ${RUNTIME_IPC_MARK}（无边框模式下页面内按钮操作真实窗口；目标窗口由发送方反查）`,
+  `ipcMain.handle(${JSON.stringify(WINDOW_IPC_NAME)}, (event, action) => {`,
+  '\tconst target = BrowserWindow.fromWebContents(event.sender);',
+  '\tif (!target) return { ok: false, error: "no-window" };',
+  '\tswitch (action) {',
+  '\t\tcase "minimize": target.minimize(); return { ok: true };',
+  '\t\tcase "toggleMaximize": if (target.isMaximized()) target.unmaximize(); else target.maximize(); return { ok: true };',
+  '\t\tcase "close": target.close(); return { ok: true };',
+  '\t\tcase "isMaximized": return { ok: true, maximized: target.isMaximized() };',
+  '\t\tdefault: return { ok: false, error: "unknown-action" };',
+  '\t}',
+  '});',
+  '',
+].join('\n');
+const PRELOAD_BRIDGE_BLOCK = [
+  '',
+  `// ${PRELOAD_BRIDGE_MARK}（无边框模式下页面内按钮操作真实窗口）`,
+  'electron.contextBridge.exposeInMainWorld("liuliWindowControls", {',
+  `\tinvoke(action) { return electron.ipcRenderer.invoke(${JSON.stringify(WINDOW_IPC_NAME)}, action); }`,
+  '});',
+  '',
+].join('\n');
+// 还原用：整块删除（含块前的空行）
+const RUNTIME_IPC_BLOCK_RE = /\n*\/\/ \[liuli-theme patch\] 窗口控制通道[\s\S]*?\n\}\);\n/;
+const PRELOAD_BRIDGE_BLOCK_RE = /\n*\/\/ \[liuli-theme patch\] 窗口控制桥[\s\S]*?\n\}\);\n/;
+
+/** 在 asar 头中查找 lib/<name> 条目（不存在返回 undefined）。 */
+function findLibNode(header, name) {
+  const node = header?.files?.lib?.files?.[name];
+  return node === undefined ? undefined : node;
+}
+
+/** 读取 lib 条目内容：条目已 unpacked 且磁盘文件存在时读磁盘，否则读 asar 打包区。 */
+function readLibContent(asarPath, node, contentStart, name) {
+  const diskPath = join(libDir, name);
+  if (node.unpacked === true && existsSync(diskPath)) return readFileSync(diskPath, 'utf8');
+  return readPackedEntry(asarPath, node, contentStart).toString('utf8');
+}
+
+/** 主进程 runtime：注入/移除窗口控制 IPC 通道（含 electron 具名导入补 ipcMain）。 */
+function applyRuntimeIpc(text, revert) {
+  const hasBlock = text.includes(RUNTIME_IPC_MARK);
+  if (revert) {
+    if (!hasBlock) return { text, changed: false };
+    return { text: text.replace(RUNTIME_IPC_BLOCK_RE, '\n'), changed: true };
+  }
+  if (hasBlock) return { text, changed: false };
+  const withHandler = text + RUNTIME_IPC_BLOCK;
+  return { text: withHandler.replace(/import \{ ([^}]*?) \} from "electron";/, 'import { ipcMain, $1 } from "electron";'), changed: true };
+}
+
+/** preload：注入/移除窗口控制桥。 */
+function applyPreloadBridge(text, revert) {
+  const hasBlock = text.includes(PRELOAD_BRIDGE_MARK);
+  if (revert) {
+    if (!hasBlock) return { text, changed: false };
+    return { text: text.replace(PRELOAD_BRIDGE_BLOCK_RE, '\n'), changed: true };
+  }
+  if (hasBlock) return { text, changed: false };
+  return { text: `${text.trimEnd()}\n${PRELOAD_BRIDGE_BLOCK}`, changed: true };
+}
+
 const REVERT = process.argv.includes('--revert');
 
 // 主窗口 win32 补丁点：customChromeWindowOptions 的 win32 分支（含 autoHideMenuBar: true 前缀，
@@ -383,37 +590,71 @@ if (REVERT) {
   }
 }
 
-// 4. 写回 runtime 内容 + 重建 asar 头（同步 size / SHA256 integrity）。
+// 3.5 记录 asar 头哈希（补丁前）：2.0.5+ 的 Electron 拿 exe 内嵌哈希校验归档，
+//     头一变就必须同步更新 exe，否则主进程启动即 FATAL。这里同时把备份档的
+//     哈希作为候选——它能覆盖「asar 已打补丁但 exe 未同步」的修复场景。
+const liveBeforeHeaderHex = sha256Hex(readHeaderJsonBytes(asarPath));
+const backupHeaderHex = existsSync(backupPath) ? sha256Hex(readHeaderJsonBytes(backupPath)) : undefined;
+
+// 3.6 窗口控制通道：2.0.9 起插件宿主在 utility process，拿不到 BrowserWindow，
+//     无边框模式下页面内按钮会变成死按钮——这里给主进程注册 ipcMain 通道
+//     （目标窗口用 event.sender 反查），并让 preload 暴露 contextBridge 桥接。
+const { header, contentStart } = readAsarHeader(asarPath);
+const preloadNode = findLibNode(header, PRELOAD_NAME);
+const ipcResult = applyRuntimeIpc(content.toString('utf8'), REVERT);
+if (ipcResult.changed) {
+  content = Buffer.from(ipcResult.text, 'utf8');
+  runtimeChanged = true;
+  console.log(`[dsh-liuli-ui-enhance] ${REVERT ? '已移除' : '已注入'} runtime 窗口控制 IPC 通道`);
+}
+let preloadContent;
+let preloadChanged = false;
+if (preloadNode === undefined) {
+  console.warn(`[dsh-liuli-ui-enhance] asar 头中缺少 lib/${PRELOAD_NAME}，跳过窗口控制桥（无边框下页面内窗口按钮将不可用）`);
+} else {
+  const bridge = applyPreloadBridge(readLibContent(asarPath, preloadNode, contentStart, PRELOAD_NAME), REVERT);
+  preloadContent = bridge.text;
+  preloadChanged = bridge.changed;
+  if (bridge.changed) console.log(`[dsh-liuli-ui-enhance] ${REVERT ? '已移除' : '已注入'} preload 窗口控制桥`);
+}
+
+// 4. 写回改动文件 + 重建 asar 头（同步 size / SHA256 integrity）。
 //    - 磁盘布局：直接写磁盘文件，头里条目已是 unpacked，同步 size/integrity 即可。
 //    - asar 打包布局：把补丁后的内容解包写到磁盘 unpacked 目录，头里条目从
 //      packed（带 offset）改为 unpacked（去 offset），Electron 改从磁盘读取。
-if (runtimeChanged) {
-  mkdirSync(libDir, { recursive: true });
-  writeFileSync(diskRuntimePath, content);
-  console.log(`[dsh-liuli-ui-enhance] 已写入 ${diskRuntimePath}`);
+mkdirSync(libDir, { recursive: true });
+const targets = [{ name: runtime.name, content, changed: runtimeChanged, node: findRuntimeNode(header, runtime.name) }];
+if (preloadNode !== undefined && preloadContent !== undefined) {
+  targets.push({ name: PRELOAD_NAME, content: preloadContent, changed: preloadChanged, node: preloadNode });
 }
 
-const { header, contentStart } = readAsarHeader(asarPath);
-const target = findRuntimeNode(header, runtime.name);
-const hash = createHash('sha256').update(content).digest('hex');
-const needUnpack = target.unpacked !== true;
+let headerDirty = false;
+for (const item of targets) {
+  const bytes = Buffer.byteLength(item.content, 'utf8');
+  const itemHash = createHash('sha256').update(item.content, 'utf8').digest('hex');
+  const needUnpack = item.node.unpacked !== true;
+  if (item.changed) {
+    const diskPath = join(libDir, item.name);
+    writeFileSync(diskPath, item.content);
+    console.log(`[dsh-liuli-ui-enhance] 已写入 ${diskPath}`);
+  }
+  // 幂等：仅当内容或头部元数据真正变化时才标记重建，避免每次启动重写 100MB+ 的归档。
+  if (!item.changed && !needUnpack && item.node.size === bytes && item.node.integrity?.hash === itemHash) continue;
+  if (needUnpack) {
+    delete item.node.offset;
+    item.node.unpacked = true;
+    console.log(`[dsh-liuli-ui-enhance] asar 条目 ${item.name} 已从打包改为 unpacked（内容改由磁盘文件承载）`);
+  }
+  item.node.size = bytes;
+  item.node.integrity ??= { algorithm: 'SHA256', blockSize: 4194304, blocks: [] };
+  item.node.integrity.hash = itemHash;
+  item.node.integrity.blocks = [itemHash];
+  headerDirty = true;
+}
 
-// 幂等快路径：内容没变 && 头部已是最新（unpacked 状态、size、hash 一致）时
-// 跳过整文件重写，避免每次启动都重写 100MB+ 的 app.asar。
-if (!runtimeChanged && !needUnpack && target.size === content.length && target.integrity?.hash === hash) {
+if (!headerDirty) {
   console.log('[dsh-liuli-ui-enhance] asar 头已是最新，跳过重建（不再重写 app.asar）');
 } else {
-  if (needUnpack) {
-    // packed 条目 -> unpacked：去掉 offset，内容改由 app.asar.unpacked 磁盘文件承担
-    delete target.offset;
-    target.unpacked = true;
-    console.log('[dsh-liuli-ui-enhance] asar 条目已从打包改为 unpacked（内容改由磁盘文件承载）');
-  }
-  target.size = content.length;
-  target.integrity ??= { algorithm: 'SHA256', blockSize: 4194304, blocks: [] };
-  target.integrity.hash = hash;
-  target.integrity.blocks = [hash];
-
   const newHeader = buildAsarHeader(header);
   const tmpPath = join(resourcesDir, `app.asar.liuli-patch-${process.pid}.tmp`);
   try {
@@ -426,6 +667,9 @@ if (!runtimeChanged && !needUnpack && target.size === content.length && target.i
     try { unlinkSync(tmpPath); } catch { /* ignore */ }
   }
 }
+
+// 4.5 同步 exe 内嵌的 asar 头哈希（2.0.5+ 必需；旧版客户端无此校验，找不到就跳过）。
+syncExeHeaderHash([backupHeaderHex, liveBeforeHeaderHex], readHeaderJsonBytes(asarPath));
 
 if (REVERT) {
   console.log('[dsh-liuli-ui-enhance] 还原完成：请重启 DSH Desktop 恢复原生标题栏');

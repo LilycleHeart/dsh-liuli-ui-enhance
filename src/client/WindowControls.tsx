@@ -31,8 +31,31 @@ interface WindowControlsState {
   maximized: boolean
 }
 
-/** 拉取窗口状态（GET /liuli-window）。 */
+/**
+ * 无边框窗口控制桥（由客户端补丁注入的 preload 暴露）。
+ * 2.0.9 起插件宿主运行在 Electron utility process，节点半拿不到 BrowserWindow，
+ * 原 /liuli-window 路由的最小化/最大化失效；无边框模式下页面内按钮改为直接
+ * 调用这条主进程通道（补丁脚本 patch-desktop-frameless.mjs 注入）。
+ */
+interface LiuliWindowBridge {
+  invoke(action: 'minimize' | 'toggleMaximize' | 'close' | 'isMaximized'): Promise<{ ok?: boolean; maximized?: boolean } | undefined>
+}
+
+function windowBridge(): LiuliWindowBridge | undefined {
+  const candidate = (globalThis as { liuliWindowControls?: unknown }).liuliWindowControls
+  if (typeof candidate !== 'object' || candidate === null) return undefined
+  return typeof (candidate as LiuliWindowBridge).invoke === 'function' ? candidate as LiuliWindowBridge : undefined
+}
+
+/** 拉取窗口状态：优先走窗口控制桥，其次回退 /liuli-window 路由。 */
 async function fetchWindowState(): Promise<WindowControlsState | undefined> {
+  const bridge = windowBridge()
+  if (bridge !== undefined) {
+    try {
+      const result = await bridge.invoke('isMaximized')
+      return { available: true, maximized: result?.maximized === true }
+    } catch { /* 桥不可用时回退宿主路由 */ }
+  }
   try {
     const res = await fetch('/liuli-window', { headers: { accept: 'application/json' } })
     if (!res.ok) return undefined
@@ -44,8 +67,15 @@ async function fetchWindowState(): Promise<WindowControlsState | undefined> {
   }
 }
 
-/** 发送一个窗口动作（POST /liuli-window）。 */
+/** 发送一个窗口动作：优先走窗口控制桥，其次回退 POST /liuli-window。 */
 async function postWindowAction(action: 'minimize' | 'toggleMaximize' | 'close'): Promise<void> {
+  const bridge = windowBridge()
+  if (bridge !== undefined) {
+    try {
+      await bridge.invoke(action)
+      return
+    } catch { /* 桥不可用时回退宿主路由 */ }
+  }
   try {
     await fetch('/liuli-window', {
       method: 'POST',
