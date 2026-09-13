@@ -104,6 +104,7 @@
 | 主按钮实底 | `var(--dsw-alias-button-primary-fill)` |
 | 主按钮 hover | `var(--dsw-alias-button-primary-hover)` |
 | 品牌色文字/图标 | `var(--dsw-alias-brand-primary)` |
+| 链接 / 文件图标（link 语义） | `var(--dsw-alias-link)`（= 品牌色，随动态取色同步） |
 
 ### 2.3 外观令牌
 
@@ -121,6 +122,12 @@
 | `--liuli-acrylic-rgb-high` | 亮 `200,212,223` / 暗 `63,74,92` | 高实亚克力 |
 | `--liuli-control-rgb` | 亮 `210,220,230` / 暗 `51,61,78` | 控件底 |
 | `--liuli-noise` | SVG feTurbulence dataURL | 材质噪声层 |
+| `--liuli-border-hairline` | `color-mix(label-primary 22%)` | 透明表面 / 无底色托底的控件统一细描边（交付物卡、TurnFileCard 按钮等） |
+> ⚠️ `--liuli-border-hairline`（以及任何 `color-mix(... var(--dsw-alias-label-primary) ...)` 这类派生令牌）
+> **必须定义在 `body` / `body[data-ds-dark-theme]`，不能写在 `:root`**：`label-primary` 是在 `body` 上声明的，
+> 在 `:root` 里引用它会让该自定义属性算成 guaranteed-invalid，`body` 继承到的是空值，所有引用处静默回落成
+> fallback 色（2026-09-14 踩坑：交付物卡 / TurnFileCard 按钮边框全部变成不透明 `--dsw-alias-border-l2`）。
+> 放在 `body` 后还能自动吃到动态取色的内联令牌。
 | `--liuli-glow-brand` | 品牌辉光阴影 | 卡片 / 主按钮常驻 |
 | `--liuli-glow-brand-strong` | 更强辉光 | 主按钮 hover 等 |
 | `--liuli-shadow` | `0 2px 10px rgba(0,0,0,...)` | 通用投影 |
@@ -380,20 +387,23 @@ overflow: hidden;
 ```css
 .pillBtn {
   padding: 2px 8px;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 1px solid var(--liuli-border-hairline);   /* 统一细描边，不要用亚克力实底 */
   border-radius: 999px;
-  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
-  background-image: var(--liuli-noise);
-  box-shadow: var(--liuli-shadow-subtle);
+  background: transparent;
+  box-shadow: none;
   font-size: 11px;
   line-height: 18px;
   color: var(--dsw-alias-label-secondary);
 }
 .pillBtn:hover {
-  background-color: rgba(var(--liuli-acrylic-rgb), calc(var(--liuli-material-opacity) + 0.15));
+  background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
 }
 ```
+
+> 这类按钮常与官方交付物卡（`[data-presented-file]` 的「打开 / 更多」胶囊）同屏出现，
+> 两边都走透明底 + `--liuli-border-hairline`，避免同一屏里几个胶囊边框深浅不一、
+> 叠在壁纸上也读不清（2026-09-14 用户反馈）。
 
 #### 6.1.5 主按钮
 

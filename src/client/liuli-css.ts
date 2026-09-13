@@ -83,6 +83,8 @@ body {
   --liuli-glow-brand: 0 0 10px color-mix(in srgb, var(--dsw-alias-brand-primary) calc(var(--liuli-glow-strength) * 100%), transparent);
   --liuli-glow-brand-strong: 0 0 14px color-mix(in srgb, var(--dsw-alias-brand-primary) calc(var(--liuli-glow-strength) * 165%), transparent);
   --liuli-shadow: 0 2px 10px rgba(0, 0, 0, calc(0.4 * var(--liuli-shadow-strength)));
+  /* 统一细描边：透明表面/无底色小控件用；在 body 上定义才能解析 label-primary */
+  --liuli-border-hairline: color-mix(in srgb, var(--dsw-alias-label-primary) 22%, transparent);
 
   /* 背景 */
   --dsw-alias-bg-base: #f8f9fa;
@@ -114,6 +116,8 @@ body {
   --dsw-alias-brand-primary-invert: #0c0e13;
   --dsw-alias-brand-primary-new-colorprimary-new-color: #0079bf;
   --dsw-alias-brand-primary: #0079bf;
+  /** 链接 / 文件图标 / link 语义统一跟随主题品牌色（M3 动态取色后自动同步）。 */
+  --dsw-alias-link: var(--dsw-alias-brand-primary);
   --dsw-alias-brand-text: #1a1c1e;
   --dsw-alias-button-contrast-fill: #52606d;
   --dsw-alias-button-elevated-fill: #f2f6fa;
@@ -236,11 +240,15 @@ body[data-ds-dark-theme] {
   --dsw-alias-border-l2: rgba(255, 255, 255, 0.11);
   --dsw-alias-border-l3: rgba(255, 255, 255, 0.16);
   --dsw-alias-border-l4: rgba(255, 255, 255, 0.2);
+  /* 暗色主题同一枚细描边（label-primary 在本块已声明） */
+  --liuli-border-hairline: color-mix(in srgb, var(--dsw-alias-label-primary) 22%, transparent);
 
   /* 品牌 */
   --dsw-alias-brand-primary-invert: #121316;
   --dsw-alias-brand-primary-new-colorprimary-new-color: #8ecdf8;
   --dsw-alias-brand-primary: #8ecdf8;
+  /** 链接 / 文件图标 / link 语义统一跟随主题品牌色（M3 动态取色后自动同步）。 */
+  --dsw-alias-link: var(--dsw-alias-brand-primary);
   --dsw-alias-brand-text: #e2e2e6;
   --dsw-alias-button-contrast-fill: #bac8d8;
   --dsw-alias-button-elevated-fill: #1e2530;
@@ -649,6 +657,101 @@ div[class*="instructionsCard"] {
   background-image: var(--liuli-noise);
   -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
   backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+}
+
+/* ════════════════════════════════════════════════════════════
+ * 官方交付物卡片（ui-deliverables 的 PresentedFileCard = [data-presented-file]）
+ * 卡片背景透明 + 文件图标 Material 化。
+ *  - 官方给每张卡片铺静态浅灰底（--deliverable-fill；暗色档
+ *    --dsw-static-neutral-850），在琉璃壁纸/亚克力列上发闷 → 改为透明，
+ *    hover 只留极淡品牌底（--deliverable-hover）。左侧 48px 图标框复用的
+ *    是同一个 --deliverable-fill，随之一起去底。
+ *  - 图标框内的官方文件类型图形（28px「纸张 + 折角 + 类型符号」）换
+ *    Material Symbols 单色图标：隐藏官方 svg，伪元素以 mask 绘制，
+ *    颜色随框内 currentColor（--dsw-alias-link）。
+ *  - 类型判定用官方 FileTypeIcon 渲染出的 CSS Modules 类后缀
+ *    （_icon + _image/_pdf/_excel/_ppt/_video/_word/_markdown/_html/
+ *    _folder/_other，哈希前缀跨构建变化、后缀稳定）。代码类文件走
+ *    CodeFileIcon、svg 不带类型类 → 由上面的默认值落到 Material「code」。
+ *  - 锚点 data-presented-file 由宿主组件自己挂（非 CSS hash），稳定；
+ *    只作用于交付物卡，不会命中 produced files 行（那个是
+ *    [data-produced-files-row]，用的是 LinkIcon）。
+ * ════════════════════════════════════════════════════════════ */
+[data-presented-file] {
+  --deliverable-fill: transparent;
+  --deliverable-hover: color-mix(in srgb, var(--dsw-alias-brand-primary) 8%, transparent);
+  /* 卡片背景透明后没有底色托底：官方在卡内并存三级描边（卡 l1 / 图标框 l2 /
+     「打开」胶囊与分隔线 l3），在壁纸上会深浅不一。这里把三级统一成一条与文字
+     同源的描边色（暗色主题=浅、亮色主题=深），既统一又保证可读性。变量写在卡片
+     元素自身：元素自身声明优先于宿主 :root 继承值，与样式表注入顺序无关。 */
+  --dsw-alias-border-l1: var(--liuli-border-hairline);
+  --dsw-alias-border-l2: var(--liuli-border-hairline);
+  --dsw-alias-border-l3: var(--liuli-border-hairline);
+}
+
+/* 「打开 / 更多」胶囊（split）去掉官方浮动实底（--dsw-alias-button-floating-fill），
+   与卡片一起透出壁纸；描边保留，hover 反馈由官方 interactive-bg-hover 承担。 */
+[data-presented-file] [class$="_split"] {
+  background: transparent;
+}
+
+[data-presented-file] [class*="_fileIcon"] {
+  background: transparent;
+  /* 默认给代码类文件（官方 CodeFileIcon 不带类型类名） */
+  --liuli-deliverable-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -960 960 960'%3E%3Cpath d='M320-240 80-480l240-240 57 57-184 184 183 183-56 56Zm320 0-57-57 184-184-183-183 56-56 240 240-240 240Z'/%3E%3C/svg%3E");
+}
+
+[data-presented-file] [class*="_fileIcon"] > svg {
+  display: none;
+}
+
+[data-presented-file] [class*="_fileIcon"]:has(> svg[class*="_word"]) {
+  --liuli-deliverable-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -960 960 960'%3E%3Cpath d='M320-240h320v-80H320v80Zm0-160h320v-80H320v80ZM240-80q-33 0-56.5-23.5T160-160v-640q0-33 23.5-56.5T240-880h320l240 240v480q0 33-23.5 56.5T720-80H240Zm280-520v-200H240v640h480v-440H520ZM240-800v200-200 640-640Z'/%3E%3C/svg%3E");
+}
+
+[data-presented-file] [class*="_fileIcon"]:has(> svg[class*="_markdown"]) {
+  --liuli-deliverable-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -960 960 960'%3E%3Cpath d='m640-360 120-120-42-43-48 48v-125h-60v125l-48-48-42 43 120 120ZM160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h640q33 0 56.5 23.5T880-720v480q0 33-23.5 56.5T800-160H160Zm0-80h640v-480H160v480Zm0 0v-480 480Zm60-120h60v-180h40v120h60v-120h40v180h60v-200q0-17-11.5-28.5T440-600H260q-17 0-28.5 11.5T220-560v200Z'/%3E%3C/svg%3E");
+}
+
+[data-presented-file] [class*="_fileIcon"]:has(> svg[class*="_html"]) {
+  --liuli-deliverable-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -960 960 960'%3E%3Cpath d='M0-360v-240h60v80h80v-80h60v240h-60v-100H60v100H0Zm310 0v-180h-70v-60h200v60h-70v180h-60Zm170 0v-200q0-17 11.5-28.5T520-600h180q17 0 28.5 11.5T740-560v200h-60v-180h-40v140h-60v-140h-40v180h-60Zm320 0v-240h60v180h100v60H800Z'/%3E%3C/svg%3E");
+}
+
+[data-presented-file] [class*="_fileIcon"]:has(> svg[class*="_image"]) {
+  --liuli-deliverable-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -960 960 960'%3E%3Cpath d='M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H200Zm0-80h560v-560H200v560Zm40-80h480L570-480 450-320l-90-120-120 160Zm-40 80v-560 560Z'/%3E%3C/svg%3E");
+}
+
+[data-presented-file] [class*="_fileIcon"]:has(> svg[class*="_pdf"]) {
+  --liuli-deliverable-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -960 960 960'%3E%3Cpath d='M360-460h40v-80h40q17 0 28.5-11.5T480-580v-40q0-17-11.5-28.5T440-660h-80v200Zm40-120v-40h40v40h-40Zm120 120h80q17 0 28.5-11.5T640-500v-120q0-17-11.5-28.5T600-660h-80v200Zm40-40v-120h40v120h-40Zm120 40h40v-80h40v-40h-40v-40h40v-40h-80v200ZM320-240q-33 0-56.5-23.5T240-320v-480q0-33 23.5-56.5T320-880h480q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240H320Zm0-80h480v-480H320v480ZM160-80q-33 0-56.5-23.5T80-160v-560h80v560h560v80H160Zm160-720v480-480Z'/%3E%3C/svg%3E");
+}
+
+[data-presented-file] [class*="_fileIcon"]:has(> svg[class*="_excel"]) {
+  --liuli-deliverable-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -960 960 960'%3E%3Cpath d='M760-120H200q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120ZM200-640h560v-120H200v120Zm100 80H200v360h100v-360Zm360 0v360h100v-360H660Zm-80 0H380v360h200v-360Z'/%3E%3C/svg%3E");
+}
+
+[data-presented-file] [class*="_fileIcon"]:has(> svg[class*="_ppt"]) {
+  --liuli-deliverable-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -960 960 960'%3E%3Cpath d='m380-300 280-180-280-180v360ZM200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H200Zm0-80h560v-560H200v560Zm0-560v560-560Z'/%3E%3C/svg%3E");
+}
+
+[data-presented-file] [class*="_fileIcon"]:has(> svg[class*="_video"]) {
+  --liuli-deliverable-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -960 960 960'%3E%3Cpath d='m160-800 80 160h120l-80-160h80l80 160h120l-80-160h80l80 160h120l-80-160h120q33 0 56.5 23.5T880-720v480q0 33-23.5 56.5T800-160H160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800Zm0 240v320h640v-320H160Zm0 0v320-320Z'/%3E%3C/svg%3E");
+}
+
+[data-presented-file] [class*="_fileIcon"]:has(> svg[class*="_folder"]) {
+  --liuli-deliverable-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -960 960 960'%3E%3Cpath d='M160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h240l80 80h320q33 0 56.5 23.5T880-640v400q0 33-23.5 56.5T800-160H160Zm0-80h640v-400H447l-80-80H160v480Zm0 0v-480 480Z'/%3E%3C/svg%3E");
+}
+
+[data-presented-file] [class*="_fileIcon"]:has(> svg[class*="_other"]) {
+  --liuli-deliverable-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -960 960 960'%3E%3Cpath d='M240-80q-33 0-56.5-23.5T160-160v-640q0-33 23.5-56.5T240-880h320l240 240v480q0 33-23.5 56.5T720-80H240Zm280-520v-200H240v640h480v-440H520ZM240-800v200-200 640-640Z'/%3E%3C/svg%3E");
+}
+
+[data-presented-file] [class*="_fileIcon"]::after {
+  content: '';
+  width: 26px;
+  height: 26px;
+  background-color: currentColor;
+  -webkit-mask: var(--liuli-deliverable-icon) center / contain no-repeat;
+  mask: var(--liuli-deliverable-icon) center / contain no-repeat;
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -1451,34 +1554,21 @@ div[data-phase='active'] {
 }
 
 /* ════════════════════════════════════════════════════════════
- * 统计行（StatsLine）上方的向上渐变模糊遮罩（用户要求）：
- * 消息流/内容在滚入统计行前向上渐隐模糊 —— 底部较实、向上渐隐，
- * 类似 iOS 底部渐晕。锚定 composerStack > div > InputBar_root >
- * div > StatsLine_root（两层 div 嵌套；composer 卡内 toolbar 的
- * root 是 card > row > ... 路径，结构不同，不会误伤）。
- * ::before 绝对定位在统计行正上方（bottom:100%），backdrop-filter 模糊。
+ * 统计行（StatsLine）上方的「向上渐变模糊遮罩」—— 已整条移除。
+ *
+ * 历史：DSH 2.0.4 时代统计行与输入卡之间还有消息流空间，这里挂过一个
+ * 「bottom:100%; height:48px」的 ::before（to top 渐隐 + backdrop blur），
+ * 让内容滚入统计行前向上渐隐（iOS 式底部渐晕）。
+ *
+ * 失效原因：DSH 2.0.9 起官方把统计胶囊行（[data-composer-stats]）钉在
+ * 输入卡正下方、两者零间隙（另见 composer-seat-anchor.ts），于是「统计行
+ * 上方 48px」整段落在输入卡内部 —— 渐晕直接糊在对话框下半部分上，表现为
+ * 「对话框被一层向上的渐变遮罩罩住」（用户报告）。
+ *
+ * 当前布局下该效果没有可用空间（遮罩高度只会等于卡片自身高度），故删除
+ * 规则本身，也不再需要为它挂 position:relative。若日后上游重新留出卡片
+ * 与统计行之间的间隙，再按「只覆盖卡片底边之外」重建。
  * ════════════════════════════════════════════════════════════ */
-[class*="_composerStack"] > div > [class*="_root"] > div > [class*="_root"] {
-  position: relative !important;
-}
-
-[class*="_composerStack"] > div > [class*="_root"] > div > [class*="_root"]::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 100%;
-  height: 48px;
-  background: linear-gradient(
-    to top,
-    rgba(var(--liuli-acrylic-rgb), 0.6),
-    rgba(var(--liuli-acrylic-rgb), 0.25) 40%,
-    transparent
-  );
-  -webkit-backdrop-filter: blur(5px);
-  backdrop-filter: blur(5px);
-  pointer-events: none;
-}
 
 /* ════════════════════════════════════════════════════════════
  * 剩余小件观感（原宿主 module.css 差异，全部为 琉璃 配方）：
@@ -1892,6 +1982,22 @@ div[data-phase='active'] {
   gap: 6px !important;
 }
 
+/* 官方右栏引导页的入口胶囊自带**不透明深色底**（实测 L5GtOG_entry = rgb(38,37,25)），
+   在琉璃的磨砂材质上像一块块实心砖 —— 换成琉璃的亚克力半透明配比，让材质透出来；
+   比面板底色略高一点不透明度以保证文字清晰。
+   选择器必须限定 button 元素：胶囊内部的 _entryIcon / _entryText / _entryTitle
+   都含 _entry 子串，早前不加限定时它们被一起染成了色块（图标与文字各顶一块深底）。 */
+[data-liuli-official-rightbar] button[class*="_entry"] {
+  background-color: rgba(var(--liuli-acrylic-rgb), min(0.92, calc(var(--liuli-material-opacity) + 0.3))) !important;
+}
+
+/* 胶囊内的图标与文字容器保持透明：底色只由胶囊本体提供。 */
+[data-liuli-official-rightbar] [class*="_entryIcon"],
+[data-liuli-official-rightbar] [class*="_entryText"],
+[data-liuli-official-rightbar] [class*="_entryTitle"] {
+  background-color: transparent !important;
+}
+
 /* 官方右栏内部的面板容器自带**不透明**底色（实测 Ng7Ira_panel = rgb(21,19,14)，
    全高），会把琉璃卡片外壳的亚克力材质层完全盖住 —— 表现就是「背景材质没跟插件
    一致」。这里置透明，让材质透出来（与自研 details 面板的半透明观感一致）。 */
@@ -1904,6 +2010,18 @@ div[data-phase='active'] {
 [data-liuli-official-rightbar] [class*="_tabStrip_"] {
   background-color: transparent !important;
   border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.14)) !important;
+}
+
+/* 官方右栏模式：这一列的宽度由官方展开状态驱动（离散跳变），加过渡让帧层与官方
+   自己的滑入/滑出动画同步，避免整列瞬跳造成抖动感；resizing（拖手柄 / 窗口缩放）
+   期间关掉过渡，否则拖拽会被「粘住」。写在全局表而不是 CSS module：module 的
+   :global + :has 组合在这里会被更高优先级的 transition 规则盖掉。 */
+[data-testid="dock-shell"] [data-region-pane="region:details"]:has([data-liuli-official-rightbar]) {
+  transition: flex-basis 320ms var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1)) !important;
+}
+
+body[data-liuli-resizing] [data-testid="dock-shell"] [data-region-pane="region:details"] {
+  transition: none !important;
 }
 
 `

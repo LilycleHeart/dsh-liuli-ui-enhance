@@ -9,6 +9,8 @@ Thumbs.db
 # 临时/调试产物（元素拾取、探针、截图、打包残留等）
 .tmp-*
 .tmp-pack-*/
+# 安装器固定打包目录（profile 依赖指向此处，可随时重新 pack 覆盖）
+.liuli-pack/
 preview-gifs/
 
 # IDE / 编辑器

@@ -77,7 +77,7 @@ import { setTurnRailCommitHandler, TurnRail } from './TurnRail.tsx'
 import { fileChangesDefinition, absOf, relOf, RoundSummaryCard } from './TurnFileCard.tsx'
 import { startEditDiffAutoExpand } from './edit-diff-autoplay.ts'
 import { startAutoOpenDetails } from './auto-open-details.ts'
-import { startAutoDriveBrowser } from './auto-drive-browser.ts'
+import { startAutoDriveBrowser, AUTO_DRIVE_BROWSER_EVENT } from './auto-drive-browser.ts'
 import { startLiuliTransition } from './liuli-transition.ts'
 import { startAutoLoadHistory } from './auto-load-history.ts'
 import { startHideNativeTurnNavigator } from './hide-native-turnrail.ts'
@@ -110,10 +110,14 @@ import { startSidebarLogoDetailsCollapse } from './logo-details-collapse.ts'
 import { startConversationFileContextMenu } from './conversation-file-context-menu.ts'
 import {
   PreviewDetailsPanel, PreviewButton, PREVIEW_TOGGLE_EVENT,
+  PREVIEW_NAVIGATE_EVENT, PREVIEW_CODE_EVENT,
   SIDE_CHAT_OPEN_EVENT,
   openFrontendFile, setPreviewOpen, togglePreviewOpen, setPaneSyncSuppressed,
 } from './PreviewPanel.tsx'
 import type { SidePaneHostAccess } from './SidePaneExtraPanels.tsx'
+import { startLiuliSidebarTabs, getOfficialSidebarController } from './sidebar-right-tabs.ts'
+import { initPanelDriver, openLiuliPanel } from './panel-driver.ts'
+import { REVIEW_FILE_EVENT, REVIEW_DRIVE_EVENT } from './review-bus.ts'
 import { BtwAnswerHost, BTW_ANSWER_EVENT } from './BtwAnswer.tsx'
 import { addPanel as addDockPanel } from './dock-model.ts'
 import { DockShellFrame, DOCK_MENU_TOGGLE_EVENT, setDockHostBridge } from './dock-shell-frame.tsx'
@@ -143,6 +147,27 @@ export const LIULI_FEATURES_LOCALE_NS = 'liuli-features'
 
 /** 主题样式注入的 <style> id（幂等：重复 apply 不叠加）。 */
 const STYLE_ID = 'liuli-theme-css'
+
+/** 「让出 rightbar 席位给官方右侧栏」的迁移开关（localStorage）。
+ *  置 1 时插件不再以 priority -1 占据 `rightbar` 席位，官方
+ *  `@deepseek-ai/dsh-client-ui-sidebar-right` 的 RightbarRoot 接管该列，
+ *  插件的面板改为经 `ctx.sidebarRightTabs` 注册（见 sidebar-right-tabs.ts）。
+ *  迁移期开关，默认关闭以保持现有自研详情列不变。 */
+export const OFFICIAL_RIGHTBAR_LS_KEY = 'liuli:official-rightbar'
+
+/** 读取「并入官方右侧栏」迁移开关：以设置页「功能 · 并入官方右侧栏」为准，
+ *  兼容迁移期直接写独立 localStorage 键（CDP / 早期手动开关）。
+ *  每次调用都重新读盘，因此切换后刷新页面即生效。 */
+function officialRightbarSeatEnabled(): boolean {
+  try {
+    const raw = window.localStorage.getItem(LIULI_LS_KEY)
+    const settings = liuliSettingsOf(raw === null ? {} : (JSON.parse(raw) as unknown))
+    if (settings.official_sidebar_right === true) return true
+    return window.localStorage.getItem(OFFICIAL_RIGHTBAR_LS_KEY) === '1'
+  } catch {
+    return false
+  }
+}
 // 设置持久化键在 liuli-settings.ts 中定义（HeaderEffects 运行时读取同一键）。
 
 /** Required services: slots/locale for the settings section, theme for the toggle bridge, remote for supplier quota.
@@ -383,8 +408,8 @@ function equipRootEntryChildren(ctx: ClientContext, keys: readonly string[]): bo
   try {
     const core = (ctx.slots as unknown as {
       _core?: {
-        records?: Map<string, { entries: Array<{ options?: { priority?: number }; children?: Record<string, { kind: string; scope: string }> }> }>
-        spec?: (key: string) => { kind: string; scope: string } | undefined
+        records?: Map<string, { entries: Array<{ options?: { priority?: number }; children?: Record<string, Record<string, unknown>> }> }>
+        spec?: (key: string) => Record<string, unknown> | undefined
       }
     })._core
     if (core === undefined || core.records === undefined || typeof core.spec !== 'function') return false
@@ -392,15 +417,31 @@ function equipRootEntryChildren(ctx: ClientContext, keys: readonly string[]): bo
     if (rec === undefined) return false
     const mine = rec.entries.find(e => e.options?.priority === -1 && e.children !== undefined && Object.keys(e.children).length === 0)
     if (mine === undefined) return false
-    const table: Record<string, { kind: string; scope: string }> = {}
+    const table: Record<string, Record<string, unknown>> = {}
     for (const key of keys) {
       const spec = core.spec(key)
       // 客户端槽位集合可能跨版本变化：任一 key 缺失即整体放弃（宁可回退原生帧，
       // 也不留下半张声明表让渲染期抛 SlotOwnershipError）。
       if (spec === undefined) return false
-      table[key] = { kind: spec.kind, scope: spec.scope }
+      // 整份镜像（含 inject 面），不能只取 kind/scope：渲染器按 entry.children
+      // 判定 occupant 能拿到哪些注入面，而官方 occupant 依赖声明里的 hooks 判断
+      // 上下文 —— 官方右侧栏 RightbarRoot 就拿 inject 的 usePanelInfo 判断「是否为
+      // 会话界面」，缺了它便不挂载 rightbar.session，表现为运行期
+      // `ctx.sidebarRight` 报 "no session surface is mounted"（面板开了也没处落）。
+      table[key] = { ...spec }
     }
     mine.children = table
+    // 诊断面：暴露镜像到的子槽位规格字段名，供 CDP 核验 inject 面是否齐备
+    // （迁移验证期用；与 `__liuliDockShell__` 同风格的自检钩子）。
+    try {
+      ;(window as unknown as { __liuliRootChildren__?: unknown }).__liuliRootChildren__ = Object.fromEntries(
+        Object.entries(table).map(([k, v]) => [k, {
+          fields: Object.keys(v),
+          kind: (v as { kind?: unknown }).kind,
+          scope: (v as { scope?: unknown }).scope,
+        }]),
+      )
+    } catch { /* 诊断不应影响主流程 */ }
     return true
   } catch {
     return false
@@ -745,7 +786,7 @@ export function apply(ctx: ClientContext): void {
           // Web 模式：与本 entry 的每次渲染组合同步重定向官方控制器动作
           // （见 attachWebLayout 注释；advanced 下为 undefined 不动作）。
           attachWebLayout?.()
-          return { dockShell: shellHandle, hostLayout, slotLayout }
+          return { dockShell: shellHandle, hostLayout, slotLayout, officialRightbar: officialRightbarSeatEnabled() }
         },
       }
       const disposeRegistration = ctx.slots.register(
@@ -1267,8 +1308,13 @@ export function apply(ctx: ClientContext): void {
     window.dispatchEvent(new CustomEvent(SIDE_CHAT_OPEN_EVENT))
   }), 'dsh-liuli-ui-enhance: /side /btw command bridge')
   // ── 右侧边栏（详细页）面板：占用宿主 details 列（priority -1 替换官方工具详情列）。
-  //    unofficial_sidebar 关闭时不注册，宿主 details 列还原为官方内容。 ──
-  if (unofficial('sidebar')) {
+  //    unofficial_sidebar 关闭时不注册，宿主 details 列还原为官方内容。
+  //    迁移开关（`liuli:official-rightbar=1`）：让出 rightbar 席位给官方右侧栏 ——
+  //    插件的 priority -1 会压制官方 RightbarRoot（实测：席位里 PreviewDetailsPanel
+  //    priority -1 压过 RightbarRoot），让出后官方接管该列，琉璃面板改经
+  //    ctx.sidebarRightTabs 注册（sidebar-right-tabs.ts，审查面板已就绪）。 ──
+  const officialRightbarSeat = officialRightbarSeatEnabled()
+  if (unofficial('sidebar') && !officialRightbarSeat) {
     // 2.0.9：details 槽位改名为 rightbar（scope 由 session 变 root）；
     // 注册名与 inject key 都随 slotLayout 切换。类型面按旧版 SlotMap 编译
     // （devDependency 仍是 0.1.2 线），这里按运行时 key 做一次断言。
@@ -1831,8 +1877,11 @@ export function apply(ctx: ClientContext): void {
     order: 20,
   }, TurnRail))
   // 工作区预览开关：点击开合宿主右侧 details 列（不再是 overlay）。
-  // unofficial_sidebar 关闭时不注册（右侧边栏整体停用，按钮无意义）。
-  if (unofficial('sidebar')) {
+  // unofficial_sidebar 关闭时不注册（右侧边栏整体停用，按钮无意义）；
+  // **官方右栏模式也不注册**：该模式把右栏交给官方，官方自己会在会话 header
+  // 角落席位放一枚展开按钮，再挂一个做同样事情的按钮就是重复入口
+  //（且插件按钮走 layout 服务的 rightbar 开关，与官方面板自己的展开状态不同步）。
+  if (unofficial('sidebar') && !officialRightbarSeatEnabled()) {
     ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
       name: 'conversation.session.header.utilities',
       id: 'liuli-preview-button',
@@ -1858,6 +1907,70 @@ export function apply(ctx: ClientContext): void {
     name: 'conversation.chat.node',
     key: 'liuli-round-summary',
   }, RoundSummaryCard))
+
+  // ── 官方右侧栏扩展点（迁移开关见 officialRightbarSeatEnabled）──
+  // 2.0.9 起客户端内置官方右侧栏：ctx.sidebarRightTabs（tab 类型注册表）+
+  // sidebar.right.pane.tab（keyed/session 正文席位）。这里把琉璃面板逐个登记成
+  // 官方 tab 类型，标签条/分栏/拖拽/浮窗/宽度/开合全部复用官方实现；自研 details
+  // 列与 dock 工作台保持原样（两条路径并存，功能不缩水，便于逐面板迁移与回退）。
+  if (unofficial('sidebar')) {
+    // ── 面板驱动适配：让「打开某个面板」的入口在两种模式下行为一致 ──
+    // 自研模式下这些入口由 PreviewDetailsPanel 组件内部的监听器处理；官方右栏
+    // 模式下该组件不再注册（让出 rightbar 席位），入口会整体失效（点了没反应）。
+    // 这里统一挂一层监听：官方模式走 ctx.sidebarRight.openTab（参数经 pending 表
+    // 传给正文），自研模式下 openLiuliPanel 返回 false、原链路照旧不受影响。
+    initPanelDriver({ controller: getOfficialSidebarController })
+    const driverListeners: Array<[string, EventListener]> = [
+      // 轮次卡片「审查」按钮：定位到某个文件。
+      [REVIEW_FILE_EVENT, (event) => {
+        const detail = (event as CustomEvent<{ path?: string }>).detail
+        if (typeof detail?.path === 'string' && detail.path !== '') openLiuliPanel('review', { path: detail.path })
+      }],
+      // LLM 活动自动展开：切到「上一轮更改」并展开目标。
+      [REVIEW_DRIVE_EVENT, (event) => {
+        const detail = (event as CustomEvent<{ source?: string; path?: string }>).detail
+        if (typeof detail?.source !== 'string') return
+        openLiuliPanel('review', {
+          source: detail.source,
+          ...(typeof detail.path === 'string' ? { path: detail.path } : {}),
+        })
+      }],
+      // 会话内点击前端产物 / 模型活动驱动的 dev server 页面。
+      [PREVIEW_NAVIGATE_EVENT, (event) => {
+        const url = (event as CustomEvent<{ url?: string }>).detail?.url
+        if (typeof url === 'string' && url !== '') openLiuliPanel('browser', { url })
+      }],
+      [AUTO_DRIVE_BROWSER_EVENT, (event) => {
+        const url = (event as CustomEvent<{ url?: string }>).detail?.url
+        if (typeof url === 'string' && url !== '') openLiuliPanel('browser', { url })
+      }],
+      // 对话页「打开」前端页面文件 → 代码查看。
+      [PREVIEW_CODE_EVENT, (event) => {
+        const detail = (event as CustomEvent<{ path?: string; rel?: string }>).detail
+        const rel = typeof detail?.rel === 'string' ? detail.rel : undefined
+        const absolute = typeof detail?.path === 'string' ? detail.path : undefined
+        if (rel === undefined && absolute === undefined) return
+        openLiuliPanel('code', {
+          ...(rel === undefined ? {} : { rel }),
+          ...(absolute === undefined ? {} : { absolutePath: absolute }),
+        })
+      }],
+      // `/side`、`/btw` 指令桥打开辅助对话。
+      [SIDE_CHAT_OPEN_EVENT, (event) => {
+        const prompt = (event as CustomEvent<{ initialPrompt?: string }>).detail?.initialPrompt
+        openLiuliPanel('side-chat', typeof prompt === 'string' && prompt !== '' ? { initialPrompt: prompt } : {})
+      }],
+    ]
+    for (const [name, listener] of driverListeners) window.addEventListener(name, listener)
+    ctx.effect(
+      () => () => { for (const [name, listener] of driverListeners) window.removeEventListener(name, listener) },
+      'dsh-liuli-ui-enhance: official rightbar panel driver listeners',
+    )
+    startLiuliSidebarTabs(ctx, {
+      openPath: (path: string) => { void ctx.remote.session.openWorkspacePath({ path }) },
+      sidePaneHost,
+    })
+  }
 
   // ── 对话页 edit/write 工具行自动展开（显示文件 diff）──
   // 上游 ToolRow 把 diff 放在默认收起的可折叠 body；这里在会话正文渲染后

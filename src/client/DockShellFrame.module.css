@@ -58,6 +58,28 @@
   pointer-events: none;
 }
 
+/* 官方右侧栏常驻宿主的卡片外壳（迁移模式）：官方把右栏画成「页面的一列」
+   （贴边、无圆角、无材质），与琉璃自研 details 列的卡片观感不一致。这里按自研
+   配方套壳：上下留白 + 左侧留白、右贴窗口边（所以只有左侧圆角）—— 与
+   liuli-css 里预览列的「右贴边圆角卡片」镜像配方一致。
+   材质直接做在卡片本体（而不是 ::before + z-index:-1）：伪元素那层嵌进官方列
+   之后实测 backdrop-filter 采不到视口壁纸，改成元素自身后磨砂稳定可见。 */
+.officialRightbarCard {
+  position: relative;
+  /* 高度扣掉上下留白：margin 会向外撑，用 100% 会让卡片底部溢出视口 2×padding。 */
+  height: calc(100% - 2 * var(--liuli-dock-padding, 8px));
+  min-height: 0;
+  overflow: hidden;
+  margin: var(--liuli-dock-padding, 8px) 0 var(--liuli-dock-padding, 8px) var(--liuli-dock-padding, 8px);
+  border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.14));
+  border-radius: var(--liuli-radius, 14px) 0 0 var(--liuli-radius, 14px);
+  box-shadow: var(--liuli-glow-brand), var(--liuli-shadow);
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55));
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+}
+
 /* 普通 dock 面板：默认四边留白；仅当它是上下堆叠中的下方卡片时底部触底去圆角。 */
 .paneCard.edgeBottom {
   margin-bottom: 0;

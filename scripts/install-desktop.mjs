@@ -24,7 +24,8 @@
 //   node scripts/install-desktop.mjs --no-install    # 只改配置，不执行 pnpm install
 //   DSH_PROFILE_DIR=... node scripts/install-desktop.mjs
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -101,11 +102,27 @@ if (fromNpm) {
   depValue = resolveNpmVersion();
 } else {
   // 本地源码安装：先 pack 成 tarball，确保插件 dependencies 能装进 profile。
+  // 打包目录固定为 <repo>/.liuli-pack，不要用 mkdtempSync 生成随机临时目录：
+  // 该路径会被原样写进 profile/package.json 的 dependencies，随机目录一旦被
+  // 清理（或换机），后续 pnpm install 就会因 tarball 不存在而失败（2026-09-13 踩坑）。
   ensureBuilt();
-  const packDir = mkdtempSync(join(repoRoot, '.tmp-pack-'));
+  const packDir = join(repoRoot, '.liuli-pack');
+  mkdirSync(packDir, { recursive: true });
+  // 清掉上一次的 tarball，避免 readdirSync 命中旧包名
+  for (const name of readdirSync(packDir)) {
+    if (name.endsWith('.tgz')) rmSync(join(packDir, name), { force: true });
+  }
   run(pnpmCommand(), ['pack', '--pack-destination', packDir], repoRoot);
-  const tarball = readdirSync(packDir).find((name) => name.endsWith('.tgz'));
-  if (tarball === undefined) fail('pnpm pack 未生成 tarball');
+  const packed = readdirSync(packDir).find((name) => name.endsWith('.tgz'));
+  if (packed === undefined) fail('pnpm pack 未生成 tarball');
+  // 内容指纹写进文件名：pnpm 对 file: tarball 依赖按「spec（路径）+ lockfile
+  // integrity」判定是否需要重装——路径不变时即使 tarball 内容已更新，也会被判成
+  // Already up to date，静默装上旧包（2026-09-14 踩坑：改了 liuli-css 后
+  // install:desktop + 刷新页面看不到任何变化）。文件名带上内容 sha256 前 12 位后，
+  // 内容变了 spec 就变（pnpm 必然重新解析解包），内容没变则 spec 不变（保持幂等）。
+  const digest = createHash('sha256').update(readFileSync(join(packDir, packed))).digest('hex').slice(0, 12);
+  const tarball = packed.replace(/\.tgz$/, `-${digest}.tgz`);
+  renameSync(join(packDir, packed), join(packDir, tarball));
   depValue = `file:${join(packDir, tarball).replaceAll('\\', '/')}`;
 }
 

@@ -414,14 +414,18 @@
   display: inline-block;
 }
 
+/* 操作按钮区：检查卡有 4 个按钮，按 42% 基准换行成两行两列；
+   插入模式的信息卡只有 2 个按钮，仍是一行。 */
 .infoActions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
 }
 
 .infoBtn {
-  flex: 1;
+  flex: 1 1 42%;
+  min-width: 0;
   padding: 6px 10px;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 8px;

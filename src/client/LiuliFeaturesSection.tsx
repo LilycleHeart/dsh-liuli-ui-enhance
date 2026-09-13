@@ -151,6 +151,13 @@ export function LiuliFeaturesSection({
             checked={s.unofficial_dom}
             onChange={(v) => { set({ unofficial_dom: v }) }}
           />
+          {/* 迁移选项：并入官方右侧栏（复用官方标签条/分栏/拖拽/宽度/开合） */}
+          <ToggleRow
+            label={t('unofficial.officialRightbar')}
+            tip={t('unofficial.officialRightbarHint')}
+            checked={s.official_sidebar_right}
+            onChange={(v) => { set({ official_sidebar_right: v }) }}
+          />
         </div>
       </div>
 

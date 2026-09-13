@@ -155,6 +155,11 @@ export interface LiuliSettings {
   /** DOM 观察增强：悬浮球、自动展开、入场动画、会话标记/右键菜单、重命名、
    *  缩放性能护栏、/side /btw 等基于 DOM 观察或自有 overlay 的增强。 */
   unofficial_dom: boolean
+  /** 并入官方右侧栏（迁移开关）：把琉璃面板登记为官方
+   *  `@deepseek-ai/dsh-client-ui-sidebar-right` 的 tab 类型，标签条/分栏/拖拽/
+   *  宽度/开合全部交还官方；开启后自研 details 列不再占用 rightbar 席位。
+   *  切换后需刷新页面生效（注册与宿主渲染在插件 apply 时决定）。 */
+  official_sidebar_right: boolean
 }
 
 /** 默认设置（与 琉璃 界面设置一致）。 */
@@ -220,6 +225,7 @@ export const LIULI_SETTINGS_DEFAULTS: LiuliSettings = {
   unofficial_sidebar: true,
   unofficial_browser: true,
   unofficial_dom: true,
+  official_sidebar_right: false,
 }
 
 /** 持久化 schema（浏览器 scope 复用同一描述）。 */
@@ -291,6 +297,8 @@ export const LiuliSettingsSchema: z<LiuliSettings> = z.object({
   unofficial_sidebar: z.boolean().default(true),
   unofficial_browser: z.boolean().default(true),
   unofficial_dom: z.boolean().default(true),
+  // 默认关闭：官方右栏为迁移期选项，开启后自研右侧边栏让出席位。
+  official_sidebar_right: z.boolean().default(false),
 }) as unknown as z<LiuliSettings>
 
 /** 合并任意部分值到完整设置（读侧防御）。 */

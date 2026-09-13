@@ -34,7 +34,8 @@ DeepSeek Harness 的 **Material Design 3 × Fluent 2 融合主题**插件：动�
 - 🌐 内嵌浏览器
 - 🚀 侧边栏浏览器自动驱动（模型启动 dev server / 写前端文件时自动展示页面；agent `open --show` 驱动即可见）
 - 🎛️ 无边框窗口按钮
-- 🎯 元素选择器
+- 🧩 并入官方右侧栏：琉璃面板（审查/文件树/终端/代码查看/浏览器/辅助对话/开发者工具）登记为官方 `sidebarRightTabs` tab 类型，标签条/分栏/拖拽/浮窗/宽度/开合全部交还官方（设置 → 功能 → 「并入官方右侧栏」开启后刷新）
+- 🎯 元素选择器 / 元素检查（悬浮球：拾取元素插入聊天；「检查」模式点击元素弹出元素检查卡——computed styles + outerHTML，宿主支持定位时同时在 DevTools Elements 面板定位；DSH Desktop 2.0.9 起宿主跑在 utility process，定位降级、卡片与「切换开发者工具」可用）
 - 🔍 开发者工具（悬浮球，Electron 侧边 DevTools）
 - ⚙️ 设置「外观」「功能」两个分区（外观：取色/背景/材质/圆角/泛光/壁纸等；功能：宽边/动画/侧边栏默认终端/声纹（总开关 + 高级设置折叠）/模型重试/历史加载/思考等级自动补全/非官方增强开关）
 - ⚙️ 设置页原生下拉升级（「模型服务商」卡片的 API 协议 / 新增提供商等原生 select 换成琉璃自定义下拉组件，选择经 change 事件写回宿主表单）
@@ -63,6 +64,7 @@ pnpm patch:desktop      # 推荐：win32 无边框补丁（自动补丁失败不
 ## 文档
 
 - [功能详解](docs/features.md)
+- [并入官方右侧栏：迁移说明与自研 dock 外壳退役范围](docs/official-sidebar-migration.md)
 - [样式规范](docs/style-guide.md)
 - [安装与构建](docs/install.md)
 - [版本发布与分支约定](docs/release.md)

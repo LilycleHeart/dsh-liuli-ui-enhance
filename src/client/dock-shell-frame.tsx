@@ -94,7 +94,20 @@ type LooseRenderSlot = (
 export type DockShellFrameProps =
   & PropsRuntime<'root'>
   & PropsRenderSlots<'sidebar' | 'conversation' | 'details' | 'shell.overlay'>
-  & { dockShell: DockShellHandle; hostLayout: HostLayoutFace; slotLayout?: DockSlotLayout }
+  & {
+    dockShell: DockShellHandle
+    hostLayout: HostLayoutFace
+    slotLayout?: DockSlotLayout
+    /** 官方帧层经 `ctx.slots.provideRoot` 注入的面板信息 hook（root 作用域 occupant
+     *  才有）。官方右侧栏宿主 RightbarRoot 用 `info.activePanelId === null` 判断
+     *  「当前是否会话主面板」，本帧层接管 root 后需要据此确认官方右栏能否挂载。 */
+    usePanelInfo?: (selector: (info: { activePanelId: string | null }) => unknown) => unknown
+    /** 让出 rightbar 席位给官方右侧栏（迁移开关）：为真时帧层**无条件**渲染
+     *  `rightbar` 席位（官方 AppFrame 同样无条件渲染），否则官方 RightbarRoot
+     *  在右栏关闭时拿不到挂载点，ctx.sidebarRight 会一直报
+     *  "no session surface is mounted"。 */
+    officialRightbar?: boolean
+  }
 
 interface DragSource {
   kind: 'node' | 'float'
@@ -263,8 +276,38 @@ function surfaceClass(type: string): string {
   }
 }
 
+/** 官方面板信息探针：必须是**独立组件** —— 父级按存在性条件渲染组件（合法），
+ *  而条件调用 hook 会破坏 hooks 顺序、让整个帧层渲染崩溃并被框架 abdicate
+ *  回退到官方 AdvancedFrame（现象：`[data-region-pane]` 全部消失）。 */
+function PanelInfoProbe({ usePanelInfo }: { usePanelInfo: NonNullable<DockShellFrameProps['usePanelInfo']> }): null {
+  const info = usePanelInfo((value: { activePanelId: string | null }) => value)
+  useEffect(() => {
+    try {
+      ;(window as unknown as { __liuliPanelInfo__?: unknown }).__liuliPanelInfo__ = {
+        hasHook: true,
+        value: info ?? null,
+        activePanelIdIsNull: (info as { activePanelId?: string | null } | undefined)?.activePanelId === null,
+      }
+    } catch { /* 诊断不应影响主流程 */ }
+  }, [info])
+  return null
+}
+
+/** 官方右侧栏展开时的轨道宽度。
+ *  优先用用户拖出来的宽度（`detailsWidth`，与自研 details 列共用同一份记忆），
+ *  没有记忆时回落到官方 ui-layout 的默认比例（45%，min 300 / max 70% 视口）。
+ *  展开状态住在官方 sidebar-right 自己的 store 里（帧层读不到），由调用方轮询
+ *  `__liuliSidebarRight__.isExpanded()` 后决定是否为 0。 */
+function officialRightbarTrackWidth(detailsWidth: number): number {
+  const viewport = typeof window === 'undefined' ? 0 : window.innerWidth
+  if (viewport === 0) return detailsWidth > 0 ? detailsWidth : 360
+  const fallback = Math.round(Math.min(Math.max(viewport * 0.45, 300), viewport * 0.7))
+  if (!Number.isFinite(detailsWidth) || detailsWidth <= 0) return fallback
+  return Math.min(Math.round(detailsWidth), Math.round(viewport * 0.7))
+}
+
 /** 框架 root 占用者：视觉零侵入的 dockable 三区域 shell。 */
-export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions, renderSlot, SessionProvider }: DockShellFrameProps) {
+export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions, renderSlot, SessionProvider, usePanelInfo, officialRightbar }: DockShellFrameProps) {
   const renderSlotLoose = renderSlot as unknown as LooseRenderSlot
   const shell = useSyncExternalStore(dockShell.subscribe, dockShell.getSnapshot)
   const actions = dockShell.actions
@@ -278,6 +321,49 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
     const current = s.current
     return current !== undefined && s.byId[current]?.blank === false ? current : undefined
   })
+
+  /** 官方右侧栏展开状态（迁移期）：展开状态住在官方 sidebar-right 自己的 store
+   *  里、帧层读不到，这里轮询官方控制器自检钩子，只为决定这一列的轨道宽度。
+   *  间隔取 120ms：400ms 时「点开标签后布局要等近半秒才让出宽度」，观感像卡住；
+   *  官方组件自己负责 push/fullscreen 呈现，所以这里只需要跟上它的展开/收起。 */
+  const [officialRightbarExpanded, setOfficialRightbarExpanded] = useState(false)
+  useEffect(() => {
+    if (officialRightbar !== true) return () => {}
+    const read = (): boolean => {
+      try {
+        const hook = (window as unknown as { __liuliSidebarRight__?: { isExpanded?: () => boolean } }).__liuliSidebarRight__
+        return hook?.isExpanded?.() === true
+      } catch { return false }
+    }
+    setOfficialRightbarExpanded(read())
+    const timer = window.setInterval(() => {
+      const next = read()
+      setOfficialRightbarExpanded(prev => {
+        if (prev !== next) {
+          // 诊断：展开状态与轨道宽度的实际取值（供 CDP 核验，不影响流程）。
+          try {
+            ;(window as unknown as { __liuliOfficialTrack__?: unknown }).__liuliOfficialTrack__ = {
+              expanded: next,
+              at: new Date().toISOString(),
+            }
+          } catch { /* 诊断 */ }
+        }
+        return next
+      })
+    }, 120)
+    return () => { window.clearInterval(timer) }
+  }, [officialRightbar])
+
+  /** 官方右栏展开/收起会让整列宽度变化（连同会话区一起被推挤），与拖手柄同属
+   *  「布局正在变」的场景 —— 复用 resize-perf 的磨砂归一机制：变化期间把模糊
+   *  渐变收敛（有 ~140ms 过渡，不是硬切），动画结束后再渐变回来，避免每帧重绘
+   *  大面积 backdrop-filter。420ms 覆盖官方滑入/滑出动画的时长。 */
+  useEffect(() => {
+    if (officialRightbar !== true) return () => {}
+    beginResizePerf()
+    const timer = window.setTimeout(() => { endResizePerf() }, 420)
+    return () => { window.clearTimeout(timer); endResizePerf() }
+  }, [officialRightbar, officialRightbarExpanded])
 
   const [drag, setDrag] = useState<DragState | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -900,7 +986,15 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
         }
         return sidebarWidth
       }
-      if (only.type === REGION_DETAILS) return hostPanels.details === 0 ? 0 : clampDetailsWidth(detailsWidth, window.innerWidth, sidebarWidth)
+      if (only.type === REGION_DETAILS) {
+        // 官方式接管（officialRightbar）：宽度跟随官方右栏展开状态 —— 帧层为它让出
+        // 真实轨道（会话区因此被推窄，与自研 details 列行为一致），常驻宿主
+        //（见根节点 data-liuli-official-rightbar）就覆盖在这条让出的空轨道上。
+        if (officialRightbar === true && slotLayout === 'v209') {
+          return officialRightbarExpanded ? officialRightbarTrackWidth(detailsWidth) : 0
+        }
+        return hostPanels.details === 0 ? 0 : clampDetailsWidth(detailsWidth, window.innerWidth, sidebarWidth)
+      }
       return undefined
     }
     if (child.kind === 'split') {
@@ -988,7 +1082,33 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
       case REGION_DETAILS:
         // 2.0.9：details 改名为 rightbar，scope 由 session 变 root（不再需要
         // SessionProvider 包裹），owner props 换成官方 AdvancedFrame 的三件套。
+        // 官方式接管（officialRightbar）时该席位改由帧层常驻宿主渲染（见根节点），
+        // 这里不再渲染席位本体（single kind 重复渲染会被框架拒绝），但**保留可见
+        // 占位**：否则别人把面板拖进这一列时，面板数据进去了却没有东西渲染 ——
+        // 表现就是「拖过去面板消失了」。
+        if (slotLayout === 'v209' && officialRightbar === true) {
+          // 官方右栏**渲染在这一列里**（而不是浮在上面的 fixed 层）：这样官方展开/
+          // 收起的宽度变化会让整列跟着推挤相邻区域，动画期间不会叠到别的区域上，
+          // 卡片外壳也随布局走。宽度为 0（收起）时这一列仍然挂载 —— 官方
+          // RightbarRoot 因此始终有挂载点（否则 ctx.sidebarRight 会一直报
+          // "no session surface is mounted"）。
+          return (
+            <div className={css.officialRightbarCard} data-liuli-official-rightbar="">
+              {renderSlotLoose('rightbar', {
+                width: officialRightbarExpanded ? officialRightbarTrackWidth(detailsWidth) : 0,
+                viewportWidth: typeof window === 'undefined' ? 0 : window.innerWidth,
+                canShow: true,
+              })}
+            </div>
+          )
+        }
         if (slotLayout === 'v209') {
+          // 诊断：官方右侧栏 RightbarRoot 只有在该席位被渲染时才会挂载
+          // rightbar.session（否则 ctx.sidebarRight 报 no session surface）。
+          try {
+            const w = window as unknown as { __liuliDetailsRender__?: { count: number; at: string } }
+            w.__liuliDetailsRender__ = { count: (w.__liuliDetailsRender__?.count ?? 0) + 1, at: new Date().toISOString() }
+          } catch { /* 诊断不应影响主流程 */ }
           return renderSlotLoose('rightbar', {
             width: detailsWidth,
             viewportWidth: typeof window === 'undefined' ? 0 : window.innerWidth,
@@ -1336,6 +1456,10 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
         if (regionType === REGION_DETAILS) {
           // 详情区域宽度由 liuli 自管（上限 = 视口 88%，且不把会话压过 480/推出视口），
           // 再与「其他子级最小占用」取小，保证相邻卡片不被盖住。
+          // 官方右栏模式下这一列的内容是官方右侧栏（卡片外壳在列内），所以拖拽
+          // 同样只需直写 flexBasis —— 官方内容会跟着列宽变化，无需 React 重渲染。
+          //（早前为「让官方跟随」在拖拽中每帧 setDetailsWidth，会让整棵树与官方
+          // 右栏内容每帧重排，实测拖手柄明显掉帧，已回退。）
           lastRegionSize = Math.min(clampDetailsWidth(newSize, window.innerWidth, sidebarWidth), maxSize)
         } else {
           // 侧栏宽度仍遵循宿主契约 264..420（onUp 经 hostLayout.setSidebar 提交），
@@ -1812,6 +1936,7 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
           面板悬浮由 grip ⧉ 按钮承担）。
           macOS 保留 caption 行（红绿灯留白 + 窗口拖拽区）。 */}
       {platform === 'darwin' && <div className="dshDesktopMacCaptionRow" aria-hidden="true" />}
+      {typeof usePanelInfo === 'function' ? <PanelInfoProbe usePanelInfo={usePanelInfo} /> : null}
       <div
         className={css.dockBody}
         ref={rootRef}

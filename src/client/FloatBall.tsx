@@ -11,7 +11,7 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { attachElementPicker, describeElement, type PickedElement } from './element-picker.ts'
+import { attachElementPicker, describeElement, inspectElement, type InspectedElement, type PickedElement } from './element-picker.ts'
 import type { InsertElementFn } from './FloatBall.types.ts'
 import css from './FloatBall.module.css'
 
@@ -107,6 +107,14 @@ export function FloatBall({ insertElement, openLayoutMenu }: { insertElement: In
   const [hovered, setHovered] = useState(false)
   const [picking, setPicking] = useState(false)
   const [picked, setPicked] = useState<PickedElement | null>(null)
+  /** 检查模式的「元素检查」结果（computed styles + outerHTML），与插入模式的
+   *  infoCard 分开承载：两张卡片的操作面与信息量不同。 */
+  const [inspected, setInspected] = useState<InspectedElement | null>(null)
+  /** 宿主是否支持「在 DevTools 中定位元素」：null = 尚未探测。
+   *  DSH Desktop 2.0.9 起宿主插件跑在 Electron utility process，拿不到
+   *  BrowserWindow，`/liuli-window` 的 inspectElement 只有旧版/主进程宿主支持
+   *  （GET 的 capabilities.inspectElement）。不支持时点击元素只弹检查卡。 */
+  const [nativeInspect, setNativeInspect] = useState<boolean | null>(null)
   const [pickerMode, setPickerMode] = useState<'insert' | 'inspect'>('insert')
   const [devtoolsBusy, setDevtoolsBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
@@ -166,6 +174,25 @@ export function FloatBall({ insertElement, openLayoutMenu }: { insertElement: In
     }
   }
 
+  /* ── 宿主能力探测：本客户端能否「在 DevTools 中定位元素」 ──
+     DSH Desktop 2.0.9 起宿主插件改跑 Electron utility process，拿不到
+     BrowserWindow，/liuli-window 的 inspectElement 整条降级（POST 只回
+     "native window control unavailable in utility-process host"）。能力随
+     客户端版本固定，挂载时探测一次；不支持时点击元素改弹自带的检查卡。 */
+  useEffect(() => {
+    let alive = true
+    void (async () => {
+      try {
+        const resp = await fetch('/liuli-window')
+        const body = await resp.json().catch(() => ({})) as { capabilities?: { inspectElement?: boolean } }
+        if (alive) setNativeInspect(body.capabilities?.inspectElement === true)
+      } catch {
+        if (alive) setNativeInspect(false)
+      }
+    })()
+    return () => { alive = false }
+  }, [])
+
   /* ── 拾取模式生命周期 ── */
   useEffect(() => {
     if (!picking) return
@@ -194,14 +221,21 @@ export function FloatBall({ insertElement, openLayoutMenu }: { insertElement: In
         card.textContent = '<' + el.tagName.toLowerCase() + '> ' + describeElement(el).selector
       },
       onPick: (el) => {
-        const info = describeElement(el)
-        setPicked(info)
         setPicking(false)
         if (pickerMode === 'inspect') {
-          // 检查模式：不插入聊天，改为在 DevTools 中定位元素。
-          void inspectElementAt(info)
+          // 检查模式：弹出「元素检查」卡（computed styles + outerHTML）。
+          // 宿主还能定位元素时（旧版主进程宿主）额外把元素定位到 DevTools
+          // Elements 面板；DSH Desktop 2.0.9+ 的 utility-process 宿主没有该
+          // 能力，卡片就是唯一的结果面 —— 保证「点击必有反馈」。
+          const detail = inspectElement(el)
+          setPicked(null)
+          setInspected(detail)
+          if (nativeInspect === true) void inspectElementAt(detail)
         } else {
           // 插入模式：选择后插入到对话框（引用 chip 追加到 draft 末尾）。
+          const info = describeElement(el)
+          setInspected(null)
+          setPicked(info)
           try { insertElement(info) } catch (_) { /* 无活跃会话时静默 */ }
         }
       },
@@ -213,7 +247,7 @@ export function FloatBall({ insertElement, openLayoutMenu }: { insertElement: In
       detachRef.current = null
       window.removeEventListener('keydown', onEsc)
     }
-  }, [picking, pickerMode])
+  }, [picking, pickerMode, nativeInspect])
   /* ── 开发者工具（Electron F12 侧边窗口）：经 Host /liuli-window 打开/关闭 ── */
   const toggleDevTools = async (): Promise<void> => {
     if (devtoolsBusy) return
@@ -415,10 +449,17 @@ export function FloatBall({ insertElement, openLayoutMenu }: { insertElement: In
     savePos(posRef.current)
   }
 
-  /* ── 复制选择器 ── */
+  /* ── 复制选择器 / outerHTML（信息卡与检查卡共用） ── */
   const copySelector = (): void => {
-    if (picked === null) return
-    void navigator.clipboard?.writeText(picked.selector).catch(() => {})
+    // 检查模式只设 inspected、插入模式只设 picked，取先有的那个。
+    const target = inspected ?? picked
+    if (target === null) return
+    void navigator.clipboard?.writeText(target.selector).catch(() => {})
+  }
+
+  const copyOuterHtml = (): void => {
+    if (inspected === null) return
+    void navigator.clipboard?.writeText(inspected.outerHTML).catch(() => {})
   }
 
   const tools: Tool[] = [
@@ -426,7 +467,7 @@ export function FloatBall({ insertElement, openLayoutMenu }: { insertElement: In
       id: 'element-picker',
       label: pickerMode === 'inspect' ? '元素检查' : '元素选择器',
       hint: pickerMode === 'inspect'
-        ? '检查模式：点击元素在 DevTools 中定位（相当于右键→检查；Alt+Shift+E）'
+        ? '检查模式：点击元素弹出元素检查卡（computed styles / outerHTML；客户端支持时同时在 DevTools 中定位；Alt+Shift+E）'
         : '悬停高亮页面元素，点击拾取并插入聊天（Alt+Shift+E）',
       hotkey: 'Alt+Shift+E',
       icon: <CrosshairIcon size={15} />,
@@ -438,6 +479,7 @@ export function FloatBall({ insertElement, openLayoutMenu }: { insertElement: In
           return
         }
         setPicked(null)
+        setInspected(null)
         setPicking(true)
       },
       extra: (
@@ -446,8 +488,13 @@ export function FloatBall({ insertElement, openLayoutMenu }: { insertElement: In
           type="button"
           className={css.modeBtn + (pickerMode === 'inspect' ? ' ' + css.modeBtnActive : '')}
           aria-pressed={pickerMode === 'inspect'}
-          title={pickerMode === 'inspect' ? '当前：检查模式（点击元素 → DevTools 定位）' : '当前：插入聊天模式（点击元素 → 插入聊天）'}
-          onClick={() => { setPickerMode(mode => mode === 'inspect' ? 'insert' : 'inspect') }}
+          title={pickerMode === 'inspect' ? '当前：检查模式（点击元素 → 元素检查卡，客户端支持时在 DevTools 中定位）' : '当前：插入聊天模式（点击元素 → 插入聊天）'}
+          onClick={() => {
+            setPickerMode(mode => mode === 'inspect' ? 'insert' : 'inspect')
+            // 切换模式时收掉上一模式的残留卡片（两张卡片的操作面不同）。
+            setPicked(null)
+            setInspected(null)
+          }}
         >
           {pickerMode === 'inspect' ? '检查' : '插入'}
         </button>
@@ -557,6 +604,58 @@ export function FloatBall({ insertElement, openLayoutMenu }: { insertElement: In
             <button type="button" className={css.infoBtn} onClick={copySelector}>复制选择器</button>
             <button type="button" className={css.infoBtn} onClick={() => { setPicked(null) }}>完成</button>
           </div>
+        </div>,
+        document.body,
+      )}
+
+      {/* 元素检查卡（检查模式点击元素后弹出；DevTools 定位不可用时它就是主结果面） */}
+      {inspected !== null && createPortal(
+        <div className={css.inspectCard} role="dialog" aria-label="元素检查" data-liuli-picker-ignore="">
+          <div className={css.infoHead}>
+            <CrosshairIcon size={13} />
+            <span className={css.infoTag}>&lt;{inspected.tag}&gt;</span>
+            <button type="button" className={css.infoClose} aria-label="关闭" onClick={() => { setInspected(null) }}>
+              ✕
+            </button>
+          </div>
+          <div className={css.infoSelector}>{inspected.selector}</div>
+          {inspected.attributes !== '' && <div className={css.infoRow}>{inspected.attributes}</div>}
+          {inspected.text !== '' && <div className={css.infoText}>{inspected.text}</div>}
+          <div className={css.infoRow}>
+            rect: x={inspected.rect.x} y={inspected.rect.y} {inspected.rect.width}×{inspected.rect.height}
+          </div>
+          <div className={css.inspectStyles}>
+            {inspected.styles.map(style => (
+              <div className={css.inspectStyleRow} key={style.name}>
+                <span className={css.inspectStyleName}>{style.name}</span>
+                <span className={css.inspectStyleValue}>{style.value}</span>
+              </div>
+            ))}
+          </div>
+          <div className={css.inspectHtml}>
+            <div className={css.inspectHtmlTitle}>outerHTML（截断 1000 字符）</div>
+            <code className={css.inspectHtmlCode}>{inspected.outerHTML}</code>
+          </div>
+          <div className={css.infoActions}>
+            <button type="button" className={css.infoBtn} onClick={copySelector}>复制选择器</button>
+            <button type="button" className={css.infoBtn} onClick={copyOuterHtml}>复制 HTML</button>
+            <button
+              type="button"
+              className={css.infoBtn}
+              disabled={devtoolsBusy}
+              title="打开/关闭 Electron 侧边开发者工具（等价 F12）"
+              onClick={() => { void toggleDevTools() }}
+            >
+              切换开发者工具
+            </button>
+            <button type="button" className={css.infoBtn} onClick={() => { setInspected(null) }}>完成</button>
+          </div>
+          {nativeInspect === false && (
+            <div className={css.infoRow}>
+              当前客户端（DSH Desktop 2.0.9+）的宿主插件跑在 utility process，拿不到窗口，插件无法自动在
+              DevTools 中定位元素；可点「打开开发者工具」，在 Elements 面板里搜索上面的选择器。
+            </div>
+          )}
         </div>,
         document.body,
       )}

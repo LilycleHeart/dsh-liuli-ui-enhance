@@ -55,6 +55,14 @@ pnpm install:desktop:npm
    `duplicate loader entry id "dsh-liuli-ui-enhance" in the composed profile`；
 3. 在 desktop profile 目录执行 `pnpm install`。
 
+> **改动源码后重装（file: tarball 缓存坑）**：安装器把 tarball 的**内容指纹**写进文件名
+> （`.liuli-pack/dsh-liuli-ui-enhance-<version>-<sha256 前 12 位>.tgz`）后再写进 profile 依赖。
+> 这一步是必需的：pnpm 对 `file:` tarball 依赖只比较 spec（路径）与 lockfile 里记录的
+> integrity，spec 不变时**即使 tarball 内容已经更新，也会判成 `Already up to date`**
+> （`pnpm install` / `pnpm install --force` / `pnpm add file:<同名 tarball>` 都一样），
+> 结果是改了样式却看不到任何变化。指纹命名让内容变化 ⇒ spec 变化 ⇒ pnpm 必然重新解析解包；
+> 内容没变则 spec 不变，安装保持幂等。安装完成后**刷新页面**即加载新 bundle，不要重启 DSH Desktop。
+
 > **从旧包名 `@deepseek-ai/liuli-theme` 迁移时**：安装器会自动清理它自己写入的
 > `dsh-liuli-ui-enhance` 旧 insert 块，但不会删除旧包名 `@deepseek-ai/liuli-theme` 的依赖和
 > insert 块（插件 ID 不同）。如需彻底切换，请手动移除 profile 中的旧插件依赖、旧 insert 块后

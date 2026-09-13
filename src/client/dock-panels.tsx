@@ -154,6 +154,10 @@ function DockSideChatPanel({ panel, host, onStatePatch }: DockPanelRenderProps) 
 
 /* ── 注册表 ── */
 
+/** dock 面板图标集：官方右栏的 tab chip 与引导页入口复用同一套 svg path，
+ *  保证「并入官方右侧栏」后图标与自研侧边栏一致（不被官方占位图标替换）。 */
+export { ICONS as DOCK_PANEL_ICONS }
+
 export const DOCK_PANEL_DEFS: DockPanelDef[] = [
   {
     type: 'files',
