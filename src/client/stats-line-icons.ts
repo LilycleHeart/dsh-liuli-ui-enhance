@@ -26,6 +26,9 @@ const MARK = 'data-liuli-stats-icon'
 /** 宿主分隔符 span 的类名后缀（`bxNl9a_sep`，CSS Modules 哈希前缀跨构建变化，后缀稳定）。 */
 const SEP_SUFFIX = '_sep'
 
+/** 统计行根节点的类名后缀（`bxNl9a_root`）：分隔符的父级必须是它才算统计行。 */
+const ROOT_SUFFIX = '_root'
+
 /**
  * 语义 → 图标匹配表：按顺序取**第一个命中**的分组（顺序即优先级）。
  * 关键词取自官方 locales（stats.counts / stats.llm / stats.toolCall /
@@ -100,12 +103,20 @@ let observer: MutationObserver | null = null
 let raf = 0
 let started = false
 
-/** 用分隔符 span 反查统计行根节点并装饰（分隔符是这批分组的唯一可靠指纹）。 */
+/**
+ * 用分隔符 span 反查统计行根节点并装饰（分隔符是这批分组的唯一可靠指纹）。
+ *
+ * 额外要求父级类名以 `_root` 结尾：DSH 2.0.5 起统计行改成了 `StatsPills`
+ * 胶囊（`K-8v-a_*`，分隔符在 `_label` 内，且官方每枚胶囊自带图标），
+ * 这一条守卫让本模块在新版里完全不触碰 DOM —— 既不重复注入，也不误命中
+ * 其它同样用 `_sep` 的组件。
+ */
 function scan(): void {
   const seen = new Set<HTMLElement>()
   for (const sep of Array.from(document.querySelectorAll<HTMLElement>(`span[class$="${SEP_SUFFIX}"]`))) {
     const root = sep.parentElement
     if (root === null || seen.has(root)) continue
+    if (typeof root.className !== 'string' || !root.className.endsWith(ROOT_SUFFIX)) continue
     seen.add(root)
     decorateRoot(root)
   }

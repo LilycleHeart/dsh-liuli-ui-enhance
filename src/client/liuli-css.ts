@@ -985,6 +985,19 @@ div[data-phase='active'] [data-conversation-scroll] {
   margin-bottom: -16px !important;
 }
 
+/* 上一条的 -16px 让 scrollBody 比会话根高 16px、下缘越过根节点（同一元素
+   带 overflow:hidden）的可视边界；而 composer 用 sticky bottom:0 钉在
+   scrollBody 底边上 —— 于是 composer 最下 16px 一起落进裁切区。
+   2.0.4 时那 16px 只是 composer 的底部内边距（不可见），2.0.5 起 composer
+   底部新增统计胶囊行（[data-composer-stats]，两枚 20px 高 pill + 4px 内边距），
+   正好落进被裁的 16px 里，表现为“统计行只露出上半”。
+   这里把 sticky 的 composer 上提同样的 16px，让它贴回可见底边：正文卡片触底
+   与滚动几何不变，composer 不再被裁。条件与上一条完全一致（有 -16px 就有裁切），
+   因此不按“有无统计行”分支 —— 否则统计行首次出现时 composer 会跳 16px。 */
+div[data-phase='active'] [data-conversation-scroll] [data-composer-seat] {
+  bottom: 16px !important;
+}
+
 /* 长对话渲染减负：对话流条目启用 content-visibility:auto，屏外条目跳过
    布局/绘制（首次渲染后 auto 记忆真实尺寸，滚动条几何基本无感）。
    实测（demo/inspect-sash-perf.mjs，338 条目/6.5k 元素）：sash 拖拽的
@@ -1857,6 +1870,45 @@ div[data-phase='active'] {
   color: var(--dsw-alias-brand-primary, #0079bf) !important;
   outline: none !important;
   box-shadow: none !important;
+}
+
+/* ════════════════════════════════════════════════════════════
+ * 官方右侧栏（迁移模式）tab 条外观对齐。
+ * 官方 tab 条的度量与琉璃自研标签条不同：条高 38px（自研 48px）、
+ * 标签圆角 12px（自研 rounded-lg = 8px）、字号 13px（自研 14px）。
+ * 这里只覆盖度量，不动官方的结构与交互；选择器用官方 CSS module 的
+ * 类名前缀匹配（hash 后缀随版本变、前缀稳定）。
+ * ════════════════════════════════════════════════════════════ */
+[data-liuli-official-rightbar] [class*="_tabStrip_"] {
+  height: 48px !important;
+  padding: var(--liuli-dock-padding, 8px) var(--liuli-dock-padding, 8px) 0 !important;
+}
+
+[data-liuli-official-rightbar] [class*="_tab_"] {
+  height: 28px !important;
+  border-radius: 8px !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+}
+
+[data-liuli-official-rightbar] [class*="_tabTitle_"] {
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  gap: 6px !important;
+}
+
+/* 官方右栏内部的面板容器自带**不透明**底色（实测 Ng7Ira_panel = rgb(21,19,14)，
+   全高），会把琉璃卡片外壳的亚克力材质层完全盖住 —— 表现就是「背景材质没跟插件
+   一致」。这里置透明，让材质透出来（与自研 details 面板的半透明观感一致）。 */
+[data-liuli-official-rightbar] [class*="_panel"] {
+  background-color: transparent !important;
+}
+
+/* tab 条与内容区之间的分隔线同理：官方用不透明底色画条，置透明后由卡片外壳统一
+   提供材质；保留必要的描边以便区分条与内容。 */
+[data-liuli-official-rightbar] [class*="_tabStrip_"] {
+  background-color: transparent !important;
+  border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.14)) !important;
 }
 
 `
