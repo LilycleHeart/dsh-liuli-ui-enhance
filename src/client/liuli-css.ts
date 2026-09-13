@@ -985,18 +985,13 @@ div[data-phase='active'] [data-conversation-scroll] {
   margin-bottom: -16px !important;
 }
 
-/* 上一条的 -16px 让 scrollBody 比会话根高 16px、下缘越过根节点（同一元素
-   带 overflow:hidden）的可视边界；而 composer 用 sticky bottom:0 钉在
-   scrollBody 底边上 —— 于是 composer 最下 16px 一起落进裁切区。
-   2.0.4 时那 16px 只是 composer 的底部内边距（不可见），2.0.5 起 composer
-   底部新增统计胶囊行（[data-composer-stats]，两枚 20px 高 pill + 4px 内边距），
-   正好落进被裁的 16px 里，表现为“统计行只露出上半”。
-   这里把 sticky 的 composer 上提同样的 16px，让它贴回可见底边：正文卡片触底
-   与滚动几何不变，composer 不再被裁。条件与上一条完全一致（有 -16px 就有裁切），
-   因此不按“有无统计行”分支 —— 否则统计行首次出现时 composer 会跳 16px。 */
-div[data-phase='active'] [data-conversation-scroll] [data-composer-seat] {
-  bottom: 16px !important;
-}
+/* 上一条的 -16px 让 scrollBody 比会话根高 16px、下缘越过裁切边界；composer 用
+   position:sticky; bottom:0 钉在 scrollBody 底边上，于是跟着悬进裁切区 ——
+   悬出的像素数 = 「scrollBody 底边 − 最近裁切祖先的底边」，**不恒等于 16px**
+   （随布局/dock 留白变化），写死 16px 会多提、在底部留缝。
+   所以这里不用 CSS 补偿，改由 composer-seat-anchor.ts 实测该溢出量并写成
+   composer 的 sticky bottom：恰好贴住可见底边（不裁切、不留缝），正文卡片
+   触底与滚动几何都不变。 */
 
 /* 长对话渲染减负：对话流条目启用 content-visibility:auto，屏外条目跳过
    布局/绘制（首次渲染后 auto 记忆真实尺寸，滚动条几何基本无感）。

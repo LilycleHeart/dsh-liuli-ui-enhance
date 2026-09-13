@@ -103,6 +103,7 @@ import { startSessionTitleFilter } from './session-title-filter.ts'
 import { startSessionContextMenu } from './session-context-menu.ts'
 import { startSettingsSelectUpgrade } from './settings-selects.ts'
 import { startStatsLineIcons } from './stats-line-icons.ts'
+import { startComposerSeatAnchor } from './composer-seat-anchor.ts'
 import { startWorkspaceContextMenu } from './workspace-context-menu.ts'
 import { startWorkspaceNewSessionCollapse } from './workspace-new-session-collapse.ts'
 import { startSidebarLogoDetailsCollapse } from './logo-details-collapse.ts'
@@ -881,6 +882,13 @@ export function apply(ctx: ClientContext): void {
     if (!unofficial('dom')) return () => {}
     return startStatsLineIcons()
   }, 'dsh-liuli-ui-enhance: stats line icons')
+
+  // ── composer 贴底校正：琉璃给 [data-conversation-scroll] 的 -16px 负 margin
+  //    让滚动容器下缘越过裁切边界，官方 sticky 的 composer 跟着悬进裁切区
+  //    （DSH 2.0.9 起 composer 底部有统计胶囊行，会被裁掉一半）。这里实测
+  //    悬出像素并写成 composer 的 sticky bottom，恰好贴住可见底边。
+  //    与 -16px 同属无条件布局修正，不随 unofficial 开关门控 ──
+  ctx.effect(() => startComposerSeatAnchor(ctx), 'dsh-liuli-ui-enhance: composer seat anchor')
 
   // ── 设置页「模型服务商」余额令牌：在 new-api 中转站（zero.cat）的 provider
   //    编辑表单里注入一行「余额令牌」输入框，站点从表单的 baseURL 自动取 ──
