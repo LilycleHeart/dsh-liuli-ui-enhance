@@ -70,15 +70,16 @@ pnpm install:desktop:npm
 
 `pnpm patch:desktop` 会：
 
-1. 备份 `resources/app.asar` 为 `app.asar.bak-frameless`；
-2. 动态定位 `electron-runtime-*.js`（客户端升级会换 hash 文件名，**两种客户端布局都支持**）：
+1. 备份 `resources/app.asar`；目录安装版则分别备份 runtime 与 preload 为 `.bak-liuli`；
+2. 动态定位 `electron-runtime-*.js`（客户端升级会换 hash 文件名，**三种客户端布局都支持**）：
    - 旧布局：文件在 `resources/app.asar.unpacked/lib/` 磁盘目录（unpacked 条目），直接修改磁盘文件；
    - 新布局：文件被打包进 `resources/app.asar` 内部（packed 条目），脚本会读出内容、打补丁后**解包**写到 `app.asar.unpacked/lib/`，并把 asar 头条目从打包改为 unpacked（让 Electron 改从磁盘读取）；
+   - DSH Desktop 2.0.13 的目录布局：文件位于 `resources/app/lib/`，直接修改磁盘文件，无需改写 asar 或可执行文件；
 3. 修改 runtime 内容：
    - win32 无边框：把主窗口的 `titleBarStyle: "hidden"` + `titleBarOverlay` 改为 `frame: false`（新布局用 `autoHideMenuBar` 锚定主窗口块，不误伤 auxiliary 对话框）；
    - 浏览器 webviewTag：把 advanced/compatibility 主窗口 `webPreferences` 补上 `webviewTag: true`（内嵌浏览器用 `<webview>` DOM 标签承载，拉伸时由 CSS `overflow:hidden` 裁剪，不溢出容器）；
-4. 重建 `resources/app.asar`（新头 + 原内容区原样接回，offset 相对内容起点不受头部长度变化影响）并同步 integrity；
-5. 写入 `resources/app.asar.patched`。
+   - 浏览器弹窗桥：Electron 22+ 不再派发 `<webview>` 的 `new-window` 事件；主进程拦截 guest 的新窗口请求，经 preload 转成琉璃 dock 新标签；
+4. 对 asar 布局重建 `resources/app.asar`（新头 + 原内容区原样接回）并同步 integrity，写入 `resources/app.asar.patched`；目录布局跳过此步骤。
 
 > 安装目录查找顺序：`DSH_DESKTOP_DIR` 环境变量 → 正在运行的 DSH Desktop 进程路径 → 默认安装路径。
 > 若 `pnpm patch:desktop` 经 DSH Desktop 的 runtime-commands 运行（node 被解析为 Electron 内置 node），

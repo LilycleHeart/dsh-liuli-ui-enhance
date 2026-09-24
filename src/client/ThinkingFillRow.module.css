@@ -72,10 +72,12 @@
   font-size: 13px;
   line-height: 20px;
   cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease, transform 140ms ease;
 }
 
 .actionBtn:hover:not(:disabled) {
   border-color: var(--dsw-static-neutral-bluish-400);
+  background-color: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.12));
 }
 
 .actionBtn:disabled {
@@ -94,10 +96,22 @@
   font-size: 13px;
   line-height: 20px;
   cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease, transform 140ms ease;
 }
 
 .ghostBtn:hover:not(:disabled) {
   border-color: var(--dsw-alias-border-l2);
+  background-color: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.12));
+}
+
+.actionBtn:active:not(:disabled),
+.ghostBtn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .actionBtn, .ghostBtn { transition: none; }
+  .actionBtn:active:not(:disabled), .ghostBtn:active:not(:disabled) { transform: none; }
 }
 
 .ghostBtn:disabled {

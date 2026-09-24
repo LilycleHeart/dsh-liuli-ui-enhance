@@ -5,7 +5,7 @@
  * 实现自电波推送 dashboard 的「界面设置」面板。
  * 行组件原语（Row/SliderRow/SelectRow/ToggleRow）同时导出给「功能」分区复用。
  */
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { createPortal } from 'react-dom'
 import {
@@ -16,6 +16,7 @@ import type { LiuliBgArea, LiuliSettings } from '../liuli-settings.ts'
 import { LIULI_SETTINGS_DEFAULTS } from '../liuli-settings.ts'
 import { bgGeometry, normalizeAreaToRatio } from './liuli-runtime.ts'
 import type { createLiuliStore } from './liuli-store.ts'
+import { usePopupValuePresence } from './use-popup-presence.ts'
 import css from './LiuliAppearance.module.css'
 
 /** 注入面：设置写入 + 壁纸操作 + 文案。 */
@@ -39,6 +40,8 @@ export type LiuliAppearanceComponentProps =
 function Tip({ text }: { text: string }) {
   const wrapRef = useRef<HTMLSpanElement>(null)
   const [pos, setPos] = useState<{ left: number; top: number; below: boolean } | null>(null)
+  const presence = usePopupValuePresence(pos)
+  const shownPos = presence.value
   const show = (): void => {
     const r = wrapRef.current?.getBoundingClientRect()
     if (!r) return
@@ -66,14 +69,16 @@ function Tip({ text }: { text: string }) {
           <path d="M7 6.3v3.4M7 4.2v.2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
         </svg>
       </span>
-      {pos !== null && createPortal(
+      {shownPos !== null && createPortal(
         <div
           className={css.tipPortal}
+          data-closing={presence.closing || undefined}
+          aria-hidden={presence.closing}
           style={{
-            left: pos.left,
-            top: pos.top,
+            left: shownPos.left,
+            top: shownPos.top,
             maxWidth: Math.min(280, window.innerWidth - 16),
-            transform: pos.below ? undefined : 'translateY(-100%)',
+            transform: shownPos.below ? undefined : 'translateY(-100%)',
           }}
         >
           {text}
@@ -584,6 +589,12 @@ export function LiuliAppearanceSection({
   const state = useStore(s => s)
   const s = state.settings
   const wallpaper = state.wallpaper
+  const wallpaperPresence = usePopupValuePresence(wallpaper, 180)
+  const shownWallpaper = wallpaperPresence.value
+  const wallpaperWrapRef = useRef<HTMLDivElement | null>(null)
+  useLayoutEffect(() => {
+    wallpaperWrapRef.current?.toggleAttribute('inert', wallpaper === null)
+  }, [wallpaper])
   const fileRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [fileLabel, setFileLabel] = useState<string>('')
@@ -760,6 +771,7 @@ export function LiuliAppearanceSection({
               }
             }}
           >
+            {busy && <span className={css.uploadSpinner} aria-hidden="true" />}
             {busy ? t('wallpaper.uploading') : t('wallpaper.upload')}
           </Button>
           <Button variant="ghost" size="md" disabled={wallpaper === null} onClick={() => { removeWallpaper() }}>
@@ -778,15 +790,17 @@ export function LiuliAppearanceSection({
           onChange={(v) => { set({ bg_fit: v as LiuliSettings['bg_fit'] }) }}
         />
 
-        {wallpaper !== null && (
-          <WallpaperPreview
-            src={wallpaper}
-            fit={s.bg_fit}
-            area={s.bg_area}
-            onArea={(area) => { set({ bg_area: area }) }}
-            onClearArea={() => { set({ bg_area: null }) }}
-            t={t}
-          />
+        {shownWallpaper !== null && (
+          <div ref={wallpaperWrapRef} className={css.wallpaperPreviewWrap} data-open={wallpaper !== null || undefined} aria-hidden={wallpaper === null}>
+            <div className={css.wallpaperPreviewInner}><WallpaperPreview
+              src={shownWallpaper}
+              fit={s.bg_fit}
+              area={s.bg_area}
+              onArea={(area) => { set({ bg_area: area }) }}
+              onClearArea={() => { set({ bg_area: null }) }}
+              t={t}
+            /></div>
+          </div>
         )}
         {fileLabel !== '' && <div className={css.fileName}>{fileLabel}</div>}
         {uploadError !== '' && <div className={css.uploadError}>{uploadError}</div>}

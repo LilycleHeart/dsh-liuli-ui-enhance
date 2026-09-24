@@ -15,7 +15,7 @@
  *   「X 个文件被更改 + 总 diff」；文件行带 data-liuli-* 属性供对话页
  *   文件右键菜单（conversation-file-context-menu）命中。
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { ChatNode } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { ConversationLocation, ConversationNodeContext, ConversationNodeDefinition } from './compat.ts'
@@ -29,6 +29,7 @@ import { revealSidebarPath, revealToast, type SidebarGitChange } from './right-s
 import { setLastTurnChanges } from './turn-file-store.ts'
 import { openFrontendFile } from './PreviewPanel.tsx'
 import css from './TurnFileCard.module.css'
+import { usePopupPresence } from './use-popup-presence.ts'
 
 /** 一个 diff hunk（与宿主 FileDiff 同构：path/oldText/newText）。 */
 export interface FileDiffHunk {
@@ -381,11 +382,16 @@ interface FileRowProps {
   sessionId?: string
   cwd: string | undefined
   openFile: (path: string) => void
+  hideActions: boolean
 }
 
 /** 一行文件：名称 + 目录 + DIFF 数量 + 审查/打开/展开（打开方式）。 */
-function FileRow({ file, sessionId, cwd, openFile }: FileRowProps) {
+function FileRow({ file, sessionId, cwd, openFile, hideActions }: FileRowProps) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const menuPresence = usePopupPresence(menuOpen)
+  useEffect(() => {
+    if (hideActions) setMenuOpen(false)
+  }, [hideActions])
   const [menuPos, setMenuPos] = useState<{ right: number; top: number } | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const menuPanelRef = useRef<HTMLDivElement | null>(null)
@@ -474,8 +480,6 @@ function FileRow({ file, sessionId, cwd, openFile }: FileRowProps) {
                 const r = menuRef.current.getBoundingClientRect()
                 const top = r.bottom + 4 + 108 > window.innerHeight ? Math.max(8, r.top - 4 - 108) : r.bottom + 4
                 setMenuPos({ right: Math.max(8, window.innerWidth - r.right), top })
-              } else if (!next) {
-                setMenuPos(null)
               }
               return next
             })
@@ -483,8 +487,8 @@ function FileRow({ file, sessionId, cwd, openFile }: FileRowProps) {
         >
           <ExpandIcon />
         </button>
-        {menuOpen && createPortal(
-          <div ref={menuPanelRef} className={css.menu} role="menu" style={{ right: menuPos?.right ?? 0, top: menuPos?.top ?? 0 }}>
+        {menuPresence.mounted && createPortal(
+          <div ref={menuPanelRef} className={css.menu} data-closing={menuPresence.closing || undefined} role="menu" aria-hidden={menuPresence.closing} style={{ right: menuPos?.right ?? 0, top: menuPos?.top ?? 0 }}>
             <button
               type="button"
               role="menuitem"
@@ -605,6 +609,11 @@ export function RoundSummaryCard({ node, openFile, useChat, useSessions, session
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem('liuli:turn-card-collapsed') === '1' } catch { return false }
   })
+  const listPresence = usePopupPresence(!collapsed, 180)
+  const listClipRef = useRef<HTMLDivElement | null>(null)
+  useLayoutEffect(() => {
+    listClipRef.current?.toggleAttribute('inert', collapsed)
+  }, [collapsed])
   const toggleCollapsed = (): void => {
     setCollapsed(prev => {
       const next = !prev
@@ -643,13 +652,15 @@ export function RoundSummaryCard({ node, openFile, useChat, useSessions, session
           {total.dels > 0 && <span className={css.statDel}>−{total.dels}</span>}
         </span>
       </button>
-      {!collapsed && (
+      <div ref={listClipRef} className={css.listClip} data-open={!collapsed || undefined} aria-hidden={collapsed}>
+      {listPresence.mounted && (
         <div className={css.list}>
           {files.map(file => (
-            <FileRow key={file.path} file={file} sessionId={effectiveSessionId} cwd={cwd} openFile={openFile} />
+            <FileRow key={file.path} file={file} sessionId={effectiveSessionId} cwd={cwd} openFile={openFile} hideActions={collapsed} />
           ))}
         </div>
       )}
+      </div>
     </div>
   )
 }

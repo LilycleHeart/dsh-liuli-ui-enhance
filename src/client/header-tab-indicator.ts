@@ -78,8 +78,19 @@ export function startHeaderTabIndicator(): () => void {
     states.set(tabs, { bar, observer })
   }
 
+  /** 会话切换会重建 header；及时释放旧 tabs 与其观察器。 */
+  const pruneDisconnected = (): void => {
+    for (const [tabs, { bar, observer }] of states) {
+      if (tabs.isConnected) continue
+      observer.disconnect()
+      bar.remove()
+      states.delete(tabs)
+    }
+  }
+
   /** 扫描当前 DOM：为所有会话 header 的 tabs 行补注入。 */
   const scan = (): void => {
+    pruneDisconnected()
     for (const headerSelector of HEADER_SELECTORS) {
       for (const header of document.querySelectorAll<HTMLElement>(headerSelector)) {
         const tabs = header.querySelector<HTMLElement>(TABS_SELECTOR)
@@ -91,7 +102,9 @@ export function startHeaderTabIndicator(): () => void {
   // body 级观察：新增节点里可能带有会话 header / tabs 容器
   const bodyObserver = new MutationObserver((mutations) => {
     let touched = false
+    let removed = false
     for (const mutation of mutations) {
+      if (mutation.removedNodes.length > 0) removed = true
       for (const added of mutation.addedNodes) {
         if (!(added instanceof HTMLElement)) continue
         if (added.matches(HEADER_SELECTORS.join(',')) || added.querySelector(TABS_SELECTOR) !== null) {
@@ -101,6 +114,7 @@ export function startHeaderTabIndicator(): () => void {
       }
       if (touched) break
     }
+    if (removed) pruneDisconnected()
     if (touched) scan()
   })
   bodyObserver.observe(document.body, { childList: true, subtree: true })

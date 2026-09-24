@@ -1,0 +1,13 @@
+diff --git a/lib/index.js b/lib/index.js
+index 6ba5acaadab6d87efcf2b8e0a80aced6ff56076b..21ed56ecd3f8f2921aaac00f8e91f320a4cd893b 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -2540,7 +2540,7 @@ function TabPanel({ state, pane, callbacks }) {
+ 	const [menu, setMenu] = useState(void 0);
+ 	const [chips] = useState(() => /* @__PURE__ */ new Map());
+ 	const stripTabs = useRef(null);
+-	useStripScrollFades(stripTabs, pane.tabs);
++	// Liuli disables the decorative strip fades; skip their scroll/resize measurements.
+ 	useActiveChipInView(stripTabs, chips, pane.tabs, pane.activeTabId);
+ 	const active = pane.activeTabId === void 0 ? void 0 : getTab(state, pane.activeTabId);
+ 	const block = callbacks.splitBlock(pane.id);

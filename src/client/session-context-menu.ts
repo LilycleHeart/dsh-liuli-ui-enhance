@@ -11,6 +11,7 @@ import type { ClientContext, SessionId } from './compat.ts'
 import { resolveSessionId, readRowTitle, locateTitleSpan, mountEditor } from './session-rename.ts'
 import { getSessionMarker, setSessionMarker, MARKER_LABEL, MARKER_ICON, MARKER_COLOR, type SessionMarker } from './session-markers.ts'
 import { ICONS } from './menu-icons.ts'
+import { dismissLiuliContextMenu } from './context-menu-presence.ts'
 
 const MARKERS: readonly SessionMarker[] = ['in-progress', 'todo', 'done']
 
@@ -39,7 +40,7 @@ function renderMenu(ctx: Ctx, row: HTMLElement, id: SessionId, title: string, x:
     closed = true
     document.removeEventListener('mousedown', onDocMouseDown, true)
     document.removeEventListener('keydown', onDocKey, true)
-    menu.remove()
+    dismissLiuliContextMenu(menu)
   }
 
   const runAction = (action: string): void => {

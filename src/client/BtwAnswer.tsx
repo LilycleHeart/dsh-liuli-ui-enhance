@@ -88,12 +88,25 @@ export function BtwAnswerHost({ host, sessionList }: BtwAnswerHostProps) {
       }
       return flows[0] ?? null
     }
-    const update = (): void => { setFlowHost(find()) }
+    let selected: HTMLElement | null = null
+    const update = (): void => {
+      selected = find()
+      setFlowHost(selected)
+    }
     update()
-    const mo = new MutationObserver(update)
+    const containsFlow = (node: Node): boolean => node instanceof Element
+      && (node.matches('[data-chat-flow]') || node.querySelector('[data-chat-flow]') !== null)
+    const mo = new MutationObserver(records => {
+      // 消息流正文每次增量渲染都会变 childList；只有消息列本身重挂/移除时
+      // 才需要重新查找可见宿主，避免每次点击和流式输出都读取 offsetParent。
+      if (selected !== null && !selected.isConnected) { update(); return }
+      if (records.some(record =>
+        Array.from(record.addedNodes).some(containsFlow)
+        || Array.from(record.removedNodes).some(containsFlow))) update()
+    })
     mo.observe(document.body, { childList: true, subtree: true })
     return () => { mo.disconnect() }
-  }, [])
+  }, [current])
 
   // 监听 /btw 事件：fork 当前会话 → prompt 问题 → 更新卡片。
   useEffect(() => {

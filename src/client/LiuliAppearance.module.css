@@ -64,6 +64,10 @@
   color: var(--dsw-alias-brand-primary);
 }
 
+.tipIcon {
+  transition: color 120ms ease;
+}
+
 .tipPortal {
   position: fixed;
   /* 必须高于设置面板自身浮层（模态/抽屉常达 1000+），否则被面板盖住 */
@@ -80,6 +84,11 @@
   color: var(--dsw-alias-label-primary);
   white-space: normal;
   pointer-events: none;
+  animation: liuli-tip-enter 140ms ease-out both;
+}
+
+.tipPortal[data-closing] {
+  animation: liuli-tip-exit 120ms ease-in both;
 }
 
 .slider {
@@ -112,6 +121,12 @@
   border: 2px solid var(--dsw-alias-bg-base);
   background: var(--dsw-alias-brand-primary);
   box-shadow: var(--liuli-glow-brand);
+  transition: transform 140ms ease;
+}
+
+.slider:hover:not(:disabled)::-webkit-slider-thumb,
+.slider:focus-visible::-webkit-slider-thumb {
+  transform: scale(1.15);
 }
 
 .slider::-moz-range-track {
@@ -158,6 +173,7 @@
   font-family: var(--ds-font-family-code);
   font-size: 12px;
   text-align: right;
+  transition: border-color 140ms ease;
 }
 
 .numInput:focus {
@@ -177,12 +193,16 @@
   font-size: 12px;
   line-height: 1;
   cursor: pointer;
-  transition: color 140ms var(--ds-ease-in-out), border-color 140ms var(--ds-ease-in-out);
+  transition: color 140ms var(--ds-ease-in-out), border-color 140ms var(--ds-ease-in-out), transform 140ms var(--ds-ease-in-out);
 }
 
 .resetBtn:hover {
   color: var(--dsw-alias-brand-primary);
   border-color: var(--dsw-alias-brand-primary);
+}
+
+.resetBtn:active:not(:disabled) {
+  transform: rotate(-35deg) scale(0.92);
 }
 
 .toggle {
@@ -265,15 +285,25 @@
   line-height: 22px;
   color: var(--dsw-alias-label-primary);
   cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
 }
 
 .selector:hover {
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
+.selector:active {
+  transform: scale(0.985);
+}
+
+.selector[aria-expanded='true'] .chevron {
+  transform: rotate(180deg);
+}
+
 .chevron {
   flex: none;
   color: var(--dsw-alias-label-tertiary);
+  transition: transform 160ms var(--ds-ease-in-out, ease);
 }
 
 .colorTextWrap {
@@ -344,6 +374,43 @@
   transform: rotate(180deg);
 }
 
+.vpAdvancedBody {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 180ms var(--ds-ease-in-out, ease), opacity 150ms ease;
+}
+
+.vpAdvancedBody[data-open] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.vpAdvancedBody > .grid {
+  min-height: 0;
+  overflow: hidden;
+}
+
+@keyframes liuli-tip-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes liuli-tip-exit {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tipIcon, .slider::-webkit-slider-thumb, .numInput, .resetBtn,
+  .selector, .chevron { transition: none; }
+  .tipPortal, .tipPortal[data-closing] { animation: none; }
+  .vpAdvancedBody { transition: none; }
+  .slider:hover:not(:disabled)::-webkit-slider-thumb,
+  .slider:focus-visible::-webkit-slider-thumb,
+  .resetBtn:active:not(:disabled), .selector:active { transform: none; }
+}
+
 .wallpaperRow {
   display: flex;
   gap: 8px;
@@ -353,12 +420,53 @@
 .fileName {
   font-size: 12px;
   color: var(--dsw-alias-label-tertiary);
+  animation: liuli-wallpaper-note-enter 160ms ease-out both;
 }
 
 .uploadError {
   font-size: 12px;
   line-height: 18px;
   color: var(--dsw-alias-state-error-primary);
+  animation: liuli-wallpaper-note-enter 160ms ease-out both;
+}
+
+.uploadSpinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  vertical-align: -2px;
+  animation: liuli-wallpaper-spin 700ms linear infinite;
+}
+
+.wallpaperPreviewWrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 180ms var(--ds-ease-in-out, ease), opacity 160ms ease;
+}
+
+.wallpaperPreviewWrap[data-open] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.wallpaperPreviewInner {
+  min-height: 0;
+  overflow: hidden;
+  animation: liuli-wallpaper-note-enter 180ms ease-out both;
+}
+
+@keyframes liuli-wallpaper-note-enter {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes liuli-wallpaper-spin {
+  to { transform: rotate(360deg); }
 }
 
 /* 壁纸预览：按实际窗口比例显示（宽度自适应，高度 ≤220px），所见即所得 */
@@ -415,6 +523,7 @@ body:not([data-ds-dark-theme]) .previewEffect::after {
   pointer-events: auto;
   cursor: move;
   touch-action: none;
+  transition: border-color 140ms ease, background-color 140ms ease;
 }
 
 .cropHandle {
@@ -455,6 +564,11 @@ body:not([data-ds-dark-theme]) .previewEffect::after {
   border: 1px solid var(--dsw-alias-border-l2);
   background: #000;
   touch-action: none;
+  transition: border-color 160ms ease;
+}
+
+.previewContext.selecting {
+  border-color: var(--dsw-alias-brand-primary);
 }
 
 /* 完整壁纸层：铺满容器，横向按窗口视口对齐 */
@@ -481,6 +595,11 @@ body:not([data-ds-dark-theme]) .previewEffect::after {
   font-size: 12px;
   line-height: 18px;
   color: var(--dsw-alias-state-warn-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fileName, .uploadError, .uploadSpinner, .wallpaperPreviewInner { animation: none; }
+  .wallpaperPreviewWrap, .previewCropBox, .previewContext { transition: none; }
 }
 
 

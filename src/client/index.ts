@@ -64,7 +64,7 @@ import {
   applyLiuliSettings, applyLiuliWallpaper,
 } from './liuli-runtime.ts'
 import {
-  LIULI_LS_KEY, LIULI_SETTINGS_DEFAULTS, liuliSettingsOf,
+  LIULI_LS_KEY, LIULI_SETTINGS_DEFAULTS, liuliSettingsOf, wantsLiuliOfficialSidebar,
   type LiuliBgArea, type LiuliSettings,
 } from '../liuli-settings.ts'
 import { en, zh, type LiuliAppearanceKey, featuresZh, featuresEn, type LiuliFeaturesKey } from './locales.ts'
@@ -116,7 +116,8 @@ import {
 } from './PreviewPanel.tsx'
 import type { SidePaneHostAccess } from './SidePaneExtraPanels.tsx'
 import { startLiuliSidebarTabs, getOfficialSidebarController } from './sidebar-right-tabs.ts'
-import { initPanelDriver, openLiuliPanel } from './panel-driver.ts'
+import { registerLiuliDockSurface, LiuliRightbarExpandButton, openLiuliDockPanel, type LiuliDockKind } from './liuli-dock-surface.tsx'
+import { initPanelDriver, openLiuliPanel, type LiuliPanelParams } from './panel-driver.ts'
 import { REVIEW_FILE_EVENT, REVIEW_DRIVE_EVENT } from './review-bus.ts'
 import { BtwAnswerHost, BTW_ANSWER_EVENT } from './BtwAnswer.tsx'
 import { addPanel as addDockPanel } from './dock-model.ts'
@@ -148,24 +149,22 @@ export const LIULI_FEATURES_LOCALE_NS = 'liuli-features'
 /** 主题样式注入的 <style> id（幂等：重复 apply 不叠加）。 */
 const STYLE_ID = 'liuli-theme-css'
 
-/** 「让出 rightbar 席位给官方右侧栏」的迁移开关（localStorage）。
- *  置 1 时插件不再以 priority -1 占据 `rightbar` 席位，官方
- *  `@deepseek-ai/dsh-client-ui-sidebar-right` 的 RightbarRoot 接管该列，
- *  插件的面板改为经 `ctx.sidebarRightTabs` 注册（见 sidebar-right-tabs.ts）。
- *  迁移期开关，默认关闭以保持现有自研详情列不变。 */
+/** 早期调试用的本地覆盖键；正式设置以用户在功能页的选择为准。 */
 export const OFFICIAL_RIGHTBAR_LS_KEY = 'liuli:official-rightbar'
 
-/** 读取「并入官方右侧栏」迁移开关：以设置页「功能 · 并入官方右侧栏」为准，
- *  兼容迁移期直接写独立 localStorage 键（CDP / 早期手动开关）。
- *  每次调用都重新读盘，因此切换后刷新页面即生效。 */
-function officialRightbarSeatEnabled(): boolean {
+/** 新版自动走官方宿主 + 琉璃四向 dock；旧版保持原自研详细页。
+ *  老设置里的 false 是旧默认值，只有新 UI 明确关闭才回退。 */
+function officialRightbarSeatEnabled(slotLayout: SlotLayoutMode): boolean {
+  if (slotLayout !== 'v209') return false
   try {
     const raw = window.localStorage.getItem(LIULI_LS_KEY)
     const settings = liuliSettingsOf(raw === null ? {} : (JSON.parse(raw) as unknown))
-    if (settings.official_sidebar_right === true) return true
-    return window.localStorage.getItem(OFFICIAL_RIGHTBAR_LS_KEY) === '1'
+    if (settings.official_sidebar_right_user_choice) return settings.official_sidebar_right
+    const override = window.localStorage.getItem(OFFICIAL_RIGHTBAR_LS_KEY)
+    if (override === '0' || override === '1') return override === '1'
+    return wantsLiuliOfficialSidebar(settings)
   } catch {
-    return false
+    return true
   }
 }
 // 设置持久化键在 liuli-settings.ts 中定义（HeaderEffects 运行时读取同一键）。
@@ -373,7 +372,14 @@ function parseLiuliRef(raw: string): PickedElement {
  *  （侧栏根 z-index:1 上下文内 z-index:1000）。琉璃自己的浮层（advanced shell
  *  浮动窗口）z-index 高达 2147482xxx，会盖住设置页 ——
  *  检测此模态出现/消失，供浮层让位（body 标记 + CSS 隐藏）。 */
-function isSettingsOverlayOpen(): boolean {
+function isSettingsOverlayOpen(modern: boolean): boolean {
+  if (modern) {
+    // 2.0.9+ SettingsPanel 有稳定的 dialog/nav 结构；直接判断挂载，
+    // 避免每次聊天 DOM 变化都扫整个侧栏并读所有 fixed 元素的几何。
+    return document.querySelector(
+      '[role="presentation"][class*="_overlay"] > [role="dialog"][aria-modal="true"] nav[class*="_nav"]',
+    ) !== null
+  }
   const sidebarRoot = document.querySelector<HTMLElement>('[class*="_sidebarCol"] > div > [class*="_root"]')
   if (sidebarRoot === null) return false
   const vw = window.innerWidth
@@ -609,9 +615,12 @@ export function apply(ctx: ClientContext): void {
       default: return bootSettings.unofficial_dom
     }
   }
-  /** 六个开关的指纹（用于远端设置与启动生效值不一致时触发重载）。 */
+  const officialRightbarSeat = officialRightbarSeatEnabled(slotLayout)
+  // 琉璃四向 dock 需要自研帧层；用户关闭 Dockable 布局时保留官方原生右栏。
+  const liuliEnhancedRightbar = officialRightbarSeat && unofficial('layout') && unofficial('sidebar')
+  /** 启动生效开关的指纹（远端设置不同则重载，包含右栏模式）。 */
   const unofficialFlagsOf = (s: LiuliSettings): string =>
-    [s.unofficial_enabled, s.unofficial_layout, s.unofficial_desktop, s.unofficial_sidebar, s.unofficial_browser, s.unofficial_dom].join(',')
+    [s.unofficial_enabled, s.unofficial_layout, s.unofficial_desktop, s.unofficial_sidebar, s.unofficial_browser, s.unofficial_dom, wantsLiuliOfficialSidebar(s)].join(',')
 
   // 右侧边栏系列增强开关（详情列 / 预览按钮 / 自动展开）同属 unofficial_sidebar：
   // DockShellFrame 依此决定是否把 detail 区域纳入 dock 布局（关闭时剔除 region:details）。
@@ -786,7 +795,7 @@ export function apply(ctx: ClientContext): void {
           // Web 模式：与本 entry 的每次渲染组合同步重定向官方控制器动作
           // （见 attachWebLayout 注释；advanced 下为 undefined 不动作）。
           attachWebLayout?.()
-          return { dockShell: shellHandle, hostLayout, slotLayout, officialRightbar: officialRightbarSeatEnabled() }
+          return { dockShell: shellHandle, hostLayout, slotLayout, officialRightbar: liuliEnhancedRightbar }
         },
       }
       const disposeRegistration = ctx.slots.register(
@@ -920,7 +929,9 @@ export function apply(ctx: ClientContext): void {
   //    的每个统计分组前注入一枚 16px Material Symbols 语义图标（仅装饰文本，
   //    不改宿主内容；React 重渲染后由观察器重新装饰）──
   ctx.effect(() => {
-    if (!unofficial('dom')) return () => {}
+    // 2.0.9+ 已改成自带图标的 StatsPills；旧装饰器在新版不会命中，
+    // 却仍监听全页 characterData 并随流式输出反复扫描。
+    if (!unofficial('dom') || slotLayout === 'v209') return () => {}
     return startStatsLineIcons()
   }, 'dsh-liuli-ui-enhance: stats line icons')
 
@@ -1123,6 +1134,10 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => {
     let raf = 0
     let last = -1
+    let watchedHeader: HTMLElement | null = null
+    let watchedTitleRow: HTMLElement | null = null
+    let watchedTabs: HTMLElement | null = null
+    let ro: ResizeObserver | null = null
     const measure = (): void => {
       raf = 0
       const header = document.querySelector<HTMLElement>(
@@ -1131,6 +1146,15 @@ export function apply(ctx: ClientContext): void {
       if (header === null) return
       const titleRow = header.querySelector<HTMLElement>('[class*="_titleRow"]')
       const tabs = header.querySelector<HTMLElement>('[class*="_tabs"]')
+      if (header !== watchedHeader || titleRow !== watchedTitleRow || tabs !== watchedTabs) {
+        ro?.disconnect()
+        watchedHeader = header
+        watchedTitleRow = titleRow
+        watchedTabs = tabs
+        ro?.observe(header)
+        if (titleRow !== null) ro?.observe(titleRow)
+        if (tabs !== null) ro?.observe(tabs)
+      }
       const next = (titleRow === null || tabs === null)
         ? 0
         : Math.max(0, Math.round(tabs.getBoundingClientRect().bottom - titleRow.getBoundingClientRect().bottom))
@@ -1141,13 +1165,23 @@ export function apply(ctx: ClientContext): void {
       }
     }
     const schedule = (): void => { if (raf === 0) raf = requestAnimationFrame(measure) }
+    ro = new ResizeObserver(schedule)
     measure()
-    const mo = new MutationObserver(schedule)
+    const relevant = (node: Node): boolean => node instanceof Element
+      && (node.matches('header, [class*="_titleRow"], [class*="_tabs"]')
+        || node.querySelector('header, [class*="_titleRow"], [class*="_tabs"]') !== null)
+    const mo = new MutationObserver(records => {
+      if (records.some(record =>
+        (record.target instanceof Element && record.target.closest('header') !== null)
+        || Array.from(record.addedNodes).some(relevant)
+        || Array.from(record.removedNodes).some(relevant))) schedule()
+    })
     mo.observe(document.body, { childList: true, subtree: true })
     window.addEventListener('resize', schedule)
     return () => {
       if (raf !== 0) cancelAnimationFrame(raf)
       mo.disconnect()
+      ro?.disconnect()
       window.removeEventListener('resize', schedule)
     }
   }, 'dsh-liuli-ui-enhance: header tabs offset measure')
@@ -1175,7 +1209,7 @@ export function apply(ctx: ClientContext): void {
     let raf = 0
     const update = (): void => {
       raf = 0
-      if (isSettingsOverlayOpen()) {
+      if (isSettingsOverlayOpen(slotLayout === 'v209')) {
         document.body.setAttribute('data-liuli-settings-open', '')
       } else {
         document.body.removeAttribute('data-liuli-settings-open')
@@ -1185,7 +1219,14 @@ export function apply(ctx: ClientContext): void {
       if (raf === 0) raf = requestAnimationFrame(update)
     }
     update()
-    const mo = new MutationObserver(schedule)
+    const overlaySelector = '[role="presentation"][class*="_overlay"], [role="dialog"][aria-modal="true"]'
+    const relevant = (node: Node): boolean => node instanceof Element
+      && (node.matches(overlaySelector) || node.querySelector(overlaySelector) !== null)
+    const mo = new MutationObserver(records => {
+      if (records.some(record =>
+        Array.from(record.addedNodes).some(relevant)
+        || Array.from(record.removedNodes).some(relevant))) schedule()
+    })
     mo.observe(document.body, { childList: true, subtree: true })
     window.addEventListener('resize', schedule)
     return () => {
@@ -1307,13 +1348,55 @@ export function apply(ctx: ClientContext): void {
     }
     window.dispatchEvent(new CustomEvent(SIDE_CHAT_OPEN_EVENT))
   }), 'dsh-liuli-ui-enhance: /side /btw command bridge')
-  // ── 右侧边栏（详细页）面板：占用宿主 details 列（priority -1 替换官方工具详情列）。
-  //    unofficial_sidebar 关闭时不注册，宿主 details 列还原为官方内容。
-  //    迁移开关（`liuli:official-rightbar=1`）：让出 rightbar 席位给官方右侧栏 ——
-  //    插件的 priority -1 会压制官方 RightbarRoot（实测：席位里 PreviewDetailsPanel
-  //    priority -1 压过 RightbarRoot），让出后官方接管该列，琉璃面板改经
-  //    ctx.sidebarRightTabs 注册（sidebar-right-tabs.ts，审查面板已就绪）。 ──
-  const officialRightbarSeat = officialRightbarSeatEnabled()
+  // ── 右侧边栏：新版保留官方 rightbar Seat 的服务绑定，在自研帧层的同一列
+  //    显示琉璃四向 dock；旧版继续以 PreviewDetailsPanel 占用 details。
+  //    关闭 Dockable 布局时保持官方原生右栏，由 sidebarRightTabs 注册琉璃面板。
+  if (liuliEnhancedRightbar) {
+    // ── 并入官方 + 增强：在官方 rightbar 席位里渲染**琉璃自己的 dockable 布局** ──
+    // 这条路保留官方 RightbarRoot / RightbarSeat 的挂载与会话绑定，
+    // 把用户可见的右栏停靠引擎换成琉璃自己的 DockController，
+    // 于是拿到官方收窄掉的能力：四边落区（含上下分栏）与最多 4 格（官方是左右 2 格）。
+    // 详见 liuli-dock-surface.tsx 顶部注释与 docs/official-sidebar-migration.md。
+    ctx.effect(() => registerLiuliDockSurface(ctx, {
+      openPath: (path: string) => { void ctx.remote.session.openWorkspacePath({ path }) },
+      sidePaneHost,
+      // 宿主 details 列的展开状态：右栏 dock 的初始/同步依据（帧层按它给列宽）。
+      detailsShown: () => {
+        try {
+          const snap = (ctx.layout as unknown as { getSnapshot?: () => Record<string, unknown> }).getSnapshot?.()
+          const raw = snap?.['details'] ?? snap?.['rightbar']
+          return typeof raw === 'number' ? raw > 0 : false
+        } catch {
+          return false
+        }
+      },
+    }), 'dsh-liuli-ui-enhance: official rightbar → liuli dockable surface')
+
+    // header 角落的「打开右侧边栏」按钮：官方 Seat 虽保留挂载，
+    // 它的展开态专供隐藏的官方 surface；用户可见的琉璃列由自己的控制器开合。
+    // 这里以同款外观按钮接到琉璃控制器（见 LiuliRightbarExpandButton）。
+    // 同时把宿主开合入口暴露给按钮（帧层按宿主 details 状态给列宽）。
+    try {
+      const w = window as unknown as { __liuliOpenDetails__?: () => void; __liuliCloseDetails__?: () => void }
+      // ⚠️ 迁移模式下这两个钩子必须是**空操作**：官方 `openRightbar/closeRightbar`
+      // 会切换**官方布局自己的右栏轨道**，与帧层的 details 列宽（由
+      // __liuliForceExpanded__ 驱动）各管一套 —— 实测开官方轨会把
+      // dshDesktopFrame 从全宽压到 1703px，帧层的 751px 列被挤成 0（面板开了
+      // 却看不见，表现即「无法打开对话页里的文件」）。迁移模式下右栏完全由
+      // 帧层渲染，官方轨道必须**永远保持关闭**。
+      w.__liuliOpenDetails__ = (): void => {}
+      w.__liuliCloseDetails__ = (): void => {}
+    } catch { /* 忽略 */ }
+    // 启动时把官方轨道收回一次：若上一次会话退出时官方轨还开着（例如从原生
+    // 官方模式切过来），它残留的宽度会持续挤压帧层，本插件无法展开右栏。
+    try { detailsOps.close() } catch { /* 宿主面不可用时忽略 */ }
+    ctx.slots.inject('conversation.session.header.corner', () => ctx.slots.register({
+      name: 'conversation.session.header.corner',
+      // single 席位：官方 ExpandButton 已占 priority 0，用 -1 遮蔽它
+      //（「最低者渲染」），从而用同款外观、接到我们的控制器。
+      priority: -1,
+    } as never, LiuliRightbarExpandButton as never))
+  }
   if (unofficial('sidebar') && !officialRightbarSeat) {
     // 2.0.9：details 槽位改名为 rightbar（scope 由 session 变 root）；
     // 注册名与 inject key 都随 slotLayout 切换。类型面按旧版 SlotMap 编译
@@ -1476,6 +1559,7 @@ export function apply(ctx: ClientContext): void {
   const writeLiuliSettings = (value: LiuliSettings): void => {
     localDirty = true
     try { localStorage.setItem(LIULI_LS_KEY, JSON.stringify(value)) } catch (_) {}
+    window.dispatchEvent(new Event('liuli:sidebar-controls-changed'))
     pushRemoteState()
   }
   const syncLiuli = (value: LiuliSettings): void => {
@@ -1494,6 +1578,7 @@ export function apply(ctx: ClientContext): void {
       if (saved === null || saved === undefined || (saved.settings === undefined && saved.wallpaper === undefined)) return
       const remote = liuliSettingsOf(saved.settings)
       try { localStorage.setItem(LIULI_LS_KEY, JSON.stringify(remote)) } catch (_) {}
+      window.dispatchEvent(new Event('liuli:sidebar-controls-changed'))
       const wallpaper = typeof saved.wallpaper === 'string' && saved.wallpaper.length > 0 ? saved.wallpaper : null
       if (wallpaper !== null) saveWallpaper(wallpaper)
       else clearWallpaper()
@@ -1504,15 +1589,19 @@ export function apply(ctx: ClientContext): void {
       // 远端设置里的非官方开关与启动时生效的不一致（Desktop 重启后首载 localStorage
       // 为空、默认全开，远端才是用户上次的选择）→ 整页重载让开关真正生效。
       // sessionStorage 标记防循环：重载后 boot 读到的就是新值，不会再触发。
-      if (unofficialFlagsOf(remote) !== unofficialFlagsOf(bootSettings)) {
-        try {
-          if (!sessionStorage.getItem('liuli:unofficial-reload')) {
-            sessionStorage.setItem('liuli:unofficial-reload', '1')
-            window.location.reload()
-            return
-          }
-        } catch (_) { /* sessionStorage 不可用时跳过自动重载 */ }
-      }
+      try {
+        const reloadKey = 'liuli:unofficial-reload'
+        const target = unofficialFlagsOf(remote)
+        if (target === unofficialFlagsOf(bootSettings)) {
+          sessionStorage.removeItem(reloadKey)
+        } else if (sessionStorage.getItem(reloadKey) !== target) {
+          // 记录目标指纹而非永久的 1：同一窗口后续切到另一个模式仍能重载，
+          // 目标持续不一致时也不会进入刷新循环。
+          sessionStorage.setItem(reloadKey, target)
+          window.location.reload()
+          return
+        }
+      } catch (_) { /* sessionStorage 不可用时跳过自动重载 */ }
     } catch (_) { /* Host 路由不可用时保留 localStorage 行为 */ }
   }
 
@@ -1719,6 +1808,7 @@ export function apply(ctx: ClientContext): void {
     liuliBound.syncWallpaper(loadWallpaper())
     liuliBound.syncSettings(readLiuliSettings(), liuliRev)
     return {
+      officialRightbarAvailable: slotLayout === 'v209' && unofficial('layout') && unofficial('sidebar'),
       save: (patch) => {
         const next = { ...readLiuliSettings(), ...patch }
         commitLiuli(next)
@@ -1881,7 +1971,7 @@ export function apply(ctx: ClientContext): void {
   // **官方右栏模式也不注册**：该模式把右栏交给官方，官方自己会在会话 header
   // 角落席位放一枚展开按钮，再挂一个做同样事情的按钮就是重复入口
   //（且插件按钮走 layout 服务的 rightbar 开关，与官方面板自己的展开状态不同步）。
-  if (unofficial('sidebar') && !officialRightbarSeatEnabled()) {
+  if (unofficial('sidebar') && !officialRightbarSeat) {
     ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
       name: 'conversation.session.header.utilities',
       id: 'liuli-preview-button',
@@ -1917,20 +2007,37 @@ export function apply(ctx: ClientContext): void {
     // ── 面板驱动适配：让「打开某个面板」的入口在两种模式下行为一致 ──
     // 自研模式下这些入口由 PreviewDetailsPanel 组件内部的监听器处理；官方右栏
     // 模式下该组件不再注册（让出 rightbar 席位），入口会整体失效（点了没反应）。
-    // 这里统一挂一层监听：官方模式走 ctx.sidebarRight.openTab（参数经 pending 表
-    // 传给正文），自研模式下 openLiuliPanel 返回 false、原链路照旧不受影响。
+    //
+    // 2.0.9 迁移模式（dockable 增强）：**走我们自己的 DockController**
+    //（openLiuliDockPanel）。早前这里走官方 ctx.sidebarRight.openTab，但遮蔽官方
+    // Seat 后该控制器失去会话绑定，每个方法都抛
+    // "sidebarRight: no session surface is mounted" —— 对话页「打开」前端文件等
+    // 入口全部失效（实测反馈）。官方控制器只在未遮蔽的官方原生模式下可用。
     initPanelDriver({ controller: getOfficialSidebarController })
+    /** 迁移模式 → 自己的 dock 布局；否则走官方/自研回退链路。 */
+    const drive = (kind: LiuliDockKind, params?: LiuliPanelParams): void => {
+      if (liuliEnhancedRightbar) {
+        const current = ctx.sessions.list.getSnapshot().current
+        if (typeof current === 'string' && current !== '') {
+          openLiuliDockPanel(current, kind, params)
+          return
+        }
+      }
+      // 回退：官方原生模式（未遮蔽）或自研模式。openLiuliPanel 失败时自研链路
+      //（PreviewDetailsPanel 的内部监听器）照旧接管。
+      openLiuliPanel(kind, params)
+    }
     const driverListeners: Array<[string, EventListener]> = [
       // 轮次卡片「审查」按钮：定位到某个文件。
       [REVIEW_FILE_EVENT, (event) => {
         const detail = (event as CustomEvent<{ path?: string }>).detail
-        if (typeof detail?.path === 'string' && detail.path !== '') openLiuliPanel('review', { path: detail.path })
+        if (typeof detail?.path === 'string' && detail.path !== '') drive('review', { path: detail.path })
       }],
       // LLM 活动自动展开：切到「上一轮更改」并展开目标。
       [REVIEW_DRIVE_EVENT, (event) => {
         const detail = (event as CustomEvent<{ source?: string; path?: string }>).detail
         if (typeof detail?.source !== 'string') return
-        openLiuliPanel('review', {
+        drive('review', {
           source: detail.source,
           ...(typeof detail.path === 'string' ? { path: detail.path } : {}),
         })
@@ -1938,11 +2045,11 @@ export function apply(ctx: ClientContext): void {
       // 会话内点击前端产物 / 模型活动驱动的 dev server 页面。
       [PREVIEW_NAVIGATE_EVENT, (event) => {
         const url = (event as CustomEvent<{ url?: string }>).detail?.url
-        if (typeof url === 'string' && url !== '') openLiuliPanel('browser', { url })
+        if (typeof url === 'string' && url !== '') drive('browser', { url })
       }],
       [AUTO_DRIVE_BROWSER_EVENT, (event) => {
         const url = (event as CustomEvent<{ url?: string }>).detail?.url
-        if (typeof url === 'string' && url !== '') openLiuliPanel('browser', { url })
+        if (typeof url === 'string' && url !== '') drive('browser', { url })
       }],
       // 对话页「打开」前端页面文件 → 代码查看。
       [PREVIEW_CODE_EVENT, (event) => {
@@ -1950,7 +2057,7 @@ export function apply(ctx: ClientContext): void {
         const rel = typeof detail?.rel === 'string' ? detail.rel : undefined
         const absolute = typeof detail?.path === 'string' ? detail.path : undefined
         if (rel === undefined && absolute === undefined) return
-        openLiuliPanel('code', {
+        drive('code', {
           ...(rel === undefined ? {} : { rel }),
           ...(absolute === undefined ? {} : { absolutePath: absolute }),
         })
@@ -1958,7 +2065,7 @@ export function apply(ctx: ClientContext): void {
       // `/side`、`/btw` 指令桥打开辅助对话。
       [SIDE_CHAT_OPEN_EVENT, (event) => {
         const prompt = (event as CustomEvent<{ initialPrompt?: string }>).detail?.initialPrompt
-        openLiuliPanel('side-chat', typeof prompt === 'string' && prompt !== '' ? { initialPrompt: prompt } : {})
+        drive('side-chat', typeof prompt === 'string' && prompt !== '' ? { initialPrompt: prompt } : {})
       }],
     ]
     for (const [name, listener] of driverListeners) window.addEventListener(name, listener)

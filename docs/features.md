@@ -51,6 +51,7 @@
 | 🧠 思考等级自动补全 | 自定义提供商（`llm-pi-ai.providers.<路由>`，经 DSH「模型提供商」页面或 settings.yaml 添加）手工声明时**不会自动带思考等级**——`dsh-llm-pi-ai` 对未声明 `reasoningEfforts` 的模型完全不开放思考档位。功能分区「思考等级自动补全」行：**新添加的提供商自动补全**（客户端监听 `settings/document-updated` 事件，`liuli:thinking-fill-seen` 记录已处理路由，只补新出现的路由、不动历史配置）；历史缺声明的用「一键补全」手动补齐。补全内容：缺声明的模型补写 `reasoningEfforts`（off/low/medium/high/max，wire 值 = 档位名，off 留空，与用户既有声明一致），提供商级缺 `compat.thinkingFormat/supportsReasoningEffort` 时补 `{ thinkingFormat: 'openai', supportsReasoningEffort: true }`（合并保留其它 compat 字段）；写入走 path-addressed `settings.mutate`（与模型重试行同构，只写缺失键、不碰密钥等字段）；显式 `reasoningEfforts: false` 的模型与完全无 compat 且全部模型显式关闭思考的提供商跳过（视为故意关闭）；`modelOverrides` 条目同样补全。纯逻辑单测 `demo/test-thinking-fill.ts`（48 项） |
 | 🗂️ 对话历史加载增强 | 切换会话时按功能设置「默认加载轮数」自动补载更多历史（宿主基线约 2 轮，调大后自动点击 older 按钮）；上翻到消息列顶部自动加载更早消息，替代手动点击 |
 | 🚀 缩放性能护栏 | 长对话下 sash / 窗口缩放防掉帧（`resize-perf.ts`）：宿主 ui-deliverables 给每行「产物」注册 RO，回调内反复强制回流，列宽逐帧变化时每帧 O(产物行数) 次全量回流——缩放开始冻结产物行宽度使其 RO 不触发、结束后定时器分批解冻；磨砂 backdrop-filter 缩放期渐隐（~140ms 缓动到恒等滤镜）再由 `body[data-liuli-blur-off]` 接管 none、松手渐回，避免重采样又无生硬闪变；窗口 resize / 宿主原生手柄同样纳入护栏；配套：TurnRail 滚动跟随改单次锚点索引（O(轮数×DOM)→O(DOM)）并在缩放期让位、HeaderEffects 的 mask 仅在纵向几何变化时重建、WindowControls 遮挡检测缩放期让位、DockShell sash 拖拽直写 shard 样式松手才提交布局、对话流条目 `content-visibility:auto`（屏外跳过布局/绘制）。实测 338 条目/6.5k 元素：48 步拖拽主线程占用 10.2s→1.2s（`demo/inspect-sash-perf.mjs`） |
+| ⚡ 全局交互性能 | Dock 拖拽提示独立渲染，指针移动不再重绘整窗槽位；TurnRail 滚动按动画帧更新并缓存消息锚点；旧统计行观察器在新版停用；标题、标记和元素卡片观察器只响应相关 DOM；右上角窗口控件仅在触发区进出时检测遮挡；声纹无音频时降到约 30 FPS，音频响应仍逐帧。大型磨砂层仍沿用现有材质，前台 FPS 需在实际窗口测量 |
 | 🧩 官方交付物卡片观感对齐 | 宿主 ui-deliverables 渲染的「交付物卡片」（`[data-presented-file]`）与「产物」行（`[data-produced-files-row]`）在琉璃下的观感：卡片、48px 文件图标框与「打开 / 更多」胶囊（split，官方 `--dsw-alias-button-floating-fill` 浮动实底）**全部透明**，hover 只留极淡品牌底；透明后没有底色托底，卡内三级描边（卡片 l1 / 图标框 l2 / 「打开」胶囊与分隔线 l3）**统一成一条与文字同源的描边色**（`color-mix(label-primary 22%)`，暗色主题浅、亮色主题深，两种主题都可读）；文件类型图形换成 **Material Symbols 单色图标**（PDF / 图片 / 表格 / 幻灯片 / 视频 / 代码 / 文件夹 / Markdown / HTML / 文档，mask 绘制）；同时把 `--dsw-alias-link` 映射到品牌色（亮 `#0079bf` / 暗 `#8ecdf8`，动态取色下随 M3 调色板自动同步），链接文字、文件图标与 Material 图标随之跟随主题色；纯 CSS 覆盖（宿主 `data-*` 锚点 + 类名后缀 + `:has()`），不动宿主 DOM、不新增观察器，同一屏的 `TurnFileCard.btn`（「审查 / 打开」药丸）也去实底、走同一条描边；统一细描边提升为全局令牌 `--liuli-border-hairline`；仅出现在 `liuli.css` / `liuli-css.ts` / `TurnFileCard.module.css` |
 
 全部设置随浏览器持久化（`liuli:settings` / `liuli:wallpaper` / `liuli:header-height`）；DSH Desktop 因每次重启 Web 端口会变（localStorage 按 origin 隔离），还会额外同步到 Host 端 `~/.liuli-theme/settings.json`，跨重启不丢失。
@@ -66,7 +67,7 @@
 | 总开关 `unofficial_enabled` | 关闭后仅保留官方扩展点功能（主题 / 声纹 / 设置页），以下五组全部不挂载 | — |
 | Dockable 布局改造 `unofficial_layout` | 接管宿主 root slot（三栏拖拽/拆分/浮动；advanced 桌面壳与 Web UI 均生效）、会话页头独立面板、conversation-split、桌面 shell 别名类 | 抢占 root slot / 移动 React 管理的 DOM |
 | 桌面宿主补丁 `unofficial_desktop` | 自动补丁 DSH Desktop（无边框 / webviewTag）、页面内窗口按钮、系统回环音频授权；**关闭时自动还原已打的补丁（原生标题栏回归，需重启 DSH Desktop 生效）** | 改写 `app.asar` / 安装全局 `setDisplayMediaRequestHandler` |
-| 右侧边栏（详细页）`unofficial_sidebar` | PreviewDetailsPanel（Git 审查/浏览器/终端/代码查看/开发者工具/辅助对话等全部标签）、header 预览按钮、详细页自动展开 | 占用宿主 details 列（替换官方工具详情列） |
+| 右侧边栏（详细页）`unofficial_sidebar` | 新版官方 `rightbar` 槽位默认保留官方服务并显示琉璃四向 dock；旧版沿用 PreviewDetailsPanel，均含审查/浏览器/终端/代码查看/开发者工具/辅助对话等面板及自动展开 | 新版以隐藏官方 surface + 当前活动 tab 桥接兼容官方入口，升级时需复核官方 tab kind；旧版占用宿主 details 列 |
 | 内嵌浏览器 `unofficial_browser` | Host 浏览器引擎（WebContentsView）、侧栏浏览器标签、模型活动自动驱动 | webviewTag 补丁 / 原生视图 |
 | DOM 观察增强 `unofficial_dom` | 悬浮球、自动展开、入场动画、会话标记/右键菜单、重命名、设置页原生下拉升级、缩放性能护栏、/side /btw 等 | MutationObserver 观察宿主 DOM / 自有 overlay |
 
@@ -121,6 +122,17 @@
 - `dsh-host-webserver`：node 半注册 `/liuli-quota` 与 `/preview` 两条前缀路由。
 - 主题观感（令牌、材质、圆角、侧栏/设置浮层样式）全部在插件的 `liuli.css` 内以 CSS 变量与选择器覆盖实现，不改任一宿主组件源码。
 
+### 第三方插件设置分区的样式适配（Jet Hub）
+
+Jet Hub 是第三方插件 `dsh-codearts-auth` 注册的设置分区（`settings.section`，id `jet-hub`），自带一套独立设计语言（品牌色写死 `#1677ff`、卡片走 `bg-layer-3` 实底、provider 图标垫纯白底、分隔线读 `border-default`）。琉璃在 `liuli.css` / `liuli-css.ts` 末尾以「第三方插件 Jet Hub 设置分区适配」一组规则把它收进琉璃语言，**不改对方插件源码**：
+
+- **锚点自包含**：作用域用 `body:has(.dim-jh-page)`，不依赖 `body[data-liuli-settings-open]`。后者由 `isSettingsOverlayOpen()` 维护（要求设置遮罩位于 `[class*="_sidebarCol"] > div > [class*="_root"]` 内），而实测当前 DSH 版本里 `_sidebarCol` 经常不存在（设置遮罩改挂在 `dshDesktopUpstreamSidebar` 下），该属性因此**间歇性缺失**——依赖它会让整组适配随机失效。
+- **只锚定 `.dim-jh-*` 自有前缀**：该插件手写全局类、无哈希，前缀全仓唯一，不与官方哈希类名或其它插件撞名，因此不需要 `div[class*=...]` 一类宽选择器。
+- **收敛的问题**：品牌色 / 成功 / 警告 / 危险全部换语义令牌（跟随动态取色与亮暗主题）；账号卡从实底改标准亚克力配方（`::before` 材质层 + strong 档磨砂），拖「材质不透明度」滑条对本分区生效；provider 侧栏从自绘「实底卡 + 亮蓝描边」对齐官方设置导航（同用 `--dsw-specific-sidebar-nav-item-active/hover` 与 40px 行高）；页头第二个关闭入口弱化为 ghost 按钮、去掉与官方 header 重复的底边线；内容面板收回与官方 `.MI-_Aa_options` 叠加的 24px 留白；操作按钮改「工具组 | 主操作」两段式（`data-kind="primary"` 的「+ 新建账号」用 `margin-left:auto` 推到行尾，不用位置选择器——按钮个数随 provider 变化）。
+- **窄窗护栏**：provider 侧栏由写死 `width:200px` 改为可收缩（下限 132px）+ 内容面板 `min-width:240px` 保底。默认 800px 宽度下逐像素不变（217px），窄窗时侧栏收缩、按钮不再横向溢出。
+- **配套修复（功能性）**：模型列表弹窗靠 `position:fixed` 覆盖全屏，但设置模态面板根原先直接持有 `backdrop-filter`（「浮动卡片统一补磨砂」一节），使其成为 fixed 后代的包含块，弹窗被压扁成面板大小（实测 overlay `[880,116,800,800]`，视口 `2560×1032`，右下半截被裁）。已把该规则的面板根 `backdrop-filter` 置 `none`；材质不会丢——同一选择器的 `::before` 规则已用独立层承担同一份亚克力配方（style-guide §5.1 对「可能含 fixed 后代的卡片」要求的结构）。修复后 overlay 恢复 `[0,0,2560,1032]`。
+
+
 ## Model Experience
 
 ### 元素选择器引用 chip
@@ -147,3 +159,4 @@ chip 内容随用户消息成为对话前缀的一部分，与普通用户消息
 - 插件自绘信息流（侧边栏助手面板、`/btw` 答案卡内的 `ChatFlowView` 信息流与流式尾部）通过 `data-liuli-chat-flow` 列属性 + 各行 `data-liuli-chat-anchor-key` 锚点接入同一级联动画系统：行节点（用户气泡、工具结果卡、上下文/错误/命令行）随 `transition_effect` 级联入场，列容器级元素（卡片头）保持即时出现。助手消息是**子列**（自身 `data-liuli-chat-flow`）：消息内各块（文本/Think/图片/未知块）各自锚定 `data-liuli-chat-anchor-key`；文本块额外标记 `data-liuli-cascade-text`，观察器收集其内部 markdown 块级元素（顶层段落、代码块、列表、引用、表格、标题）**逐段入场**——文本不再整块一次动画，多段回答会像回合刻度一样逐条浮现（收起态 Think 行仍随所在块整体入场，与官方信息流一致）。`prefers-reduced-motion`、`transition_effect=none` 与去重护栏同样生效；块/单元 key 以 `useId` 前缀（`<surfaceId>:<seq>:b<i>` / 文本单元 `…:u<j>` / 流式 `…:partial:b<i>`）隔离多卡片实例与会话序号归零，避免全局 `removedKeys` 误判。
 - 右侧边栏面板占用宿主 `details` 布局列，会替换官方工具详情列（工具调用详情不再显示在右侧列）；`/preview` 与 `/liuli-sidebar` 路由只接受 loopback/同源 Host（局域网部署需额外配置信任域名，当前未开放该选项）。浏览器模式直接 iframe 加载 `localhost`/`127.0.0.1` 地址，若目标 dev server 未允许被 iframe 嵌入则可能显示空白；面板内的元素拾取要求 `/preview` 与页面同源（默认满足）。
 - 会话侧栏行标记：通过会话行右键菜单「添加标记」写入进行中/待办/已完成（localStorage key 与官方一致）；图标由插件覆盖层注入，并复用右键菜单同一套官方图标，保证预览与实际一致。官方树行不暴露稳定 session id，插件用当前会话/标题匹配反查，极端重名场景可能定位不准。
+- 正式设置分区中仍有一组规则以 `body[data-liuli-settings-open]` 为作用域（`settings-models` / `settings-plugins` 的圆角、磨砂输入面、`rowCard` 等约 16 条）。该属性由 `isSettingsOverlayOpen()` 维护，其判定要求设置遮罩位于 `[class*="_sidebarCol"] > div > [class*="_root"]` 内；实测当前 DSH 版本里 `_sidebarCol` 经常不存在（设置遮罩改挂 `dshDesktopUpstreamSidebar` 下），属性因此间歇性缺失、那组覆盖会随之失效。这些分区的**主要观感不受影响**（材质由不带该前缀的 `[class*="_overlay"] > [class*="_panel"]::before` 规则承担），受影响的只是圆角归位与输入面磨砂等细节。修法是把判定改成不依赖 `_sidebarCol` 的锚点（如按 `[class*="_settingsArea"]` 或 `.MI-_Aa_overlay` 反查），属独立于本次第三方适配的后续项；Jet Hub 适配已按自包含锚点（`body:has(.dim-jh-page)`）落地，不受此缺陷影响。

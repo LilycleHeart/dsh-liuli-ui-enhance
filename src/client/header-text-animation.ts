@@ -74,8 +74,18 @@ export function startHeaderTextAnimation(): () => void {
     states.set(header, { observer, texts })
   }
 
+  /** 会话切换后旧 header 已脱离 DOM，释放其观察器及文本缓存。 */
+  const pruneDisconnected = (): void => {
+    for (const [header, { observer }] of states) {
+      if (header.isConnected) continue
+      observer.disconnect()
+      states.delete(header)
+    }
+  }
+
   /** 扫描当前 DOM：为所有会话 header 补挂观察器。 */
   const scan = (): void => {
+    pruneDisconnected()
     for (const selector of HEADER_SELECTORS) {
       for (const header of document.querySelectorAll<HTMLElement>(selector)) setup(header)
     }
@@ -83,6 +93,7 @@ export function startHeaderTextAnimation(): () => void {
 
   // body 级观察：新增节点里可能带有会话 header / 标题面板。
   const bodyObserver = new MutationObserver((mutations) => {
+    if (mutations.some(mutation => mutation.removedNodes.length > 0)) pruneDisconnected()
     for (const mutation of mutations) {
       for (const added of mutation.addedNodes) {
         if (!(added instanceof HTMLElement)) continue

@@ -1,0 +1,2 @@
+patchedDependencies:
+  '@deepseek-ai/dsh-client-ui-dockkit@0.1.5-rc.1': patches/@deepseek-ai__dsh-client-ui-dockkit@0.1.5-rc.1.patch

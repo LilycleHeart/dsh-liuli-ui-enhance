@@ -43,10 +43,18 @@
   line-height: 22px;
   color: var(--dsw-alias-label-primary);
   cursor: pointer;
+  transition: background-color 160ms var(--ds-ease-in-out, ease),
+    border-color 160ms var(--ds-ease-in-out, ease),
+    color 160ms var(--ds-ease-in-out, ease),
+    transform 160ms var(--ds-ease-in-out, ease);
 }
 
 .themeCube:hover:not(.selected) {
   background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.themeCube:active {
+  transform: scale(0.985);
 }
 
 /* Selected cube: 半透明亚克力表面（琉璃 配方：染色 + 噪声 + 磨砂），
@@ -57,4 +65,9 @@
   -webkit-backdrop-filter: var(--liuli-material-blur);
   backdrop-filter: var(--liuli-material-blur);
   border-color: var(--dsw-static-neutral-bluish-400);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .themeCube { transition: none; }
+  .themeCube:active { transform: none; }
 }

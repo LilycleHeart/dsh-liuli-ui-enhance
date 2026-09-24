@@ -24,6 +24,7 @@ import type { ChatNode } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import css from './TurnRail.module.css'
 import { RESIZING_ATTR } from './resize-perf.ts'
+import { usePopupPresence, usePopupValuePresence } from './use-popup-presence.ts'
 
 type TurnRailProps = PropsRuntime<'conversation.session.header.utilities'>
 
@@ -315,6 +316,8 @@ export function TurnRail({ useChat, sessionId }: TurnRailProps) {
       }),
     [timeline, locations, nodes, nodeValues, order],
   )
+  const railShown = host !== null && chatMounted && turnItems.length > 0
+  const railPresence = usePopupPresence(railShown, 180)
 
   const jumpToTurn = (turn: number): void => {
     if (host === null) return
@@ -352,6 +355,8 @@ export function TurnRail({ useChat, sessionId }: TurnRailProps) {
     // host 即正文卡片（[data-conversation-scroll]），自身就是滚动容器。
     const scrollport = host
     if (scrollport === null) return
+    // 锚点到消息行的映射仅在 DOM 换行/虚拟列表换页时变化；滚动时复用。
+    let anchorIndex: AnchorIndex | null = null
     const update = (): void => {
       // hover 胶囊时跟随暂停（胶囊展示 hover 轮）。
       if (hoveredTurn !== null) return
@@ -360,8 +365,7 @@ export function TurnRail({ useChat, sessionId }: TurnRailProps) {
       if (document.body.hasAttribute(RESIZING_ATTR)) return
       const rect = scrollport.getBoundingClientRect()
       const centerY = rect.top + rect.height / 2
-      // 单次扫描建索引，每轮 O(1) 查表（原每轮全量 querySelectorAll）。
-      const index = buildAnchorIndex(host)
+      const index = anchorIndex ?? (anchorIndex = buildAnchorIndex(host))
       let best: { turn: number; dist: number } | null = null
       for (const item of turnItems) {
         const row = findTurnRowIndexed(index, locations.getTurn(item.turn))
@@ -386,16 +390,16 @@ export function TurnRail({ useChat, sessionId }: TurnRailProps) {
       })
     }
     update()
-    scrollport.addEventListener('scroll', update, { passive: true })
+    scrollport.addEventListener('scroll', schedule, { passive: true })
     const ro = new ResizeObserver(schedule)
     ro.observe(scrollport)
     // 冷启动/切换会话时消息行可能晚于组件挂载才渲染，
     // 监听 DOM 变化补一次跟随，避免“当前轮”直到滚动才变大。
-    const mo = new MutationObserver(schedule)
+    const mo = new MutationObserver(() => { anchorIndex = null; schedule() })
     mo.observe(scrollport, { childList: true, subtree: true })
     return () => {
       if (raf !== 0) cancelAnimationFrame(raf)
-      scrollport.removeEventListener('scroll', update)
+      scrollport.removeEventListener('scroll', schedule)
       ro.disconnect()
       mo.disconnect()
     }
@@ -438,17 +442,21 @@ export function TurnRail({ useChat, sessionId }: TurnRailProps) {
 
   // 胶囊只在指针悬浮时出现；跟随只影响刻度样式，不展开胶囊。
   const pillItem = hoveredTurn === null ? undefined : turnItems.find(item => item.turn === hoveredTurn)
+  const pillPresence = usePopupValuePresence(railShown && !railDocked ? (pillItem ?? null) : null)
+  const shownPill = pillPresence.value
   const pillClass = css.capsuleHover
 
   return (
     <>
       <div ref={anchorRef} style={{ display: 'none' }} />
-      {host !== null && chatMounted && turnItems.length > 0 && createPortal(
+      {host !== null && railPresence.mounted && turnItems.length > 0 && createPortal(
         <>
           <nav
             className={css.rail + (railDocked ? ' ' + css.railDocked : '')}
+            data-closing={railPresence.closing || undefined}
             style={{ left: railDocked ? -12 : 16 }}
             aria-label="对话轮次导航"
+            aria-hidden={railPresence.closing}
           >
             {turnItems.map(({ turn, index }) => (
               <svg
@@ -461,7 +469,7 @@ export function TurnRail({ useChat, sessionId }: TurnRailProps) {
                 style={{ transitionDelay: railDocked ? `${Math.min(index, 12) * 30}ms` : '0ms' }}
                 viewBox="0 0 24 24"
                 role="button"
-                tabIndex={0}
+                tabIndex={railPresence.closing ? -1 : 0}
                 aria-label={`跳到第 ${index + 1} 轮`}
                 onClick={(e) => { onTickClick(e, turn) }}
                 onMouseEnter={(e) => { onTickHover(e, turn) }}
@@ -480,34 +488,37 @@ export function TurnRail({ useChat, sessionId }: TurnRailProps) {
             ))}
           </nav>
 
-          {pillItem !== undefined && !railDocked && (
+          {shownPill !== null && (
             <div
               className={css.capsule + ' ' + pillClass}
+              data-closing={pillPresence.closing || undefined}
               style={{ left: 56, top: pillTop }}
               role="tooltip"
-              onMouseEnter={() => { clearHoverTimer(); setHoveredTurn(pillItem.turn) }}
+              aria-hidden={pillPresence.closing}
+              onMouseEnter={() => { clearHoverTimer(); setHoveredTurn(shownPill.turn) }}
               onMouseLeave={() => { clearHoverTimer(); setHoveredTurn(null) }}
             >
               <div className={css.capsuleHeader}>
                 <span className={css.capsuleTurnSummary}>
-                  <span className={css.capsuleTurn}>第 {pillItem.index + 1} 轮</span>
-                  <span className={css.capsuleSummary}>{pillItem.info.summary !== '' ? pillItem.info.summary : '无摘要'}</span>
+                  <span className={css.capsuleTurn}>第 {shownPill.index + 1} 轮</span>
+                  <span className={css.capsuleSummary}>{shownPill.info.summary !== '' ? shownPill.info.summary : '无摘要'}</span>
                 </span>
               </div>
               <div className={css.capsuleMetaRow}>
-                {pillItem.info.commit !== '' && (
+                {shownPill.info.commit !== '' && (
                   <button
                     type="button"
                     className={css.capsuleCommitButton}
+                    tabIndex={pillPresence.closing ? -1 : 0}
                     title="点击回到对话并高亮该轮"
-                    onClick={() => { onCommitClick(pillItem.turn) }}
+                    onClick={() => { onCommitClick(shownPill.turn) }}
                   >
-                    {pillItem.info.commit}
+                    {shownPill.info.commit}
                   </button>
                 )}
                 <span className={css.capsuleMetaTime}>
-                  <span className={css.capsuleTime}>{pillItem.info.time !== '' ? pillItem.info.time : '--'}</span>
-                  <span className={css.capsuleDate}>{pillItem.info.date !== '' ? pillItem.info.date : '--'}</span>
+                  <span className={css.capsuleTime}>{shownPill.info.time !== '' ? shownPill.info.time : '--'}</span>
+                  <span className={css.capsuleDate}>{shownPill.info.date !== '' ? shownPill.info.date : '--'}</span>
                 </span>
               </div>
             </div>

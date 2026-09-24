@@ -28,6 +28,7 @@
   line-height: 1.55;
   color: var(--dsw-alias-label-primary);
   overflow: hidden;
+  animation: liuli-btw-card-enter 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .cardHead {
@@ -55,6 +56,10 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
+.status {
+  transition: color 160ms ease;
+}
+
 .close {
   margin-left: auto;
   border: none;
@@ -65,10 +70,24 @@
   padding: 2px 6px;
   border-radius: 6px;
   cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, transform 120ms ease;
 }
 .close:hover {
   background: rgba(var(--dsw-specific-hover, 128 128 128), 0.12);
   color: var(--dsw-alias-label-primary);
+}
+
+.close:active { transform: scale(0.9); }
+
+@keyframes liuli-btw-card-enter {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card { animation: none; }
+  .status, .close { transition: none; }
+  .close:active { transform: none; }
 }
 
 .question {

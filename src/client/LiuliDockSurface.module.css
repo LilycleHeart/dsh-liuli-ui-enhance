@@ -1,0 +1,332 @@
+.expandButton,
+.pickerButton {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, inherit);
+  cursor: pointer;
+  transition: background-color 140ms var(--ds-ease-in-out, ease),
+    color 140ms var(--ds-ease-in-out, ease),
+    box-shadow 140ms var(--ds-ease-in-out, ease);
+}
+
+.expandButton:hover,
+.pickerButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.15));
+  color: var(--dsw-alias-label-primary, inherit);
+}
+
+.expandButtonActive,
+.expandButtonActive:hover,
+.pickerButtonActive,
+.pickerButtonActive:hover {
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 14%, transparent);
+  color: var(--dsw-alias-brand-primary, #0079bf);
+}
+
+.expandButton:focus-visible,
+.pickerButton:focus-visible,
+.pickerItem:focus-visible,
+.emptyItem:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary, #0079bf);
+  outline-offset: 2px;
+}
+
+.pickerHost {
+  position: relative;
+  display: inline-flex;
+}
+
+.pickerMenu {
+  position: fixed;
+  z-index: 1400;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 192px;
+  padding: 4px;
+  border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.15));
+  border-radius: var(--liuli-radius, 12px);
+  background: rgba(var(--liuli-acrylic-rgb), calc(var(--liuli-material-opacity, 0.55) + 0.3));
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  box-shadow: var(--liuli-shadow, 0 10px 30px rgba(0, 0, 0, 0.22));
+  overflow: hidden;
+  animation: liuli-sidebar-menu-in 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.pickerMenu[data-closing] {
+  pointer-events: none;
+  animation: liuli-sidebar-menu-out 160ms ease-in both;
+}
+
+.pickerItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary, inherit);
+  font-size: 13px;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 140ms var(--ds-ease-in-out, ease),
+    color 140ms var(--ds-ease-in-out, ease);
+}
+
+.pickerItem:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.15));
+}
+
+.pickerItemIcon {
+  display: flex;
+  flex: none;
+  color: var(--dsw-alias-label-secondary, inherit);
+}
+
+.emptyShell {
+  position: absolute;
+  inset: 49px 0 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+  padding: 40px 20px;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.emptyContent {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  max-width: 20rem;
+  pointer-events: auto;
+  animation: liuli-sidebar-empty-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.emptyShell[data-closing] .emptyContent {
+  pointer-events: none;
+  animation: liuli-sidebar-empty-out 180ms ease-in both;
+}
+
+/* dockkit 的 paneBody 默认是 block/overflow:auto；浏览器 carrier 的 flex:1
+   在 block 父级里会退化为 <webview> 固有的 150px 高度。 */
+:global([data-liuli-dock-surface] div:has(> [data-testid="browser-webview"])) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.emptyHead {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: center;
+}
+
+.emptyTitle {
+  margin: 0;
+  color: var(--dsw-alias-label-primary, inherit);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+}
+
+.emptyDesc {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary, #888);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.emptyList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.emptyItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  height: 48px;
+  padding: 0 12px;
+  border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.12));
+  border-radius: 12px;
+  background: rgba(var(--liuli-acrylic-rgb), 0.5);
+  color: var(--dsw-alias-label-primary, inherit);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 140ms var(--ds-ease-in-out, ease),
+    border-color 140ms var(--ds-ease-in-out, ease),
+    color 140ms var(--ds-ease-in-out, ease);
+}
+
+.emptyItem:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.15));
+}
+
+.emptyItemIcon {
+  display: flex;
+  flex: none;
+  color: var(--dsw-alias-label-tertiary, #888);
+}
+
+.emptyItemLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 经典侧栏模式把内层边缘投放转交整窗 Dockable 布局。 */
+:global([data-liuli-dock-surface][data-liuli-disable-inner-split] [data-dockkit-split-button]),
+:global([data-liuli-dock-surface][data-liuli-disable-inner-split] [data-dockkit-dock-zone]) {
+  display: none !important;
+}
+
+/* 琉璃 dock、原生 Seat 和原生浮窗共用标签视觉；只用 dockkit 的
+   data 属性，避免上游 CSS Module 哈希改名后失效。 */
+:global(:is([data-liuli-dock-surface], [data-liuli-official-rightbar-host], [data-sidebar-right-float-host]) [data-dockkit-strip]) {
+  flex: none;
+  height: 48px;
+  padding: 0 12px;
+  gap: 8px;
+  align-items: center;
+  border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.15));
+}
+
+:global(:is([data-liuli-dock-surface], [data-liuli-official-rightbar-host], [data-sidebar-right-float-host]) [data-dockkit-strip-tabs]) {
+  flex: 1 1 auto;
+  gap: 0;
+  mask-image: none !important;
+}
+
+/* 保留重排时的插入槽，只去掉与琉璃间距体系冲突的常驻发丝分隔线。 */
+:global(:is([data-liuli-dock-surface], [data-liuli-official-rightbar-host], [data-sidebar-right-float-host]) [data-dockkit-strip-tabs] > :not([data-dockkit-tab])) {
+  width: 8px;
+}
+
+:global(:is([data-liuli-dock-surface], [data-liuli-official-rightbar-host], [data-sidebar-right-float-host]) [data-dockkit-strip-tabs] > :not([data-dockkit-tab]):not([data-dockkit-caret])::before) {
+  background: transparent;
+}
+
+:global(:is([data-liuli-dock-surface], [data-liuli-official-rightbar-host], [data-sidebar-right-float-host]) [data-dockkit-tab]) {
+  flex: 1 1 156px;
+  min-width: 64px;
+  max-width: 156px;
+  height: 28px;
+  padding: 0 6px 0 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, #666);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: grab;
+  overflow: hidden;
+  transition: background-color 140ms var(--ds-ease-in-out, ease),
+    border-color 140ms var(--ds-ease-in-out, ease),
+    color 140ms var(--ds-ease-in-out, ease),
+    box-shadow 140ms var(--ds-ease-in-out, ease),
+    opacity 140ms ease;
+}
+
+:global(:is([data-liuli-dock-surface], [data-liuli-official-rightbar-host], [data-sidebar-right-float-host]) [data-dockkit-tab]:hover) {
+  border-color: var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.2));
+  color: var(--dsw-alias-label-primary, inherit);
+}
+
+:global(:is([data-liuli-dock-surface], [data-liuli-official-rightbar-host], [data-sidebar-right-float-host]) [data-dockkit-tab][aria-selected="true"]),
+:global(:is([data-liuli-dock-surface], [data-liuli-official-rightbar-host], [data-sidebar-right-float-host]) [data-dockkit-tab][aria-selected="true"]:hover) {
+  border-color: var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.25));
+  background: var(--dsw-specific-card-major, rgba(var(--liuli-acrylic-rgb), 0.85));
+  color: var(--dsw-alias-label-primary, inherit);
+  box-shadow: var(--liuli-shadow-subtle, 0 1px 3px rgba(0, 0, 0, 0.08));
+}
+
+:global(:is([data-liuli-dock-surface], [data-liuli-official-rightbar-host], [data-sidebar-right-float-host]) [data-dockkit-tab-title]) {
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  mask-image: none !important;
+}
+
+:global(:is([data-liuli-dock-surface], [data-liuli-official-rightbar-host], [data-sidebar-right-float-host]) [data-dockkit-tab-close]) {
+  position: static;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  color: inherit;
+  opacity: 0.55 !important;
+  pointer-events: auto !important;
+  transition: background-color 140ms var(--ds-ease-in-out, ease),
+    color 140ms var(--ds-ease-in-out, ease),
+    opacity 140ms ease;
+}
+
+:global(:is([data-liuli-dock-surface], [data-liuli-official-rightbar-host], [data-sidebar-right-float-host]) [data-dockkit-tab-close]:hover) {
+  opacity: 1 !important;
+  background: rgba(229, 72, 77, 0.16);
+  color: #e5484d;
+}
+
+@keyframes liuli-sidebar-menu-in {
+  from { opacity: 0; transform: translateY(-5px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes liuli-sidebar-menu-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(-4px) scale(0.985); }
+}
+
+@keyframes liuli-sidebar-empty-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes liuli-sidebar-empty-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(6px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pickerMenu,
+  .emptyContent {
+    animation: none;
+  }
+  .expandButton,
+  .pickerButton,
+  .pickerItem,
+  .emptyItem,
+  :global(:is([data-liuli-dock-surface], [data-liuli-official-rightbar-host], [data-sidebar-right-float-host]) [data-dockkit-tab]),
+  :global(:is([data-liuli-dock-surface], [data-liuli-official-rightbar-host], [data-sidebar-right-float-host]) [data-dockkit-tab-close]) {
+    transition: none;
+  }
+}

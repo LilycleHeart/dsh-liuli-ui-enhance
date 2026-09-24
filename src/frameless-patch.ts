@@ -6,11 +6,13 @@
  * `scripts/patch-desktop-frameless.mjs` 保持一致，但安装目录由
  * `process.resourcesPath` 推导（跟随当前运行的客户端版本，不写死路径）。
  *
- * 两种客户端布局都支持：
+ * 三种客户端布局都支持：
  *   旧布局：electron-runtime-*.js 直接位于 app.asar.unpacked/lib 磁盘目录（unpacked 条目）。
  *   新布局：electron-runtime-*.js 被打包进 app.asar 内部（packed 条目，offset 相对内容区起点）。
  *          此时把补丁后的内容解包写到磁盘 unpacked 目录，并把 asar 头条目从
  *          packed（带 offset）改为 unpacked（去 offset），让 Electron 改从磁盘读取。
+ *   2.0.13+：没有 app.asar，runtime/preload 直接位于 resources/app/lib；备份后
+ *          写回磁盘文件，无需重建 asar 头。
  *
  * 软性语义：
  * - 仅 win32 + Electron 主进程执行，纯 Web / 其他平台直接跳过（与补丁无关）；
@@ -36,6 +38,92 @@ const TITLEBAR_GENERIC = /titleBarStyle:\s*"hidden",\s*titleBarOverlay:\s*\{[\s\
 /** advanced/compatibility 主窗口的 webPreferences 块（开头是 preload…webSecurity:true，
  *  兼容结尾是 `}` 或继续跟 partition 等字段；不匹配 profile 小窗/对话框块）。 */
 const WEBVIEWTAG_PATTERN = /webPreferences:\s*\{\s*preload,\s*contextIsolation:\s*true,\s*nodeIntegration:\s*false,\s*sandbox:\s*true,\s*webSecurity:\s*true(?:,|\s*})/g
+
+const WINDOW_IPC_NAME = 'liuli-window-control'
+const RUNTIME_IPC_MARK = '[liuli-theme patch] 窗口控制通道'
+const PRELOAD_BRIDGE_MARK = '[liuli-theme patch] 窗口控制桥'
+const RUNTIME_IPC_BLOCK = [
+  '',
+  `// ${RUNTIME_IPC_MARK}（无边框模式下页面内按钮操作真实窗口；目标窗口由发送方反查）`,
+  `ipcMain.handle(${JSON.stringify(WINDOW_IPC_NAME)}, (event, action) => {`,
+  '\tconst target = BrowserWindow.fromWebContents(event.sender);',
+  '\tif (!target) return { ok: false, error: "no-window" };',
+  '\tswitch (action) {',
+  '\t\tcase "minimize": target.minimize(); return { ok: true };',
+  '\t\tcase "toggleMaximize": if (target.isMaximized()) target.unmaximize(); else target.maximize(); return { ok: true };',
+  '\t\tcase "close": target.close(); return { ok: true };',
+  '\t\tcase "isMaximized": return { ok: true, maximized: target.isMaximized() };',
+  '\t\tdefault: return { ok: false, error: "unknown-action" };',
+  '\t}',
+  '});',
+  '',
+].join('\n')
+const PRELOAD_BRIDGE_BLOCK = [
+  '',
+  `// ${PRELOAD_BRIDGE_MARK}（无边框模式下页面内按钮操作真实窗口）`,
+  'electron.contextBridge.exposeInMainWorld("liuliWindowControls", {',
+  `\tinvoke(action) { return electron.ipcRenderer.invoke(${JSON.stringify(WINDOW_IPC_NAME)}, action); }`,
+  '});',
+  '',
+].join('\n')
+const BROWSER_POPUP_CHANNEL = 'liuli-browser-popup'
+const RUNTIME_BROWSER_POPUP_MARK = '[liuli-theme patch] 浏览器弹窗通道'
+const PRELOAD_BROWSER_POPUP_MARK = '[liuli-theme patch] 浏览器弹窗桥'
+const RUNTIME_BROWSER_POPUP_BLOCK = [
+  '',
+  `// ${RUNTIME_BROWSER_POPUP_MARK}（Electron 22+ 已移除 <webview> new-window 事件）`,
+  'app.on("web-contents-created", (_event, host) => {',
+  '\thost.on("did-attach-webview", (_attachEvent, guest) => {',
+  '\t\tif (guest.session !== session.fromPartition("persist:liuli-embedded-browser")) return;',
+  '\t\tguest.setWindowOpenHandler((details) => {',
+  '\t\t\tif (/^(https?|file):/i.test(details.url) && !host.isDestroyed()) {',
+  `\t\t\t\thost.send(${JSON.stringify(BROWSER_POPUP_CHANNEL)}, guest.id, details.url);`,
+  '\t\t\t}',
+  '\t\t\treturn { action: "deny" };',
+  '\t\t});',
+  '\t});',
+  '});',
+  '// [liuli-theme patch] 浏览器弹窗通道结束',
+  '',
+].join('\n')
+const PRELOAD_BROWSER_POPUP_BLOCK = [
+  '',
+  `// ${PRELOAD_BROWSER_POPUP_MARK}（只转发琉璃 webview guest 的弹窗 URL）`,
+  'const liuliPopupListeners = new Map();',
+  'const liuliPopupPending = new Map();',
+  `electron.ipcRenderer.on(${JSON.stringify(BROWSER_POPUP_CHANNEL)}, (_event, guestId, url) => {`,
+  '\tif (!Number.isSafeInteger(guestId) || typeof url !== "string") return;',
+  '\tconst listeners = liuliPopupListeners.get(guestId);',
+  '\tif (listeners?.size) {',
+  '\t\tfor (const listener of listeners) { try { listener(url); } catch {} }',
+  '\t\treturn;',
+  '\t}',
+  '\tconst pending = liuliPopupPending.get(guestId) ?? [];',
+  '\tpending.push(url);',
+  '\tliuliPopupPending.set(guestId, pending.slice(-4));',
+  '\tif (liuliPopupPending.size > 32) liuliPopupPending.delete(liuliPopupPending.keys().next().value);',
+  '});',
+  'electron.contextBridge.exposeInMainWorld("liuliBrowserPopups", {',
+  '\tsubscribe(guestId, callback) {',
+  '\t\tif (!Number.isSafeInteger(guestId) || typeof callback !== "function") return () => {};',
+  '\t\tlet listeners = liuliPopupListeners.get(guestId);',
+  '\t\tif (!listeners) { listeners = new Set(); liuliPopupListeners.set(guestId, listeners); }',
+  '\t\tlisteners.add(callback);',
+  '\t\tfor (const url of liuliPopupPending.get(guestId) ?? []) { try { callback(url); } catch {} }',
+  '\t\tliuliPopupPending.delete(guestId);',
+  '\t\treturn () => {',
+  '\t\t\tlisteners.delete(callback);',
+  '\t\t\tif (listeners.size === 0) liuliPopupListeners.delete(guestId);',
+  '\t\t};',
+  '\t}',
+  '});',
+  '// [liuli-theme patch] 浏览器弹窗桥结束',
+  '',
+].join('\n')
+const RUNTIME_IPC_BLOCK_RE = /\n*\/\/ \[liuli-theme patch\] 窗口控制通道[\s\S]*?\n\}\);\n/
+const PRELOAD_BRIDGE_BLOCK_RE = /\n*\/\/ \[liuli-theme patch\] 窗口控制桥[\s\S]*?\n\}\);\n/
+const RUNTIME_BROWSER_POPUP_BLOCK_RE = /\n*\/\/ \[liuli-theme patch\] 浏览器弹窗通道[^\n]*\n[\s\S]*?\/\/ \[liuli-theme patch\] 浏览器弹窗通道结束\n/
+const PRELOAD_BROWSER_POPUP_BLOCK_RE = /\n*\/\/ \[liuli-theme patch\] 浏览器弹窗桥[^\n]*\n[\s\S]*?\/\/ \[liuli-theme patch\] 浏览器弹窗桥结束\n/
 
 // 新版标记块：注释里记录原 titleBarOverlay height 表达式，还原时可逐字恢复。
 // 用 m 标志并吞掉行首缩进：patch 时注释行前保留了原 titleBarStyle 行的缩进，
@@ -387,6 +475,107 @@ function isAutoPatchBlocked(version: string | undefined): boolean {
   return Number.isFinite(patch) && (patch as number) >= 5
 }
 
+/** 2.0.13+ 的 resources/app 安装没有 asar：直接修补磁盘 JS，保留首次原版备份。 */
+function patchLooseRuntime(resourcesDir: string, revert: boolean): void {
+  const libDir = joinPath(resourcesDir, 'app', 'lib')
+  const runtime = resolveRuntime(libDir, joinPath(resourcesDir, 'app.asar'))
+  if (runtime === undefined || runtime.mode !== 'disk') {
+    throw new Error('resources/app/lib 中找不到 electron-runtime-*.js')
+  }
+  const runtimePath = joinPath(libDir, runtime.name)
+  const preloadPath = joinPath(libDir, 'preload.cjs')
+  if (!existsSync(preloadPath)) throw new Error('resources/app/lib/preload.cjs 不存在')
+  if (!revert && !existsSync(`${runtimePath}.bak-liuli`)) copyFileSync(runtimePath, `${runtimePath}.bak-liuli`)
+  if (!revert && !existsSync(`${preloadPath}.bak-liuli`)) copyFileSync(preloadPath, `${preloadPath}.bak-liuli`)
+
+  let text = runtime.content.toString('utf8')
+  let preload = readFileSync(preloadPath, 'utf8')
+  const originalText = text
+  const originalPreload = preload
+
+  if (revert) {
+    const newMatch = text.match(MARKER_BLOCK_NEW)
+    const legacyMatch = !newMatch ? text.match(MARKER_BLOCK_LEGACY) : undefined
+    const match = newMatch ?? legacyMatch
+    if (match != null) {
+      const heightExpr = (newMatch?.[1] ?? '32').trim()
+      const indent = detectTitlebarIndentBefore(text, match.index ?? 0)
+      text = text.replace(newMatch ? MARKER_BLOCK_NEW : MARKER_BLOCK_LEGACY, () => nativeTitleBarRestore(heightExpr, indent))
+    }
+    const originalRuntime = existsSync(`${runtimePath}.bak-liuli`)
+      ? readFileSync(`${runtimePath}.bak-liuli`, 'utf8')
+      : null
+    if (originalRuntime !== null && !originalRuntime.includes('webviewTag: true')) {
+      text = text.replace(/^\s*webviewTag: true,\r?\n/mg, '')
+    }
+    if (text.includes(RUNTIME_BROWSER_POPUP_MARK)) {
+      text = text.replace(RUNTIME_BROWSER_POPUP_BLOCK_RE, '\n')
+      if (originalRuntime === null || !/import \{[^}]*\bsession\b[^}]*\} from "electron";/.test(originalRuntime)) {
+        text = text.replace(/import \{ session, /, 'import { ')
+      }
+    }
+    const hadIpcBlock = text.includes(RUNTIME_IPC_MARK)
+    if (hadIpcBlock) {
+      text = text.replace(RUNTIME_IPC_BLOCK_RE, '\n').replace(/import \{ ipcMain, /, 'import { ')
+    }
+    preload = preload.replace(PRELOAD_BROWSER_POPUP_BLOCK_RE, '\n').replace(PRELOAD_BRIDGE_BLOCK_RE, '\n')
+    if (existsSync(`${runtimePath}.bak-liuli`) && !readFileSync(`${runtimePath}.bak-liuli`, 'utf8').endsWith('\n')) {
+      text = text.replace(/\n+$/, '')
+    }
+    if (existsSync(`${preloadPath}.bak-liuli`) && !readFileSync(`${preloadPath}.bak-liuli`, 'utf8').endsWith('\n')) {
+      preload = preload.replace(/\n+$/, '')
+    }
+  } else {
+    if (!MARKER_BLOCK_NEW.test(text) && !MARKER_BLOCK_LEGACY.test(text)) {
+      const mainMatch = text.match(TITLEBAR_MAIN)
+      const genericMatch = !mainMatch ? text.match(TITLEBAR_GENERIC) : undefined
+      const block = mainMatch?.[0] ?? genericMatch?.[0]
+      if (block === undefined) throw new Error('未找到主窗口 titleBarOverlay 补丁点')
+      const heightExpr = (block.match(/height:\s*([^,}]+)/)?.[1] ?? '32').trim()
+      const replacement = [
+        `// [liuli-theme patch] 无边框窗口：移除原生 titleBarOverlay 按钮（原 titleBarOverlay height 表达式：${heightExpr}），`,
+        '// 最小化/最大化/关闭改由页面内按钮承担（dsh-liuli-ui-enhance 插件 /liuli-window',
+        '// 路由 + WindowControls 组件：会话 header 内 + 开始页标题条右侧兜底）。',
+        '// 注意：未安装 dsh-liuli-ui-enhance 时 advanced 模式将没有窗口按钮（Alt+F4/托盘仍可用）。',
+        'frame: false,',
+      ].join('\n\t\t')
+      text = text.replace(block, replacement)
+    }
+    if (!text.includes('webviewTag: true')) {
+      WEBVIEWTAG_PATTERN.lastIndex = 0
+      if (!WEBVIEWTAG_PATTERN.test(text)) throw new Error('未找到主窗口 webPreferences 补丁点')
+      WEBVIEWTAG_PATTERN.lastIndex = 0
+      text = text.replace(WEBVIEWTAG_PATTERN, block => block.replace('webSecurity: true', 'webviewTag: true,\n\t\t\twebSecurity: true'))
+    }
+    if (!text.includes(RUNTIME_IPC_MARK)) {
+      if (!/import \{ [^}]* \} from "electron";/.test(text)) throw new Error('未找到 Electron 主进程导入点')
+      text = (text + RUNTIME_IPC_BLOCK).replace(/import \{ ([^}]*?) \} from "electron";/, 'import { ipcMain, $1 } from "electron";')
+    }
+    if (!text.includes(RUNTIME_BROWSER_POPUP_MARK)) {
+      if (!/import \{ [^}]* \} from "electron";/.test(text)) throw new Error('未找到 Electron session 导入点')
+      text += RUNTIME_BROWSER_POPUP_BLOCK
+      text = text.replace(/import \{ ([^}]*?) \} from "electron";/, (whole, names: string) =>
+        names.split(',').some(name => name.trim() === 'session')
+          ? whole
+          : `import { session, ${names} } from "electron";`)
+    }
+    if (!preload.includes(PRELOAD_BRIDGE_MARK)) preload = `${preload.trimEnd()}\n${PRELOAD_BRIDGE_BLOCK}`
+    if (!preload.includes(PRELOAD_BROWSER_POPUP_MARK)) preload = `${preload.trimEnd()}\n${PRELOAD_BROWSER_POPUP_BLOCK}`
+  }
+
+  if (text !== originalText) {
+    writeFileSync(runtimePath, text)
+    console.log(`[dsh-liuli-ui-enhance] ${revert ? '已还原' : '已补丁'} ${runtimePath}`)
+  }
+  if (preload !== originalPreload) {
+    writeFileSync(preloadPath, preload)
+    console.log(`[dsh-liuli-ui-enhance] ${revert ? '已还原' : '已补丁'} ${preloadPath}`)
+  }
+  if (text !== originalText || preload !== originalPreload) {
+    console.log('[dsh-liuli-ui-enhance] 桌面宿主补丁将在重启 DSH Desktop 后生效')
+  }
+}
+
 export function applyFramelessPatch(): void {
   if (process.platform !== 'win32') return
   if (process.versions.electron === undefined) return
@@ -398,6 +587,12 @@ export function applyFramelessPatch(): void {
 
   const asarPath = joinPath(resourcesDir, 'app.asar')
   const backupPath = joinPath(resourcesDir, 'app.asar.bak-frameless')
+
+  if (!existsSync(asarPath) && existsSync(joinPath(resourcesDir, 'app', 'lib'))) {
+    try { patchLooseRuntime(resourcesDir, false) }
+    catch (error) { console.warn('[dsh-liuli-ui-enhance] resources/app 自动补丁未应用：', error) }
+    return
+  }
 
   // 2.0.5+ 客户端上自动补丁会破坏主进程启动（见 isAutoPatchBlocked 注释），
   // 这里在写入前直接跳过：保持 app.asar 原样，客户端可正常启动。
@@ -504,6 +699,12 @@ export function revertFramelessPatch(): void {
   }
 
   const asarPath = joinPath(resourcesDir, 'app.asar')
+
+  if (!existsSync(asarPath) && existsSync(joinPath(resourcesDir, 'app', 'lib'))) {
+    try { patchLooseRuntime(resourcesDir, true) }
+    catch (error) { console.warn('[dsh-liuli-ui-enhance] resources/app 自动补丁还原未完成：', error) }
+    return
+  }
 
   const proc = process as ProcessWithNoAsar
   const previousNoAsar = proc.noAsar

@@ -1024,3 +1024,576 @@ div[class$="hoverCard"] {
   scrollbar-gutter: auto !important;
   align-items: center !important;
 }
+
+/* ════════════════════════════════════════════════════════════
+ * 第三方插件 Jet Hub（dsh-codearts-auth）设置分区适配
+ * 来源：插件 plugin-src/client/jet-hub-styles.js 手写的全局类
+ *       （.dim-jh-* 前缀，非 CSS Module、无哈希，故可直接锚定）
+ *
+ * Jet Hub 是「Provider 凭据 / 多账号管理」设置分区。它自带一套独立设计语言：
+ * 品牌色写死 #1677ff 蓝、卡片走 bg-layer-3 实底、provider 图标垫纯白底、
+ * 分隔线读 border-default。在琉璃下与紧邻的官方设置导航 / 设置行明显不同族；
+ * 其中两处是硬伤而不只是观感差异：
+ *
+ *   ① 分隔线写 var(--dsw-alias-border-default, #e5e5e5)：琉璃没有
+ *      --dsw-alias-border-default 这个令牌（只有 border-l1/l2/l3/l4），
+ *      于是页头底边、侧栏右边一律回落成亮灰 #e5e5e5 —— 暗色主题下是两条
+ *      刺眼的浅亮线（实测 rgb(229,229,229)，而暗色 border-l1 应是极暗发丝线）。
+ *   ② 模型列表弹窗靠 position:fixed 覆盖全屏，但设置模态面板根持有
+ *      backdrop-filter（本文件「浮动卡片统一补磨砂」一节的
+ *      [role="dialog"][class*="_panel"] 规则），使它成为 fixed 后代的包含块：
+ *      弹窗被压扁成面板大小 —— 实测 overlay rect = [880,116,800,800]，
+ *      而视口是 2560×1032（弹窗右下半截被裁掉）。
+ *
+ * 作用域：body:has(.dim-jh-page) —— 只在琉璃主题下、
+ *   设置模态打开时生效；选择器一律锚定 .dim-jh-* 自有前缀（全仓唯一，不与
+ *   官方哈希类名或其它插件撞名），不用 div[class*=...] 一类宽选择器。
+ *
+ * 纪律（style-guide §9）：只覆盖视觉属性（background* / color / border* /
+ *   border-radius / box-shadow / backdrop-filter / outline / z-index /
+ *   transition）与最小幅度的排版收敛（去重复留白、与官方设置导航对齐）；
+ *   不改 DOM 结构、不改 display、不改交互。尺寸类改动逐条注明依据。
+ * ════════════════════════════════════════════════════════════ */
+
+/* ── 0. 配套修复：设置模态面板根不得持有 backdrop-filter（high，功能性） ──
+ * 本文件「浮动卡片统一补磨砂」一节写了 [role="dialog"][class*="_panel"] 直接
+ * 在根元素上挂 backdrop-filter。该写法对「无 fixed 后代的浮卡」成立，但设置
+ * 模态面板内部会渲染 position:fixed 的全屏弹层（Jet Hub 模型列表、其它分区的
+ * 选择器弹层），而 backdrop-filter 会让元素成为 fixed 后代的包含块 —— 弹层
+ * 于是被限死在面板盒内。实测：清掉根的这一条后，Jet Hub 模型弹窗的
+ * overlay rect 由 [880,116,800,800] 恢复为 [0,0,2560,1032]（完整覆盖视口）。
+ * 材质不会因此丢失：本文件下面的
+ * [class*="_overlay"] > [class*="_panel"]::before 规则已用 ::before 独立层
+ * 承担同一份亚克力配方（半透明底 + 噪声 + strong 档磨砂），根只负责定位 /
+ * 圆角 / 阴影 / 裁剪 —— 正是 style-guide §5.1 对「可能含 fixed 后代的卡片」
+ * 要求的结构。选择器与那条 ::before 规则一一对应（同样要求 overlay > panel），
+ * 因此凡是被本规则命中的面板，材质必然由 ::before 提供，无遗漏场景。 */
+[class*="_overlay"] > [class*="_panel"] {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* ── 1. 页头：与官方 header 重复的第二层页头，收敛为分区标题条（medium） ──
+ * 设置模态自己的 .MI-_Aa_header（54px 固定行，含「打开配置文件 / 导出诊断信息 /
+ * 打开 DSH 终端 / 重启 / 关闭」）始终渲染在内容区顶部；Jet Hub 又写了一个
+ * 77px 的 .dim-jh-header（品牌名 + 描述 + 第二个「关闭」按钮），于是同一屏里
+ * 出现两个页头、两个关闭入口，中间还夹着 ① 的亮灰回落线。
+ * 处理：去掉底边线（官方 header 已提供区域分隔），把品牌名收进琉璃字阶
+ * （16px/24 w500 = 官方 .MI-_Aa_navTitle 的度量，与左栏「设置」标题同档），
+ * 描述降到 12px/18 tertiary。第二个关闭按钮保留（窄窗时官方 header 可能换行，
+ * 多一个入口无害），但随通用 ghost 按钮配方弱化，不再与品牌名争夺注意力。 */
+body:has(.dim-jh-page) .dim-jh-header {
+  align-items: center !important;
+  padding: 0 0 14px !important;
+  border-bottom: none !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-brandName {
+  font-size: 16px !important;
+  font-weight: 500 !important;
+  line-height: 24px !important;
+  color: var(--dsw-alias-label-primary) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-brandDesc {
+  margin-top: 2px !important;
+  font-size: 12px !important;
+  line-height: 18px !important;
+  color: var(--dsw-alias-label-tertiary) !important;
+}
+
+/* ── 2. 左侧 Provider 导航：对齐官方设置导航 .MI-_Aa_navCell（medium） ──
+ * 官方导航项：height:40px、border-radius:12px、background:transparent、
+ * hover 用 --dsw-specific-sidebar-nav-item-hover、选中用
+ * --dsw-specific-sidebar-nav-item-active（不透明实底），选中态文字仍是
+ * label-primary。Jet Hub 的 provider 卡却自绘了「实底卡 + 亮蓝描边 + 蓝字」
+ * 三件套，与紧邻的官方导航列并排时一眼可辨不是一套。
+ * 处理：换成与官方导航完全同源的令牌组合（同一 active/hover 令牌、同样的
+ * 透明常态 + 12px 圆角），使两列导航在观感上属于同一个控件族。
+ * 圆角取 12px 而不取 var(--liuli-radius-sm)：此处刻意与官方 navCell 逐值对齐，
+ * 「同族」优先于「阶梯」（style-guide §4.1 的药丸/卡片分档针对琉璃自有组件）。
+ * 侧栏右边框本来走 ① 的回落亮灰线，一并换成 border-l1 发丝线。 */
+body:has(.dim-jh-page) .dim-jh-rail {
+  gap: 4px !important;
+  padding: 4px 8px 8px !important;
+  border-right: 1px solid var(--dsw-alias-border-l1) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-provider {
+  border: 1px solid transparent !important;
+  border-radius: 12px !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  color: var(--dsw-alias-label-secondary) !important;
+  transition: background-color 0.16s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.16s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-provider:hover {
+  border-color: transparent !important;
+  background-color: var(--dsw-specific-sidebar-nav-item-hover) !important;
+  color: var(--dsw-alias-label-primary) !important;
+  box-shadow: none !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-provider[aria-selected="true"],
+body:has(.dim-jh-page) .dim-jh-provider[aria-selected="true"]:hover {
+  border-color: transparent !important;
+  background-color: var(--dsw-specific-sidebar-nav-item-active) !important;
+  color: var(--dsw-alias-label-primary) !important;
+  box-shadow: none !important;
+}
+
+/* 焦点环归琉璃统一配方（brand 70% + 1px offset）；官方导航项无自绘焦点样式，
+   此处把插件原有的「亮蓝描边 + 蓝色内阴影」双焦点换成同一条。 */
+body:has(.dim-jh-page) .dim-jh-provider:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 70%, transparent) !important;
+  outline-offset: 1px !important;
+  box-shadow: none !important;
+}
+
+/* provider 图标：插件的 .codearts / .buddy / .workbuddy 三条规则都给纯白底
+   （认为 logo 需要白衬底），但这三个内联 PNG 本身是带 alpha 的透明图
+   （实测角像素 alpha=0），白底在暗色主题下反而是一块刺眼白斑。
+   处理：撤掉白底，改中性 8% 衬底 —— 明暗主题下都能给彩色 logo 一点底色托底，
+   又不会在选中态的实底导航项上形成白块。 */
+body:has(.dim-jh-page) .dim-jh-providerIcon {
+  border-radius: 9px !important;
+  background-color: color-mix(in srgb, var(--dsw-alias-label-primary) 8%, transparent) !important;
+  box-shadow: none !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-providerIcon img {
+  border-radius: 4px !important;
+}
+
+/* provider 名：插件的 .dim-jh-providerLabel 类在组件里并未挂上（DOM 是裸
+   <span><strong>），那组「截断 + 字重」规则实际是死代码 —— provider 名窄到
+   放不下时不会省略号截断。这里按真实结构补回，字重取 500（比官方导航项的
+   400 略重，因为卡片名是列表项主信息）。 */
+body:has(.dim-jh-page) .dim-jh-provider > span:last-child {
+  min-width: 0 !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-provider > span:last-child > strong {
+  display: block !important;
+  overflow: hidden !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  line-height: 20px !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+/* ── 2b. 窄窗护栏：rail 可收缩（medium，响应式缺口） ──
+ * 设置模态宽度是 min(800px, calc(100vw - 48px))，窗口压到约 850px 以下时内容区
+ * 随之变窄。插件把 .dim-jh-rail 写死 width:200px 且默认 flex-shrink:1 但
+ * 基准就是 200px —— 实测把模态压到 560px 时，内容区仅剩 324px，rail 独占 217px，
+ * 内容面板（flex:1）被挤到 107px，6 个按钮横向溢出容器（overflow 实测 true）。
+ * 处理（经四组对照实测选定）：rail 由写死的 width:200px 改为「200px 基准 + 可
+ * 收缩」，下限 132px（图标 30 + gap 10 + 左右内边距 24 + 文字最小可读宽）；
+ * 内容面板 flex:1 1 0% 在空间不足时会被一路压到 0（实测 480px 时仅剩 27px），
+ * 故补 min-width:240px 保底，按钮组由自身 flex-wrap 接管换行。
+ * 实测（模态宽度 560px）：rail 217→149px、面板 107→260px、按钮由 6 行溢出
+ * 收敛为 3 行不溢出；800px 默认宽度下 flex 不触发收缩，rail 仍是 217px
+ * （200px 内容盒 + 16px padding + 1px border，插件原是 content-box），
+ * 与改动前逐像素一致。
+ *
+ * 注：「200px 基准」而非「200px 外框」是刻意的 —— 后者需同时改 box-sizing，
+ * 会让默认态 rail 由 217px 变 200px，属于不必要的布局尺寸变动
+ * （style-guide §9：覆盖只动视觉与必要的响应式缺口）。 */
+body:has(.dim-jh-page) .dim-jh-rail {
+  flex: 0 1 200px !important;
+  min-width: 132px !important;
+}
+
+/* ── 3. 右侧内容区：收回与官方 options 重复的留白（medium） ──
+ * 官方 .MI-_Aa_options 已提供 padding:0 24px 24px。Jet Hub 的内容面板
+ * .dim-jh-panel 又补了 padding:24px，两处叠加后正文左右各缩进 48px ——
+ * 面板实测仅 299px 可用宽，6 个操作按钮被迫折成 2 行。
+ * 处理：只保留左侧 20px 与侧栏的呼吸间距，右 / 上 / 下交给官方 options；
+ * 内容区由此增宽，按钮行压力同步缓解。 */
+body:has(.dim-jh-page) .dim-jh-panel {
+  min-width: 240px !important;
+  padding: 0 0 0 20px !important;
+}
+
+/* 面板标题：与左栏「设置」标题、页头品牌名同档（16px/24 w500）。 */
+body:has(.dim-jh-page) .dim-jh-panelTitle {
+  font-size: 16px !important;
+  font-weight: 500 !important;
+  line-height: 24px !important;
+  color: var(--dsw-alias-label-primary) !important;
+}
+
+/* ── 4. 账号卡：实底 → 标准亚克力卡（medium） ──
+ * 插件给 .dim-jh-accountCard 用 background: var(--dsw-alias-bg-layer-3)，
+ * 该令牌在琉璃下是不透明实色（亮 #d2dce6 / 暗 #333d4e），卡片成一块实心板，
+ * 完全遮住壁纸与磨砂，拖「材质不透明度」滑条对本分区毫无反应。
+ * 处理：style-guide §5.1 标准卡配方 —— 根置透明、撤掉自带阴影，材质交给
+ * ::before 独立层（半透明底 + 噪声 + strong 档磨砂），根负责定位 / 圆角 /
+ * 阴影 / 裁剪。strong 档依据 §5.4：本卡与壁纸之间隔着设置面板 .MI-_Aa_panel
+ * 的 ::before backdrop 根，采样会衰减。
+ * 两条护栏同 §5.1：position:relative 让 ::before 的 inset:0 锚回卡片自身
+ * （否则会以最近的定位祖先前述面板为参照撑满整个模态）；overflow:hidden
+ * 保证圆角外的亚克力方块被裁掉。z-index:0 自建层叠上下文，防止 ::before 的
+ * z-index:-1 逃逸到卡片背后。
+ * hover：原为写死 #1677ff 的 22% 描边，换成品牌令牌；阴影升级到 strong 辉光，
+ * 与侧栏卡片 hover 的手感一致（§6.2）。 */
+body:has(.dim-jh-page) .dim-jh-accountCard {
+  position: relative !important;
+  z-index: 0 !important;
+  overflow: hidden !important;
+  border: 1px solid var(--dsw-alias-border-l1) !important;
+  border-radius: var(--liuli-radius, 14px) !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: var(--liuli-glow-brand), var(--liuli-shadow) !important;
+  transition: border-color 0.16s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.16s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-accountCard::before {
+  content: '' !important;
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: -1 !important;
+  border-radius: inherit !important;
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55)) !important;
+  background-image: var(--liuli-noise) !important;
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;
+  pointer-events: none !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-accountCard:hover {
+  border-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 30%, var(--dsw-alias-border-l1)) !important;
+  box-shadow: var(--liuli-glow-brand-strong), var(--liuli-shadow) !important;
+}
+
+/* 卡片内操作区顶部分隔线：同样从 ① 的亮灰回落线换成 border-l1。 */
+body:has(.dim-jh-page) .dim-jh-accountActions {
+  gap: 6px !important;
+  border-top: 1px solid var(--dsw-alias-border-l1) !important;
+}
+
+/* ── 5. 按钮：默认次级 ghost、primary 主色、danger 危险色（medium） ──
+ * 插件按钮统一是「bg-layer-3 实底 + #dfe1e5 描边」，在磨砂卡上叠出一块比卡片
+ * 更实的色斑，且描边色不随主题令牌走。按 style-guide §6.1.3 工具 / 描边按钮
+ * 配方换成「透明底 + --liuli-border-hairline 细描边 + secondary 文字」，
+ * 圆角取控件档 var(--liuli-radius-sm)；§6.1.5 主按钮配方用于 data-kind=primary
+ * （品牌实底 + 前景色 + 品牌辉光，hover 升到 strong）。
+ * 信息层级：页头操作区默认把 6 个按钮平铺成同级。primary（「+ 新建账号」）
+ * 用 margin-left:auto 推到行尾，与左侧的批量工具（显示列表 / 刷新积分 /
+ * 一键领取 / 重测所有 / 重置所有）形成「工具组 | 主操作」两段式层级。
+ * 位置选择器一律不用：按钮个数随 provider 变化（CodeBuddy 多一个「一键领取
+ * 积分」），nth-child 会错位；只用插件已给出的 data-kind 语义锚点。 */
+body:has(.dim-jh-page) .dim-jh-btn {
+  border: 1px solid var(--liuli-border-hairline) !important;
+  border-radius: var(--liuli-radius-sm, 10px) !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  color: var(--dsw-alias-label-secondary) !important;
+  box-shadow: none !important;
+  transition: background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.15s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 45%, transparent) !important;
+  background-color: var(--dsw-alias-interactive-bg-hover) !important;
+  color: var(--dsw-alias-label-primary) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-btn[data-kind="primary"] {
+  margin-left: auto !important;
+  border-color: transparent !important;
+  background-color: var(--dsw-alias-button-primary-fill) !important;
+  color: var(--dsw-alias-label-primary-foreground) !important;
+  box-shadow: var(--liuli-glow-brand) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-btn[data-kind="primary"]:hover:not(:disabled) {
+  border-color: transparent !important;
+  background-color: var(--dsw-alias-button-primary-hover) !important;
+  color: var(--dsw-alias-label-primary-foreground) !important;
+  box-shadow: var(--liuli-glow-brand-strong) !important;
+}
+
+/* 危险按钮（账号卡「删除」）：§6.1.6 —— error 语义前景 + 危险 hover 底。 */
+body:has(.dim-jh-page) .dim-jh-btn[data-kind="danger"] {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 35%, transparent) !important;
+  color: var(--dsw-alias-state-error-primary) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-btn[data-kind="danger"]:hover:not(:disabled) {
+  border-color: var(--dsw-alias-state-error-primary) !important;
+  background-color: var(--dsw-alias-interactive-bg-hover-danger) !important;
+  color: var(--dsw-alias-state-error-primary) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-btn:disabled {
+  opacity: 0.5 !important;
+  cursor: default !important;
+}
+
+/* ── 6. 徽章 / 状态点 / 积分 / 元信息（medium） ──
+ * 这一组插件已部分用了语义令牌（dt 用 tertiary、metaRow 的 muted 等），
+ * 但状态类全部写死：状态点 #22c55e、启用徽章 #15803d + rgb(34 197 94/12%)、
+ * 积分总额 #1677ff、限额徽章 #b45309、警告文字 #e37400、代码角标 #f4f5f7。
+ * 处理：逐项换成琉璃语义令牌 —— 成功类走 state-success、警告类走 state-warn、
+ * 品牌数值走 brand-primary。注意琉璃的 success 在「MCU 动态取色」模式下会
+ * 映射到品牌角色色（用户当前配置下实测 = 品牌色），所以状态点与启用徽章
+ * 会自动跟随动态取色，不再是固定的绿。
+ * 积分数值加 tabular-nums（§3.3：额度 / 统计类数字等宽对齐）。 */
+body:has(.dim-jh-page) .dim-jh-accountStatus {
+  background-color: var(--dsw-alias-label-tertiary) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-accountStatus[data-on="true"] {
+  background-color: var(--dsw-alias-state-success-primary) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dsw-alias-state-success-primary) 16%, transparent) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-accountTag[data-tone="on"] {
+  color: var(--dsw-alias-state-success-primary) !important;
+  background-color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 14%, transparent) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-accountTag[data-tone="off"] {
+  color: var(--dsw-alias-label-tertiary) !important;
+  background-color: color-mix(in srgb, var(--dsw-alias-label-tertiary) 14%, transparent) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-creditTotal {
+  color: var(--dsw-alias-brand-primary) !important;
+  font-variant-numeric: tabular-nums !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-creditExpired {
+  color: var(--dsw-alias-state-warn-primary) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-creditPackages {
+  color: var(--dsw-alias-label-tertiary) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-ttlBadge {
+  color: var(--dsw-alias-state-warn-primary) !important;
+  background-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 14%, transparent) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-metaRow dd[data-tone="warn"] {
+  color: var(--dsw-alias-state-warn-primary) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-metaRow dd[data-tone="muted"] {
+  color: var(--dsw-alias-label-tertiary) !important;
+}
+
+/* 凭据 ref / 模型 id 这类代码角标：底从 bg-layer-2 实底换成「前景 8%」的
+   中性淡底（bg-layer-2 在琉璃下是不透明实色，叠在磨砂卡上会形成第二层实心块），
+   字体按 §3.3 统一走 --ds-font-family-code（插件写的是 ui-monospace 私有栈）。 */
+body:has(.dim-jh-page) .dim-jh-metaRow code,
+body:has(.dim-jh-page) .dim-jh-modelId {
+  background-color: color-mix(in srgb, var(--dsw-alias-label-primary) 8%, transparent) !important;
+  color: var(--dsw-alias-label-secondary) !important;
+  font-family: var(--ds-font-family-code) !important;
+}
+
+/* ── 7. 提示条与空状态（medium） ──
+ * 提示条（重测 / 重置 / 领积分结果）与空状态原本都是「border-l2 描边 + 实底」。
+ * 按 §6.8 空状态规范给空态换虚线卡；提示条保留实线但底改亚克力，tone 变体
+ * 全部换语义令牌（ok→success / warn→warn / error→error）。 */
+body:has(.dim-jh-page) .dim-jh-probeNotice {
+  border: 1px solid var(--dsw-alias-border-l2) !important;
+  border-radius: var(--liuli-radius-sm, 10px) !important;
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55)) !important;
+  background-image: var(--liuli-noise) !important;
+  color: var(--dsw-alias-label-secondary) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-probeNotice[data-tone="ok"] {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 38%, var(--dsw-alias-border-l2)) !important;
+  background-color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent) !important;
+  color: var(--dsw-alias-state-success-primary) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-probeNotice[data-tone="warn"] {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 38%, var(--dsw-alias-border-l2)) !important;
+  background-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 10%, transparent) !important;
+  color: var(--dsw-alias-state-warn-primary) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-probeNotice[data-tone="error"] {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 38%, var(--dsw-alias-border-l2)) !important;
+  background-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent) !important;
+  color: var(--dsw-alias-state-error-primary) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-empty {
+  padding: 32px 20px !important;
+  border: 1px dashed var(--dsw-alias-border-l2) !important;
+  border-radius: var(--liuli-radius-sm, 10px) !important;
+  background-color: rgba(var(--liuli-acrylic-rgb), calc(var(--liuli-material-opacity, 0.55) * 0.6)) !important;
+  color: var(--dsw-alias-label-tertiary) !important;
+}
+
+/* 弹窗内的空态已是列表容器内的占位，不再叠一层虚线框（避免框套框）。 */
+body:has(.dim-jh-page) .dim-jh-modalBody .dim-jh-empty {
+  border: none !important;
+  background-color: transparent !important;
+  padding: 24px !important;
+}
+
+/* ── 8. 模型列表弹窗（medium，含配套的层级归位） ──
+ * 弹窗根 .dim-jh-modal 用 bg-layer-1 实底 + 官方 elevation 阴影，是一块不透明
+ * 板；遮罩写死 rgba(0,0,0,0.32)、z-index 写死 3000。
+ * 处理：
+ *   · 遮罩底色与磨砂改读官方同类令牌（--dsw-alias-bg-mask-1 / --dsw-mask-blur），
+ *     与设置模态自身的 .MI-_Aa_mask 完全同源，亮暗主题自动加深；
+ *   · 层级归 style-guide §8 的「模态遮罩」档 2147482800。
+ *     需要说明：本弹窗渲染在 .MI-_Aa_panel 内部（该面板是 position:relative +
+ *     z-index:1 的层叠上下文），因此该值只参与面板内部的相对比较 —— 面板之外的
+ *     琉璃浮层（悬浮球 2147483000、拾取卡 2147483100）理应压在其上，
+ *     这是既有设计而非缺陷；
+ *   · 弹窗面板走 §5.2 简化亚克力配方（卡内无 fixed 后代）+ strong 档磨砂
+ *     （与壁纸之间隔着面板 ::before 这一层 backdrop 根）；
+ *   · 模型行 hover 从 bg-layer-2 实底换成 interactive-bg-hover，行圆角归 8px 档；
+ *   · 开关按 §6.6：关态轨道 border-l3、开态 brand-primary、knob 用 label-primary
+ *     （明暗双主题下都可见）。 */
+body:has(.dim-jh-page) .dim-jh-modalOverlay {
+  z-index: 2147482800 !important;
+  background-color: var(--dsw-alias-bg-mask-1) !important;
+  -webkit-backdrop-filter: var(--dsw-mask-blur, blur(2px)) !important;
+  backdrop-filter: var(--dsw-mask-blur, blur(2px)) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-modal {
+  border: 1px solid var(--dsw-alias-border-l1) !important;
+  border-radius: var(--liuli-radius, 14px) !important;
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55)) !important;
+  background-image: var(--liuli-noise) !important;
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;
+  box-shadow: var(--liuli-glow-brand), var(--liuli-shadow) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-modelRow {
+  border-radius: 8px !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-modelRow:hover {
+  background-color: var(--dsw-alias-interactive-bg-hover) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-modelRow[data-disabled="true"] .dim-jh-modelInfo {
+  opacity: 0.5 !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-switch {
+  background-color: var(--dsw-alias-border-l3) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-switch::after {
+  background-color: var(--dsw-alias-label-primary) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-switch:checked {
+  background-color: var(--dsw-alias-brand-primary) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-switch:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 70%, transparent) !important;
+  outline-offset: 1px !important;
+  box-shadow: none !important;
+}
+
+/* ── 9. 登录弹窗（low；当前版本已无调用点，按同一配方预防性覆盖） ──
+ * 组件里已不再渲染 .dim-jh-loginOverlay / .dim-jh-loginDialog（grep 全仓只剩
+ * 一处解释性注释），保留覆盖只为该弹窗若回归时不出现「写死遮罩 + 实底板」。 */
+body:has(.dim-jh-page) .dim-jh-loginOverlay {
+  z-index: 2147482800 !important;
+  background-color: var(--dsw-alias-bg-mask-1) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-loginDialog {
+  border: 1px solid var(--dsw-alias-border-l1) !important;
+  border-radius: var(--liuli-radius, 14px) !important;
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55)) !important;
+  background-image: var(--liuli-noise) !important;
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;
+  box-shadow: var(--liuli-glow-brand), var(--liuli-shadow) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-loginDialog h3 {
+  color: var(--dsw-alias-label-primary) !important;
+}
+
+body:has(.dim-jh-page) .dim-jh-loginDialog p {
+  color: var(--dsw-alias-label-secondary) !important;
+}
+
+/* ── 10. 动效降级（§7.3 / §10 checklist） ──
+ * 本组新增的三处过渡（provider 导航项、账号卡、按钮）在「减少动态效果」下
+ * 一律关闭，与仓库其它组保持一致。 */
+@media (prefers-reduced-motion: reduce) {
+  body:has(.dim-jh-page) .dim-jh-provider,
+  body:has(.dim-jh-page) .dim-jh-accountCard,
+  body:has(.dim-jh-page) .dim-jh-btn {
+    transition: none !important;
+  }
+}
+
+/* 轻量交互反馈：只覆盖确定为浮层本体的锚点，避免 _menuWrap 等包装器
+   或指针跟随元素在每次移动时重播动画。 */
+[data-liuli-context-menu],
+[role="menu"][class*="_list"],
+[role="menu"][class*="_submenu"] {
+  animation: liuli-menu-enter 160ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+[data-liuli-context-menu][data-closing] {
+  pointer-events: none;
+  animation: liuli-menu-exit 120ms ease-in both;
+}
+
+.liuli-menu-item,
+[role="menu"][class*="_list"] [class*="_item"],
+[role="menu"][class*="_submenu"] [class*="_item"] {
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+[role="dialog"][class*="_dialog"] {
+  animation: liuli-dialog-enter 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes liuli-menu-enter {
+  from { opacity: 0; transform: translateY(-4px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes liuli-menu-exit {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(-3px) scale(0.985); }
+}
+
+@keyframes liuli-dialog-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-liuli-context-menu],
+  [data-liuli-context-menu][data-closing],
+  [role="menu"][class*="_list"],
+  [role="menu"][class*="_submenu"],
+  [role="dialog"][class*="_dialog"] { animation: none; }
+
+  .liuli-menu-item,
+  [role="menu"][class*="_list"] [class*="_item"],
+  [role="menu"][class*="_submenu"] [class*="_item"] { transition: none; }
+}

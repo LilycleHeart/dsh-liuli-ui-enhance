@@ -517,6 +517,7 @@ export function LiuliHeaderVoiceprint() {
     if (ctx === null) return
     let w = 0, h = 0
     let raf = 0
+    let lastDrawAt = 0
     let visible = true
     let io: IntersectionObserver | null = null
     let ro: ResizeObserver | null = null
@@ -540,7 +541,7 @@ export function LiuliHeaderVoiceprint() {
 
     // 绘制状态全部在模块级 vpDraw 单例（切换会话组件卸载不重置，波形无缝延续）。
 
-    const draw = (): void => {
+    const draw = (phaseStep = 1): void => {
       ctx.clearRect(0, 0, w, h)
       // 总开关关闭：不绘制波形（canvas 保持透明，监听循环随之复位）。
       if (!vpParams.enabled) return
@@ -750,7 +751,7 @@ export function LiuliHeaderVoiceprint() {
         if (vpDraw.presence < 0) vpDraw.presence = 0
       }
 
-      drawWave(freqData, C, dark)
+      drawWave(freqData, C, dark, phaseStep)
     }
 
     /* 流动波形（空闲态 ↔ 响应态平滑过渡；绘制公式逐字参照 liuli_echo
@@ -762,7 +763,7 @@ export function LiuliHeaderVoiceprint() {
          bass → 冲击：低频能量让波形整体膨胀、线条变粗
          mid  → 流速：旋律能量加快波形流动
          high → 星闪：镲片能量提升线条与主波亮度 */
-    const drawWave = (freqData: Uint8Array, C: RGB, dark: boolean): void => {
+    const drawWave = (freqData: Uint8Array, C: RGB, dark: boolean, phaseStep: number): void => {
       const lineC = dark ? lighten(C, 0.35) : C
       const cy = h / 2
       const lines = vpParams.lines
@@ -784,7 +785,7 @@ export function LiuliHeaderVoiceprint() {
       const highDrive = bandDrive(2)
 
       // mid 事件：流速——旋律/人声能量让波形流动加快（强度 ×vpParams.midEvent）
-      vpDraw.idlePhase += vpParams.idleSpeed * (1 + vpDraw.presence * 2) * (1 + midDrive * 1.2 * vpParams.midEvent)
+      vpDraw.idlePhase += vpParams.idleSpeed * phaseStep * (1 + vpDraw.presence * 2) * (1 + midDrive * 1.2 * vpParams.midEvent)
 
       // 外层细线不设 shadowBlur：canvas 高斯模糊是每帧最大开销（同 liuli_echo）；
       // 辉光焦点保留给中央主波。
@@ -852,23 +853,32 @@ export function LiuliHeaderVoiceprint() {
       ctx.shadowBlur = 0
     }
 
-    const loop = (): void => {
+    const loop = (now: number): void => {
       raf = requestAnimationFrame(loop)
-      draw()
+      // 静音且余波消退后只绘制约 30 FPS；仍逐帧检查监听状态，开始播放时
+      // 下一帧立即恢复完整刷新率。相位按实际间隔推进，空闲波形流速不变。
+      const idle = vpState.analyser === null
+        && vpState.audioMix < 0.001
+        && vpDraw.presence < 0.001
+        && vpDraw.punch < 0.001
+      const elapsed = lastDrawAt === 0 ? 1000 / 60 : now - lastDrawAt
+      if (idle && lastDrawAt !== 0 && elapsed < 1000 / 30 - 1) return
+      lastDrawAt = now
+      draw(idle ? Math.min(3, Math.max(0, elapsed / (1000 / 60))) : 1)
     }
 
     // 尺寸变化会重设 canvas 位图尺寸（清空画布），必须同步补一帧，
     // 避免 ResizeObserver 清空后要等下一帧 rAF 才重绘的闪断。
     const onResize = (): void => {
       resize()
-      draw()
+      draw(0)
     }
 
     resize()
     // 首帧同步绘制：组件在切换会话/进出会话页后会重挂载，canvas 刚创建时
     // 若只交给 rAF 会在下一帧才有内容，造成“空白一帧→看起来像重置/重绘”。
     // 这里基于模块级 vpDraw/vpState 立即恢复当前波形，切换页面不产生闪断。
-    draw()
+    draw(0)
     ro = new ResizeObserver(onResize)
     ro.observe(canvas)
     window.addEventListener('resize', onResize)
@@ -878,16 +888,18 @@ export function LiuliHeaderVoiceprint() {
         if (nowVisible === visible) return
         visible = nowVisible
         if (visible) {
-          draw()
-          loop()
+          lastDrawAt = 0
+          draw(0)
+          raf = requestAnimationFrame(loop)
         } else {
           cancelAnimationFrame(raf)
           raf = 0
+          lastDrawAt = 0
         }
       }, { rootMargin: '150px 0px' })
       io.observe(canvas)
     }
-    loop()
+    raf = requestAnimationFrame(loop)
 
     return () => {
       cancelAnimationFrame(raf)
@@ -1247,8 +1259,17 @@ export function LiuliHeaderResizer() {
     const scrollBodyObserver = scrollBody !== null ? new ResizeObserver(() => sync()) : null
     // oxlint-disable-next-line typescript/no-non-null-assertion -- the ternary above proves scrollBody exists
     scrollBodyObserver?.observe(scrollBody!)
-    // 圆角/材质等设置会写 body 内联变量，变化时强制重新生成 mask。
-    const bodyObserver = new MutationObserver(() => sync(true))
+    // mask 几何只取决于圆角/布局留白。缩放护栏会逐帧写 body 的模糊变量；
+    // 若对每次 style 变化都强制重建 SVG mask，会把缩放优化抵消掉。
+    const maskStyleKey = (): string => ['--liuli-radius', '--liuli-radius-sm', '--liuli-dock-padding']
+      .map(name => document.body.style.getPropertyValue(name)).join('|')
+    let lastMaskStyleKey = maskStyleKey()
+    const bodyObserver = new MutationObserver(() => {
+      const next = maskStyleKey()
+      if (next === lastMaskStyleKey) return
+      lastMaskStyleKey = next
+      sync(true)
+    })
     bodyObserver.observe(document.body, { attributes: true, attributeFilter: ['style'] })
 
     let drag: { startY: number; startH: number } | null = null

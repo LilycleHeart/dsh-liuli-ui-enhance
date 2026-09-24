@@ -20,6 +20,7 @@ import { consumeReviewDrive, consumeReviewRequest, REVIEW_DRIVE_EVENT, REVIEW_FI
 import { getLastTurnChanges, subscribeLastTurnChanges } from './turn-file-store.ts'
 import type { FileDiffHunk } from './TurnFileCard.tsx'
 import { resolveDriveTarget, type ReviewPanelRequest } from './review-drive.ts'
+import { usePopupPresence, usePopupValuePresence } from './use-popup-presence.ts'
 import css from './FileReviewPanel.module.css'
 
 export { resolveDriveTarget, type ReviewPanelRequest } from './review-drive.ts'
@@ -343,6 +344,7 @@ function SourceSelect({ value, options, onChange }: {
   onChange: (id: SidebarGitSourceId) => void
 }) {
   const [open, setOpen] = useState(false)
+  const menuPresence = usePopupPresence(open)
   const [pos, setPos] = useState<{ right: number; top: number }>({ right: 0, top: 0 })
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
@@ -395,8 +397,8 @@ function SourceSelect({ value, options, onChange }: {
           <Chevron />
         </span>
       </button>
-      {open && createPortal(
-        <div ref={menuRef} className={css.sourceMenu} role="menu" style={{ right: pos.right, top: pos.top }}>
+      {menuPresence.mounted && createPortal(
+        <div ref={menuRef} className={css.sourceMenu} data-closing={menuPresence.closing || undefined} role="menu" aria-hidden={menuPresence.closing} style={{ right: pos.right, top: pos.top }}>
           {options.map(option => (
             <button
               key={option.id}
@@ -433,6 +435,8 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
   const [loadingDiff, setLoadingDiff] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [menu, setMenu] = useState<{ path: string; deleted: boolean; right: number; top: number } | null>(null)
+  const menuPresence = usePopupValuePresence(menu)
+  const shownMenu = menuPresence.value
   const menuWrapRef = useRef<HTMLDivElement | null>(null)
   const menuPanelRef = useRef<HTMLDivElement | null>(null)
   const requestSeq = useRef(0)
@@ -746,8 +750,8 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
     action()
   }
 
-  const selectedRel = menu === null ? '' : relOf(menu.path, root)
-  const selectedAbs = menu === null ? '' : absOf(menu.path, root)
+  const selectedRel = shownMenu === null ? '' : relOf(shownMenu.path, root)
+  const selectedAbs = shownMenu === null ? '' : absOf(shownMenu.path, root)
 
   const refresh = (): void => {
     if (sessionId === undefined) return
@@ -869,8 +873,8 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
         </div>
       )}
 
-      {menu !== null && createPortal(
-        <div ref={menuPanelRef} className={css.menu} role="menu" style={{ right: menu.right, top: menu.top }}>
+      {shownMenu !== null && createPortal(
+        <div ref={menuPanelRef} className={css.menu} data-closing={menuPresence.closing || undefined} role="menu" aria-hidden={menuPresence.closing} style={{ right: shownMenu.right, top: shownMenu.top }}>
           {onOpenPath !== undefined && (
             <button
               type="button"
@@ -885,7 +889,7 @@ export function FileReviewPanel({ sessionId, onOpenPath, reviewRequest, onReveal
             type="button"
             role="menuitem"
             className={css.menuItem}
-            disabled={menu.deleted}
+            disabled={shownMenu.deleted}
             title="在系统文件管理器中定位该文件"
             onClick={() => {
               runMenu(() => {

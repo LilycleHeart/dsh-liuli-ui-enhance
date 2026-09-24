@@ -39,6 +39,19 @@
   transform: translateX(-16px);
 }
 
+.rail:not([data-closing]) {
+  animation: liuli-rail-enter 180ms ease-out both;
+}
+
+.rail[data-closing] {
+  pointer-events: none;
+  animation: liuli-rail-exit 180ms ease-in both;
+}
+
+.rail[data-closing] .tick {
+  pointer-events: none;
+}
+
 .rail::-webkit-scrollbar {
   display: none;
 }
@@ -113,6 +126,22 @@
   pointer-events: auto;
   transition: top 60ms linear, border-color 120ms var(--ds-ease-in-out),
     box-shadow 120ms var(--ds-ease-in-out), background 120ms var(--ds-ease-in-out);
+  animation: liuli-rail-enter 140ms ease-out both;
+}
+
+.capsule[data-closing][role="tooltip"] {
+  pointer-events: none;
+  animation: liuli-rail-exit 120ms ease-in both;
+}
+
+@keyframes liuli-rail-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes liuli-rail-exit {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 
 /* 跟随态：最弱，仅作当前轮提示 */
@@ -264,5 +293,10 @@
   .rail,
   .capsule {
     transition: none;
+  }
+
+  .rail, .rail:not([data-closing]), .rail[data-closing],
+  .capsule[role="tooltip"], .capsule[data-closing][role="tooltip"] {
+    animation: none;
   }
 }

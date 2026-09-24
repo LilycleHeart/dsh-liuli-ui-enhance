@@ -294,6 +294,13 @@ export function getLastComposerElementInfo(): PickedElement | undefined {
 
 export function startElementCardDecoration(): () => void {
   let raf = 0
+  const userRowSelector = '[class*="_userRow"], [data-pending-steering]'
+  const bubbleSelector = '[class*="_bubble"]'
+  const userBubbleSelector = '[class*="_userRow"] [class*="_bubble"], [data-pending-steering] [class*="_bubble"]'
+  const queueRowSelector = 'li[class*="_row"]'
+  const previewSelector = `${queueRowSelector} > span[class*="_preview"]`
+  const previewSpanSelector = 'span[class*="_preview"]'
+  const relevantSubtreeSelector = `${userBubbleSelector}, ${previewSelector}`
   const scan = (): void => {
     if (raf !== 0) return
     raf = requestAnimationFrame(() => {
@@ -302,8 +309,34 @@ export function startElementCardDecoration(): () => void {
     })
   }
 
+  const relevantChangedNode = (node: Node, inUserRow: boolean, inQueueRow: boolean): boolean => {
+    if (!(node instanceof Element)) return false
+    if (node.matches(relevantSubtreeSelector) || node.querySelector(relevantSubtreeSelector) !== null) return true
+    // 单个 bubble 被移除后不再有 userRow 祖先，靠 mutation.target 保留原归属。
+    if (inUserRow && (node.matches(bubbleSelector) || node.querySelector(bubbleSelector) !== null)) return true
+    // preview 从队列 li 中单独移走时已脱离父级，原来的直接子级选择器
+    // 不再匹配；用 mutation.target 的队列行身份补上这条路径。
+    return inQueueRow
+      && (node.matches(previewSpanSelector) || node.querySelector(previewSpanSelector) !== null)
+  }
+
+  const relevantMutation = (mutation: MutationRecord): boolean => {
+    const target = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement
+    // 气泡/队列预览内部被 React 替换时，target 仍在原容器里。
+    if (target !== null && (target.closest(userBubbleSelector) !== null || target.closest(previewSelector) !== null)) return true
+    // 整行挂载/卸载时 target 可能是宽泛的聊天列或 body；检查变动的子树，
+    // 以免漏掉会话切换与虚拟列表重挂产生的新用户气泡/队列预览。
+    const inUserRow = target !== null && target.closest(userRowSelector) !== null
+    const inQueueRow = target !== null && target.closest(queueRowSelector) !== null
+    for (const node of mutation.addedNodes) if (relevantChangedNode(node, inUserRow, inQueueRow)) return true
+    for (const node of mutation.removedNodes) if (relevantChangedNode(node, inUserRow, inQueueRow)) return true
+    return false
+  }
+
   scan()
-  const observer = new MutationObserver(scan)
+  const observer = new MutationObserver(mutations => {
+    if (mutations.some(relevantMutation)) scan()
+  })
   // 不监听 characterData：流式输出时助手消息文本节点每几百毫秒变化一次，
   // characterData 会让 observer 每帧触发、对整个 body 跑 querySelectorAll，
   // 叠加 React 调和器与直接 DOM 改写的反馈循环，直接崩浏览器。

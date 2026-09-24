@@ -73,7 +73,7 @@
   color: var(--dsw-alias-label-secondary);
   cursor: pointer;
   -webkit-app-region: no-drag;
-  transition: background 140ms var(--ds-ease-in-out), color 140ms var(--ds-ease-in-out);
+  transition: background 140ms var(--ds-ease-in-out), color 140ms var(--ds-ease-in-out), transform 120ms ease;
 }
 
 .btn:hover {
@@ -83,10 +83,16 @@
 
 .btn:active {
   background: var(--dsw-alias-interactive-bg-active, var(--dsw-alias-interactive-bg-hover));
+  transform: scale(0.9);
 }
 
 /* 关闭：Windows 惯例红底白图 */
 .close:hover {
   background: var(--dsw-alias-state-error-primary);
   color: #ffffff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .controls, .hint, .btn { transition: none; }
+  .btn:active { transform: none; }
 }

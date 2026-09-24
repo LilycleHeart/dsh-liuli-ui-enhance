@@ -302,7 +302,16 @@ export function startSessionTitleFilter(ctx: Pick<ClientContext, 'sessions'>): (
       decorateAll(ctx)
     })
   }
-  const mo = new MutationObserver(schedule)
+  const selector = '[role="treeitem"], header nav[class*="_crumbs"], [class*="_hoverTitle"], '
+    + '[class*="_searchResultTitle"], [class*="_switcherTitle"], [class*="_userRow"], [data-pending-steering]'
+  const relevant = (node: Node): boolean => node instanceof Element
+    && (node.matches(selector) || node.querySelector(selector) !== null)
+  const mo = new MutationObserver(records => {
+    if (records.some(record =>
+      (record.target instanceof Element && record.target.closest(selector) !== null)
+      || Array.from(record.addedNodes).some(relevant)
+      || Array.from(record.removedNodes).some(relevant))) schedule()
+  })
   mo.observe(document.body, { childList: true, subtree: true })
   const unsubSessions = ctx.sessions.list.subscribe(schedule)
   schedule()

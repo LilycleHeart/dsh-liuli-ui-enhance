@@ -6,7 +6,9 @@
   z-index: 2147483000;
   display: flex;
   align-items: center;
-  transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1), top 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    top 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 160ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .root.dragging {
@@ -37,6 +39,10 @@
 
 .ball:hover {
   filter: brightness(1.08);
+}
+
+.ball:active {
+  transform: scale(0.94);
 }
 
 .root.dragging .ball {
@@ -89,6 +95,7 @@
   box-shadow: var(--liuli-glow-brand), var(--liuli-shadow);
   backdrop-filter: var(--liuli-material-blur);
   -webkit-backdrop-filter: var(--liuli-material-blur);
+  animation: liuli-float-toolbar-enter 170ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* 右侧放不下：翻到球左侧 */
@@ -101,6 +108,17 @@
 .toolbar[data-menu-bottom] {
   top: auto;
   bottom: 0;
+}
+
+.toolbar[data-closing],
+.infoCard[data-closing],
+.inspectCard[data-closing] {
+  pointer-events: none;
+  animation: liuli-float-card-exit 120ms ease-in both;
+}
+
+.notice[data-closing] {
+  animation: liuli-float-notice-exit 120ms ease-in both;
 }
 
 .toolGroup {
@@ -127,7 +145,7 @@
   white-space: nowrap;
   cursor: pointer;
   transition: color 140ms var(--ds-ease-in-out), background 140ms var(--ds-ease-in-out),
-    border-color 140ms var(--ds-ease-in-out);
+    border-color 140ms var(--ds-ease-in-out), transform 120ms ease;
 }
 
 /* 元素选择器模式切换小按钮（插入 / 检查） */
@@ -146,7 +164,8 @@
   white-space: nowrap;
   cursor: pointer;
   transition: color 140ms var(--ds-ease-in-out), background 140ms var(--ds-ease-in-out),
-    border-color 140ms var(--ds-ease-in-out), box-shadow 140ms var(--ds-ease-in-out);
+    border-color 140ms var(--ds-ease-in-out), box-shadow 140ms var(--ds-ease-in-out),
+    transform 120ms ease;
 }
 
 .modeBtn:hover {
@@ -176,6 +195,13 @@
   box-shadow: 0 0 8px color-mix(in srgb, var(--dsw-alias-brand-primary) 30%, transparent);
 }
 
+.tool:active,
+.modeBtn:active,
+.infoBtn:active,
+.infoClose:active {
+  transform: scale(0.97);
+}
+
 /* 轻提示（body 级居中底部） */
 .notice {
   position: fixed;
@@ -194,6 +220,7 @@
   font-size: 12px;
   line-height: 18px;
   pointer-events: none;
+  animation: liuli-float-notice-enter 170ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* 拾取悬停信息卡（body 级跟随鼠标） */
@@ -235,6 +262,7 @@
   color: var(--dsw-alias-label-primary);
   font-size: 12px;
   line-height: 18px;
+  animation: liuli-float-card-enter 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* 审查元素结果卡（body 级，可滚动） */
@@ -258,6 +286,7 @@
   color: var(--dsw-alias-label-primary);
   font-size: 12px;
   line-height: 18px;
+  animation: liuli-float-card-enter 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .inspectStyles {
@@ -352,6 +381,7 @@
   color: var(--dsw-alias-label-tertiary);
   font-size: 11px;
   cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, transform 120ms ease;
 }
 
 .infoClose:hover {
@@ -435,7 +465,41 @@
   line-height: 16px;
   cursor: pointer;
   transition: color 140ms var(--ds-ease-in-out), background 140ms var(--ds-ease-in-out),
-    border-color 140ms var(--ds-ease-in-out);
+    border-color 140ms var(--ds-ease-in-out), transform 120ms ease;
+}
+
+@keyframes liuli-float-toolbar-enter {
+  from { opacity: 0; transform: translateX(-5px) scale(0.98); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes liuli-float-card-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes liuli-float-notice-enter {
+  from { opacity: 0; transform: translate(-50%, 6px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+@keyframes liuli-float-card-exit {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(5px); }
+}
+
+@keyframes liuli-float-notice-exit {
+  from { opacity: 1; transform: translate(-50%, 0); }
+  to { opacity: 0; transform: translate(-50%, 5px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root, .ball, .tool, .modeBtn, .infoBtn, .infoClose { transition: none; }
+  .toolbar, .notice, .infoCard, .inspectCard,
+  .toolbar[data-closing], .notice[data-closing],
+  .infoCard[data-closing], .inspectCard[data-closing] { animation: none; }
+  .ball:active, .tool:active, .modeBtn:active,
+  .infoBtn:active, .infoClose:active { transform: none; }
 }
 
 .infoBtn:hover {

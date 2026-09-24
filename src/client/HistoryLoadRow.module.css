@@ -57,6 +57,11 @@
   font-size: 14px;
   line-height: 20px;
   text-align: right;
+  transition: border-color 140ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .numInput { transition: none; }
 }
 
 .numInput:focus {

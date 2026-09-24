@@ -16,7 +16,7 @@
  * 边缘/面板内停靠、浮动窗口、标签页合并、sash 缩放；详情开合与宿主
  * layout 服务双向联动；dock 树自动保存/恢复（localStorage + 命名槽位 + 导出导入）。
  */
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import {
@@ -28,6 +28,11 @@ import { DOCK_PANEL_DEFS, panelDef, panelTitle, type DockHostAccess } from './do
 import type { SidePaneHostAccess } from './SidePaneExtraPanels.tsx'
 import { dockPanelToSideTab, markSideTabAccepted, openSidePaneTab, parseSideTab, reportDockPanelTypes, SIDE_TAB_MIME, sideTabToDockPanel, type SideTabDockPanel } from './side-tab-dock.ts'
 import { REVIEW_DRIVE_EVENT, REVIEW_FILE_EVENT } from './review-bus.ts'
+// 右栏 dock 展开状态：外层 shell 投放面板后需要与宿主 details 同步收起。
+// 注意：liuli-dock-surface 只从 dock-shell-frame 取 getDockHostBridge，这里反向
+// 取 setLiuliDockExpanded 构成循环引用 —— 两边都只在**运行时**调用（不在模块
+// 顶层求值），ESM 的循环依赖对函数引用是安全的。
+import { setLiuliDockExpanded, LiuliDockSurface, startOfficialTabBridge, type LiuliSidebarHostAccess } from './liuli-dock-surface.tsx'
 import {
   createDockShellStore, defaultShellLayout, exportDockJSON, findRegion, importDockJSON, isRegionPanel,
   listShellSlotNames, loadSavedDock, loadShellSlotByName, regionLabel, saveShellDock,
@@ -41,6 +46,7 @@ import css from './DockShellFrame.module.css'
 import { HMR_MARKER } from './hmr-marker.ts'
 import { tagConversationContainers } from './conversation-split.ts'
 import { beginResizePerf, endResizePerf } from './resize-perf.ts'
+import { usePopupPresence, usePopupValuePresence } from './use-popup-presence.ts'
 
 /* ── 右侧边栏系列增强开关（与 client/index.ts 的 unofficial('sidebar') 同源） ──
  *  client/index.ts 在启动时按「总开关 && 右侧边栏组」写入 window.__liuliSidebarEnabled__；
@@ -63,14 +69,52 @@ let dockHostBridge: {
   addFileToChat?: (path: string) => void
   openPath?: (path: string) => void
   sidePaneHost?: SidePaneHostAccess | undefined
+  /**
+   * 把面板投放到**外层 dock 布局**的指定落点（区域 / 坐标）。
+   *
+   * 用途：官方右栏的 dockkit surface 只认自己内部的落点，标签拖到右栏**外面**时
+   * 它调用 `intents.floatTab`（浮窗）—— 而琉璃原设计是「标签可以拆到任意区域」
+   * （左栏/会话区/页头/其它格）。右栏的 dock surface 通过这个桥把该手势改投到
+   * 外层布局，恢复原来的跨区域拆分能力。
+   *
+   * @param type - 琉璃 dock 面板类型（dock-panels.tsx 的 type）。
+   * @param clientX - 释放点视口坐标 x。
+   * @param clientY - 释放点视口坐标 y。
+   * @returns 是否被外层布局接收（false → 调用方应回退到浮窗）。
+   */
+  dropPanelAt?: (type: string, clientX: number, clientY: number, includeDetails?: boolean) => boolean
+  /**
+   * 标签拖动经过时更新外层落点提示（面板类型 + 视口坐标）。
+   *
+   * 为什么需要：右栏的标签拖拽是 dockkit 自己的 **pointer 手势**，不走 HTML5
+   * drag 事件，所以外层为 HTML5 拖入准备的落点指示器不会被触发 —— 用户看到的
+   * 就是「拖动标签页不显示 dockable 指示器，而手柄正常」。右栏 surface 在手势
+   * 移动中调用这个函数，外层用与手柄**同一套** `computeDrop` 判定并画指示器。
+   *
+   * @param type - 面板类型（用于落点是否可接的判定）。
+   * @param clientX - 当前指针视口坐标 x。
+   * @param clientY - 当前指针视口坐标 y。
+   * @returns 外层是否愿意接住该落点（false → 调用方应清除提示并回退浮窗）。
+   */
+  previewPanelDrop?: (type: string, clientX: number, clientY: number, includeDetails?: boolean) => boolean
+  /** 清除落点提示（手势结束/取消时调用）。 */
+  clearPanelDrop?: () => void
 } = {}
 
 export function setDockHostBridge(bridge: {
   addFileToChat?: (path: string) => void
   openPath?: (path: string) => void
   sidePaneHost?: SidePaneHostAccess | undefined
+  dropPanelAt?: (type: string, clientX: number, clientY: number, includeDetails?: boolean) => boolean
+  previewPanelDrop?: (type: string, clientX: number, clientY: number, includeDetails?: boolean) => boolean
+  clearPanelDrop?: () => void
 }): void {
   dockHostBridge = bridge
+}
+
+/** 读取当前桥（右栏 dock surface 用它跨区域投放）。 */
+export function getDockHostBridge(): typeof dockHostBridge {
+  return dockHostBridge
 }
 
 /** 悬浮球/快捷键唤起布局工作台菜单的事件名。 */
@@ -118,11 +162,52 @@ interface DragSource {
 interface DragState {
   source: DragSource
   title: string
+  active: boolean
   x: number
   y: number
   over: DropTarget | null
   overRect: { left: number; top: number; width: number; height: number } | null
 }
+
+type HtmlDropState = { over: DropTarget | null; rect: DragState['overRect'] } | null
+
+interface DockDragOverlayHandle {
+  setDrag: (state: DragState | null) => void
+  setHtmlDrop: (state: HtmlDropState) => void
+}
+
+/** 高频拖拽视觉独立更新，避免指针每移动一次就重渲染整个 dock 布局与宿主槽位。 */
+const DockDragOverlay = forwardRef<DockDragOverlayHandle, object>(function DockDragOverlay(_props, ref) {
+  const [drag, setDrag] = useState<DragState | null>(null)
+  const [htmlDrop, setHtmlDrop] = useState<HtmlDropState>(null)
+  useImperativeHandle(ref, () => ({ setDrag, setHtmlDrop }), [])
+
+  return (
+    <>
+      {drag !== null && drag.overRect !== null && drag.over !== null && (
+        <div
+          className={css.dropIndicator}
+          data-testid="dock-drop-indicator"
+          data-kind={drag.over.kind}
+          style={{ left: drag.overRect.left, top: drag.overRect.top, width: drag.overRect.width, height: drag.overRect.height }}
+        />
+      )}
+      {htmlDrop !== null && htmlDrop.over !== null && htmlDrop.rect !== null && (
+        <div
+          className={css.dropIndicator}
+          data-testid="dock-drop-indicator"
+          data-kind={htmlDrop.over.kind}
+          data-source="side-tab"
+          style={{ left: htmlDrop.rect.left, top: htmlDrop.rect.top, width: htmlDrop.rect.width, height: htmlDrop.rect.height }}
+        />
+      )}
+      {drag?.active === true && <div className={css.dragShield} data-testid="dock-drag-shield" />}
+      {drag?.active === true && (
+        <div className={css.dragGhost} data-testid="dock-drag-ghost" style={{ left: drag.x + 12, top: drag.y + 12 }}>{drag.title}</div>
+      )}
+    </>
+  )
+})
 
 const EDGE_STRIP = 14
 const ZONE_RATIO = 0.26
@@ -306,6 +391,32 @@ function officialRightbarTrackWidth(detailsWidth: number): number {
   return Math.min(Math.round(detailsWidth), Math.round(viewport * 0.7))
 }
 
+/** A short compositor-only exit for an explicit close click. Drag geometry stays immediate. */
+function closeAfterDockExit(element: HTMLElement | null, close: () => void): void {
+  if (element === null || !element.isConnected || document.visibilityState !== 'visible'
+    || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    close()
+    return
+  }
+  if (element.hasAttribute('data-liuli-dock-closing')) return
+  element.setAttribute('data-liuli-dock-closing', '')
+  element.style.pointerEvents = 'none'
+  const animation = element.animate([{ opacity: 1 }, { opacity: 0 }], {
+    duration: 140,
+    easing: 'ease-in',
+    fill: 'forwards',
+  })
+  let settled = false
+  const finish = (): void => {
+    if (settled) return
+    settled = true
+    window.clearTimeout(fallback)
+    if (element.isConnected) close()
+  }
+  const fallback = window.setTimeout(finish, 190)
+  void animation.finished.then(finish, finish)
+}
+
 /** 框架 root 占用者：视觉零侵入的 dockable 三区域 shell。 */
 export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions, renderSlot, SessionProvider, usePanelInfo, officialRightbar }: DockShellFrameProps) {
   const renderSlotLoose = renderSlot as unknown as LooseRenderSlot
@@ -321,6 +432,30 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
     const current = s.current
     return current !== undefined && s.byId[current]?.blank === false ? current : undefined
   })
+  /** 琉璃 dock surface 的宿主能力（与自研侧边栏共用同一份数据面桥）。 */
+  const liuliDockHostAccess: LiuliSidebarHostAccess = {
+    ...(dockHostBridge.openPath === undefined ? {} : { openPath: dockHostBridge.openPath }),
+    ...(dockHostBridge.addFileToChat === undefined ? {} : { addFileToChat: dockHostBridge.addFileToChat }),
+    ...(dockHostBridge.sidePaneHost === undefined ? {} : { sidePaneHost: dockHostBridge.sidePaneHost }),
+  }
+  // 官方 API 打开的 tab（官方插件调 ctx.sidebarRight.openResource/openTab）会落进
+  // 官方 layout，而官方 surface 在迁移模式下被 CSS 隐藏 —— 轮询官方 active() 把它们
+  // 同步进琉璃的 dock 布局，用户才看得到内容。
+  useEffect(() => {
+    if (officialRightbar !== true || slotLayout !== 'v209' || detailsSession === undefined) return () => {}
+    return startOfficialTabBridge(detailsSession)
+  }, [officialRightbar, slotLayout, detailsSession])
+  useEffect(() => {
+    if (officialRightbar !== true || slotLayout !== 'v209') return () => {}
+    const ensureDetails = (): void => {
+      const current = shellRef.current.dock
+      if (findRegion(current, REGION_DETAILS) === undefined) {
+        actions.setDock(withRegion(current, REGION_DETAILS, 'right'))
+      }
+    }
+    window.addEventListener('liuli:ensure-details', ensureDetails)
+    return () => { window.removeEventListener('liuli:ensure-details', ensureDetails) }
+  }, [officialRightbar, slotLayout, actions])
 
   /** 官方右侧栏展开状态（迁移期）：展开状态住在官方 sidebar-right 自己的 store
    *  里、帧层读不到，这里轮询官方控制器自检钩子，只为决定这一列的轨道宽度。
@@ -329,27 +464,29 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
   const [officialRightbarExpanded, setOfficialRightbarExpanded] = useState(false)
   useEffect(() => {
     if (officialRightbar !== true) return () => {}
+    // 迁移模式下右栏列宽由 `__liuliForceExpanded__`（按钮/驱动入口写入）与
+    // surface 的 `__liuliDockExpanded__`（控制器状态）共同决定。
+    //
+    // ⚠️ 读顺序里**绝不能**落回官方 `ctx.sidebarRight.isExpanded()`：遮蔽官方
+    // Seat 后它恒为 false，而 surface 重挂瞬间自己的钩子会短暂缺席 —— 读序列
+    // true→false→true 翻转让 `.shard` 的 flex-basis 过渡每次都从 0 重启，
+    // 永远冻在 0（inline 751px 但 computed 0px，按钮"收不起来"的真相）。
+    // 这里记住上次值：钩子缺席时维持原状，杜绝翻转。
+    let lastKnown = false
     const read = (): boolean => {
-      try {
-        const hook = (window as unknown as { __liuliSidebarRight__?: { isExpanded?: () => boolean } }).__liuliSidebarRight__
-        return hook?.isExpanded?.() === true
-      } catch { return false }
+      const w = window as unknown as {
+        __liuliForceExpanded__?: boolean
+        __liuliDockExpanded__?: () => boolean
+      }
+      if (w.__liuliForceExpanded__ !== undefined) lastKnown = w.__liuliForceExpanded__
+      else if (typeof w.__liuliDockExpanded__ === 'function') lastKnown = w.__liuliDockExpanded__() === true
+      // 两个来源都缺席（插件加载早期）：维持 lastKnown（初始 false=收起）。
+      return lastKnown
     }
     setOfficialRightbarExpanded(read())
     const timer = window.setInterval(() => {
       const next = read()
-      setOfficialRightbarExpanded(prev => {
-        if (prev !== next) {
-          // 诊断：展开状态与轨道宽度的实际取值（供 CDP 核验，不影响流程）。
-          try {
-            ;(window as unknown as { __liuliOfficialTrack__?: unknown }).__liuliOfficialTrack__ = {
-              expanded: next,
-              at: new Date().toISOString(),
-            }
-          } catch { /* 诊断 */ }
-        }
-        return next
-      })
+      setOfficialRightbarExpanded(prev => (prev === next ? prev : next))
     }, 120)
     return () => { window.clearInterval(timer) }
   }, [officialRightbar])
@@ -365,17 +502,25 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
     return () => { window.clearTimeout(timer); endResizePerf() }
   }, [officialRightbar, officialRightbarExpanded])
 
-  const [drag, setDrag] = useState<DragState | null>(null)
+  const dragOverlayRef = useRef<DockDragOverlayHandle | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
+  const menuPresence = usePopupPresence(menuOpen)
+  const addPresence = usePopupPresence(menuOpen && addOpen)
   const [slotName, setSlotName] = useState('')
   const [slotsVersion, setSlotsVersion] = useState(0)
   // 布局槽位下拉（原生 select 的弹出列表无法被 CSS 主题化，换成插件下拉组件）
   const [selectedSlot, setSelectedSlot] = useState('')
   const [slotMenuOpen, setSlotMenuOpen] = useState(false)
+  const slotMenuPresence = usePopupPresence(slotMenuOpen)
   const [slotMenuPos, setSlotMenuPos] = useState<{ left: number; top: number; width: number } | null>(null)
   const slotTriggerRef = useRef<HTMLButtonElement | null>(null)
   const slotMenuRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (menuOpen) return
+    setAddOpen(false)
+    setSlotMenuOpen(false)
+  }, [menuOpen])
 
   /** 打开槽位下拉：按触发器实测定位（菜单用 CSS translateY(-100%) 向上展开，
    *  工作台卡片贴底，向上展开天然不溢出视口，无需实测菜单高度）。 */
@@ -408,6 +553,9 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
   }, [slotMenuOpen])
   const [modal, setModal] = useState<null | { kind: 'export' | 'import'; text: string }>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const modalPresence = usePopupValuePresence(modal)
+  const toastPresence = usePopupValuePresence(toast)
+  const shownModal = modalPresence.value
   const rootRef = useRef<HTMLDivElement | null>(null)
   /** 上次搬入页头面板 host 的 <header> 引用：页头面板被拆分/浮动时，header 会跟着
    *  旧 host 一起被 React 移出 DOM（detached），此时无法再从正文 phase 查到它；
@@ -419,7 +567,6 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
   const [headerRestoreEpoch, setHeaderRestoreEpoch] = useState(0)
   const dragRef = useRef<{ source: DragSource; title: string; sx: number; sy: number; active: boolean } | null>(null)
   /** HTML5 外部拖入（右侧标签面板标签）的落点指示。 */
-  const [htmlDrop, setHtmlDrop] = useState<{ over: DropTarget | null; rect: DragState['overRect'] } | null>(null)
   const htmlDragActive = useRef(false)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -875,7 +1022,7 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
      · 新会话若有「展开」存档（liuli:side-pane-session:<id>.open），保持展开，
        由 PreviewDetailsPanel 恢复；否则按官方语义收起。 ── */
   const lastSession = useRef(detailsSession)
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (detailsSession === undefined) return
     if (lastSession.current !== undefined && lastSession.current !== detailsSession) {
       let wantOpen = false
@@ -886,10 +1033,17 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
           wantOpen = s.open === true
         }
       } catch { /* 忽略 */ }
-      if (!wantOpen) hostLayout.closeDetails()
+      if (officialRightbar === true && slotLayout === 'v209') {
+        // 迁移模式的可见列宽不读宿主 details 状态；同步琉璃控制器与帧层标记。
+        setLiuliDockExpanded(wantOpen)
+        // 官方隐藏 Seat 仍可能留有上个会话的 track，切会话时一并收回。
+        hostLayout.closeDetails()
+      } else if (!wantOpen) {
+        hostLayout.closeDetails()
+      }
     }
     lastSession.current = detailsSession
-  }, [hostLayout, detailsSession])
+  }, [hostLayout, detailsSession, officialRightbar, slotLayout])
 
   /* ── 详情区域与宿主状态同步：面板常驻树中（官方 DetailsColumn 语义：宽度
         0 保持挂载），开合只切换 shard 宽度（0 ↔ 详情宽），由 CSS 过渡驱动动画，
@@ -987,9 +1141,10 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
         return sidebarWidth
       }
       if (only.type === REGION_DETAILS) {
-        // 官方式接管（officialRightbar）：宽度跟随官方右栏展开状态 —— 帧层为它让出
-        // 真实轨道（会话区因此被推窄，与自研 details 列行为一致），常驻宿主
-        //（见根节点 data-liuli-official-rightbar）就覆盖在这条让出的空轨道上。
+        // 右栏列宽度（迁移模式）：**以我们的 dock 控制器状态为准** ——
+        // 遮蔽官方 Seat 后官方 ctx.sidebarRight 失去会话绑定（isExpanded 恒 false），
+        // 不能再当权威。展开状态由 LiuliRightbarExpandButton 驱动控制器、
+        // 并写 `__liuliForceExpanded__` 供帧层即时读取（控制器未挂载时也能生效）。
         if (officialRightbar === true && slotLayout === 'v209') {
           return officialRightbarExpanded ? officialRightbarTrackWidth(detailsWidth) : 0
         }
@@ -1087,18 +1242,13 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
         // 占位**：否则别人把面板拖进这一列时，面板数据进去了却没有东西渲染 ——
         // 表现就是「拖过去面板消失了」。
         if (slotLayout === 'v209' && officialRightbar === true) {
-          // 官方右栏**渲染在这一列里**（而不是浮在上面的 fixed 层）：这样官方展开/
-          // 收起的宽度变化会让整列跟着推挤相邻区域，动画期间不会叠到别的区域上，
-          // 卡片外壳也随布局走。宽度为 0（收起）时这一列仍然挂载 —— 官方
-          // RightbarRoot 因此始终有挂载点（否则 ctx.sidebarRight 会一直报
-          // "no session surface is mounted"）。
+          // 用户可见的琉璃 dockable 布局。官方 Seat 在帧根部常驻挂载，
+          // 即使用户把 details 区域拖走/关闭也不会丢失 ctx.sidebarRight 的绑定。
           return (
             <div className={css.officialRightbarCard} data-liuli-official-rightbar="">
-              {renderSlotLoose('rightbar', {
-                width: officialRightbarExpanded ? officialRightbarTrackWidth(detailsWidth) : 0,
-                viewportWidth: typeof window === 'undefined' ? 0 : window.innerWidth,
-                canShow: true,
-              })}
+              {detailsSession !== undefined && (
+                <LiuliDockSurface sessionId={detailsSession} host={liuliDockHostAccess} />
+              )}
             </div>
           )
         }
@@ -1187,7 +1337,6 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
   }, [])
 
   /* ── HTML5 外部拖入（右侧标签面板标签 → 布局落点） ── */
-
   useEffect(() => {
     const rootEl = rootRef.current
     if (rootEl === null) return
@@ -1204,7 +1353,7 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
       e.dataTransfer!.dropEffect = 'move'
       htmlDragActive.current = true
       const { target, rect } = computeDrop(e.clientX, e.clientY)
-      setHtmlDrop({ over: target, rect })
+      dragOverlayRef.current?.setHtmlDrop({ over: target, rect })
     }
     const onDragLeave = (e: DragEvent): void => {
       if (!htmlDragActive.current) return
@@ -1212,7 +1361,7 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
       const next = e.relatedTarget instanceof Node ? e.relatedTarget : null
       if (!rootEl.contains(next)) {
         htmlDragActive.current = false
-        setHtmlDrop(null)
+        dragOverlayRef.current?.setHtmlDrop(null)
       }
     }
     const onDrop = (e: DragEvent): void => {
@@ -1225,7 +1374,7 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
       const raw = e.dataTransfer?.getData(SIDE_TAB_MIME) ?? ''
       const tab = parseSideTab(raw)
       const mapped: SideTabDockPanel | undefined = tab === undefined ? undefined : sideTabToDockPanel(tab)
-      setHtmlDrop(null)
+      dragOverlayRef.current?.setHtmlDrop(null)
       if (tab === undefined || mapped === undefined) return
       const { target } = computeDrop(e.clientX, e.clientY)
       // 拖回详情页内容区（tab 目标命中单面板详情区域）＝回到 SidePane 原容器，
@@ -1250,11 +1399,81 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
     }
   }, [computeDrop, actions])
 
+  /* ── 跨区域投放桥：右栏 dock surface 把标签拖到右栏外时改投到外层布局 ──
+   *
+   * 官方右栏的 dockkit surface 只认自己内部的落点：标签拖到它外面会调用
+   * `intents.floatTab`（浮窗）。琉璃原设计里标签**可以拆到任意区域**（左栏/会话区/
+   * 页头/任意格），因此这里把「视口坐标 → 外层落点」的判定接出来，让右栏 surface
+   * 在释放点落在外层布局里时改走这条路径，恢复原来的拆分能力。
+   */
+  useEffect(() => {
+    const detailsRectOf = (): DOMRect | null => {
+      const rootEl = rootRef.current
+      if (rootEl === null) return null
+      const pane = rootEl.querySelector('[data-region-pane="region:details"]')
+      return pane === null ? null : (pane as HTMLElement).getBoundingClientRect()
+    }
+    const insideDetails = (clientX: number, clientY: number): boolean => {
+      const r = detailsRectOf()
+      if (r === null) return false
+      return clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom
+    }
+
+    const dropPanelAt = (type: string, clientX: number, clientY: number, includeDetails = false): boolean => {
+      const rootEl = rootRef.current
+      if (rootEl === null) return false
+      // 经典琉璃模式下，右栏自己的边缘也走整窗 dock；其它模式保留内层事务。
+      if (!includeDetails && insideDetails(clientX, clientY)) return false
+      const { target } = computeDrop(clientX, clientY)
+      if (includeDetails && target === null) return false
+      const current = shellRef.current.dock
+      const next = structuredClone(current)
+      const panel = createPanel(next, type)
+      actions.setDock(placePanel(next, panel, target ?? { kind: 'edge', side: 'right' }))
+      dragOverlayRef.current?.setHtmlDrop(null)
+      if (includeDetails && insideDetails(clientX, clientY)) return true
+      // 投放后收起右栏：**必须同时**把 dock 控制器的展开状态置为收起，否则
+      // 「宿主 details 已关闭（宽度 0）+ dock 控制器仍 expanded」会不同步 ——
+      // 右栏 surface 被推到视口外、点不到、也无法再展开（实测 bug）。
+      try {
+        if (typeof setLiuliDockExpanded === 'function') setLiuliDockExpanded(false)
+      } catch { /* 右栏未挂载时忽略 */ }
+      try { hostLayout.closeDetails() } catch { /* 宿主面不可用时忽略 */ }
+      return true
+    }
+
+    /**
+     * 标签拖动经过时的落点预览：复用与手柄拖拽**同一套** `computeDrop`，
+     * 把结果写进 `htmlDrop`（渲染层已有对应的 dropIndicator）。
+     */
+    const previewPanelDrop = (_type: string, clientX: number, clientY: number, includeDetails = false): boolean => {
+      if (rootRef.current === null) return false
+      if (!includeDetails && insideDetails(clientX, clientY)) {
+        // 右栏内部：由 dockkit 自己画提示，外层让位。
+        dragOverlayRef.current?.setHtmlDrop(null)
+        return false
+      }
+      const { target, rect } = computeDrop(clientX, clientY)
+      if (target === null || rect === null) {
+        dragOverlayRef.current?.setHtmlDrop(null)
+        return false
+      }
+      dragOverlayRef.current?.setHtmlDrop({ over: target, rect })
+      return true
+    }
+
+    const clearPanelDrop = (): void => { dragOverlayRef.current?.setHtmlDrop(null) }
+
+    const previous = getDockHostBridge()
+    setDockHostBridge({ ...previous, dropPanelAt, previewPanelDrop, clearPanelDrop })
+    return () => { setDockHostBridge(previous) }
+  }, [actions, computeDrop, hostLayout])
+
   const beginDrag = useCallback((e: React.PointerEvent, source: DragSource, title: string): void => {
     if (e.button !== 0) return
     e.preventDefault()
     dragRef.current = { source, title, sx: e.clientX, sy: e.clientY, active: false }
-    setDrag({ source, title, x: e.clientX, y: e.clientY, over: null, overRect: null })
+    dragOverlayRef.current?.setDrag({ source, title, active: false, x: e.clientX, y: e.clientY, over: null, overRect: null })
     const onMove = (ev: PointerEvent): void => {
       const info = dragRef.current
       if (info === null) return
@@ -1263,7 +1482,7 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
         info.active = true
       }
       const { target, rect } = computeDrop(ev.clientX, ev.clientY)
-      setDrag({ source: info.source, title: info.title, x: ev.clientX, y: ev.clientY, over: target, overRect: rect })
+      dragOverlayRef.current?.setDrag({ source: info.source, title: info.title, active: true, x: ev.clientX, y: ev.clientY, over: target, overRect: rect })
     }
     const onUp = (ev: PointerEvent): void => {
       window.removeEventListener('pointermove', onMove)
@@ -1271,7 +1490,7 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
       window.removeEventListener('keydown', onKey)
       const info = dragRef.current
       dragRef.current = null
-      setDrag(null)
+      dragOverlayRef.current?.setDrag(null)
       if (info === null) return
       if (!info.active) {
         if (info.source.panelId !== undefined) actions.setDock(setActivePanel(shellRef.current.dock, info.source.containerId, info.source.panelId))
@@ -1309,7 +1528,7 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('keydown', onKey)
       dragRef.current = null
-      setDrag(null)
+      dragOverlayRef.current?.setDrag(null)
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
@@ -1606,7 +1825,9 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
                 hostLayout.closeDetails()
                 return
               }
-              actions.setDock(closePanelOf(shellRef.current.dock, panel.id))
+              closeAfterDockExit(e.currentTarget.closest<HTMLElement>('[data-testid="dock-tab-chip"]'), () => {
+                actions.setDock(closePanelOf(shellRef.current.dock, panel.id))
+              })
             }}
           >
             ×
@@ -1674,7 +1895,9 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
                 hostLayout.closeDetails()
                 return
               }
-              actions.setDock(closePanelOf(shellRef.current.dock, draggable.id))
+              closeAfterDockExit(e.currentTarget.closest<HTMLElement>('[data-testid="dock-pane"]'), () => {
+                actions.setDock(closePanelOf(shellRef.current.dock, draggable.id))
+              })
             }}
           >
             ×
@@ -1926,7 +2149,15 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
       data-desktop-platform={platform}
       data-shell-mode={isAdvancedShell() ? undefined : 'web'}
       data-sidebar-collapsed={sidebarCollapsed || undefined}
-      data-details-collapsed={hostPanels.details === 0 || undefined}
+      // 迁移模式标记：CSS 据此禁用 .shard 的 flex-basis 过渡（见 module.css ——
+      // 该过渡在本模式下会被状态翻转冻结在 0，是"面板开了看不见"的元凶）。
+      data-liuli-official-shell={(officialRightbar === true && slotLayout === 'v209') || undefined}
+      // 右栏收起标记：迁移模式下「开合」由我们的 dock 控制器决定（官方 details
+      // 状态不再变化），因此这里必须与列宽用**同一个信号** —— 否则会出现
+      // 「flex 给了 751px 但标记说收起」的自相矛盾，CSS 收起态规则把宽度压回 0。
+      data-details-collapsed={(officialRightbar === true && slotLayout === 'v209'
+        ? !officialRightbarExpanded
+        : hostPanels.details === 0) || undefined}
       data-testid="dock-shell"
       data-hmr-marker={HMR_MARKER}
       data-panels={String(panelCount(dock))}
@@ -1937,6 +2168,18 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
           macOS 保留 caption 行（红绿灯留白 + 窗口拖拽区）。 */}
       {platform === 'darwin' && <div className="dshDesktopMacCaptionRow" aria-hidden="true" />}
       {typeof usePanelInfo === 'function' ? <PanelInfoProbe usePanelInfo={usePanelInfo} /> : null}
+      {officialRightbar === true && slotLayout === 'v209' && (
+        <div className={css.officialRightbarHost} data-liuli-official-rightbar-host="">
+          {renderSlotLoose('rightbar', {
+            // 官方 Seat 维持 Tab 域和导航绑定。原生 guide/files/document
+            // 在琉璃 dock 的「官方侧栏」标签里展示；使用 auto-fullscreen 使
+            // 官方内容保持展开，却不再为它分配第二条 rightbar 轨道。
+            width: 0,
+            viewportWidth: 0,
+            canShow: false,
+          })}
+        </div>
+      )}
       <div
         className={css.dockBody}
         ref={rootRef}
@@ -1945,41 +2188,21 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
       >
         {dock.root !== null && renderNode(dock.root)}
         {dock.floats.map(renderFloat)}
-        {drag !== null && drag.overRect !== null && drag.over !== null && (
-          <div
-            className={css.dropIndicator}
-            data-testid="dock-drop-indicator"
-            data-kind={drag.over.kind}
-            style={{ left: drag.overRect.left, top: drag.overRect.top, width: drag.overRect.width, height: drag.overRect.height }}
-          />
-        )}
-        {htmlDrop !== null && htmlDrop.over !== null && htmlDrop.rect !== null && (
-          <div
-            className={css.dropIndicator}
-            data-testid="dock-drop-indicator"
-            data-kind={htmlDrop.over.kind}
-            data-source="side-tab"
-            style={{ left: htmlDrop.rect.left, top: htmlDrop.rect.top, width: htmlDrop.rect.width, height: htmlDrop.rect.height }}
-          />
-        )}
+        <DockDragOverlay ref={dragOverlayRef} />
       </div>
       <div className="dshDesktopOverlay" data-shell-overlay="">
         {renderSlot('shell.overlay', {})}
       </div>
-      {drag !== null && dragRef.current?.active === true && <div className={css.dragShield} data-testid="dock-drag-shield" />}
-      {drag !== null && dragRef.current?.active === true && (
-        <div className={css.dragGhost} data-testid="dock-drag-ghost" style={{ left: drag.x + 12, top: drag.y + 12 }}>{drag.title}</div>
-      )}
-      {menuOpen && (
-        <div className={css.menuCard} data-testid="dock-menu-card">
+      {menuPresence.mounted && (
+        <div className={css.menuCard} data-testid="dock-menu-card" data-liuli-closing={menuPresence.closing || undefined} aria-hidden={menuPresence.closing || undefined}>
           <div className={css.menuHead}>
             <span className={css.menuTitle}>布局工作台</span>
             <button type="button" className={css.tabClose} data-testid="dock-menu-close" aria-label="关闭布局菜单" onClick={() => { setMenuOpen(false); setSlotMenuOpen(false) }}>×</button>
           </div>
           <div className={css.menuSection}>
             <button type="button" className={css.menuBtn} data-testid="dock-add-button" onClick={() => { setAddOpen(v => !v) }}>＋ 添加面板</button>
-            {addOpen && (
-              <div className={css.addGrid} data-testid="dock-add-menu">
+            {addPresence.mounted && (
+              <div className={css.addGrid} data-testid="dock-add-menu" data-liuli-closing={addPresence.closing || undefined} aria-hidden={addPresence.closing || undefined}>
                 {DOCK_PANEL_DEFS.map(def => (
                   <button
                     key={def.type}
@@ -2043,8 +2266,8 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
           </div>
         </div>
       )}
-      {slotMenuOpen && slotMenuPos !== null && createPortal(
-        <div ref={slotMenuRef} className={css.slotMenu} role="listbox" data-testid="dock-slot-menu" style={{ left: slotMenuPos.left, top: slotMenuPos.top, width: slotMenuPos.width }}>
+      {slotMenuPresence.mounted && slotMenuPos !== null && createPortal(
+        <div ref={slotMenuRef} className={css.slotMenu} role="listbox" data-testid="dock-slot-menu" data-liuli-closing={slotMenuPresence.closing || undefined} aria-hidden={slotMenuPresence.closing || undefined} style={{ left: slotMenuPos.left, top: slotMenuPos.top, width: slotMenuPos.width }}>
           {slots.length === 0 && <div className={css.slotMenuEmpty}>暂无已保存布局</div>}
           {slots.map(slot => (
             <button
@@ -2066,24 +2289,24 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
         </div>,
         document.body,
       )}
-      {modal !== null && (
-        <div className={css.modalOverlay} onMouseDown={(e) => { if (e.target === e.currentTarget) setModal(null) }}>
-          <div className={css.modalCard} data-testid="dock-modal">
-            <div className={css.modalTitle}>{modal.kind === 'export' ? '导出 Workspace JSON' : '导入 Workspace JSON'}</div>
+      {shownModal !== null && (
+        <div className={css.modalOverlay} data-liuli-closing={modalPresence.closing || undefined} aria-hidden={modalPresence.closing || undefined} onMouseDown={(e) => { if (e.target === e.currentTarget) setModal(null) }}>
+          <div className={css.modalCard} data-testid="dock-modal" data-liuli-closing={modalPresence.closing || undefined}>
+            <div className={css.modalTitle}>{shownModal.kind === 'export' ? '导出 Workspace JSON' : '导入 Workspace JSON'}</div>
             <textarea
               className={css.modalText}
               data-testid="dock-modal-text"
-              value={modal.text}
-              readOnly={modal.kind === 'export'}
-              onChange={(e) => { setModal({ ...modal, text: e.target.value }) }}
+              value={shownModal.text}
+              readOnly={shownModal.kind === 'export'}
+              onChange={(e) => { setModal({ ...shownModal, text: e.target.value }) }}
             />
             <div className={css.modalActions}>
-              {modal.kind === 'export' && (
-                <button type="button" className={css.menuBtn} data-testid="dock-modal-copy" onClick={() => { void navigator.clipboard?.writeText(modal.text).then(() => { notify('已复制到剪贴板') }).catch(() => { notify('复制失败') }) }}>复制</button>
+              {shownModal.kind === 'export' && (
+                <button type="button" className={css.menuBtn} data-testid="dock-modal-copy" onClick={() => { void navigator.clipboard?.writeText(shownModal.text).then(() => { notify('已复制到剪贴板') }).catch(() => { notify('复制失败') }) }}>复制</button>
               )}
-              {modal.kind === 'import' && (
+              {shownModal.kind === 'import' && (
                 <button type="button" className={css.menuBtn} data-testid="dock-modal-apply" onClick={() => {
-                  const imported = importDockJSON(modal.text)
+                  const imported = importDockJSON(shownModal.text)
                   if (imported !== undefined) { actions.resetShell(); actions.setDock(imported); setModal(null); notify('导入成功') }
                   else notify('导入失败：JSON 无效或布局为空')
                 }}>应用</button>
@@ -2093,7 +2316,7 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
           </div>
         </div>
       )}
-      {toast !== null && <div className={css.toast} data-testid="dock-toast">{toast}</div>}
+      {toastPresence.value !== null && <div className={css.toast} data-testid="dock-toast" data-liuli-closing={toastPresence.closing || undefined}>{toastPresence.value}</div>}
       <div className={css.summary} data-testid="dock-summary" aria-hidden="true">
         {JSON.stringify({
           panels: panelCount(dock),
@@ -2180,7 +2403,7 @@ function ShellFloatWindow({ float, active, renderTabChip, renderPanelBody, onDoc
         className={css.floatTitle}
         data-testid="dock-float-title"
         onPointerDown={(e) => { beginFloatDrag(e, 'move') }}
-        onDoubleClick={onDockBack}
+        onDoubleClick={(e) => { closeAfterDockExit(e.currentTarget.closest<HTMLElement>('[data-testid="dock-float"]'), onDockBack) }}
         title="拖动移动；双击停靠回布局"
       >
         <span className={css.floatGrip} aria-hidden="true">⠿</span>
@@ -2192,7 +2415,7 @@ function ShellFloatWindow({ float, active, renderTabChip, renderPanelBody, onDoc
           aria-label="停靠回布局"
           title="停靠回布局"
           onPointerDown={(e) => { e.stopPropagation() }}
-          onClick={onDockBack}
+          onClick={(e) => { closeAfterDockExit(e.currentTarget.closest<HTMLElement>('[data-testid="dock-float"]'), onDockBack) }}
         >
           ⇦
         </button>
@@ -2202,7 +2425,7 @@ function ShellFloatWindow({ float, active, renderTabChip, renderPanelBody, onDoc
           data-testid="dock-float-close"
           aria-label="关闭浮动窗口"
           onPointerDown={(e) => { e.stopPropagation() }}
-          onClick={onCloseAll}
+          onClick={(e) => { closeAfterDockExit(e.currentTarget.closest<HTMLElement>('[data-testid="dock-float"]'), onCloseAll) }}
         >
           ×
         </button>

@@ -64,13 +64,116 @@
    liuli-css 里预览列的「右贴边圆角卡片」镜像配方一致。
    材质直接做在卡片本体（而不是 ::before + z-index:-1）：伪元素那层嵌进官方列
    之后实测 backdrop-filter 采不到视口壁纸，改成元素自身后磨砂稳定可见。 */
+/* 官方 RightbarRoot 的宿主：**必须挂载**（官方 `ctx.sidebarRight` 的会话绑定由
+   官方 RightbarSeat 挂载时的 bindService 建立；缺了它官方 API 全抛
+   "sidebarRight: no session surface is mounted"，官方插件如对话页文件按钮失效），
+   但迁移模式下用户看到的是琉璃自己的 dock 布局，因此这里把官方 surface 整体隐藏。
+
+   ⚠️ 必须连**整棵子树**一起压住：`visibility` 是可继承且**可被后代重置**的属性，
+   官方 dockkit 的 CSS 会给 surface/pane 设 `visibility: visible` —— 只隐藏父级时，
+   官方 surface 会连同它渲染的琉璃面板一起显示出来，用户就看到**两个侧边栏**
+   （官方那份 + 我们的那份，内容几乎相同，实测反馈）。 */
+.officialRightbarHost,
+.officialRightbarHost * {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+.officialRightbarHost {
+  position: fixed;
+  width: 0;
+  height: 0;
+  overflow: visible;
+  z-index: 0;
+}
+
+/* The upstream tab body needs its own Tab domain, so its mounted Seat is shown
+   above the Liuli dock placeholder only while the native tab is active. The
+   upstream seat uses auto-fullscreen (zero viewportWidth) to avoid allocating
+   a second frame track; these dimensions give it the placeholder's geometry. */
+.officialRightbarHost[data-liuli-native-seat-active] {
+  visibility: visible !important;
+  pointer-events: none !important;
+  z-index: 45;
+}
+
+.officialRightbarHost[data-liuli-native-seat-active] [data-sidebar-right-panel],
+.officialRightbarHost[data-liuli-native-seat-active] [data-sidebar-right-panel] * {
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+
+.officialRightbarHost[data-liuli-native-seat-active] [data-sidebar-right-panel] {
+  position: fixed !important;
+  inset: auto !important;
+  left: var(--liuli-native-seat-left) !important;
+  top: var(--liuli-native-seat-top) !important;
+  width: var(--liuli-native-seat-width) !important;
+  height: var(--liuli-native-seat-height) !important;
+  transform: none !important;
+  border: 0 !important;
+  border-radius: 0;
+  overflow: hidden;
+}
+
+.officialRightbarHost[data-liuli-native-fullscreen] {
+  z-index: 90;
+}
+
+:global(body:has([data-liuli-disable-inner-split]) [data-liuli-native-seat-active] [data-dockkit-split-button]) {
+  display: none !important;
+}
+
+:global(body:has([data-liuli-official-shell]):has([data-liuli-native-seat-active]) [data-sidebar-right-float-host]),
+:global(body:has([data-liuli-official-shell]):has([data-liuli-native-seat-active]) [data-sidebar-right-float-host] *) {
+  visibility: visible !important;
+}
+
+/* The portal host fills the viewport. Keep it click-through and let only the
+   actual floating panels receive pointer events. */
+:global(body:has([data-liuli-official-shell]):has([data-liuli-native-seat-active]) [data-sidebar-right-float-host]) {
+  pointer-events: none !important;
+}
+
+:global(body:has([data-liuli-official-shell]):has([data-liuli-native-seat-active]) [data-sidebar-right-float-host] [data-dockkit-float]),
+:global(body:has([data-liuli-official-shell]):has([data-liuli-native-seat-active]) [data-sidebar-right-float-host] [data-dockkit-float] *) {
+  pointer-events: auto !important;
+}
+
+/* 官方浮窗走 body portal，不继承上方宿主的隐藏属性。 */
+:global(body:has([data-liuli-official-shell]) [data-sidebar-right-float-host]),
+:global(body:has([data-liuli-official-shell]) [data-sidebar-right-float-host] *) {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* 琉璃 dock surface 用 flex: 1 撑满可见卡片。 */
+.officialRightbarCard {
+  display: flex;
+  flex-direction: column;
+}
+
+.officialRightbarCard > :global(.liuli-dock-surface) {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+}
+
 .officialRightbarCard {
   position: relative;
-  /* 高度扣掉上下留白：margin 会向外撑，用 100% 会让卡片底部溢出视口 2×padding。 */
-  height: calc(100% - 2 * var(--liuli-dock-padding, 8px));
+  /* 纵向留白由本列（区域 pane）自己的 surface padding 提供，与自研 details 列
+     同一份留白；卡片自身不再叠加上下 margin。早前卡片用
+     `height: calc(100% - 2×padding)` + 上下 margin 的做法，在本列已有
+     8px 上下 padding 的前提下等于「上下留白翻倍」：卡片高度比列内容盒少 16px，
+     上下各露出 8px 空隙，与自研 details 卡（height 100% 填满列内容盒）不一致。
+     flex: 1 1 auto 让卡片沿列的主轴（垂直）撑满内容盒，高度不再靠百分比推算。 */
+  flex: 1 1 auto;
+  height: auto;
   min-height: 0;
   overflow: hidden;
-  margin: var(--liuli-dock-padding, 8px) 0 var(--liuli-dock-padding, 8px) var(--liuli-dock-padding, 8px);
+  margin: 0 0 0 var(--liuli-dock-padding, 8px);
   border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.14));
   border-radius: var(--liuli-radius, 14px) 0 0 var(--liuli-radius, 14px);
   box-shadow: var(--liuli-glow-brand), var(--liuli-shadow);
@@ -199,6 +302,17 @@
 
 :global([data-testid="dock-shell"]:not([data-details-collapsed]) .dshDesktopDetailsSurface:not([data-edge-bottom])) {
   padding-bottom: var(--liuli-dock-padding, 8px) !important;
+}
+
+/* 琉璃 dockable 右栏（迁移模式）：dockkit 的落区几何按 pane 的**实际渲染矩形**
+   计算（halvesFit / zoneAt），列内必须给出确定的高度约束，否则 pane 会撑到内容
+   高度（实测 2574px ≫ 视口），上下落区判定随之失真、拖拽分栏不成立。
+   这里把 surface 与它的外层撑满列内容盒。 */
+:global(.liuli-dock-surface) {
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* 收起态：details shard 宽 0，surface 必须左右 0 padding，否则 content-box
@@ -1014,6 +1128,127 @@
   font-size: 12.5px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
   pointer-events: none;
+}
+
+/* 布局交互的入场与状态过渡。几何跟手（sash/拖拽指示器）不做位置缓动。 */
+@keyframes liuli-dock-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes liuli-dock-pop-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes liuli-dock-toast-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+@keyframes liuli-dock-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes liuli-dock-pop-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(4px) scale(0.985); }
+}
+
+@keyframes liuli-dock-toast-out {
+  from { opacity: 1; transform: translate(-50%, 0); }
+  to { opacity: 0; transform: translate(-50%, 6px); }
+}
+
+.paneCard,
+.officialRightbarCard {
+  animation: liuli-dock-fade-in 180ms ease-out both;
+}
+
+.tabChip {
+  transition: background-color 140ms var(--ds-ease-in-out, ease),
+    border-color 140ms var(--ds-ease-in-out, ease),
+    color 140ms var(--ds-ease-in-out, ease),
+    box-shadow 140ms var(--ds-ease-in-out, ease),
+    opacity 140ms ease;
+}
+
+.tabClose,
+.tabFloat,
+.floatBtn,
+.addMenuItem,
+.slotSelect,
+.slotMenuItem {
+  transition: background-color 140ms var(--ds-ease-in-out, ease),
+    border-color 140ms var(--ds-ease-in-out, ease),
+    color 140ms var(--ds-ease-in-out, ease),
+    opacity 140ms ease;
+}
+
+.menuCard,
+.floatWindow,
+.modalCard {
+  animation: liuli-dock-pop-in 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.addGrid {
+  animation: liuli-dock-pop-in 160ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.slotMenu,
+.modalOverlay {
+  animation: liuli-dock-fade-in 160ms ease-out both;
+}
+
+.toast {
+  animation: liuli-dock-toast-in 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.menuCard[data-liuli-closing],
+.addGrid[data-liuli-closing],
+.modalCard[data-liuli-closing] {
+  pointer-events: none;
+  animation: liuli-dock-pop-out 120ms ease-in both;
+}
+
+.slotMenu[data-liuli-closing],
+.modalOverlay[data-liuli-closing] {
+  pointer-events: none;
+  animation: liuli-dock-fade-out 120ms ease-in both;
+}
+
+.toast[data-liuli-closing] {
+  animation: liuli-dock-toast-out 120ms ease-in both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .paneCard,
+  .officialRightbarCard,
+  .menuCard,
+  .addGrid,
+  .slotMenu,
+  .floatWindow,
+  .modalOverlay,
+  .modalCard,
+  .toast,
+  .menuCard[data-liuli-closing],
+  .addGrid[data-liuli-closing],
+  .slotMenu[data-liuli-closing],
+  .modalOverlay[data-liuli-closing],
+  .modalCard[data-liuli-closing],
+  .toast[data-liuli-closing] {
+    animation: none;
+  }
+  .tabChip,
+  .tabClose,
+  .tabFloat,
+  .floatBtn,
+  .addMenuItem,
+  .slotSelect,
+  .slotMenuItem {
+    transition: none;
+  }
 }
 
 .summary {

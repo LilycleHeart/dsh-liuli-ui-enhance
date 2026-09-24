@@ -149,7 +149,15 @@ export function startSessionMarkerDecoration(ctx: Pick<ClientContext, 'sessions'
       decorateAll(ctx)
     })
   }
-  const mo = new MutationObserver(schedule)
+  const selector = '[role="treeitem"][aria-selected]'
+  const relevant = (node: Node): boolean => node instanceof Element
+    && (node.matches(selector) || node.querySelector(selector) !== null)
+  const mo = new MutationObserver(records => {
+    if (records.some(record =>
+      (record.target instanceof Element && record.target.closest(selector) !== null)
+      || Array.from(record.addedNodes).some(relevant)
+      || Array.from(record.removedNodes).some(relevant))) schedule()
+  })
   mo.observe(document.body, { childList: true, subtree: true })
   const unsubMarker = subscribeSessionMarkers(schedule)
   const unsubSessions = ctx.sessions.list.subscribe(schedule)

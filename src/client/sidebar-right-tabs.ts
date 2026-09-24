@@ -65,6 +65,8 @@ export interface SidebarRightTabDefinition {
 export interface SidebarRightTabsRegistry {
   register(definition: SidebarRightTabDefinition): () => void
   entries?: () => unknown[]
+  /** Same ranked matching path used by the upstream openResource claim. */
+  candidates?: (address: string) => SidebarRightTabDefinition[]
 }
 
 /** 官方导航控制器最小面（迁移期只用到这几个）。 */
@@ -75,6 +77,92 @@ export interface SidebarRightController {
   active?: () => unknown
   isExpanded?: () => boolean
   toggleExpanded?: () => void
+  focus?: (tabId: string) => void
+  split?: (paneId?: string) => string | undefined
+  float?: (tabId: string, rect?: { x: number; y: number; width: number; height: number }) => void
+  dock?: (paneId: string) => void
+}
+
+/** Explicit navigation intent is needed when upstream reopens the same tab ID. */
+export const OFFICIAL_SIDEBAR_NAVIGATION_EVENT = 'liuli:official-sidebar-navigation'
+
+export type OfficialSidebarNavigationDetail =
+  | { method: 'openTab'; kind: string }
+  | { method: 'openResource'; address: string; kind?: string }
+  | { method: 'focus'; tabId: string }
+
+const NAVIGATION_PATCH_KEY = '__liuliOfficialNavigationPatch__'
+
+interface NavigationPatchState {
+  restore: () => void
+}
+
+/**
+ * Observe only the public navigation calls; leave upstream's own Tab domain
+ * and method results untouched. A stable marker on the controller lets HMR
+ * replace an old wrapper without stacking callbacks. An old cleanup cannot
+ * remove a newer wrapper because restore checks the marker's identity.
+ */
+function observeOfficialNavigation(controller: SidebarRightController, tabs: SidebarRightTabsRegistry): () => void {
+  const carrier = controller as SidebarRightController & Record<string, unknown>
+  const previous = carrier[NAVIGATION_PATCH_KEY] as NavigationPatchState | undefined
+  previous?.restore()
+  const patched: Array<{ name: string; original: Function; wrapped: Function; hadOwn: boolean }> = []
+  const state: NavigationPatchState = {
+    restore: () => {
+      if (carrier[NAVIGATION_PATCH_KEY] !== state) return
+      for (const entry of patched.reverse()) {
+        if (Reflect.get(controller, entry.name) !== entry.wrapped) continue
+        if (entry.hadOwn) Reflect.set(controller, entry.name, entry.original)
+        else Reflect.deleteProperty(controller, entry.name)
+      }
+      delete carrier[NAVIGATION_PATCH_KEY]
+    },
+  }
+  carrier[NAVIGATION_PATCH_KEY] = state
+  const emit = (detail: OfficialSidebarNavigationDetail): void => {
+    try { window.dispatchEvent(new CustomEvent(OFFICIAL_SIDEBAR_NAVIGATION_EVENT, { detail })) }
+    catch { /* 观察通道不能改变官方导航结果 */ }
+  }
+  const patch = (name: 'openTab' | 'openResource' | 'focus', wrap: (original: Function) => Function): void => {
+    const original = Reflect.get(controller, name) as unknown
+    if (typeof original !== 'function') return
+    const wrapped = wrap(original)
+    const hadOwn = Object.prototype.hasOwnProperty.call(controller, name)
+    if (!Reflect.set(controller, name, wrapped)) throw new Error(`sidebarRight.${name} is read-only`)
+    patched.push({ name, original, wrapped, hadOwn })
+  }
+  try {
+    patch('openTab', original => function (this: SidebarRightController, kind: string, options?: Record<string, unknown>) {
+      const result = Reflect.apply(original, this, [kind, options])
+      if (options?.revealIfOpened !== false) emit({ method: 'openTab', kind })
+      return result
+    })
+    patch('openResource', original => function (this: SidebarRightController, address: string, options?: Record<string, unknown>) {
+      const result = Reflect.apply(original, this, [address, options])
+      if (options?.revealIfOpened !== false) {
+        // Explicit kind bypasses glob ranking. Otherwise use the same ranked
+        // candidates as the upstream claim, without calling title() twice.
+        let kind = typeof options?.kind === 'string' ? options.kind : undefined
+        if (kind === undefined) {
+          try { kind = tabs.candidates?.(address)[0]?.kind }
+          catch { /* Missing/unstable optional registry read: leave kind unknown. */ }
+        }
+        emit({ method: 'openResource', address, ...(kind === undefined ? {} : { kind }) })
+      }
+      return result
+    })
+    patch('focus', original => function (this: SidebarRightController, tabId: string) {
+      const result = Reflect.apply(original, this, [tabId])
+      emit({ method: 'focus', tabId })
+      return result
+    })
+  } catch (error) {
+    state.restore()
+    console.warn('[liuli] 官方侧栏导航观察未启用:', error)
+    return () => {}
+  }
+  return state.restore
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -106,6 +194,17 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'sidebar.right.pane.tab.title': {
       kind: 'keyed'
+      scope: 'session'
+      owner: SidebarRightPaneOwnerProps
+    }
+    /**
+     * 官方右侧栏 **tab 右键菜单**的追加席位（list + session 作用域）。
+     * 官方在渲染 tab 菜单时逐个 dispatch 该席位的条目，条目收到 `{ tab, dismiss }`。
+     * 官方自带布局动作之外，这里用它补「移出右栏、回到琉璃 dock 布局」的出口
+     * （官方 dockkit 只支持右栏内部左右分栏，没有送回左栏/会话区的能力）。
+     */
+    'sidebar.right.tab.menu.item': {
+      kind: 'list'
       scope: 'session'
       owner: SidebarRightPaneOwnerProps
     }
@@ -306,7 +405,19 @@ function panelBody(spec: PanelSpec, host: LiuliSidebarHostAccess): (props: { ses
     )
     const sessionId = typeof props.sessionId === 'string' ? props.sessionId : ''
     if (sessionId === '') return null
-    return createElement(PanelBoundary, { label: spec.title }, spec.render(sessionId, host, params))
+    // ── 为什么要在正文外再包一层 flex 容器 ──
+    // 琉璃的面板组件全部按「父级是纵向 flex、自身 flex:1 撑满高度」设计：
+    // 自研侧边栏给每个正文的宿主就是 `.tabPane`（position:absolute; inset:0;
+    // display:flex; flex-direction:column）。官方右栏的正文落点是
+    // `._paneBody_`，它是 `display:block; overflow:auto` 的**块容器**，且
+    // height:auto —— 于是面板根上的 flex:1 不生效、height:100% 又落空，
+    // 靠 flex 撑开的高度全部塌掉。最直观的是浏览器面板：`.carrier`
+    // （flex:1 1 auto）塌成 `<webview>` 的 150px 固有高度，网页只在面板顶部
+    // 渲染出一条窄缝（实测 carrier 150px / 面板可用 965px）。
+    // 这里补回自研宿主那一层等价容器；只包琉璃自己的正文，不改官方
+    // files / documentpreview 共用的 `._paneBody_` 的布局模式。
+    return createElement('div', { className: 'liuli-official-pane-body', 'data-liuli-official-pane': '' },
+      createElement(PanelBoundary, { label: spec.title }, spec.render(sessionId, host, params)))
   }
 }
 
@@ -399,6 +510,10 @@ function registerPanels(
         openTab: (kind: string, options?: Record<string, unknown>) => controller.openTab?.(kind, options),
         openResource: (address: string, options?: Record<string, unknown>) => controller.openResource?.(address, options),
         active: () => controller.active?.() ?? null,
+        focus: (tabId: string) => controller.focus?.(tabId),
+        split: (paneId?: string) => controller.split?.(paneId),
+        float: (tabId: string, rect?: { x: number; y: number; width: number; height: number }) => controller.float?.(tabId, rect),
+        dock: (paneId: string) => controller.dock?.(paneId),
       }
     } catch { /* 诊断不应影响主流程 */ }
   }
@@ -407,6 +522,8 @@ function registerPanels(
   const registered: string[] = []
   const bodies: string[] = []
   const disposers: (() => void)[] = []
+
+  if (controller !== undefined) disposers.push(observeOfficialNavigation(controller, tabs))
 
   for (const spec of PANEL_SPECS) {
     if (spec.needsSidePaneHost === true && host.sidePaneHost === undefined) {
@@ -485,10 +602,97 @@ function registerPanels(
   })
   publishBodyProbe({ phase: 'armed', bodies })
 
+  // ── tab 右键菜单：补回「移出官方右栏，回到琉璃 dock 布局」的出口 ──
+  // 官方的 dockkit 把右栏限制在「左右分栏（canSplit 上限 2 个 pane）+ 浮窗」，
+  // 没有把 tab 送回左栏/会话区的能力（dropZones: "horizontal"）。琉璃自研的
+  // dock 外壳支持三区域拖拽/任意拆分，这里用官方的公开席位
+  // `sidebar.right.tab.menu.item`（list/session 作用域，收到 { tab, dismiss }）
+  // 加一条菜单项：把该 tab 的面板加回 dock 布局，官方 tab 随即关闭。
+  // HMR 重新 apply 时上一轮 list 席位可能还未清理。同 id 同优先级会抛错；
+  // 逐轮下降的优先级让新注册遮蔽旧注册（该席位最低优先级渲染）。
+  const priorityState = window as unknown as { __liuliMoveOutMenuPriority__?: number }
+  const menuPriority = (priorityState.__liuliMoveOutMenuPriority__ ?? 0) - 1
+  priorityState.__liuliMoveOutMenuPriority__ = menuPriority
+  const tabMenuDisposers = ctx.effect(() => {
+    if (typeof ctx.slots.inject !== 'function') return () => {}
+    return ctx.slots.inject('sidebar.right.tab.menu.item', () => ctx.slots.register({
+      name: 'sidebar.right.tab.menu.item',
+      id: 'liuli-move-out-to-dock',
+      priority: menuPriority,
+      order: 100,
+    }, LiuliTabMenuItem))
+  }, 'dsh-liuli-ui-enhance: official sidebar-right tab menu item')
+  disposers.push(tabMenuDisposers)
+
   ctx.effect(
     () => () => { for (const dispose of disposers.reverse()) dispose() },
     'dsh-liuli-ui-enhance: official sidebar-right registrations',
   )
+}
+
+/* ── 官方 tab 右键菜单项：移出右栏，回到琉璃 dock 布局 ── */
+
+/** 官方 tab 记录里我们关心的字段（tab 域记录）。 */
+interface OfficialTabLike {
+  id?: string
+  kind?: string
+  title?: string
+}
+
+/** 官方 tab kind（liuli-*）→ 琉璃 dock 面板类型（dock-panels.tsx 的 type）。 */
+const KIND_TO_DOCK_TYPE: Record<string, string> = {
+  'liuli-review': 'git',
+  'liuli-files': 'files',
+  'liuli-terminal': 'terminal',
+  'liuli-code': 'code',
+  'liuli-browser': 'browser',
+  'liuli-side-chat': 'side-chat',
+  'liuli-developer-tools': 'developer-tools',
+}
+
+/**
+ * 官方右侧栏 tab 右键菜单里的一项：把该 tab 的面板移出官方右栏，加回琉璃 dock 布局。
+ *
+ * 为什么需要它：官方 dockkit 只支持右栏内部的左右分栏（上限 2 格）与浮窗，
+ * 没有把面板送回左栏/会话区的能力；琉璃自研 dock 外壳支持三区域拖拽与任意拆分。
+ * 这条菜单项是官方公开席位（`sidebar.right.tab.menu.item`）给出的出口。
+ */
+function LiuliTabMenuItem(props: { tab?: OfficialTabLike; dismiss?: () => void }): ReactElement | null {
+  const tab = props.tab
+  const kind = typeof tab?.kind === 'string' ? tab.kind : ''
+  const dockType = KIND_TO_DOCK_TYPE[kind]
+  // 只对琉璃自己的 tab 出血（官方的 files / documentpreview 没有对应的 dock 面板）。
+  if (dockType === undefined) return null
+  const dock = (window as unknown as { __liuliDockShell__?: { addPanel?: (type: string) => void; openDetails?: () => void } }).__liuliDockShell__
+  if (dock === undefined || typeof dock.addPanel !== 'function') return null
+  const onPick = (): void => {
+    try {
+      dock.addPanel?.(dockType)
+      // 加入 dock 布局后确保自研 shell 可见，再明确关闭源 tab。
+      // dockkit 的 dismiss 只收起右键菜单，不负责关闭标签。
+      dock.openDetails?.()
+      if (typeof tab?.id === 'string') getOfficialSidebarController()?.close?.(tab.id)
+    } catch (error) {
+      console.warn('[liuli] 移出右栏到 dock 布局失败:', error)
+    }
+    props.dismiss?.()
+  }
+  return createElement('button', {
+    type: 'button',
+    onClick: onPick,
+    style: {
+      display: 'block',
+      width: '100%',
+      textAlign: 'left',
+      padding: '6px 10px',
+      border: 0,
+      background: 'transparent',
+      color: 'inherit',
+      font: 'inherit',
+      cursor: 'pointer',
+      borderRadius: '8px',
+    },
+  }, '移出右栏（回到琉璃布局）')
 }
 
 /** 自检标记：用于确认运行中的 bundle 是这一版（CDP 读取 probe 时核对）。 */

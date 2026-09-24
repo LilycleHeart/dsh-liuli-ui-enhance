@@ -345,6 +345,13 @@ body:not([data-ds-dark-theme]) .termOut {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  animation: liuli-sidechat-popover-enter 160ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.commandMenu[data-closing],
+.ctxPanel[data-closing] {
+  pointer-events: none;
+  animation: liuli-sidechat-popover-exit 120ms ease-in both;
 }
 
 .commandMenuViewport {
@@ -367,6 +374,7 @@ body:not([data-ds-dark-theme]) .termOut {
   border: none;
   background: transparent;
   text-align: left;
+  transition: background-color 120ms ease;
 }
 .commandRow:hover {
   background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.1));
@@ -398,10 +406,13 @@ body:not([data-ds-dark-theme]) .termOut {
   flex: none;
   display: grid;
   place-items: center;
+  transition: background-color 140ms ease, transform 140ms ease;
 }
 .composerAdd:hover:not(:disabled) {
   background: var(--dsw-alias-interactive-bg-hover-solid, rgba(128, 128, 128, 0.2));
 }
+
+.composerAdd:active:not(:disabled) { transform: scale(0.9); }
 .composerAdd:disabled {
   opacity: 0.4;
   cursor: default;
@@ -432,10 +443,13 @@ body:not([data-ds-dark-theme]) .termOut {
   flex: none;
   display: grid;
   place-items: center;
+  transition: background-color 140ms ease, transform 140ms ease;
 }
 .ctxTrigger:hover {
   background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.1));
 }
+
+.ctxTrigger:active { transform: scale(0.9); }
 .ctxTrack {
   fill: none;
   stroke: var(--dsw-alias-border-l3, rgba(128, 128, 128, 0.3));
@@ -463,6 +477,7 @@ body:not([data-ds-dark-theme]) .termOut {
   position: absolute;
   bottom: calc(100% + 8px);
   right: 0;
+  animation: liuli-sidechat-popover-enter 160ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .ctxHeader {
   display: flex;
@@ -552,7 +567,7 @@ body:not([data-ds-dark-theme]) .termOut {
   display: grid;
   place-items: center;
   transform: translateY(-2px);
-  transition: background-color 0.1s;
+  transition: background-color 120ms ease, transform 120ms ease, opacity 120ms ease;
 }
 
 .chatSend:hover:not(:disabled) {
@@ -562,4 +577,24 @@ body:not([data-ds-dark-theme]) .termOut {
 .chatSend:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+.chatSend:active:not(:disabled) { transform: translateY(-2px) scale(0.9); }
+
+@keyframes liuli-sidechat-popover-enter {
+  from { opacity: 0; transform: translateY(4px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes liuli-sidechat-popover-exit {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(4px) scale(0.985); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .termCursor { animation: none; }
+  .commandMenu, .ctxPanel, .commandMenu[data-closing], .ctxPanel[data-closing] { animation: none; }
+  .commandRow, .composerAdd, .ctxTrigger, .chatSend { transition: none; }
+  .composerAdd:active:not(:disabled), .ctxTrigger:active { transform: none; }
+  .chatSend:active:not(:disabled) { transform: translateY(-2px); }
 }

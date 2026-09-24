@@ -52,6 +52,7 @@ import {
 } from './side-tab-dock.ts'
 import css from './PreviewPanel.module.css'
 import { beginResizePerf, endResizePerf, isResizeInProgress } from './resize-perf.ts'
+import { usePopupPresence, usePopupValuePresence } from './use-popup-presence.ts'
 
 /** 打开/关闭事件名（header 按钮翻转模块状态后广播，面板同步）。 */
 export const PREVIEW_TOGGLE_EVENT = 'liuli:preview-toggle'
@@ -632,6 +633,11 @@ export function PreviewDetailsPanel({
   const [addMenuOpen, setAddMenuOpen] = useState(false)
   const [fileDialogOpen, setFileDialogOpen] = useState(false)
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; tabId: string } | null>(null)
+  const overviewPresence = usePopupPresence(overviewOpen)
+  const addMenuPresence = usePopupPresence(addMenuOpen)
+  const emptyPresence = usePopupPresence(persist.tabs.length === 0, 160)
+  const ctxMenuPresence = usePopupValuePresence(ctxMenu)
+  const shownCtxMenu = ctxMenuPresence.value
   const [now, setNow] = useState(() => Date.now())
   const [reviewRequest, setReviewRequest] = useState<ReviewPanelRequest | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
@@ -1663,7 +1669,9 @@ export function PreviewDetailsPanel({
     )
   }
 
-  const ctxTab = ctxMenu === null ? undefined : tabs.find(t => t.id === ctxMenu.tabId)
+  const ctxTab = shownCtxMenu === null ? undefined : tabs.find(t => t.id === shownCtxMenu.tabId)
+  const ctxTabPresence = usePopupValuePresence(ctxTab ?? null)
+  const shownCtxTab = ctxTabPresence.value
 
   return (
     <div ref={panelRef} className={css.panel} data-preview-panel="" data-liuli-side-pane="">
@@ -1703,8 +1711,8 @@ export function PreviewDetailsPanel({
 
       {/* 内容区：所有标签面板常驻挂载，inactive 隐藏（保留 iframe 状态） */}
       <div className={css.content}>
-        {tabs.length === 0 && (
-          <div className={css.emptyShell}>
+        {emptyPresence.mounted && (
+          <div className={css.emptyShell} data-closing={emptyPresence.closing || undefined} aria-hidden={emptyPresence.closing}>
             <div className={css.emptyContent}>
               <div className={css.emptyHead}>
                 <h2 className={css.emptyTitle}>打开标签页</h2>
@@ -1784,9 +1792,10 @@ export function PreviewDetailsPanel({
       </div>
 
       {/* 概览弹层 */}
-      {overviewOpen && overviewBtnRef.current !== null && (
+      {overviewPresence.mounted && overviewBtnRef.current !== null && (
         <OverviewPopover
           anchor={overviewBtnRef.current}
+          closing={overviewPresence.closing}
           tabs={tabs}
           closed={recentClosed}
           activeTabId={activeTab?.id ?? ''}
@@ -1798,12 +1807,14 @@ export function PreviewDetailsPanel({
       )}
 
       {/* 新增标签下拉 */}
-      {addMenuOpen && addBtnRef.current !== null && (
+      {addMenuPresence.mounted && addBtnRef.current !== null && (
         <div
           data-liuli-pane-popover=""
+          data-closing={addMenuPresence.closing || undefined}
           className={css.popoverCard + ' ' + css.addMenu}
           style={anchorStyle(addBtnRef.current, 'right')}
           role="menu"
+          aria-hidden={addMenuPresence.closing}
         >
           {addMenuItems.map((item) => (
             <button key={item.id} type="button" role="menuitem" className={css.menuItem} onClick={item.run} data-side-pane-add-item={item.id}>
@@ -1815,15 +1826,17 @@ export function PreviewDetailsPanel({
       )}
 
       {/* 标签右键菜单（DSH w-44 = 176px） */}
-      {ctxMenu !== null && ctxTab !== undefined && (
+      {shownCtxMenu !== null && shownCtxTab !== null && (
         <div
           data-liuli-pane-popover=""
+          data-closing={ctxMenuPresence.closing || undefined}
           className={css.popoverCard + ' ' + css.tabMenu}
-          style={{ left: Math.min(ctxMenu.x, window.innerWidth - 190), top: Math.min(ctxMenu.y, window.innerHeight - 140) }}
+          style={{ left: Math.min(shownCtxMenu.x, window.innerWidth - 190), top: Math.min(shownCtxMenu.y, window.innerHeight - 140) }}
           role="menu"
+          aria-hidden={ctxMenuPresence.closing}
         >
-          <button type="button" role="menuitem" className={css.menuItem} onClick={() => { closeTab(ctxTab.id); setCtxMenu(null) }}>关闭标签</button>
-          <button type="button" role="menuitem" className={css.menuItem} disabled={tabs.length <= 1} onClick={() => { closeOtherTabs(ctxTab.id); setCtxMenu(null) }}>关闭其他标签</button>
+          <button type="button" role="menuitem" className={css.menuItem} onClick={() => { closeTab(shownCtxTab.id); setCtxMenu(null) }}>关闭标签</button>
+          <button type="button" role="menuitem" className={css.menuItem} disabled={tabs.length <= 1} onClick={() => { closeOtherTabs(shownCtxTab.id); setCtxMenu(null) }}>关闭其他标签</button>
           <button type="button" role="menuitem" className={css.menuItem} onClick={() => { closeAllTabs(); setCtxMenu(null) }}>关闭所有标签</button>
         </div>
       )}
@@ -1862,6 +1875,7 @@ function anchorStyle(anchor: HTMLElement, align: 'left' | 'right'): CSSPropertie
 
 interface OverviewPopoverProps {
   anchor: HTMLElement
+  closing: boolean
   tabs: SidePaneTab[]
   closed: ClosedTabEntry[]
   activeTabId: string
@@ -1871,7 +1885,7 @@ interface OverviewPopoverProps {
   onReopen: (id: string) => void
 }
 
-function OverviewPopover({ anchor, tabs, closed, activeTabId, now, onActivate, onCloseTab, onReopen }: OverviewPopoverProps) {
+function OverviewPopover({ anchor, closing, tabs, closed, activeTabId, now, onActivate, onCloseTab, onReopen }: OverviewPopoverProps) {
   const [query, setQuery] = useState('')
   const inputRef = useRef<HTMLInputElement | null>(null)
   const cardRef = useRef<HTMLDivElement | null>(null)
@@ -1888,9 +1902,10 @@ function OverviewPopover({ anchor, tabs, closed, activeTabId, now, onActivate, o
   heightRef.current = height
 
   useEffect(() => {
+    if (closing) { inputRef.current?.blur(); return }
     const t = window.setTimeout(() => { inputRef.current?.focus() }, 0)
     return () => { window.clearTimeout(t) }
-  }, [])
+  }, [closing])
 
   const tokens = useMemo(() => searchTokens(query), [query])
   const openRows = useMemo(() => rankRows(tabs, tokens, tab => ({ title: tabTitle(tab), hint: tabHint(tab), typeLabel: tabTypeLabel(tab) })).map(r => r.item), [tabs, tokens])
@@ -1935,7 +1950,7 @@ function OverviewPopover({ anchor, tabs, closed, activeTabId, now, onActivate, o
   }
 
   return (
-    <div ref={cardRef} data-liuli-pane-popover="" className={css.popoverCard + ' ' + css.overviewCard} style={{ ...anchorStyle(anchor, 'left'), width: cardWidth, height }} role="dialog" aria-label="搜索标签页">
+    <div ref={cardRef} data-liuli-pane-popover="" data-closing={closing || undefined} className={css.popoverCard + ' ' + css.overviewCard} style={{ ...anchorStyle(anchor, 'left'), width: cardWidth, height }} role="dialog" aria-label="搜索标签页" aria-hidden={closing}>
       <div className={css.overviewInputRow}>
         <SearchGlyph size={14} />
         <input
@@ -2030,7 +2045,7 @@ interface FileHit {
   rel: string
 }
 
-function OpenFileDialog({ sessionId, onClose, onOpenFile }: OpenFileDialogProps) {
+export function OpenFileDialog({ sessionId, onClose, onOpenFile }: OpenFileDialogProps) {
   const [query, setQuery] = useState('')
   const [files, setFiles] = useState<FileHit[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -2663,11 +2678,6 @@ function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitle
     return dispose
   }, [tabId, active])
 
-  // 菜单开合时立即重报几何，避免等 300ms 心跳（菜单盖住 carrier 的瞬间原生视图必须先让位）。
-  useEffect(() => {
-    geometryDisposeRef.current?.sendNow()
-  }, [moreOpen])
-
   /* ── 响应式视口（browser.responsive：客户机固定视口 + zoom 缩放） ── */
 
   useEffect(() => {
@@ -2907,8 +2917,15 @@ function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitle
     return { style: { position: 'fixed', top, left, width, zIndex: 2147482500 }, coversCarrier, menuBottom: top + height }
   }, [moreOpen])
 
-  moreMenuPlacementRef.current = moreMenuPlacement
-  const moreMenuStyle = moreMenuPlacement?.style
+  const moreMenuPresence = usePopupValuePresence(moreMenuPlacement ?? null)
+  const shownMoreMenuPlacement = moreMenuPresence.value
+  moreMenuPlacementRef.current = shownMoreMenuPlacement ?? undefined
+  const moreMenuStyle = shownMoreMenuPlacement?.style
+
+  // 原生视图在菜单淡出结束后再回到原几何，避免盖住关闭动画。
+  useEffect(() => {
+    geometryDisposeRef.current?.sendNow()
+  }, [shownMoreMenuPlacement])
 
   return (
     <>
@@ -2973,8 +2990,8 @@ function NativeBrowserPanel({ tabId, sessionId, url, active, onNavigate, onTitle
           </button>
         </div>
       </form>
-      {moreOpen && moreMenuStyle !== undefined && createPortal(
-        <div ref={moreMenuRef} className={css.moreMenu} role="menu" style={moreMenuStyle}>
+      {moreMenuStyle !== undefined && createPortal(
+        <div ref={moreMenuRef} className={css.moreMenu} data-closing={moreMenuPresence.closing || undefined} role="menu" aria-hidden={moreMenuPresence.closing} style={moreMenuStyle}>
           <button
             type="button"
             role="menuitem"
@@ -3123,6 +3140,10 @@ interface WebviewTagElement extends HTMLElement {
   getWebContentsId(): number
 }
 
+interface BrowserPopupBridge {
+  subscribe(guestId: number, onUrl: (url: string) => void): () => void
+}
+
 interface WebviewTagState {
   url: string
   title: string
@@ -3212,9 +3233,34 @@ function WebviewTagBrowserPanel({ tabId, sessionId, url, active, onNavigate, onT
         window.setTimeout(() => { wv.loadURL(restore).catch(() => {}) }, 250)
       }
     }
+    let lastPopupUrl = ''
+    let lastPopupAt = 0
+    const openPopup = (raw: string): void => {
+      const next = normalizeBrowserUrl(raw)
+      if (next === undefined) return
+      const now = performance.now()
+      if (next === lastPopupUrl && now - lastPopupAt < 400) return
+      lastPopupUrl = next
+      lastPopupAt = now
+      if (onNewWindow !== undefined) onNewWindow(next)
+      else void webviewBrowser.openExternal(next)
+    }
+    // Electron 22+ removed <webview>'s new-window DOM event. The desktop
+    // patch catches guest.setWindowOpenHandler in main and forwards this guest ID.
+    const popupBridge = (window as unknown as { liuliBrowserPopups?: BrowserPopupBridge }).liuliBrowserPopups
+    let unsubscribePopup: (() => void) | undefined
+    const subscribePopup = (): void => {
+      if (unsubscribePopup !== undefined || popupBridge === undefined) return
+      try {
+        const guestId = wv.getWebContentsId()
+        if (Number.isSafeInteger(guestId) && guestId > 0) {
+          unsubscribePopup = popupBridge.subscribe(guestId, openPopup)
+        }
+      } catch { /* guest 尚未 attach；dom-ready 再试 */ }
+    }
     const onNew = (e: Event): void => {
       const next = (e as unknown as { url?: string }).url
-      if (typeof next === 'string' && next !== '') onNewWindow?.(next)
+      if (typeof next === 'string') openPopup(next)
     }
     wv.addEventListener('did-start-loading', onStart)
     wv.addEventListener('did-stop-loading', onStop)
@@ -3224,8 +3270,11 @@ function WebviewTagBrowserPanel({ tabId, sessionId, url, active, onNavigate, onT
     wv.addEventListener('page-favicon-updated', onFaviconEvent)
     wv.addEventListener('did-fail-load', onFail)
     wv.addEventListener('render-process-gone', onGone)
+    wv.addEventListener('dom-ready', subscribePopup)
     wv.addEventListener('new-window', onNew)
+    subscribePopup()
     return () => {
+      unsubscribePopup?.()
       wv.removeEventListener('did-start-loading', onStart)
       wv.removeEventListener('did-stop-loading', onStop)
       wv.removeEventListener('did-navigate', syncNav)
@@ -3234,6 +3283,7 @@ function WebviewTagBrowserPanel({ tabId, sessionId, url, active, onNavigate, onT
       wv.removeEventListener('page-favicon-updated', onFaviconEvent)
       wv.removeEventListener('did-fail-load', onFail)
       wv.removeEventListener('render-process-gone', onGone)
+      wv.removeEventListener('dom-ready', subscribePopup)
       wv.removeEventListener('new-window', onNew)
     }
   }, [tabId, onNewWindow])
@@ -3385,6 +3435,8 @@ function WebviewTagBrowserPanel({ tabId, sessionId, url, active, onNavigate, onT
     left = Math.max(8, Math.min(left, window.innerWidth - width - 8))
     return { position: 'fixed', top, left, width, zIndex: 2147482500 }
   }, [moreOpen])
+  const moreMenuPresence = usePopupValuePresence(moreMenuStyle ?? null)
+  const shownMoreMenuStyle = moreMenuPresence.value
 
   useEffect(() => {
     if (!moreOpen) return
@@ -3478,8 +3530,8 @@ function WebviewTagBrowserPanel({ tabId, sessionId, url, active, onNavigate, onT
           </button>
         </div>
       </form>
-      {moreOpen && moreMenuStyle !== undefined && createPortal(
-        <div ref={moreMenuRef} className={css.moreMenu} role="menu" style={moreMenuStyle}>
+      {shownMoreMenuStyle !== null && createPortal(
+        <div ref={moreMenuRef} className={css.moreMenu} data-closing={moreMenuPresence.closing || undefined} role="menu" aria-hidden={moreMenuPresence.closing} style={shownMoreMenuStyle}>
           <button
             type="button"
             role="menuitem"

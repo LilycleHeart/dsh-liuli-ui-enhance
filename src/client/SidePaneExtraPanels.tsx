@@ -14,6 +14,7 @@ import type {
 import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
 import { ChatFlowView, ChatFlowPartial } from './chat-flow-view.tsx'
 import { LIULI_LS_KEY, liuliSettingsOf } from '../liuli-settings.ts'
+import { usePopupPresence } from './use-popup-presence.ts'
 import css from './SidePaneExtraPanels.module.css'
 
 /** 面板可用的宿主数据面（由 index.ts 注入）。 */
@@ -355,6 +356,7 @@ function ContextMeter({ face }: { face: SessionFace }) {
   const breakdownSnap = useSnapshot(face.projections.faceOf('contextBreakdown')) as
     { systemTokens?: number; toolsTokens?: number; messageTokens?: number } | undefined
   const [open, setOpen] = useState(false)
+  const panelPresence = usePopupPresence(open)
   const rootRef = useRef<HTMLSpanElement | null>(null)
 
   // hooks 必须无条件执行（React 规则）；不可用时的提前 return 放在所有 hooks 之后
@@ -409,8 +411,8 @@ function ContextMeter({ face }: { face: SessionFace }) {
           />
         </svg>
       </button>
-      {open && (
-        <div className={css.ctxPanel} role="dialog" aria-label="已用上下文">
+      {panelPresence.mounted && (
+        <div className={css.ctxPanel} data-closing={panelPresence.closing || undefined} role="dialog" aria-label="已用上下文" aria-hidden={panelPresence.closing}>
           <div className={css.ctxHeader}>
             <span className={css.ctxHeadline}>已用上下文</span>
             <span className={css.ctxPercent}>{percent}%</span>
@@ -449,6 +451,7 @@ export function SideChatPanel({ sessionId, host, childSessionId, onChildCreated,
   const [draft, setDraft] = useState('')
   const [forkError, setForkError] = useState<string | null>(null)
   const [commandMenuOpen, setCommandMenuOpen] = useState(false)
+  const commandMenuPresence = usePopupPresence(commandMenuOpen)
   const composerRef = useRef<HTMLFormElement | null>(null)
   const forkingRef = useRef(false)
   const scrollRef = useRef<HTMLDivElement | null>(null)
@@ -618,8 +621,8 @@ export function SideChatPanel({ sessionId, host, childSessionId, onChildCreated,
             >
               <IconPlusOutline16 size={14} />
             </button>
-            {commandMenuOpen && (
-              <div className={css.commandMenu} role="listbox" data-testid="sidechat-command-menu">
+            {commandMenuPresence.mounted && (
+              <div className={css.commandMenu} data-closing={commandMenuPresence.closing || undefined} role="listbox" aria-hidden={commandMenuPresence.closing} data-testid="sidechat-command-menu">
                 <div className={css.commandMenuViewport}>
                   {commands.map(cmd => (
                     <button

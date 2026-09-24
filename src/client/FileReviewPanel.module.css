@@ -84,6 +84,13 @@
   -webkit-backdrop-filter: blur(16px);
   display: flex;
   flex-direction: column;
+  animation: liuli-review-menu-enter 160ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.sourceMenu[data-closing],
+.menu[data-closing] {
+  pointer-events: none;
+  animation: liuli-review-menu-exit 120ms ease-in both;
 }
 
 .sourceMenuItem {
@@ -102,6 +109,7 @@
   line-height: 20px;
   cursor: pointer;
   white-space: nowrap;
+  transition: background-color 120ms ease, color 120ms ease;
 }
 
 .sourceMenuItem:hover {
@@ -163,8 +171,10 @@
   background: transparent;
   color: var(--dsw-alias-label-secondary, inherit);
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background 120ms ease, color 120ms ease, transform 120ms ease;
 }
+
+.refreshBtn:active { transform: rotate(35deg) scale(0.92); }
 
 .refreshBtn:hover {
   background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.14));
@@ -439,6 +449,7 @@
   gap: 4px;
   padding: 24px;
   text-align: center;
+  animation: liuli-review-empty-enter 180ms ease-out both;
 }
 
 .emptyTitle {
@@ -470,6 +481,7 @@
   -webkit-backdrop-filter: blur(16px);
   display: flex;
   flex-direction: column;
+  animation: liuli-review-menu-enter 160ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .menuItem {
@@ -487,6 +499,31 @@
   text-align: left;
   cursor: pointer;
   white-space: nowrap;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+@keyframes liuli-review-menu-enter {
+  from { opacity: 0; transform: translateY(-4px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes liuli-review-menu-exit {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(-3px) scale(0.985); }
+}
+
+@keyframes liuli-review-empty-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sourceTrigger, .sourceTriggerChevron, .sourceMenuItem, .refreshBtn,
+  .fileRow, .chevronWrap, .expandWrap, .diffResizeHandle::before,
+  .menuItem { transition: none; }
+  .sourceMenu, .menu, .emptyState,
+  .sourceMenu[data-closing], .menu[data-closing] { animation: none; }
+  .refreshBtn:active { transform: none; }
 }
 
 .menuItem:hover {

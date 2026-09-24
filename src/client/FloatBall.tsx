@@ -13,6 +13,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { attachElementPicker, describeElement, inspectElement, type InspectedElement, type PickedElement } from './element-picker.ts'
 import type { InsertElementFn } from './FloatBall.types.ts'
+import { usePopupPresence, usePopupValuePresence } from './use-popup-presence.ts'
 import css from './FloatBall.module.css'
 
 /** 圆点尺寸（px）。 */
@@ -118,6 +119,13 @@ export function FloatBall({ insertElement, openLayoutMenu }: { insertElement: In
   const [pickerMode, setPickerMode] = useState<'insert' | 'inspect'>('insert')
   const [devtoolsBusy, setDevtoolsBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  const toolbarPresence = usePopupPresence(open)
+  const pickedPresence = usePopupValuePresence(picked)
+  const inspectedPresence = usePopupValuePresence(inspected)
+  const noticePresence = usePopupValuePresence(notice)
+  const shownPicked = pickedPresence.value
+  const shownInspected = inspectedPresence.value
+  const shownNotice = noticePresence.value
 
   const applyPos = (next: Pos): void => {
     posRef.current = next
@@ -547,8 +555,8 @@ export function FloatBall({ insertElement, openLayoutMenu }: { insertElement: In
         >
           <CrosshairIcon size={17} />
         </div>
-        {open && (
-          <div ref={toolbarRef} className={css.toolbar} data-menu-left={menuLeft || undefined} data-menu-bottom={menuBottom || undefined} role="toolbar" aria-label="琉璃工具">
+        {toolbarPresence.mounted && (
+          <div ref={toolbarRef} className={css.toolbar} data-closing={toolbarPresence.closing || undefined} data-menu-left={menuLeft || undefined} data-menu-bottom={menuBottom || undefined} role="toolbar" aria-label="琉璃工具" aria-hidden={toolbarPresence.closing}>
             {tools.map(tool => (
               <div className={css.toolGroup} key={tool.id}>
                 <button
@@ -576,30 +584,30 @@ export function FloatBall({ insertElement, openLayoutMenu }: { insertElement: In
       )}
 
       {/* 拾取结果信息卡 */}
-      {picked !== null && createPortal(
-        <div className={css.infoCard} role="dialog" aria-label="元素信息" data-liuli-picker-ignore="">
+      {shownPicked !== null && createPortal(
+        <div className={css.infoCard} data-closing={pickedPresence.closing || undefined} role="dialog" aria-label="元素信息" aria-hidden={pickedPresence.closing} data-liuli-picker-ignore="">
           <div className={css.infoHead}>
             <CrosshairIcon size={13} />
-            <span className={css.infoTag}>&lt;{picked.tag}&gt;</span>
+            <span className={css.infoTag}>&lt;{shownPicked.tag}&gt;</span>
             <button type="button" className={css.infoClose} aria-label="关闭" onClick={() => { setPicked(null) }}>
               ✕
             </button>
           </div>
-          <div className={css.infoSelector}>{picked.selector}</div>
-          {picked.attributes !== '' && <div className={css.infoRow}>{picked.attributes}</div>}
-          {picked.text !== '' && <div className={css.infoText}>{picked.text}</div>}
+          <div className={css.infoSelector}>{shownPicked.selector}</div>
+          {shownPicked.attributes !== '' && <div className={css.infoRow}>{shownPicked.attributes}</div>}
+          {shownPicked.text !== '' && <div className={css.infoText}>{shownPicked.text}</div>}
           <div className={css.infoRow}>
-            rect: x={picked.rect.x} y={picked.rect.y} {picked.rect.width}×{picked.rect.height}
+            rect: x={shownPicked.rect.x} y={shownPicked.rect.y} {shownPicked.rect.width}×{shownPicked.rect.height}
           </div>
           <div className={css.infoSwatches}>
-            <span className={css.swatch} title={'color: ' + picked.color}>
-              <i style={{ background: picked.color }} /> {picked.color}
+            <span className={css.swatch} title={'color: ' + shownPicked.color}>
+              <i style={{ background: shownPicked.color }} /> {shownPicked.color}
             </span>
-            <span className={css.swatch} title={'background: ' + picked.background}>
-              <i style={{ background: picked.background }} /> {picked.background}
+            <span className={css.swatch} title={'background: ' + shownPicked.background}>
+              <i style={{ background: shownPicked.background }} /> {shownPicked.background}
             </span>
           </div>
-          {picked.font !== '' && <div className={css.infoRow}>{picked.font}</div>}
+          {shownPicked.font !== '' && <div className={css.infoRow}>{shownPicked.font}</div>}
           <div className={css.infoActions}>
             <button type="button" className={css.infoBtn} onClick={copySelector}>复制选择器</button>
             <button type="button" className={css.infoBtn} onClick={() => { setPicked(null) }}>完成</button>
@@ -609,23 +617,23 @@ export function FloatBall({ insertElement, openLayoutMenu }: { insertElement: In
       )}
 
       {/* 元素检查卡（检查模式点击元素后弹出；DevTools 定位不可用时它就是主结果面） */}
-      {inspected !== null && createPortal(
-        <div className={css.inspectCard} role="dialog" aria-label="元素检查" data-liuli-picker-ignore="">
+      {shownInspected !== null && createPortal(
+        <div className={css.inspectCard} data-closing={inspectedPresence.closing || undefined} role="dialog" aria-label="元素检查" aria-hidden={inspectedPresence.closing} data-liuli-picker-ignore="">
           <div className={css.infoHead}>
             <CrosshairIcon size={13} />
-            <span className={css.infoTag}>&lt;{inspected.tag}&gt;</span>
+            <span className={css.infoTag}>&lt;{shownInspected.tag}&gt;</span>
             <button type="button" className={css.infoClose} aria-label="关闭" onClick={() => { setInspected(null) }}>
               ✕
             </button>
           </div>
-          <div className={css.infoSelector}>{inspected.selector}</div>
-          {inspected.attributes !== '' && <div className={css.infoRow}>{inspected.attributes}</div>}
-          {inspected.text !== '' && <div className={css.infoText}>{inspected.text}</div>}
+          <div className={css.infoSelector}>{shownInspected.selector}</div>
+          {shownInspected.attributes !== '' && <div className={css.infoRow}>{shownInspected.attributes}</div>}
+          {shownInspected.text !== '' && <div className={css.infoText}>{shownInspected.text}</div>}
           <div className={css.infoRow}>
-            rect: x={inspected.rect.x} y={inspected.rect.y} {inspected.rect.width}×{inspected.rect.height}
+            rect: x={shownInspected.rect.x} y={shownInspected.rect.y} {shownInspected.rect.width}×{shownInspected.rect.height}
           </div>
           <div className={css.inspectStyles}>
-            {inspected.styles.map(style => (
+            {shownInspected.styles.map(style => (
               <div className={css.inspectStyleRow} key={style.name}>
                 <span className={css.inspectStyleName}>{style.name}</span>
                 <span className={css.inspectStyleValue}>{style.value}</span>
@@ -634,7 +642,7 @@ export function FloatBall({ insertElement, openLayoutMenu }: { insertElement: In
           </div>
           <div className={css.inspectHtml}>
             <div className={css.inspectHtmlTitle}>outerHTML（截断 1000 字符）</div>
-            <code className={css.inspectHtmlCode}>{inspected.outerHTML}</code>
+            <code className={css.inspectHtmlCode}>{shownInspected.outerHTML}</code>
           </div>
           <div className={css.infoActions}>
             <button type="button" className={css.infoBtn} onClick={copySelector}>复制选择器</button>
@@ -661,8 +669,8 @@ export function FloatBall({ insertElement, openLayoutMenu }: { insertElement: In
       )}
 
       {/* 轻提示（开发者工具不可用/失败时） */}
-      {notice !== null && createPortal(
-        <div className={css.notice} role="status" data-liuli-picker-ignore="">{notice}</div>,
+      {shownNotice !== null && createPortal(
+        <div className={css.notice} data-closing={noticePresence.closing || undefined} role="status" data-liuli-picker-ignore="">{shownNotice}</div>,
         document.body,
       )}
     </>

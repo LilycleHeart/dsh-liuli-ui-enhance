@@ -198,6 +198,7 @@ export function WindowControls() {
     // 与 hidden 状态对应的"检测器上次判定"；悬停唤出时复位，保证离开后能重新评估
     let last = false
     const pointer = { x: -1, y: -1 }
+    let wasInHoldZone = false
     // 保持区（REVEAL_H）：胶囊已展开时在此范围内不隐藏
     const inHoldZone = (): boolean => pointer.x > window.innerWidth - REVEAL_W && pointer.y < REVEAL_H
     // 触发区（TRIGGER_H）：指针进入最顶部一半才唤出胶囊
@@ -255,15 +256,19 @@ export function WindowControls() {
       pointer.y = e.clientY
       // 缩放期让位：只记录指针位置，不做唤出判定/遮挡检测调度。
       if (isResizeInProgress()) return
+      const hold = inHoldZone()
       if (inTriggerZone()) {
         // 悬停唤出：显示胶囊（复位 last，离开保持区后能重新评估隐藏）
         if (hiddenRef.current) {
           last = false
           setHidden(false)
         }
-      } else {
+      } else if (wasInHoldZone && !hold) {
+        // 遮挡元素与普通指针位置无关；只在离开右上角保持区时重新检查。
+        // DOM 变化和窗口尺寸变化仍由下方观察器调度。
         schedule()
       }
+      wasInHoldZone = hold
     }
     check()
     // body 级观察：浮动窗口移动/详情面板开合/header 变化都会触发重评估

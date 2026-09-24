@@ -86,8 +86,18 @@ interface OpenMenu {
 
 const upgrades = new Map<HTMLSelectElement, SelectUpgrade>()
 let open: OpenMenu | null = null
+/** Closing menus stay in the DOM only for their 120ms exit; never retain listeners. */
+const closingMenus = new Map<HTMLDivElement, number>()
 let scanRaf = 0
 let syncRaf = 0
+
+function clearClosingMenus(): void {
+  for (const [el, timer] of closingMenus) {
+    window.clearTimeout(timer)
+    el.remove()
+  }
+  closingMenus.clear()
+}
 
 /** 当前选中项的文本（宿主 select 的 option 文本即为展示文案）。 */
 function currentLabel(select: HTMLSelectElement): string {
@@ -279,6 +289,7 @@ function toggleMenu(up: SelectUpgrade): void {
 
 function openMenu(up: SelectUpgrade): void {
   closeMenu(false)
+  clearClosingMenus()
   const s = up.select
   if (s.disabled || !s.isConnected) return
   const rect = s.getBoundingClientRect()
@@ -448,7 +459,7 @@ function pick(up: SelectUpgrade, value: string): void {
   closeMenu(true)
 }
 
-function closeMenu(refocus: boolean): void {
+function closeMenu(refocus: boolean, immediate = false): void {
   if (open === null) return
   const { select, el, up, onDocDown, onResize, onScroll, onToggle } = open
   open = null
@@ -456,14 +467,23 @@ function closeMenu(refocus: boolean): void {
   window.removeEventListener('resize', onResize)
   document.removeEventListener('scroll', onScroll, true)
   if (up.details !== null) up.details.removeEventListener('toggle', onToggle)
-  el.remove()
+  if (immediate || window.matchMedia('(prefers-reduced-motion: reduce)').matches || !el.isConnected) {
+    el.remove()
+  } else {
+    el.dataset.closing = 'true'
+    const timer = window.setTimeout(() => {
+      el.remove()
+      closingMenus.delete(el)
+    }, 120)
+    closingMenus.set(el, timer)
+  }
   up.trigger.setAttribute('aria-expanded', 'false')
   removeCls(up.chev, C.triggerChevronOpen)
   if (refocus && select.isConnected) select.focus({ preventScroll: true })
 }
 
 function teardown(up: SelectUpgrade): void {
-  if (open !== null && open.select === up.select) closeMenu(false)
+  if (open !== null && open.select === up.select) closeMenu(false, true)
   up.ro.disconnect()
   up.mo.disconnect()
   up.select.removeEventListener('keydown', onSelectKeydown)
@@ -533,7 +553,8 @@ export function startSettingsSelectUpgrade(): () => void {
     mo.disconnect()
     window.removeEventListener('resize', scheduleSync)
     document.removeEventListener('scroll', scheduleSync, true)
-    closeMenu(false)
+    closeMenu(false, true)
+    clearClosingMenus()
     for (const up of Array.from(upgrades.values())) teardown(up)
   }
 }

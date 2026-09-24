@@ -6,20 +6,23 @@
  * settings（宽边/动画/声纹）经 useStore 读取，模型重试与历史加载状态在合并
  * store 的 modelRetry / historyLoad 切片里，由下方两个展示行组件渲染。
  */
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type { LiuliSettings, LiuliTerminalShell } from '../liuli-settings.ts'
-import { LIULI_SETTINGS_DEFAULTS, TERMINAL_SHELL_IDS } from '../liuli-settings.ts'
+import { LIULI_SETTINGS_DEFAULTS, TERMINAL_SHELL_IDS, wantsLiuliOfficialSidebar } from '../liuli-settings.ts'
 import type { createLiuliStore } from './liuli-store.ts'
 import { SelectRow, SliderRow, ToggleRow } from './LiuliAppearance.tsx'
 import { ModelRetryRow } from './ModelRetryRow.tsx'
 import { HistoryLoadRow } from './HistoryLoadRow.tsx'
 import { ThinkingFillRow } from './ThinkingFillRow.tsx'
+import { usePopupPresence } from './use-popup-presence.ts'
 import css from './LiuliAppearance.module.css'
 
 /** 注入面：功能类设置写入 + 模型重试/历史加载读写。 */
 export interface LiuliFeaturesInjected {
+  /** 当前客户端是否有官方 rightbar 席位。 */
+  officialRightbarAvailable: boolean
   /** 保存一个或多个字段（localStorage 持久化 + 立即应用）。 */
   save: (patch: Partial<LiuliSettings>) => void
   /** 恢复默认（清空字段 + 清除壁纸）。 */
@@ -56,11 +59,16 @@ function terminalShellLabelKey(id: LiuliTerminalShell):
 
 /** 渲染 琉璃 功能设置 section。 */
 export function LiuliFeaturesSection({
-  useStore, t, save, reset, modelRetrySave, modelRetryReload, historyLoad, historySave,
+  useStore, t, save, reset, officialRightbarAvailable, modelRetrySave, modelRetryReload, historyLoad, historySave,
   thinkingFillApply, thinkingFillReload,
 }: LiuliFeaturesComponentProps) {
   // 高级设置折叠状态（默认收起，展开后才显示参数调节）
   const [vpAdvancedOpen, setVpAdvancedOpen] = useState(false)
+  const vpAdvancedPresence = usePopupPresence(vpAdvancedOpen, 180)
+  const vpAdvancedBodyRef = useRef<HTMLDivElement | null>(null)
+  useLayoutEffect(() => {
+    vpAdvancedBodyRef.current?.toggleAttribute('inert', !vpAdvancedOpen)
+  }, [vpAdvancedOpen])
 
   const state = useStore(s => s)
   const s = state.settings
@@ -151,12 +159,19 @@ export function LiuliFeaturesSection({
             checked={s.unofficial_dom}
             onChange={(v) => { set({ unofficial_dom: v }) }}
           />
-          {/* 迁移选项：并入官方右侧栏（复用官方标签条/分栏/拖拽/宽度/开合） */}
+          {/* 新客户端默认使用官方宿主与琉璃四向 dock；旧版沿用自研详细页。 */}
           <ToggleRow
             label={t('unofficial.officialRightbar')}
             tip={t('unofficial.officialRightbarHint')}
-            checked={s.official_sidebar_right}
-            onChange={(v) => { set({ official_sidebar_right: v }) }}
+            checked={officialRightbarAvailable && wantsLiuliOfficialSidebar(s)}
+            disabled={!officialRightbarAvailable}
+            onChange={(v) => { set({ official_sidebar_right: v, official_sidebar_right_user_choice: true }) }}
+          />
+          <ToggleRow
+            label={t('unofficial.disableInnerRightbarSplit')}
+            tip={t('unofficial.disableInnerRightbarSplitHint')}
+            checked={s.sidebar_disable_inner_split}
+            onChange={(v) => { set({ sidebar_disable_inner_split: v }) }}
           />
         </div>
       </div>
@@ -187,7 +202,8 @@ export function LiuliFeaturesSection({
               <path d="M3 6l5 5 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
-          {vpAdvancedOpen && (
+          <div ref={vpAdvancedBodyRef} className={css.vpAdvancedBody} data-open={vpAdvancedOpen || undefined} aria-hidden={!vpAdvancedOpen}>
+          {vpAdvancedPresence.mounted && (
             <div className={css.grid}>
               <ToggleRow
                 label={t('vp.beatSync')}
@@ -372,6 +388,7 @@ export function LiuliFeaturesSection({
               />
             </div>
           )}
+          </div>
         </div>
       </div>
 

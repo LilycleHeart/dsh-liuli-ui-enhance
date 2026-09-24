@@ -9,11 +9,13 @@
 // 把 win32 主窗口分支从 titleBarStyle: "hidden" + titleBarOverlay
 // 改为 frame: false，并同步 asar 头里的 size/integrity。
 //
-// 两种客户端布局都支持：
+// 三种客户端布局都支持：
 //   旧布局：electron-runtime-*.js 直接位于 app.asar.unpacked/lib 磁盘目录（unpacked 条目）。
 //   新布局：electron-runtime-*.js 被打包进 app.asar 内部（packed 条目，offset 相对内容区起点）。
 //          此时脚本把补丁后的内容解包写到磁盘 unpacked 目录，并把 asar 头条目从
 //          packed（带 offset）改为 unpacked（去 offset），让 Electron 改从磁盘读取。
+//   2.0.13+：没有 app.asar，runtime/preload 直接位于 resources/app/lib；分别备份后
+//          直接写回，不涉及 asar 头或 exe 内嵌完整性哈希。
 //
 // 用法：
 //   node scripts/patch-desktop-frameless.mjs            # 打补丁（无边框 + webviewTag）
@@ -78,9 +80,16 @@ function findRunningDesktopDir() {
   }
 }
 
-/** 候选安装目录里挑一个真的装着客户端资源（resources/app.asar）的。 */
+/** 候选安装目录里挑一个真的装着客户端资源（asar 或 unpacked app）的。 */
 function hasClientInstall(dir) {
-  return typeof dir === 'string' && dir !== '' && existsSync(join(dir, 'resources', 'app.asar'));
+  if (typeof dir !== 'string' || dir === '') return false;
+  if (existsSync(join(dir, 'resources', 'app.asar'))) return true;
+  try {
+    return readdirSync(join(dir, 'resources', 'app', 'lib'))
+      .some((name) => /^electron-runtime-[A-Za-z0-9_-]+\.js$/.test(name));
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -118,9 +127,10 @@ const installDir = resolveInstallDir();
 
 const resourcesDir = join(installDir, 'resources');
 const asarPath = join(resourcesDir, 'app.asar');
+const looseInstall = !existsSync(asarPath) && existsSync(join(resourcesDir, 'app', 'lib'));
 const backupPath = join(resourcesDir, 'app.asar.bak-frameless');
 const patchedCopyPath = join(resourcesDir, 'app.asar.patched');
-const libDir = join(resourcesDir, 'app.asar.unpacked', 'lib');
+const libDir = join(resourcesDir, looseInstall ? 'app' : 'app.asar.unpacked', 'lib');
 
 function fail(message) {
   console.error(`[dsh-liuli-ui-enhance] ${message}`);
@@ -421,9 +431,65 @@ const PRELOAD_BRIDGE_BLOCK = [
   '});',
   '',
 ].join('\n');
+const BROWSER_POPUP_CHANNEL = 'liuli-browser-popup';
+const RUNTIME_BROWSER_POPUP_MARK = '[liuli-theme patch] 浏览器弹窗通道';
+const PRELOAD_BROWSER_POPUP_MARK = '[liuli-theme patch] 浏览器弹窗桥';
+const RUNTIME_BROWSER_POPUP_BLOCK = [
+  '',
+  `// ${RUNTIME_BROWSER_POPUP_MARK}（Electron 22+ 已移除 <webview> new-window 事件）`,
+  'app.on("web-contents-created", (_event, host) => {',
+  '\thost.on("did-attach-webview", (_attachEvent, guest) => {',
+  '\t\tif (guest.session !== session.fromPartition("persist:liuli-embedded-browser")) return;',
+  '\t\tguest.setWindowOpenHandler((details) => {',
+  '\t\t\tif (/^(https?|file):/i.test(details.url) && !host.isDestroyed()) {',
+  `\t\t\t\thost.send(${JSON.stringify(BROWSER_POPUP_CHANNEL)}, guest.id, details.url);`,
+  '\t\t\t}',
+  '\t\t\treturn { action: "deny" };',
+  '\t\t});',
+  '\t});',
+  '});',
+  '// [liuli-theme patch] 浏览器弹窗通道结束',
+  '',
+].join('\n');
+const PRELOAD_BROWSER_POPUP_BLOCK = [
+  '',
+  `// ${PRELOAD_BROWSER_POPUP_MARK}（只转发琉璃 webview guest 的弹窗 URL）`,
+  'const liuliPopupListeners = new Map();',
+  'const liuliPopupPending = new Map();',
+  `electron.ipcRenderer.on(${JSON.stringify(BROWSER_POPUP_CHANNEL)}, (_event, guestId, url) => {`,
+  '\tif (!Number.isSafeInteger(guestId) || typeof url !== "string") return;',
+  '\tconst listeners = liuliPopupListeners.get(guestId);',
+  '\tif (listeners?.size) {',
+  '\t\tfor (const listener of listeners) { try { listener(url); } catch {} }',
+  '\t\treturn;',
+  '\t}',
+  '\tconst pending = liuliPopupPending.get(guestId) ?? [];',
+  '\tpending.push(url);',
+  '\tliuliPopupPending.set(guestId, pending.slice(-4));',
+  '\tif (liuliPopupPending.size > 32) liuliPopupPending.delete(liuliPopupPending.keys().next().value);',
+  '});',
+  'electron.contextBridge.exposeInMainWorld("liuliBrowserPopups", {',
+  '\tsubscribe(guestId, callback) {',
+  '\t\tif (!Number.isSafeInteger(guestId) || typeof callback !== "function") return () => {};',
+  '\t\tlet listeners = liuliPopupListeners.get(guestId);',
+  '\t\tif (!listeners) { listeners = new Set(); liuliPopupListeners.set(guestId, listeners); }',
+  '\t\tlisteners.add(callback);',
+  '\t\tfor (const url of liuliPopupPending.get(guestId) ?? []) { try { callback(url); } catch {} }',
+  '\t\tliuliPopupPending.delete(guestId);',
+  '\t\treturn () => {',
+  '\t\t\tlisteners.delete(callback);',
+  '\t\t\tif (listeners.size === 0) liuliPopupListeners.delete(guestId);',
+  '\t\t};',
+  '\t}',
+  '});',
+  '// [liuli-theme patch] 浏览器弹窗桥结束',
+  '',
+].join('\n');
 // 还原用：整块删除（含块前的空行）
 const RUNTIME_IPC_BLOCK_RE = /\n*\/\/ \[liuli-theme patch\] 窗口控制通道[\s\S]*?\n\}\);\n/;
 const PRELOAD_BRIDGE_BLOCK_RE = /\n*\/\/ \[liuli-theme patch\] 窗口控制桥[\s\S]*?\n\}\);\n/;
+const RUNTIME_BROWSER_POPUP_BLOCK_RE = /\n*\/\/ \[liuli-theme patch\] 浏览器弹窗通道[^\n]*\n[\s\S]*?\/\/ \[liuli-theme patch\] 浏览器弹窗通道结束\n/;
+const PRELOAD_BROWSER_POPUP_BLOCK_RE = /\n*\/\/ \[liuli-theme patch\] 浏览器弹窗桥[^\n]*\n[\s\S]*?\/\/ \[liuli-theme patch\] 浏览器弹窗桥结束\n/;
 
 /** 在 asar 头中查找 lib/<name> 条目（不存在返回 undefined）。 */
 function findLibNode(header, name) {
@@ -443,7 +509,10 @@ function applyRuntimeIpc(text, revert) {
   const hasBlock = text.includes(RUNTIME_IPC_MARK);
   if (revert) {
     if (!hasBlock) return { text, changed: false };
-    return { text: text.replace(RUNTIME_IPC_BLOCK_RE, '\n'), changed: true };
+    return {
+      text: text.replace(RUNTIME_IPC_BLOCK_RE, '\n').replace(/import \{ ipcMain, /, 'import { '),
+      changed: true,
+    };
   }
   if (hasBlock) return { text, changed: false };
   const withHandler = text + RUNTIME_IPC_BLOCK;
@@ -459,6 +528,36 @@ function applyPreloadBridge(text, revert) {
   }
   if (hasBlock) return { text, changed: false };
   return { text: `${text.trimEnd()}\n${PRELOAD_BRIDGE_BLOCK}`, changed: true };
+}
+
+/** Electron 22+ 的 webview 弹窗只能在主进程 guest setWindowOpenHandler 中接管。 */
+function applyRuntimeBrowserPopup(text, revert) {
+  const hasBlock = text.includes(RUNTIME_BROWSER_POPUP_MARK);
+  if (revert) {
+    if (!hasBlock) return { text, changed: false };
+    return {
+      text: text.replace(RUNTIME_BROWSER_POPUP_BLOCK_RE, '\n').replace(/import \{ session, /, 'import { '),
+      changed: true,
+    };
+  }
+  if (hasBlock) return { text, changed: false };
+  const withBlock = text + RUNTIME_BROWSER_POPUP_BLOCK;
+  if (!/import \{ [^}]* \} from "electron";/.test(withBlock)) throw new Error('未找到 Electron session 导入点');
+  const withImport = withBlock.replace(/import \{ ([^}]*?) \} from "electron";/, (whole, names) =>
+    names.split(',').some((name) => name.trim() === 'session')
+      ? whole
+      : `import { session, ${names} } from "electron";`);
+  return { text: withImport, changed: true };
+}
+
+function applyPreloadBrowserPopup(text, revert) {
+  const hasBlock = text.includes(PRELOAD_BROWSER_POPUP_MARK);
+  if (revert) {
+    if (!hasBlock) return { text, changed: false };
+    return { text: text.replace(PRELOAD_BROWSER_POPUP_BLOCK_RE, '\n'), changed: true };
+  }
+  if (hasBlock) return { text, changed: false };
+  return { text: `${text.trimEnd()}\n${PRELOAD_BROWSER_POPUP_BLOCK}`, changed: true };
 }
 
 const REVERT = process.argv.includes('--revert');
@@ -507,15 +606,21 @@ const runtime = resolveRuntime();
 if (runtime === undefined) {
   fail(`找不到 electron-runtime-*.js（磁盘 ${libDir} 与 app.asar 头内均未命中；可设置 DSH_DESKTOP_DIR 指向 DSH Desktop 安装目录后重试；当前安装目录：${installDir}）`);
 }
-if (!existsSync(asarPath)) {
+if (!looseInstall && !existsSync(asarPath)) {
   fail(`找不到 ${asarPath}（可设置 DSH_DESKTOP_DIR 指向 DSH Desktop 安装目录后重试；当前安装目录：${installDir}）`);
 }
 const diskRuntimePath = join(libDir, runtime.name);
-console.log(`[dsh-liuli-ui-enhance] 运行时文件：${runtime.name}（${runtime.mode === 'disk' ? '磁盘 unpacked' : 'app.asar 打包'}）`);
+console.log(`[dsh-liuli-ui-enhance] 运行时文件：${runtime.name}（${looseInstall ? 'resources/app 目录' : runtime.mode === 'disk' ? '磁盘 unpacked' : 'app.asar 打包'}）`);
 
 // 2. 备份原始 app.asar（仅补丁模式；还原模式不需要备份）
 if (REVERT) {
   console.log('[dsh-liuli-ui-enhance] 还原模式：恢复原生标题栏并移除 webviewTag 补丁');
+} else if (looseInstall) {
+  const runtimeBackup = `${diskRuntimePath}.bak-liuli`;
+  if (!existsSync(runtimeBackup)) {
+    copyFileSync(diskRuntimePath, runtimeBackup);
+    console.log(`[dsh-liuli-ui-enhance] 已备份原始 runtime -> ${runtimeBackup}`);
+  }
 } else if (!existsSync(backupPath)) {
   copyFileSync(asarPath, backupPath);
   console.log(`[dsh-liuli-ui-enhance] 已备份原始 app.asar -> ${backupPath}`);
@@ -541,7 +646,12 @@ if (REVERT) {
     runtimeChanged = true;
     console.log(`[dsh-liuli-ui-enhance] 已还原官方原生标题栏配置（titleBarOverlay height: ${heightExpr}）`);
   }
-  if (content.toString('utf8').includes('webviewTag: true')) {
+  const runtimeBackupPath = `${diskRuntimePath}.bak-liuli`;
+  const originalRuntime = looseInstall && existsSync(runtimeBackupPath)
+    ? readFileSync(runtimeBackupPath, 'utf8')
+    : null;
+  if (content.toString('utf8').includes('webviewTag: true')
+    && (!looseInstall || (originalRuntime !== null && !originalRuntime.includes('webviewTag: true')))) {
     content = Buffer.from(content.toString('utf8').replace(/^\s*webviewTag: true,\r?\n/mg, ''), 'utf8');
     runtimeChanged = true;
     console.log('[dsh-liuli-ui-enhance] 已移除 webviewTag 补丁');
@@ -550,7 +660,7 @@ if (REVERT) {
   }
 } else {
   const text = content.toString('utf8');
-  if (text.includes('[liuli-theme patch]')) {
+  if (MARKER_BLOCK_NEW.test(text) || MARKER_BLOCK_LEGACY.test(text)) {
     console.log('[dsh-liuli-ui-enhance] electron-runtime 已包含无边框补丁，跳过该部分');
   } else {
     const mainMatch = text.match(TITLEBAR_MAIN);
@@ -590,6 +700,50 @@ if (REVERT) {
   }
 }
 
+// 2.0.13 起的 unpacked 安装没有 app.asar，直接改 resources/app/lib 内的
+// runtime + preload 即可，也无需更新 exe 内嵌的 asar 头哈希。
+if (looseInstall) {
+  const runtimeTransforms = REVERT
+    ? [applyRuntimeBrowserPopup, applyRuntimeIpc]
+    : [applyRuntimeIpc, applyRuntimeBrowserPopup];
+  for (const transform of runtimeTransforms) {
+    const result = transform(content.toString('utf8'), REVERT);
+    if (result.changed) {
+      content = Buffer.from(result.text, 'utf8');
+      runtimeChanged = true;
+    }
+  }
+  const preloadPath = join(libDir, PRELOAD_NAME);
+  if (!existsSync(preloadPath)) fail(`unpacked 安装缺少 ${preloadPath}，无法安装窗口控制桥`);
+  const preloadBefore = readFileSync(preloadPath, 'utf8');
+  const windowBridge = applyPreloadBridge(preloadBefore, REVERT);
+  const popupBridge = applyPreloadBrowserPopup(windowBridge.text, REVERT);
+  const preloadChanged = windowBridge.changed || popupBridge.changed;
+  let preloadAfter = popupBridge.text;
+  if (REVERT) {
+    const originalRuntimePath = `${diskRuntimePath}.bak-liuli`;
+    if (existsSync(originalRuntimePath) && !readFileSync(originalRuntimePath, 'utf8').endsWith('\n')) {
+      content = Buffer.from(content.toString('utf8').replace(/\n+$/, ''), 'utf8');
+    }
+    if (existsSync(`${preloadPath}.bak-liuli`) && !readFileSync(`${preloadPath}.bak-liuli`, 'utf8').endsWith('\n')) {
+      preloadAfter = preloadAfter.replace(/\n+$/, '');
+    }
+  }
+  if (!REVERT && preloadChanged && !existsSync(`${preloadPath}.bak-liuli`)) {
+    copyFileSync(preloadPath, `${preloadPath}.bak-liuli`);
+  }
+  if (runtimeChanged) {
+    writeFileSync(diskRuntimePath, content);
+    console.log(`[dsh-liuli-ui-enhance] 已写入 ${diskRuntimePath}`);
+  }
+  if (preloadChanged) {
+    writeFileSync(preloadPath, preloadAfter);
+    console.log(`[dsh-liuli-ui-enhance] 已写入 ${preloadPath}`);
+  }
+  console.log(`[dsh-liuli-ui-enhance] ${REVERT ? '还原完成' : '补丁完成'}：重启 DSH Desktop 后生效`);
+  process.exit(0);
+}
+
 // 3.5 记录 asar 头哈希（补丁前）：2.0.5+ 的 Electron 拿 exe 内嵌哈希校验归档，
 //     头一变就必须同步更新 exe，否则主进程启动即 FATAL。这里同时把备份档的
 //     哈希作为候选——它能覆盖「asar 已打补丁但 exe 未同步」的修复场景。
@@ -601,11 +755,16 @@ const backupHeaderHex = existsSync(backupPath) ? sha256Hex(readHeaderJsonBytes(b
 //     （目标窗口用 event.sender 反查），并让 preload 暴露 contextBridge 桥接。
 const { header, contentStart } = readAsarHeader(asarPath);
 const preloadNode = findLibNode(header, PRELOAD_NAME);
-const ipcResult = applyRuntimeIpc(content.toString('utf8'), REVERT);
-if (ipcResult.changed) {
-  content = Buffer.from(ipcResult.text, 'utf8');
-  runtimeChanged = true;
-  console.log(`[dsh-liuli-ui-enhance] ${REVERT ? '已移除' : '已注入'} runtime 窗口控制 IPC 通道`);
+const runtimeTransforms = REVERT
+  ? [['浏览器弹窗通道', applyRuntimeBrowserPopup], ['窗口控制 IPC 通道', applyRuntimeIpc]]
+  : [['窗口控制 IPC 通道', applyRuntimeIpc], ['浏览器弹窗通道', applyRuntimeBrowserPopup]];
+for (const [label, transform] of runtimeTransforms) {
+  const result = transform(content.toString('utf8'), REVERT);
+  if (result.changed) {
+    content = Buffer.from(result.text, 'utf8');
+    runtimeChanged = true;
+    console.log(`[dsh-liuli-ui-enhance] ${REVERT ? '已移除' : '已注入'} runtime ${label}`);
+  }
 }
 let preloadContent;
 let preloadChanged = false;
@@ -613,9 +772,11 @@ if (preloadNode === undefined) {
   console.warn(`[dsh-liuli-ui-enhance] asar 头中缺少 lib/${PRELOAD_NAME}，跳过窗口控制桥（无边框下页面内窗口按钮将不可用）`);
 } else {
   const bridge = applyPreloadBridge(readLibContent(asarPath, preloadNode, contentStart, PRELOAD_NAME), REVERT);
-  preloadContent = bridge.text;
-  preloadChanged = bridge.changed;
+  const popupBridge = applyPreloadBrowserPopup(bridge.text, REVERT);
+  preloadContent = popupBridge.text;
+  preloadChanged = bridge.changed || popupBridge.changed;
   if (bridge.changed) console.log(`[dsh-liuli-ui-enhance] ${REVERT ? '已移除' : '已注入'} preload 窗口控制桥`);
+  if (popupBridge.changed) console.log(`[dsh-liuli-ui-enhance] ${REVERT ? '已移除' : '已注入'} preload 浏览器弹窗桥`);
 }
 
 // 4. 写回改动文件 + 重建 asar 头（同步 size / SHA256 integrity）。

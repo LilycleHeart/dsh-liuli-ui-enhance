@@ -224,8 +224,10 @@ export const featuresZh = {
   'unofficial.browserHint': '右侧边栏嵌入式浏览器引擎与模型活动自动驱动（启动 dev server / 写前端文件时自动展示页面）',
   'unofficial.dom': 'DOM 观察增强',
   'unofficial.domHint': '悬浮球/自动展开/入场动画/会话标记与右键菜单/重命名/缩放性能护栏等基于 DOM 观察或自有 overlay 的增强；与其它插件改造同一界面元素时冲突则关闭',
-  'unofficial.officialRightbar': '并入官方右侧栏（预览）',
-  'unofficial.officialRightbarHint': '把琉璃面板登记为官方右侧栏的标签页（审查/文件树/终端/代码查看/浏览器/辅助对话/开发者工具）：标签条、分栏、拖拽、浮窗、宽度与开合全部交还官方，自研详细页让出右栏席位；切换后需刷新页面生效',
+  'unofficial.officialRightbar': '并入官方右侧栏（dockable 增强）',
+  'unofficial.officialRightbarHint': '新版客户端默认使用：保留官方右栏服务与文件入口，显示琉璃侧栏和整窗四向拖拽；右栏内部分栏由下方开关控制。需要同时启用 Dockable 布局和右侧边栏；关闭后回退旧版自研详细页。切换后需刷新页面',
+  'unofficial.disableInnerRightbarSplit': '禁用右栏内部分栏',
+  'unofficial.disableInnerRightbarSplitHint': '隐藏右栏内置分栏按钮；标签拖到右栏内外的边缘都交给琉璃整窗 Dockable 布局。切换后立即生效',
   'reset': '恢复默认',
 } satisfies Record<string, string>
 
@@ -351,8 +353,10 @@ export const featuresEn = {
   'unofficial.browserHint': 'Sidebar embedded browser engine and model-activity auto-drive (auto-show pages when the model starts a dev server or edits frontend files)',
   'unofficial.dom': 'DOM observation enhancements',
   'unofficial.domHint': 'Float ball / auto-expand / entrance animations / session markers & context menus / rename / resize performance guard — DOM-observation or own-overlay enhancements. Disable when another plugin reshapes the same UI elements',
-  'unofficial.officialRightbar': 'Adopt the official right sidebar (preview)',
-  'unofficial.officialRightbarHint': 'Register liuli panels as official right-sidebar tabs (review / files / terminal / code viewer / browser / side chat / developer tools): the official tabstrip, split, drag, float, width and collapse take over, and the built-in details column yields the rightbar seat. Refresh the page after toggling.',
+  'unofficial.officialRightbar': 'Adopt the official right sidebar (dockable, enhanced)',
+  'unofficial.officialRightbarHint': 'Enabled by default on newer clients: keep the official sidebar service and file actions while showing liuli controls and four-edge window docking. The setting below controls splits inside the right sidebar. Requires Dockable layout and Right sidebar. Refresh after toggling.',
+  'unofficial.disableInnerRightbarSplit': 'Disable splits inside the sidebar',
+  'unofficial.disableInnerRightbarSplitHint': 'Hide the sidebar split button and route tab drops at the sidebar edges into liuli’s window-wide Dockable layout. Applies immediately.',
   'reset': 'Reset to defaults',
 } satisfies Record<string, string>
 

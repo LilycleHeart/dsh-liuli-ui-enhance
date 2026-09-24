@@ -16,6 +16,7 @@ import { requestReviewFile } from './review-bus.ts'
 import { revealSidebarPath, revealToast } from './right-sidebar-api.ts'
 import { absOf, relOf } from './TurnFileCard.tsx'
 import { ICONS } from './menu-icons.ts'
+import { dismissLiuliContextMenu } from './context-menu-presence.ts'
 
 type Ctx = Pick<ClientContext, 'sessions'>
 
@@ -112,7 +113,7 @@ function renderMenu(file: FileTarget, x: number, y: number): void {
     closed = true
     document.removeEventListener('mousedown', onDocMouseDown, true)
     document.removeEventListener('keydown', onDocKey, true)
-    menu.remove()
+    dismissLiuliContextMenu(menu)
   }
 
   const rel = relOf(file.path, file.cwd)

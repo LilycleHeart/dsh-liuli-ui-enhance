@@ -252,6 +252,8 @@ overflow: hidden;
 
 **为什么用 `::before` 而不是直接写在根元素**：根元素持有 `backdrop-filter` 会成为 `position: fixed` 后代的包含块，导致设置页全屏模态、菜单等被压缩进卡片。背景层放 `::before`，根只负责定位 / 圆角 / 阴影 / 裁剪。
 
+> ⚠️ **这条对「玻璃面板」本身同样成立，不止卡片**：设置模态面板根曾直接持有 `backdrop-filter`（见 `liuli-css.ts` 的浮动卡片规则），结果第三方插件 Jet Hub 的模型弹窗（`position: fixed; inset: 0`）被限死在面板盒内 —— 实测 overlay 由全屏 `[0,0,2560,1032]` 变成 `[880,116,800,800]`，右下半截被裁掉。凡**内部可能渲染 fixed 全屏浮层**的容器，根一律不挂 `backdrop-filter`，材质交给 `::before`。判定方法：`getBoundingClientRect()` 量一下 fixed 后代的尺寸是否等于视口。
+
 ### 5.2 简化亚克力配方（直接写在元素上）
 
 适用于：**无 fixed 后代**的小卡、工具条、徽章按钮、hover 卡、信息卡。例：`TurnFileCard.root`、`FloatBall.toolbar / .infoCard`、`FileReviewPanel.sourceTrigger`、`LiuliAppearance.wallpaperBlock / .selector`。
@@ -665,6 +667,9 @@ CSS Modules 内普通面板只用 `edgeBottom` 类；区域表面镜像用 `:glo
 - `[class*="_local"]`：子串匹配，命中含该 local 的类；注意会误伤 `_localLabel` 之类兄弟（需补 `:not([class*="_localLabel"])`）。
 - `[class$="_local"]`：后缀匹配，精确命中该 local 本身；在“类名本身”足够时优先用。
 - **data 锚点优先**：宿主提供 `data-testid / data-*` 时优先用（如 `[data-testid="todo-panel"]`、`[data-goal-bar]`），比哈希类名稳定。
+- **但先验证 data 锚点真的会被写上**：`body[data-liuli-settings-open]` 是个反例 —— 它由 `isSettingsOverlayOpen()` 依据 `[class*="_sidebarCol"]` 的 DOM 形状维护，而宿主结构在版本间会变（当前版本设置遮罩改挂 `dshDesktopUpstreamSidebar` 下，`_sidebarCol` 经常不存在），该属性因此**间歇性缺失**，以它为作用域的规则会随机失效。
+- **自包含锚点**：作用域优先选「由被覆盖元素自身推导」的形式，例如 `body:has(.my-target)` —— 目标在，作用域就在，不依赖任何外部副作用维护的属性。第三方插件分区（Jet Hub）适配即采用此形式。
+- **第三方插件类名**：非 CSS Module 的手写全局类（如 `.dim-jh-*`）无哈希、前缀唯一，可直接锚定，无需 `div[class*=...]` 一类的宽选择器；先 grep 全仓确认前缀不撞名。
 
 ### 9.3 `!important` 使用条件
 
@@ -694,6 +699,8 @@ CSS Modules 内普通面板只用 `edgeBottom` 类；区域表面镜像用 `:glo
 - [ ] 长文本有截断或换行策略
 - [ ] 动画配 `prefers-reduced-motion` 降级
 - [ ] 若为全局样式：同步 `liuli.css` 与 `liuli-css.ts`
+- [ ] 覆盖第三方插件分区时：作用域用自包含锚点（`body:has(.目标类)`），并 grep 确认其类名前缀全仓唯一
+- [ ] 容器内可能有 `position: fixed` 全屏浮层时：根不挂 `backdrop-filter`（会变成包含块压扁浮层），材质走 `::before`
 - [ ] 新增文案同步 `locales.ts`（zh/en 键完整）
 - [ ] 新踩坑写入开发约定文档「关键避坑」
 
@@ -715,6 +722,7 @@ CSS Modules 内普通面板只用 `edgeBottom` 类；区域表面镜像用 `:glo
 | 侧栏面板（搜索 / 列表 / 命令中心） | `src/client/RightSidebarPanels.module.css` |
 | 审查面板（源切换 / diff / 右键菜单） | `src/client/FileReviewPanel.module.css` |
 | 设置页控件（滑块 / 开关 / 选择器 / 壁纸） | `src/client/LiuliAppearance.module.css` |
+| 第三方插件设置分区（Jet Hub）适配 | `src/client/liuli.css` / `liuli-css.ts` 末尾「第三方插件 Jet Hub 设置分区适配」组 |
 | 设置行（Appearance 主题行 / 功能分区重试与历史加载） | `src/client/LiuliAppearanceRow.module.css`、`HistoryLoadRow.module.css`、`ModelRetryRow.module.css` |
 | 终端 / 开发者工具 / 辅助对话 | `src/client/SidePaneExtraPanels.module.css` |
 | 布局面板内容 | `src/client/dock-panels.module.css` |

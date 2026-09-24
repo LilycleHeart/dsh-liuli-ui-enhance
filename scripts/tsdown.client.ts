@@ -36,6 +36,16 @@ const CSS_VIRTUAL_SUFFIX = '.mjs'
 export const INLINE_SAFE = /^@deepseek-ai\/dsh-(host-apiproxy|session|llm|tools|brand|util-crypto|util-workspace-path|scope)(\/|$)/
 
 /**
+ * 停靠布局套件（ui-dockkit）：官方右侧栏以静态链接方式使用的**内部引擎**，
+ * 无跨插件运行时身份需要共享（纯 TS 分裂树引擎 + React 组件，state in / intents out）。
+ * 琉璃用它在官方 rightbar 席位里重建 dockable 布局（四边拖放 / 最多 4 格 / 浮窗），
+ * 因此必须内联进 client bundle。
+ * 注意：官方 README 明确标注该包导出「在任何版本都可能变化」——升级时需复核
+ * LayoutState / LayoutOp / planner / DockIntents 的形状。
+ */
+const DOCKKIT_LIBRARY = /^@deepseek-ai\/dsh-client-ui-dockkit(\/|$)/
+
+/**
  * Vendored framework libraries: rescoped into @deepseek-ai, so the gate below
  * would read them as plugin packages. They carry no cross-plugin runtime
  * identity to share — the framework itself is a platform module (external),
@@ -214,6 +224,7 @@ function clientConfig(id: string, entry: string): UserConfig {
         if (!source.startsWith('@deepseek-ai/')) return null
         if (CLIENT_EXTERNALS.includes(source)) return null // platform module: external wins
         if (VENDORED_LIBRARY.test(source)) return null // vendored library: inline, no shared identity
+        if (DOCKKIT_LIBRARY.test(source)) return null // docking kit: inline engine (内部引擎，静态链接)
         if (INLINE_SAFE.test(source) || GENERATED_REMOTE.test(source)) return null // wire contribution: inline is the point
         throw new Error(
           `client bundle purity: "${source}" is not a platform module (CLIENT_EXTERNALS), an inline-safe wire layer, or a generated /remote contribution — `

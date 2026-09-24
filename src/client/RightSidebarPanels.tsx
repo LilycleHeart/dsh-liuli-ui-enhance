@@ -8,6 +8,8 @@ import {
   fetchSidebarGit, fetchSidebarTree,
   type SidebarGitPayload, type SidebarGitStatusRow, type SidebarTreeEntry, type SidebarTreePayload,
 } from './right-sidebar-api.ts'
+import { usePopupPresence, usePopupValuePresence } from './use-popup-presence.ts'
+import { relativeSidebarPath, sidebarPathKey } from './sidebar-paths.ts'
 import css from './RightSidebarPanels.module.css'
 
 /* ── 公共 Material 图标（16px，fill currentColor） ── */
@@ -65,9 +67,10 @@ export function CommandPalette({ open, onClose, commands }: CommandPaletteProps)
   const [query, setQuery] = useState('')
   const [index, setIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const presence = usePopupPresence(open)
 
   useEffect(() => {
-    if (!open) return
+    if (!open) { inputRef.current?.blur(); return }
     setQuery('')
     setIndex(0)
     const t = window.setTimeout(() => { inputRef.current?.focus() }, 0)
@@ -89,11 +92,11 @@ export function CommandPalette({ open, onClose, commands }: CommandPaletteProps)
     command.run()
   }
 
-  if (!open) return null
+  if (!presence.mounted) return null
 
   return (
-    <div className={css.commandOverlay} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className={css.commandCard}>
+    <div className={css.commandOverlay} data-closing={presence.closing || undefined} aria-hidden={presence.closing} onMouseDown={(e) => { if (open && e.target === e.currentTarget) onClose() }}>
+      <div className={css.commandCard} data-closing={presence.closing || undefined}>
         <div className={css.commandInputRow}>
           <SearchIcon />
           <input
@@ -151,16 +154,27 @@ export function FileTreePanel({ sessionId, onOpenFile, onAddFileToChat, onOpenPa
   const [filter, setFilter] = useState('')
   const [onlyChanged, setOnlyChanged] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [treeLoading, setTreeLoading] = useState(sessionId !== undefined)
   const [menu, setMenu] = useState<{ x: number; y: number; path: string; kind: 'file' | 'dir' } | null>(null)
+  const menuPresence = usePopupValuePresence(menu)
+  const shownMenu = menuPresence.value
 
   useEffect(() => {
-    if (sessionId === undefined) return
+    if (sessionId === undefined) { setTreeLoading(false); return }
     const controller = new AbortController()
+    setTreeLoading(true)
+    setError(null)
     fetchSidebarTree(sessionId, rel, controller.signal)
-      .then((payload) => { setTree(payload); setError(payload.ok ? null : (payload.error ?? '加载失败')) })
+      .then((payload) => {
+        if (controller.signal.aborted) return
+        setTree(payload)
+        setError(payload.ok ? null : (payload.error ?? '加载失败'))
+        setTreeLoading(false)
+      })
       .catch((reason: unknown) => {
         if (controller.signal.aborted) return
         setError(reason instanceof Error ? reason.message : String(reason))
+        setTreeLoading(false)
       })
     return () => { controller.abort() }
   }, [sessionId, rel])
@@ -175,28 +189,21 @@ export function FileTreePanel({ sessionId, onOpenFile, onAddFileToChat, onOpenPa
   }, [sessionId])
 
   const root = tree?.root ?? git?.root ?? ''
-  const rootBase = root.replace(/[\\/]+$/, '')
-  const toAbsolute = (path: string): string => {
-    if (path === '') return ''
-    if (rootBase !== '' && path.startsWith(rootBase)) return path
-    if (path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path)) return path
-    return `${rootBase}/${path}`
-  }
   const statusByPath = useMemo(() => {
     const map = new Map<string, SidebarGitStatusRow>()
     for (const row of git?.status ?? []) {
-      map.set(toAbsolute(row.path), row)
-      if (row.oldPath !== undefined) map.set(toAbsolute(row.oldPath), row)
+      map.set(sidebarPathKey(root, row.path), row)
+      if (row.oldPath !== undefined) map.set(sidebarPathKey(root, row.oldPath), row)
     }
     return map
-  }, [git, rootBase, toAbsolute])
+  }, [git, root])
   const entries = useMemo(() => {
     const all = tree?.entries ?? []
     const q = filter.trim().toLowerCase()
     return all.filter((entry) => {
       if (q !== '' && !entry.name.toLowerCase().includes(q)) return false
       if (onlyChanged) {
-        const key = entry.path
+        const key = sidebarPathKey(root, entry.path)
         if (entry.kind === 'dir') {
           const prefix = key.endsWith('/') ? key : key + '/'
           return Array.from(statusByPath.keys()).some(p => p.startsWith(prefix))
@@ -205,15 +212,21 @@ export function FileTreePanel({ sessionId, onOpenFile, onAddFileToChat, onOpenPa
       }
       return true
     })
-  }, [tree, filter, onlyChanged, statusByPath])
+  }, [tree, filter, onlyChanged, statusByPath, root])
 
-  const relOf = (path: string): string => root === '' ? path : path.slice(root.length).replace(/^\//, '')
+  const navigate = (nextRel: string): void => {
+    if (nextRel === rel) return
+    setTreeLoading(true)
+    setRel(nextRel)
+  }
 
   const openEntry = (entry: SidebarTreeEntry): void => {
+    const relative = relativeSidebarPath(root, entry.path)
+    if (relative === null) return
     if (entry.kind === 'dir') {
-      setRel(relOf(entry.path))
+      navigate(relative)
     } else {
-      onOpenFile?.(entry.path, relOf(entry.path))
+      onOpenFile?.(entry.path, relative)
     }
   }
 
@@ -269,9 +282,9 @@ export function FileTreePanel({ sessionId, onOpenFile, onAddFileToChat, onOpenPa
   }, [menu])
 
   const renderMenu = (): ReactNode => {
-    if (menu === null) return null
+    if (shownMenu === null) return null
     const items: Array<{ label: string; action: string; danger?: boolean }> = []
-    if (menu.kind === 'file') {
+    if (shownMenu.kind === 'file') {
       items.push({ label: '预览', action: 'preview' })
       items.push({ label: '添加到聊天', action: 'chat' })
       items.push({ label: '复制路径', action: 'copy' })
@@ -281,17 +294,21 @@ export function FileTreePanel({ sessionId, onOpenFile, onAddFileToChat, onOpenPa
       items.push({ label: '复制路径', action: 'copy' })
     }
     const run = (action: string): void => {
-      if (action === 'preview') onOpenFile?.(menu.path, relOf(menu.path))
-      if (action === 'chat') onAddFileToChat?.(menu.path)
-      if (action === 'open') onOpenPath?.(menu.path)
-      if (action === 'copy') void navigator.clipboard?.writeText(menu.path).catch(() => {})
+      const relative = relativeSidebarPath(root, shownMenu.path)
+      if (action === 'preview' && relative !== null) onOpenFile?.(shownMenu.path, relative)
+      if (action === 'chat') onAddFileToChat?.(shownMenu.path)
+      if (action === 'open') onOpenPath?.(shownMenu.path)
+      if (action === 'copy') void navigator.clipboard?.writeText(shownMenu.path).catch(() => {})
       closeMenu()
     }
     return (
       <div
         role="menu"
         data-liuli-file-menu=""
-        style={{ position: 'fixed', left: menu.x, top: menu.y, zIndex: 1300 }}
+        data-closing={menuPresence.closing || undefined}
+        aria-hidden={menuPresence.closing}
+        className={css.fileMenu}
+        style={{ position: 'fixed', left: shownMenu.x, top: shownMenu.y, zIndex: 1300 }}
       >
         {items.map((item) => (
           <button
@@ -332,15 +349,15 @@ export function FileTreePanel({ sessionId, onOpenFile, onAddFileToChat, onOpenPa
         </label>
       </div>
       <div className={css.crumbRow}>
-        <button type="button" className={css.crumbBtn} onClick={() => { setRel('') }}>~/</button>
+        <button type="button" className={css.crumbBtn} onClick={() => { navigate('') }}>{rel === '' ? '~/' : '~'}</button>
         {rel !== '' && <span className={css.crumbSep}>/</span>}
         {rel !== '' && <span className={css.crumbText}>{rel}</span>}
       </div>
-      <div className={css.fileList}>
+      <div className={css.fileList} data-loading={treeLoading || undefined} aria-busy={treeLoading}>
         {error !== null && <div className={css.panelEmpty}>{error}</div>}
-        {error === null && entries.length === 0 && <div className={css.panelEmpty}>没有文件</div>}
+        {error === null && entries.length === 0 && <div className={css.panelEmpty}>{treeLoading ? '正在加载…' : '没有文件'}</div>}
         {entries.map((entry) => {
-          const status = statusByPath.get(entry.path)
+          const status = statusByPath.get(sidebarPathKey(root, entry.path))
           return (
             <button
               type="button"

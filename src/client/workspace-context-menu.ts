@@ -11,6 +11,7 @@ import type { ClientContext, WorkspaceId } from './compat.ts'
 import { readRowTitle, locateTitleSpan, mountEditor } from './session-rename.ts'
 import { revealWorkspaceInExplorer } from './right-sidebar-api.ts'
 import { ICONS } from './menu-icons.ts'
+import { dismissLiuliContextMenu } from './context-menu-presence.ts'
 
 type Ctx = Pick<ClientContext, 'workspaces'>
 
@@ -40,7 +41,7 @@ function renderMenu(ctx: Ctx, row: HTMLElement, id: WorkspaceId, title: string, 
     closed = true
     document.removeEventListener('mousedown', onDocMouseDown, true)
     document.removeEventListener('keydown', onDocKey, true)
-    menu.remove()
+    dismissLiuliContextMenu(menu)
   }
   const runAction = (action: string): void => {
     if (action === 'open') {
