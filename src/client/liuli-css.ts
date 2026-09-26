@@ -2303,7 +2303,7 @@ body[data-liuli-resizing] [data-testid="dock-shell"] [data-region-pane="region:d
  * 圆角 —— 原 10px 已在控件档，但仍以 var(--liuli-radius-sm) 表达，跟随设置。
  * 兄弟类排除：同模块存在 PvW7sq_markPreview（含 _preview 子串），用 :not() 排除。
  * ──────────────────────────────────────────────────────────── */
-[class*="_preview"]:not([class*="_markPreview"]) {
+[class*="_preview"]:not([class*="_markPreview"]):not([data-liuli-wallpaper-preview] *) {
   border-radius: var(--liuli-radius-sm, 10px) !important;
   background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity)) !important;
   background-image: var(--liuli-noise) !important;

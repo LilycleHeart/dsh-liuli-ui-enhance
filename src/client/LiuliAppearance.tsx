@@ -5,7 +5,7 @@
  * 实现自电波推送 dashboard 的「界面设置」面板。
  * 行组件原语（Row/SliderRow/SelectRow/ToggleRow）同时导出给「功能」分区复用。
  */
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { createPortal } from 'react-dom'
 import {
@@ -14,7 +14,7 @@ import {
 import type { PropsLocale, PropsRuntime, PropsStore, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { LiuliBgArea, LiuliSettings } from '../liuli-settings.ts'
 import { LIULI_SETTINGS_DEFAULTS } from '../liuli-settings.ts'
-import { bgGeometry, normalizeAreaToRatio } from './liuli-runtime.ts'
+import { bgGeometry, normalizeAreaToRatio, loadWallpaper, subscribeWallpaper } from './liuli-runtime.ts'
 import type { createLiuliStore } from './liuli-store.ts'
 import { usePopupValuePresence } from './use-popup-presence.ts'
 import css from './LiuliAppearance.module.css'
@@ -211,6 +211,7 @@ function WallpaperPreview(props: {
   const stageRef = useRef<HTMLDivElement | null>(null)
   const [winRatio, setWinRatio] = useState(() => window.innerWidth / window.innerHeight)
   const [imgRatio, setImgRatio] = useState<number | null>(null)
+  const [imageError, setImageError] = useState(false)
   const [selectMode, setSelectMode] = useState(false)
   const [selBox, setSelBox] = useState<LiuliBgArea | null>(null)
   const [displayArea, setDisplayArea] = useState<LiuliBgArea | null>(props.area)
@@ -231,12 +232,14 @@ function WallpaperPreview(props: {
   useEffect(() => {
     let alive = true
     setImgRatio(null)
+    setImageError(false)
     const img = new Image()
     img.onload = () => {
       if (alive && img.naturalWidth > 0 && img.naturalHeight > 0) {
         setImgRatio(img.naturalWidth / img.naturalHeight)
       }
     }
+    img.onerror = () => { if (alive) setImageError(true) }
     img.src = props.src
     return () => { alive = false }
   }, [props.src])
@@ -423,7 +426,8 @@ function WallpaperPreview(props: {
   const g = bgGeometry(props.fit, props.area, imgRatio, winRatio)
   const stageStyle: React.CSSProperties = {
     aspectRatio: winRatio,
-    width: 'min(100%, calc(220px * ' + winRatio + '))',
+    width: '100%',
+    maxWidth: 220 * winRatio,
   }
   const effectStyle: React.CSSProperties = {
     backgroundImage: 'url("' + props.src + '")',
@@ -448,11 +452,13 @@ function WallpaperPreview(props: {
   // 进入框选时容器不变，只是选框变为可交互。
   const contextStyle: React.CSSProperties = {
     width: stageStyle.width,
+    maxWidth: stageStyle.maxWidth,
     aspectRatio: imageAspect,
   }
   return (
     <>
       <div className={css.previewActions}>
+        {imageError && <span role="alert">壁纸预览加载失败，请重新选择图片。</span>}
         {selectMode ? (
           <>
             <Button variant="ghost" size="sm" onClick={() => { setSelBox(windowArea()) }}>
@@ -588,7 +594,7 @@ export function LiuliAppearanceSection({
 }: LiuliAppearanceComponentProps) {
   const state = useStore(s => s)
   const s = state.settings
-  const wallpaper = state.wallpaper
+  const wallpaper = useSyncExternalStore(subscribeWallpaper, loadWallpaper)
   const wallpaperPresence = usePopupValuePresence(wallpaper, 180)
   const shownWallpaper = wallpaperPresence.value
   const wallpaperWrapRef = useRef<HTMLDivElement | null>(null)
@@ -744,7 +750,7 @@ export function LiuliAppearanceSection({
         <div className={css.wallpaperTitle}>{t('wallpaper')}</div>
         <div className={css.wallpaperRow}>
           <input
-            ref={fileRef} type="file" accept=".jpg,.jpeg,.png,.webp,.gif" hidden
+            ref={fileRef} type="file" accept=".jpg,.jpeg,.png,.apng,.webp,.gif" hidden
             onChange={(e) => {
               const file = e.target.files?.[0]
               if (file) setFileLabel(file.name)
@@ -791,7 +797,7 @@ export function LiuliAppearanceSection({
         />
 
         {shownWallpaper !== null && (
-          <div ref={wallpaperWrapRef} className={css.wallpaperPreviewWrap} data-open={wallpaper !== null || undefined} aria-hidden={wallpaper === null}>
+          <div ref={wallpaperWrapRef} data-liuli-wallpaper-preview="" className={css.wallpaperPreviewWrap} data-open={wallpaper !== null || undefined} aria-hidden={wallpaper === null}>
             <div className={css.wallpaperPreviewInner}><WallpaperPreview
               src={shownWallpaper}
               fit={s.bg_fit}

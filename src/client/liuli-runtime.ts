@@ -19,25 +19,88 @@ import {
   LIULI_DEFAULT_SOURCE, liuliApplyBrand, liuliDerivePalette,
 } from './liuli-palette.ts'
 import { LIULI_SETTINGS_DEFAULTS, type LiuliBgArea, type LiuliBgFit, type LiuliSettings } from '../liuli-settings.ts'
+import { animatedWallpaperMime } from './wallpaper-format.ts'
 
 /** 壁纸持久化键（localStorage，dataURL）。 */
 const WALLPAPER_KEY = 'liuli:wallpaper'
 /** 壁纸大小上限（dataURL 长度）。 */
 export const WALLPAPER_MAX_LENGTH = 3.5 * 1024 * 1024
+let wallpaperMemory: string | null | undefined
+let wallpaperRevision = 0
+const WALLPAPER_EVENT = 'liuli:wallpaper-change'
+export function subscribeWallpaper(listener: () => void): () => void {
+  window.addEventListener(WALLPAPER_EVENT, listener)
+  return () => { window.removeEventListener(WALLPAPER_EVENT, listener) }
+}
+async function wallpaperDatabase(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('liuli-wallpaper', 1)
+    request.onupgradeneeded = () => { request.result.createObjectStore('images') }
+    request.onsuccess = () => { resolve(request.result) }
+    request.onerror = () => { reject(new Error('无法打开壁纸存储')) }
+  })
+}
+export async function restoreWallpaper(): Promise<void> {
+  const revision = wallpaperRevision
+  if (localStorage.getItem('liuli:wallpaper-db') !== '1') return
+  const db = await wallpaperDatabase()
+  try {
+    const value = await new Promise<unknown>((resolve, reject) => {
+      const request = db.transaction('images').objectStore('images').get('current')
+      request.onsuccess = () => { resolve(request.result) }
+      request.onerror = () => { reject(request.error) }
+    })
+    if (revision === wallpaperRevision && typeof value === 'string') {
+      wallpaperMemory = value
+      window.dispatchEvent(new Event(WALLPAPER_EVENT))
+    }
+  } finally { db.close() }
+}
 
 export function loadWallpaper(): string | null {
+  if (wallpaperMemory !== undefined) return wallpaperMemory
   try {
     const raw = localStorage.getItem(WALLPAPER_KEY)
     return raw && raw.length > 0 ? raw : null
   } catch (_) { return null }
 }
 
-export function saveWallpaper(dataUrl: string): void {
-  try { localStorage.setItem(WALLPAPER_KEY, dataUrl) } catch (_) {}
+export async function saveWallpaper(dataUrl: string): Promise<void> {
+  let useDatabase = dataUrl.length > WALLPAPER_MAX_LENGTH
+  if (!useDatabase) {
+    try { localStorage.setItem(WALLPAPER_KEY, dataUrl) } catch { useDatabase = true }
+  }
+  if (useDatabase) {
+    const db = await wallpaperDatabase()
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction('images', 'readwrite')
+        transaction.objectStore('images').put(dataUrl, 'current')
+        transaction.oncomplete = () => { resolve() }
+        transaction.onerror = () => { reject(new Error('壁纸保存失败：存储空间不足')) }
+        transaction.onabort = () => { reject(new Error('壁纸保存已中止')) }
+      })
+      localStorage.setItem('liuli:wallpaper-db', '1')
+      localStorage.removeItem(WALLPAPER_KEY)
+    } finally { db.close() }
+  } else localStorage.removeItem('liuli:wallpaper-db')
+  wallpaperRevision++
+  wallpaperMemory = dataUrl
+  window.dispatchEvent(new Event(WALLPAPER_EVENT))
 }
 
 export function clearWallpaper(): void {
+  wallpaperRevision++
+  wallpaperMemory = null
   try { localStorage.removeItem(WALLPAPER_KEY) } catch (_) {}
+  try { localStorage.removeItem('liuli:wallpaper-db') } catch (_) {}
+  void wallpaperDatabase().then(db => {
+    const tx = db.transaction('images', 'readwrite')
+    tx.objectStore('images').delete('current')
+    tx.oncomplete = () => { db.close() }
+    tx.onabort = () => { db.close() }
+  }).catch(() => {})
+  window.dispatchEvent(new Event(WALLPAPER_EVENT))
 }
 
 export function readFileAsDataURL(file: File): Promise<string> {
@@ -54,6 +117,14 @@ export function readFileAsDataURL(file: File): Promise<string> {
  * 透明图会以白色底合成（壁纸场景可接受）。
  */
 export async function compressImage(file: File, maxDim = 1920, quality = 0.85): Promise<string> {
+  if (file.size > 32 * 1024 * 1024) throw new Error('壁纸文件不能超过 32 MB')
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  const animatedMime = animatedWallpaperMime(bytes)
+  if (animatedMime) {
+    const original = await readFileAsDataURL(new File([bytes], file.name, { type: animatedMime }))
+    await loadImage(original)
+    return original
+  }
   const url = URL.createObjectURL(file)
   try {
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -326,6 +397,7 @@ export async function applyLiuliSettings(settings: LiuliSettings): Promise<void>
   const cfg = { ...LIULI_SETTINGS_DEFAULTS, ...(settings ?? {}) }
   document.documentElement.dataset.liuliMenuMode = cfg.desktop_menu_mode
   document.documentElement.dataset.liuliDragHeight = String(cfg.desktop_drag_height)
+  document.documentElement.dataset.liuliSidebarMode = cfg.unofficial_layout ? cfg.sidebar_layout_mode : 'official'
   const wallpaper = loadWallpaper()
   const body = document.body
   const set = (k: string, v: string): void => { body.style.setProperty(k, v) }
@@ -425,6 +497,7 @@ export async function applyLiuliSettings(settings: LiuliSettings): Promise<void>
   } else {
     set('--liuli-material-opacity', '1')
     set('--liuli-material-blur', 'none')
+    set('--liuli-material-blur-strong', 'none')
     set('--liuli-material-blur-px', '0')
     set('--liuli-surface-opacity', '1')
   }

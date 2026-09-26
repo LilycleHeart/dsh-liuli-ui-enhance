@@ -126,12 +126,28 @@
 .menuPersistent[data-liuli-menu-fallback] { position: fixed; left: 12px; top: 12px; z-index: 2147483502; }
 :global([class*='_logoRow']:has([data-liuli-menu-seat]) [class*='_brand']) { display: none !important; }
 :global([data-liuli-menu-seat]) { flex: 1; }
+:global(html[data-liuli-official-chrome] [data-windows-menu][data-liuli-inline-menu]) {
+  position: relative !important;
+  inset: auto !important;
+  height: auto !important;
+  z-index: auto !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  width: max-content;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 10px;
+  background: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
+}
+:global([data-liuli-menu-seat][data-liuli-menu-fallback]) {
+  position: fixed; left: 12px; top: 12px; z-index: 2147483502;
+}
 :global([class*='_collapsed'] [data-liuli-menu-seat]) { flex: none; }
 :global([class*='_collapsed']) .menuPersistent { width: 28px; padding: 0; justify-content: center; }
 :global([class*='_collapsed']) .menuPersistent > span:first-child { display: none; }
 :global(html[data-liuli-official-chrome] [class*='_collapsed'] [class*='_logoRow']:has([data-liuli-menu-seat])) {
-  flex-direction: column; height: 88px !important; min-height: 88px; gap: 4px;
+  flex-direction: column; height: 116px !important; min-height: 116px; gap: 4px;
 }
+:global(body[data-liuli-settings-open] [data-liuli-menu-seat][data-liuli-menu-fallback]) { visibility: hidden !important; }
 /* Portaled menus must clear the settings modal, not only ordinary dock panes. */
 :global(body[data-liuli-settings-open] [role='menu']),
 :global(body[data-liuli-settings-open] [role='listbox']) {
@@ -143,6 +159,19 @@
 :global(html[data-liuli-official-chrome]) .hint {
   z-index: 2147483501;
 }
+:global(html[data-liuli-sidebar-mode='dockable'] [data-dockkit-split-button]),
+:global(html[data-liuli-sidebar-mode='dockable'] [data-sidebar-right-toggle]),
+:global(html[data-liuli-sidebar-mode='dockable'] [data-sidebar-right-expand]),
+:global(html[data-liuli-sidebar-mode='dockable'] [class*='_logoRow'] [class*='_toggle']) {
+  display: none !important;
+}
+:global([data-liuli-header-sidebar-controls] button) {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border: 0; border-radius: 8px;
+  color: var(--dsw-alias-label-primary); background: transparent;
+  cursor: pointer; font-size: 19px; -webkit-app-region: no-drag;
+}
+:global([data-liuli-header-sidebar-controls] button:hover) { background: var(--dsw-alias-interactive-bg-hover); }
 
 /* 避让隐藏态：不拦截下方按钮点击（opacity 0 + pointer-events none） */
 .hidden {

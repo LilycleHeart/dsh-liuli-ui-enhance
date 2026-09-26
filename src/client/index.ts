@@ -62,7 +62,7 @@ import { LiuliFeaturesSection, type LiuliFeaturesInjected } from './LiuliFeature
 import { createLiuliAppearanceStore } from './liuli-appearance-store.ts'
 import { createLiuliStore } from './liuli-store.ts'
 import {
-  clearWallpaper, loadWallpaper, compressImage, saveWallpaper, loadImage,
+  clearWallpaper, loadWallpaper, compressImage, saveWallpaper, loadImage, restoreWallpaper,
   applyLiuliSettings, applyLiuliWallpaper,
 } from './liuli-runtime.ts'
 import {
@@ -96,6 +96,8 @@ import { initThinkingFill, disposeThinkingFill, loadThinkingFill, applyThinkingF
 import { createElement } from 'react'
 import { FloatBall } from './FloatBall.tsx'
 import { WindowControls, isFramelessWin32, isOfficialWindowBridge } from './WindowControls.tsx'
+import { enhanceOfficialDock } from './official-dock-enhancement.tsx'
+import { HeaderSidebarControls } from './HeaderSidebarControls.tsx'
 import { createRoot } from 'react-dom/client'
 import { formatSelection, type PickedElement } from './element-picker.ts'
 import { rememberComposerElementInfo, startElementCardDecoration } from './element-card.ts'
@@ -620,9 +622,16 @@ export function apply(ctx: ClientContext): void {
   const officialRightbarSeat = officialRightbarSeatEnabled(slotLayout)
   // 琉璃四向 dock 需要自研帧层；用户关闭 Dockable 布局时保留官方原生右栏。
   const liuliEnhancedRightbar = officialRightbarSeat && unofficial('layout') && unofficial('sidebar') && !isOfficialWindowBridge()
+  if (officialRightbarSeat && unofficial('layout') && unofficial('sidebar') && isOfficialWindowBridge() && bootSettings.sidebar_layout_mode === 'dockable') {
+    ctx.effect(() => enhanceOfficialDock(ctx), 'liuli: unified official tabs with Liuli dock gestures')
+    ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
+      name: 'conversation.session.header.utilities', id: 'liuli-header-sidebar-controls', order: -100,
+      inject: () => ({ toggleLeft: () => { ctx.layout.toggleSidebar() } }),
+    }, HeaderSidebarControls))
+  }
   /** 启动生效开关的指纹（远端设置不同则重载，包含右栏模式）。 */
   const unofficialFlagsOf = (s: LiuliSettings): string =>
-    [s.unofficial_enabled, s.unofficial_layout, s.unofficial_desktop, s.unofficial_sidebar, s.unofficial_browser, s.unofficial_dom, wantsLiuliOfficialSidebar(s)].join(',')
+    [s.unofficial_enabled, s.unofficial_layout, s.unofficial_desktop, s.unofficial_sidebar, s.unofficial_browser, s.unofficial_dom, wantsLiuliOfficialSidebar(s), s.sidebar_layout_mode].join(',')
 
   // 右侧边栏系列增强开关（详情列 / 预览按钮 / 自动展开）同属 unofficial_sidebar：
   // DockShellFrame 依此决定是否把 detail 区域纳入 dock 布局（关闭时剔除 region:details）。
@@ -1615,7 +1624,7 @@ export function apply(ctx: ClientContext): void {
       try { localStorage.setItem(LIULI_LS_KEY, JSON.stringify(remote)) } catch (_) {}
       window.dispatchEvent(new Event('liuli:sidebar-controls-changed'))
       const wallpaper = typeof saved.wallpaper === 'string' && saved.wallpaper.length > 0 ? saved.wallpaper : null
-      if (wallpaper !== null) saveWallpaper(wallpaper)
+      if (wallpaper !== null) await saveWallpaper(wallpaper)
       else clearWallpaper()
       liuliBound?.syncWallpaper(wallpaper)
       syncLiuli(remote)
@@ -1641,11 +1650,13 @@ export function apply(ctx: ClientContext): void {
   }
 
   const commitLiuli = (next: LiuliSettings): void => {
+    const modeChanged = next.sidebar_layout_mode !== readLiuliSettings().sidebar_layout_mode
     writeLiuliSettings(next)
     syncLiuli(next)
     void applyLiuliSettings(next)
     // 声纹响应参数热载（HeaderEffects 监听后重读）
     window.dispatchEvent(new CustomEvent('liuli:vp-params'))
+    if (modeChanged) void remoteStateChain.finally(() => { window.location.reload() })
   }
   const liuliInjected = (actions: BoundActions<typeof liuliStore>): LiuliAppearanceInjected => {
     liuliBound = actions
@@ -1665,7 +1676,7 @@ export function apply(ctx: ClientContext): void {
       },
       uploadWallpaper: async (file) => {
         const dataUrl = await compressImage(file)
-        saveWallpaper(dataUrl)
+        await saveWallpaper(dataUrl)
         // 琉璃 原版行为：上传后自动切换到壁纸背景模式（动态取色随之生效）
         const current = readLiuliSettings()
         let next: LiuliSettings = current.background_mode === 'image' ? current : { ...current, background_mode: 'image' as const }
@@ -1710,6 +1721,7 @@ export function apply(ctx: ClientContext): void {
   // 初始应用：默认值 + 壁纸立即生效；主题切换时按新明暗重算调色板。
   const liuliBoot = readLiuliSettings()
   void applyLiuliSettings(liuliBoot)
+  void restoreWallpaper().then(() => applyLiuliSettings(readLiuliSettings())).catch(error => { console.warn('[liuli] 壁纸恢复失败', error) })
   // Desktop 端口每次重启会变：从 Host 端恢复上次保存的设置/壁纸。
   void loadRemoteState()
   // 跟踪最近一次琉璃设置应用，供 startViewTransition 等待调色板落地后再拍新快照。

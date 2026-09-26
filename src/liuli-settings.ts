@@ -148,6 +148,7 @@ export interface LiuliSettings {
   unofficial_desktop: boolean
   desktop_menu_mode: 'floating' | 'persistent'
   desktop_drag_height: number
+  sidebar_layout_mode: 'dockable' | 'official'
   /** 右侧边栏（详细页）：PreviewDetailsPanel（Git 审查/浏览器/终端/代码查看/开发者工具/
    *  辅助对话等全部标签）、header 预览按钮、详细页自动展开等附属功能。 */
   unofficial_sidebar: boolean
@@ -228,6 +229,7 @@ export const LIULI_SETTINGS_DEFAULTS: LiuliSettings = {
   unofficial_desktop: true,
   desktop_menu_mode: 'floating',
   desktop_drag_height: 24,
+  sidebar_layout_mode: 'dockable',
   unofficial_sidebar: true,
   unofficial_browser: true,
   unofficial_dom: true,
@@ -304,6 +306,7 @@ export const LiuliSettingsSchema: z<LiuliSettings> = z.object({
   unofficial_desktop: z.boolean().default(true),
   desktop_menu_mode: z.union(['floating', 'persistent']).default('floating'),
   desktop_drag_height: z.number().min(0).max(40).default(24),
+  sidebar_layout_mode: z.union(['dockable', 'official']).default('dockable'),
   unofficial_sidebar: z.boolean().default(true),
   unofficial_browser: z.boolean().default(true),
   unofficial_dom: z.boolean().default(true),

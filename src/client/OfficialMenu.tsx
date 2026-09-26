@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import css from './WindowControls.module.css'
 
 /** Window-level menus stay outside the dock tree; sidebar actions stay in their pane. */
@@ -7,7 +6,6 @@ export function OfficialMenu() {
   const [open, setOpen] = useState(false)
   const trigger = useRef<HTMLButtonElement>(null)
   const [persistent, setPersistent] = useState(document.documentElement.dataset.liuliMenuMode === 'persistent')
-  const [seat, setSeat] = useState<HTMLElement | null>(null)
   useEffect(() => {
     const read = () => { setPersistent(document.documentElement.dataset.liuliMenuMode === 'persistent') }
     const observer = new MutationObserver(read)
@@ -18,35 +16,50 @@ export function OfficialMenu() {
     if (!persistent) return
     const anchor = document.createElement('span')
     anchor.dataset.liuliMenuSeat = ''
+    let menu: HTMLElement | null = null
+    const style = document.createElement('style')
+    style.textContent = ':host-context([class*="_collapsed"]) [role="menubar"] { flex-direction:column; gap:2px; } :host-context([class*="_collapsed"]) button { width:40px; padding:0; }'
     const sync = () => {
-      const row = document.querySelector<HTMLElement>('[class*="_logoRow"]')
-      if (row !== null && row.getBoundingClientRect().width > 20 && anchor.parentElement !== row) row.prepend(anchor)
-      if (row === null || row.getBoundingClientRect().width < 20) { anchor.remove(); setSeat(null) }
-      else setSeat(anchor)
+      menu ??= document.querySelector<HTMLElement>('[data-windows-menu]')
+      if (!menu) return
+      const row = Array.from(document.querySelectorAll<HTMLElement>('[class*="_logoRow"]'))
+        .find(el => el.getBoundingClientRect().width > 20)
+      anchor.toggleAttribute('data-liuli-menu-fallback', !row)
+      if (row && anchor.parentElement !== row) row.prepend(anchor)
+      else if (!row && anchor.parentElement !== document.body) document.body.append(anchor)
+      menu.dataset.liuliInlineMenu = ''
+      if (menu.parentElement !== anchor) anchor.append(menu)
+      if (menu.shadowRoot && !style.isConnected) menu.shadowRoot.append(style)
     }
     sync()
     const timer = window.setInterval(sync, 300)
-    return () => { clearInterval(timer); anchor.remove(); setSeat(null) }
+    return () => {
+      clearInterval(timer)
+      style.remove()
+      if (menu) { delete menu.dataset.liuliInlineMenu; document.body.append(menu) }
+      anchor.remove()
+    }
   }, [persistent])
   useEffect(() => {
     const html = document.documentElement
     const position = () => {
-      const r = trigger.current?.getBoundingClientRect()
-      const left = persistent && r ? Math.min(r.left, window.innerWidth - 174) : 12
-      const top = persistent && r ? Math.min(r.bottom + 6, window.innerHeight - 50) : 16
+      const left = 12
+      const top = 16
       html.style.setProperty('--liuli-menu-left', `${Math.max(8, left)}px`)
       html.style.setProperty('--liuli-menu-top', `${Math.max(8, top)}px`)
     }
     position()
     const timer = window.setInterval(position, 200)
     return () => { clearInterval(timer); html.style.removeProperty('--liuli-menu-left'); html.style.removeProperty('--liuli-menu-top') }
-  }, [persistent, seat])
+  }, [])
   useEffect(() => {
+    if (persistent) return
     const html = document.documentElement
     html.toggleAttribute('data-liuli-menu-open', open)
     return () => { html.removeAttribute('data-liuli-menu-open') }
-  }, [open])
+  }, [open, persistent])
   useEffect(() => {
+    if (persistent) return
     let timer: number | undefined
     let dragging = false
     const nativeMenu = () => document.querySelector('[data-windows-menu]')
@@ -98,14 +111,13 @@ export function OfficialMenu() {
       document.removeEventListener('drop', end)
     }
   }, [persistent])
-  const button = <button ref={trigger} type="button" className={persistent ? css.menuPersistent : css.menuTrigger}
-    data-liuli-menu-fallback={persistent && !seat || undefined}
+  if (persistent) return null
+  const button = <button ref={trigger} type="button" className={css.menuTrigger}
     aria-label="应用与编辑菜单" aria-expanded={open} title="应用与编辑菜单"
     onFocus={() => { if (!persistent) setOpen(true) }} onClick={() => { setOpen(v => persistent ? !v : true) }}>
-    {persistent && <><span>琉璃</span><span aria-hidden="true">⋯</span></>}
   </button>
   return <>
-    {persistent && seat ? createPortal(button, seat) : button}
+    {button}
     <div data-liuli-menu-island="" className={`${css.menuIsland}${open ? '' : ' ' + css.menuClosed}`} aria-hidden="true">
       <span className={css.menuGrip} title="拖动窗口">⠿</span>
     </div>

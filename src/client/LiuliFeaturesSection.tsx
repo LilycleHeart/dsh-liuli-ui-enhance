@@ -10,7 +10,7 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type { LiuliSettings, LiuliTerminalShell } from '../liuli-settings.ts'
-import { LIULI_SETTINGS_DEFAULTS, TERMINAL_SHELL_IDS, wantsLiuliOfficialSidebar } from '../liuli-settings.ts'
+import { LIULI_SETTINGS_DEFAULTS, TERMINAL_SHELL_IDS } from '../liuli-settings.ts'
 import type { createLiuliStore } from './liuli-store.ts'
 import { SelectRow, SliderRow, ToggleRow } from './LiuliAppearance.tsx'
 import { ModelRetryRow } from './ModelRetryRow.tsx'
@@ -59,7 +59,7 @@ function terminalShellLabelKey(id: LiuliTerminalShell):
 
 /** 渲染 琉璃 功能设置 section。 */
 export function LiuliFeaturesSection({
-  useStore, t, save, reset, officialRightbarAvailable, modelRetrySave, modelRetryReload, historyLoad, historySave,
+  useStore, t, save, reset, modelRetrySave, modelRetryReload, historyLoad, historySave,
   thinkingFillApply, thinkingFillReload,
 }: LiuliFeaturesComponentProps) {
   // 高级设置折叠状态（默认收起，展开后才显示参数调节）
@@ -77,8 +77,11 @@ export function LiuliFeaturesSection({
   return (
     <div className={css.section}>
       <div className={css.grid}>
+        <SelectRow label="右侧栏布局（切换后刷新界面）" value={s.sidebar_layout_mode}
+          options={[{ value: 'dockable', label: '琉璃 Dockable · 四向拆分' }, { value: 'official', label: '官方侧边栏 · 原生布局' }]}
+          onChange={v => { set({ sidebar_layout_mode: v as LiuliSettings['sidebar_layout_mode'] }) }} />
         <SelectRow label="左上角应用菜单" value={s.desktop_menu_mode}
-          options={[{ value: 'floating', label: '悬浮 · 悬停唤出' }, { value: 'persistent', label: '常驻 · 侧栏胶囊' }]}
+          options={[{ value: 'floating', label: '悬浮 · 悬停唤出' }, { value: 'persistent', label: '常驻 · 直接显示菜单' }]}
           onChange={v => { set({ desktop_menu_mode: v as LiuliSettings['desktop_menu_mode'] }) }} />
         <SliderRow label="触顶卡片拖窗高度" value={s.desktop_drag_height} suffix="px" min={0} max={40} step={2}
           onChange={v => { set({ desktop_drag_height: v }) }} />
@@ -165,13 +168,6 @@ export function LiuliFeaturesSection({
             onChange={(v) => { set({ unofficial_dom: v }) }}
           />
           {/* 新客户端默认使用官方宿主与琉璃四向 dock；旧版沿用自研详细页。 */}
-          <ToggleRow
-            label={t('unofficial.officialRightbar')}
-            tip={t('unofficial.officialRightbarHint')}
-            checked={officialRightbarAvailable && wantsLiuliOfficialSidebar(s)}
-            disabled={!officialRightbarAvailable}
-            onChange={(v) => { set({ official_sidebar_right: v, official_sidebar_right_user_choice: true }) }}
-          />
           <ToggleRow
             label={t('unofficial.disableInnerRightbarSplit')}
             tip={t('unofficial.disableInnerRightbarSplitHint')}

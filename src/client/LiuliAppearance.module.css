@@ -471,6 +471,7 @@
 
 /* 壁纸预览：按实际窗口比例显示（宽度自适应，高度 ≤220px），所见即所得 */
 .previewStage {
+  min-height: 120px;
   position: relative;
   display: flex;
   align-items: center;
@@ -557,6 +558,7 @@ body:not([data-ds-dark-theme]) .previewEffect::after {
 
 /* 上下文容器：宽度同窗口预览，高度按选区动态增减（上下补出完整壁纸，全部在容器内） */
 .previewContext {
+  min-height: 120px;
   position: relative;
   overflow: hidden;
   align-self: flex-start;
