@@ -1,6 +1,6 @@
 # 官方 DeepSeek Harness Desktop 0.1.7-rc.2 适配
 
-本分支以官方 `@deepseek-ai/dsh-desktop` 0.1.7-rc.2 为目标，保留原 `beta` 分支供社区 DSH Desktop 2.0.13 使用。插件包版本为 `0.1.2-rc.2`，只声明与 dsh 0.1.7-rc.2 兼容。
+本分支以官方 `@deepseek-ai/dsh-desktop` 0.1.7-rc.2 为目标，保留原 `beta` 分支供社区 DSH Desktop 2.0.13 使用。插件包版本为 `0.1.2-rc.3`，只声明与 dsh 0.1.7-rc.2 兼容。
 
 ## 接口迁移
 
