@@ -394,6 +394,33 @@ function renderTabBody(tab: TabRecord, sessionId: string, host: LiuliSidebarHost
     spec.render(sessionId, host, getLatestPanelParams(paramKey), tab))
 }
 
+/** Official resources share Liuli's visible strip while their real body keeps
+ * its upstream lifetime and renderer in the hidden Seat. */
+function OfficialResourceTabs({ sessionId }: { sessionId: string }): ReactElement | null {
+  const [, refresh] = useState(0)
+  useEffect(() => {
+    const source = getOfficialSidebarController()?.openTabs
+    const unsubscribe = source?.subscribe(() => { refresh(v => v + 1) })
+    const timer = window.setInterval(() => { refresh(v => v + 1) }, 400)
+    return () => { unsubscribe?.(); window.clearInterval(timer) }
+  }, [sessionId])
+  const controller = getOfficialSidebarController()
+  const tabs = controller?.tabsIn?.(sessionId) ?? []
+  if (tabs.length === 0) return null
+  const activeId = controller?.active?.() as { id?: string } | undefined
+  return <span className={css.nativeTabs} aria-label="官方文件标签">
+    {tabs.map(tab => <button key={tab.id} type="button"
+      className={`${css.nativeTab}${activeId?.id === tab.id ? ' ' + css.nativeTabActive : ''}`}
+      title={tab.title ?? tab.kind} aria-label={`切换到 ${tab.title ?? tab.kind}`}
+      onClick={() => {
+        controller?.focus?.(tab.id)
+        openLiuliDockPanel(sessionId, 'official')
+      }}>
+      <span className={css.nativeTabLabel}>{tab.title ?? tab.kind}</span>
+    </button>)}
+  </span>
+}
+
 export interface LiuliDockSurfaceProps {
   /** 会话 id（席位按 session 作用域注入）。 */
   sessionId: string
@@ -550,7 +577,9 @@ export function LiuliDockSurface({ sessionId, host }: LiuliDockSurfaceProps): Re
           sessionId,
         }),
         // 面板选择器：dockkit 把它画在右上格 tab 条的最末端。
-        chrome: createElement(LiuliDockPanelPicker, { items: launcherItems }),
+        chrome: createElement('span', { className: css.chromeGroup },
+          createElement(OfficialResourceTabs, { sessionId }),
+          createElement(LiuliDockPanelPicker, { items: launcherItems })),
       }),
       createElement(LiuliDockEmptyLauncher, { items: launcherItems, visible: noDockedTabs }),
     ),

@@ -71,6 +71,8 @@ export interface SidebarRightTabsRegistry {
 
 /** 官方导航控制器最小面（迁移期只用到这几个）。 */
 export interface SidebarRightController {
+  tabsIn?: (sessionId: string) => readonly { id: string; kind: string; title?: string }[]
+  openTabs?: { getSnapshot: () => readonly { sessionId: string; tabId: string; kind: string }[]; subscribe: (listener: () => void) => () => void }
   openResource?: (address: string, options?: Record<string, unknown>) => void
   openTab?: (kind: string, options?: Record<string, unknown>) => void
   close?: (tabId: string) => void

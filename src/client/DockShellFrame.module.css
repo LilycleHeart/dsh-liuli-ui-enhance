@@ -167,6 +167,9 @@
   border-radius: 0;
   overflow: hidden;
 }
+.officialRightbarHost[data-liuli-native-seat-active] :global([data-dockkit-strip]) {
+  display: none !important;
+}
 
 .officialRightbarHost[data-liuli-native-fullscreen] {
   z-index: 90;
@@ -229,10 +232,14 @@
   border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.14));
   border-radius: var(--liuli-radius, 14px) 0 0 var(--liuli-radius, 14px);
   box-shadow: var(--liuli-glow-brand), var(--liuli-shadow);
-  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55));
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
   background-image: var(--liuli-noise);
-  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
-  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  -webkit-backdrop-filter: var(--liuli-material-blur);
+  backdrop-filter: var(--liuli-material-blur);
+}
+:global([data-testid='dock-shell'] .dshDesktopDetailsSurface[data-edge-bottom]) .officialRightbarCard {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 /* 普通 dock 面板：默认四边留白；仅当它是上下堆叠中的下方卡片时底部触底去圆角。 */

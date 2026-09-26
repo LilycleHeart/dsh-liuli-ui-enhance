@@ -185,8 +185,8 @@
   transition: none;
 }
 :global(html[data-liuli-official-chrome][data-liuli-persistent-menu]) .hint { display: none; }
-:global(html[data-liuli-sidebar-mode='dockable'] [data-dockkit-split-button]),
-:global(html[data-liuli-sidebar-mode='dockable'] [data-sidebar-right-toggle]),
+:global(html[data-liuli-sidebar-mode='dockable'] [data-liuli-official-rightbar-host] [data-dockkit-split-button]),
+:global(html[data-liuli-sidebar-mode='dockable'] [data-liuli-official-rightbar-host] [data-sidebar-right-toggle]),
 :global(html[data-liuli-sidebar-mode='dockable'] [data-sidebar-right-expand]) {
   display: none !important;
 }

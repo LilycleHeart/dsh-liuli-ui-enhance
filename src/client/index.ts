@@ -96,8 +96,6 @@ import { initThinkingFill, disposeThinkingFill, loadThinkingFill, applyThinkingF
 import { createElement } from 'react'
 import { FloatBall } from './FloatBall.tsx'
 import { WindowControls, isFramelessWin32, isOfficialWindowBridge } from './WindowControls.tsx'
-import { enhanceOfficialDock } from './official-dock-enhancement.tsx'
-import { HeaderSidebarControls } from './HeaderSidebarControls.tsx'
 import { createRoot } from 'react-dom/client'
 import { formatSelection, type PickedElement } from './element-picker.ts'
 import { rememberComposerElementInfo, startElementCardDecoration } from './element-card.ts'
@@ -621,13 +619,8 @@ export function apply(ctx: ClientContext): void {
   }
   const officialRightbarSeat = officialRightbarSeatEnabled(slotLayout)
   // 琉璃四向 dock 需要自研帧层；用户关闭 Dockable 布局时保留官方原生右栏。
-  const liuliEnhancedRightbar = officialRightbarSeat && unofficial('layout') && unofficial('sidebar') && !isOfficialWindowBridge()
-  if (officialRightbarSeat && unofficial('layout') && unofficial('sidebar') && isOfficialWindowBridge() && bootSettings.sidebar_layout_mode === 'dockable') {
-    ctx.effect(() => enhanceOfficialDock(ctx), 'liuli: unified official tabs with Liuli dock gestures')
-    ctx.slots.inject('conversation.session.header.corner', () => ctx.slots.register({
-      name: 'conversation.session.header.corner', priority: -1,
-    }, HeaderSidebarControls))
-  }
+  const liuliEnhancedRightbar = officialRightbarSeat && unofficial('layout') && unofficial('sidebar')
+    && (!isOfficialWindowBridge() || bootSettings.sidebar_layout_mode === 'dockable')
   /** 启动生效开关的指纹（远端设置不同则重载，包含右栏模式）。 */
   const unofficialFlagsOf = (s: LiuliSettings): string =>
     [s.unofficial_enabled, s.unofficial_layout, s.unofficial_desktop, s.unofficial_sidebar, s.unofficial_browser, s.unofficial_dom, wantsLiuliOfficialSidebar(s), s.sidebar_layout_mode].join(',')
