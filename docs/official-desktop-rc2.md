@@ -82,3 +82,10 @@ node scripts/patch-official-window-controls.mjs --revert
 ## rc.22 官方文件入口
 
 旧的“官方文件与预览”入口每次都调用 `sidebarRight.openTab('guide')`，因此即便之前已打开 PDF，也会新增官方“开始”页。现在统一复用当前真实文件标签；如果当前停在引导页或“文件”页且有既存文档，则优先聚焦最近的文档。只有该会话的官方 Tab 域为空时，才打开引导页。卡片点击、右键菜单和程序导航共用这条规则。
+
+## rc.23 优先复用官方功能
+
+- 官方 Windows 桌面端的浏览器、终端和文件树入口调用 `ctx.sidebarRight.openTab`，使用官方 Browser WebContentsView、WebTerminal 和 Files 页；有路径的代码/文档预览通过官方 `dsh-resource://file/session/...` 地址调用 `openResource`。社区客户端保留原琉璃实现。
+- 已保存在琉璃 dock 中的旧浏览器、终端、文件树标签，在用户重新选中时迁移到官方标签并关闭旧标签，避免继续使用受限制的 iframe 或失联的 WebSocket 输入。空右栏投影官方引导页，点击官方入口时才生成相应卡片；引导页本身不会额外创建琉璃标签。
+- 历史会话中 `D:\Xpin\交付\试稿说明_机器人动态平衡.{pdf,html}` 两个文件已不在磁盘上。官方预览对此提示“文件不存在”是准确的；当前交付目录另有 `v10_制作思路与交付说明.pdf`，此版本不自动把旧文件引用改指到新内容。
+- 文件地址编码与官方 `sessionFileAddress` 对相对路径、Windows 绝对路径和保留字符进行逐项对照，结果一致；已通过完整 TypeScript 构建。浏览器访问和终端输入由用户在官方桌面窗口验收。

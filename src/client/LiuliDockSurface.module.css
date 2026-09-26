@@ -342,3 +342,4 @@
 .nativeTab:hover { border-color: var(--dsw-alias-border-l2); color: var(--dsw-alias-label-primary); }
 .nativeTabActive { border-color: var(--dsw-alias-border-l2); background: var(--dsw-specific-card-major); color: var(--dsw-alias-label-primary); }
 .nativeTabLabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.officialEmpty { position: absolute; inset: 0; z-index: 2; min-height: 0; }

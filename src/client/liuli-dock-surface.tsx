@@ -250,6 +250,10 @@ interface DockLauncherItem {
 
 /** 菜单与空状态共用的打开动作；终端和辅助对话沿用旧版的多实例语义。 */
 function openDockChoice(sessionId: string, kind: LiuliDockTabKind): void {
+  if (window.location.protocol === 'dsh-app:' && (kind === 'terminal' || kind === 'browser' || kind === 'files')) {
+    if (!openOfficialTool(sessionId, kind)) console.warn(`[liuli] 等待官方 ${kind} 服务就绪`)
+    return
+  }
   const spec = specOf(kind)
   if (spec === undefined) return
   const contentId = kind === 'terminal' || kind === 'side-chat'
@@ -377,7 +381,27 @@ function getPanelParamsVersion(): number {
 }
 
 /** 渲染某 tab 的正文（dockkit 按 tab.kind 分发）。 */
+function LegacyOfficialToolRedirect({ sessionId, tab, url }: { sessionId: string; tab: TabRecord; url?: string | undefined }) {
+  useEffect(() => {
+    let moved = false
+    const attempt = () => {
+      if (moved || (tab.kind !== 'terminal' && tab.kind !== 'browser' && tab.kind !== 'files')) return
+      if (!openOfficialTool(sessionId, tab.kind, url)) return
+      moved = true
+      controllerFor(sessionId).closeTab(tab.id)
+    }
+    attempt()
+    const timer = window.setInterval(attempt, 500)
+    return () => { window.clearInterval(timer) }
+  }, [sessionId, tab.id, tab.kind, url])
+  return <div style={{ padding: 12, fontSize: 13 }}>正在打开官方{tab.kind === 'browser' ? '浏览器' : tab.kind === 'terminal' ? '终端' : '文件树'}…</div>
+}
+
 function renderTabBody(tab: TabRecord, sessionId: string, host: LiuliSidebarHostAccess): ReactNode {
+  if (window.location.protocol === 'dsh-app:' && (tab.kind === 'browser' || tab.kind === 'terminal' || tab.kind === 'files')) {
+    const params = getLatestPanelParams(browserParamKey(sessionId, tab.contentId))
+    return createElement(LegacyOfficialToolRedirect, { sessionId, tab, url: params?.url })
+  }
   const spec = specOf(tab.kind)
   if (spec === undefined) {
     return createElement('div', { style: { padding: '12px', fontSize: '13px', opacity: 0.7 } },
@@ -392,6 +416,64 @@ function renderTabBody(tab: TabRecord, sessionId: string, host: LiuliSidebarHost
   const paramKey = tab.kind === 'browser' ? browserParamKey(sessionId, tab.contentId) : tab.kind
   return createElement(PanelBoundary, { label: spec.title },
     spec.render(sessionId, host, getLatestPanelParams(paramKey), tab))
+}
+
+/** Official Desktop owns the native Browser and PTY-backed Terminal. The
+ * legacy iframe/WebSocket panels remain for community and web hosts. */
+function openOfficialTool(sessionId: string, kind: 'terminal' | 'browser' | 'files', url?: string): boolean {
+  if (window.location.protocol !== 'dsh-app:') return false
+  const native = getOfficialSidebarController()
+  if (!native?.openTab) return false
+  try {
+    native.openTab(kind, kind === 'browser' && url && url !== 'about:blank'
+      ? { params: { url } } : undefined)
+    openLiuliDockPanel(sessionId, 'official', undefined, { skipOfficialPrepare: true })
+    return true
+  } catch (error) {
+    console.warn(`[liuli] 官方 ${kind} 暂不可用:`, error)
+    return false
+  }
+}
+
+function openOfficialFile(sessionId: string, path: string): boolean {
+  if (window.location.protocol !== 'dsh-app:' || path === '') return false
+  const native = getOfficialSidebarController()
+  if (!native?.openResource) return false
+  const encode = (segment: string) => encodeURIComponent(segment).replace(/%3A/gi, ':')
+  const normalized = path.replace(/\\/g, '/').replace(/^(?:\.\/)+/, '')
+  const address = `dsh-resource://file/session/${encode(sessionId)}/${normalized.split('/').map(encode).join('/')}`
+  try {
+    native.openResource(address)
+    openLiuliDockPanel(sessionId, 'official', undefined, { skipOfficialPrepare: true })
+    return true
+  } catch (error) {
+    console.warn('[liuli] 官方文件预览暂不可用:', error)
+    return false
+  }
+}
+
+/** The first view in an empty Liuli dock uses the official Sidebar guide. */
+function OfficialEmptyGuide({ sessionId }: { sessionId: string }): ReactElement {
+  useEffect(() => {
+    let ready = false
+    const activate = () => {
+      if (ready) return
+      const native = getOfficialSidebarController()
+      if (!native?.openTab) return
+      try {
+        const guide = native.tabsIn?.(sessionId).find(tab => tab.kind === 'guide')
+        if (guide) native.focus?.(guide.id)
+        else native.openTab('guide')
+        ready = true
+      } catch { /* Seat is still binding this Session */ }
+    }
+    activate()
+    const timer = window.setInterval(activate, 400)
+    return () => { window.clearInterval(timer) }
+  }, [sessionId])
+  return <div className={css.officialEmpty}>
+    <OfficialSidebarSeatPane onCollapse={collapseOfficialSeat} />
+  </div>
 }
 
 /** Keep the selected official resource when Liuli opens its preview card. */
@@ -433,7 +515,7 @@ function OfficialResourceTabs({ sessionId }: { sessionId: string }): ReactElemen
       title={tab.title ?? tab.kind} aria-label={`切换到 ${tab.title ?? tab.kind}`}
       onClick={() => {
         controller?.focus?.(tab.id)
-        openLiuliDockPanel(sessionId, 'official')
+        openLiuliDockPanel(sessionId, 'official', undefined, { skipOfficialPrepare: true })
       }}>
       <span className={css.nativeTabLabel}>{tab.title ?? tab.kind}</span>
     </button>)}
@@ -603,7 +685,9 @@ export function LiuliDockSurface({ sessionId, host }: LiuliDockSurfaceProps): Re
           officialCardActive ? createElement(OfficialResourceTabs, { sessionId }) : null,
           createElement(LiuliDockPanelPicker, { items: launcherItems })),
       }),
-      createElement(LiuliDockEmptyLauncher, { items: launcherItems, visible: noDockedTabs }),
+      noDockedTabs && window.location.protocol === 'dsh-app:'
+        ? createElement(OfficialEmptyGuide, { sessionId })
+        : createElement(LiuliDockEmptyLauncher, { items: launcherItems, visible: noDockedTabs }),
     ),
     createElement(FloatLayer, {
       state: snapshot.state,
@@ -1281,6 +1365,10 @@ export function startOfficialTabBridge(sessionId: string): () => void {
         && requestedFocus.tabId === active.id
       if (requestedFocus !== undefined && (confirmedFocus || requestedFocus.until <= now)) requestedFocus = undefined
       if (kind === undefined) {
+        // The empty right dock already projects the official Guide. Merely
+        // opening that start page must not create a second Liuli tab/card.
+        if (active.kind === 'guide' && Object.values(controllerFor(sessionId).getSnapshot().state.nodes)
+          .every(node => node.kind !== 'pane' || node.host !== 'dock' || node.tabs.length === 0)) return
         // 官方 `text` 正文拥有 Markdown/code/PDF/image/HTML 渲染器、重新载入、
         // 换行和行号导航；转成琉璃 CodeViewer 会丢掉这些功能。因此保留
         // 上游 Tab 域，只把它的整个可见 Seat 放进琉璃的一枚 dock 标签。
@@ -1292,7 +1380,7 @@ export function startOfficialTabBridge(sessionId: string): () => void {
         if (firstObservation && !explicitNative && !confirmedFocus
           && Object.keys(controllerFor(sessionId).getSnapshot().state.tabs).length > 0) return
         explicitNativeUntil = 0
-        openLiuliDockPanel(sessionId, 'official')
+        openLiuliDockPanel(sessionId, 'official', undefined, { skipOfficialPrepare: true })
         return
       }
       // An explicit upstream resource navigation may commit on a later store
@@ -1360,9 +1448,20 @@ export function openLiuliDockPanel(
   sessionId: string,
   kind: LiuliDockTabKind,
   params?: LiuliPanelParams,
-  options: { newInstance?: boolean } = {},
+  options: { newInstance?: boolean; skipOfficialPrepare?: boolean } = {},
 ): void {
-  if (kind === 'official') prepareOfficialResource(sessionId)
+  if (window.location.protocol === 'dsh-app:' && (kind === 'terminal' || kind === 'browser' || kind === 'files')) {
+    if (!openOfficialTool(sessionId, kind, params?.url)) console.warn(`[liuli] 等待官方 ${kind} 服务就绪`)
+    return
+  }
+  if (window.location.protocol === 'dsh-app:' && kind === 'code') {
+    const path = params?.rel || params?.absolutePath
+    if (path) {
+      if (!openOfficialFile(sessionId, path)) console.warn('[liuli] 等待官方文件预览服务就绪')
+      return
+    }
+  }
+  if (kind === 'official' && options.skipOfficialPrepare !== true) prepareOfficialResource(sessionId)
   const controller = controllerFor(sessionId)
   const spec = specOf(kind)
   if (spec === undefined) return
