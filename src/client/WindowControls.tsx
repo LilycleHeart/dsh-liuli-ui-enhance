@@ -20,6 +20,7 @@ import { isResizeInProgress } from './resize-perf.ts'
 
 /** Whether the current page is the win32 frameless desktop shell. */
 export function isFramelessWin32(): boolean {
+  if (isOfficialWindowBridge()) return true
   const params = new URLSearchParams(window.location.search)
   return params.get('dsh-desktop-mode') === 'advanced'
     && params.get('dsh-desktop-platform') === 'win32'
@@ -38,7 +39,14 @@ interface WindowControlsState {
  * 调用这条主进程通道（补丁脚本 patch-desktop-frameless.mjs 注入）。
  */
 interface LiuliWindowBridge {
+  official?: boolean
+  platform?: string
   invoke(action: 'minimize' | 'toggleMaximize' | 'close' | 'isMaximized'): Promise<{ ok?: boolean; maximized?: boolean } | undefined>
+}
+
+export function isOfficialWindowBridge(): boolean {
+  return window.location.protocol === 'dsh-app:' && window.location.hostname === 'app'
+    && windowBridge()?.official === true && windowBridge()?.platform === 'win32'
 }
 
 function windowBridge(): LiuliWindowBridge | undefined {
@@ -150,7 +158,8 @@ function CloseIcon() {
 export function WindowControls() {
   const [state, setState] = useState<WindowControlsState>({ available: false, maximized: false })
   /** 避让隐藏态：遮挡交互元素时淡出；悬停右上角检测区唤出。 */
-  const [hidden, setHidden] = useState(false)
+  const official = isOfficialWindowBridge()
+  const [hidden, setHidden] = useState(official)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const hiddenRef = useRef(false)
   hiddenRef.current = hidden
@@ -211,6 +220,11 @@ export function WindowControls() {
       if (el === null) return
       // 指针在保持区内：悬停唤出优先，暂不评估（离开保持区后由 onMove 触发重评估）
       if (inHoldZone()) return
+      if (official) {
+        last = true
+        setHidden(true)
+        return
+      }
       const r = el.getBoundingClientRect()
       if (r.width === 0 || r.height === 0) return
       // 胶囊矩形内采样 2×2 点，命中交互元素即判定遮挡
@@ -282,7 +296,7 @@ export function WindowControls() {
       window.removeEventListener('resize', schedule)
       window.removeEventListener('pointermove', onMove)
     }
-  }, [enabled])
+  }, [enabled, official])
 
   if (!enabled || !state.available) return null
 

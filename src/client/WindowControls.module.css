@@ -27,6 +27,28 @@
   transition: opacity 140ms var(--ds-ease-in-out);
 }
 
+/* Official Desktop's menu and sidebar toggle keep their native actions. Give
+   them a compact top row inside the sidebar, above the brand and New Session. */
+:global(html[data-liuli-official-chrome] [data-region-pane='region:sidebar']) {
+  box-sizing: border-box;
+  padding-top: 36px;
+}
+:global(html[data-liuli-official-chrome] [data-windows-menu]) {
+  top: 6px !important;
+  height: 28px !important;
+  border-radius: 8px;
+  background: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
+  -webkit-backdrop-filter: var(--liuli-material-blur);
+  backdrop-filter: var(--liuli-material-blur);
+}
+:global(html[data-liuli-official-chrome] [data-sidebar-collapsed='true'] [data-region-pane='region:conversation-header'] header) {
+  padding-inline-start: 184px !important;
+}
+:global(html[data-liuli-official-chrome]) .controls,
+:global(html[data-liuli-official-chrome]) .hint {
+  z-index: 2147483501;
+}
+
 /* 避让隐藏态：不拦截下方按钮点击（opacity 0 + pointer-events none） */
 .hidden {
   opacity: 0;

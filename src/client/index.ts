@@ -95,7 +95,7 @@ import { initModelRetry, disposeModelRetry, loadModelRetry, saveModelRetry, cach
 import { initThinkingFill, disposeThinkingFill, loadThinkingFill, applyThinkingFill, autoApplyThinkingFill } from './thinking-fill-controller.ts'
 import { createElement } from 'react'
 import { FloatBall } from './FloatBall.tsx'
-import { WindowControls, isFramelessWin32 } from './WindowControls.tsx'
+import { WindowControls, isFramelessWin32, isOfficialWindowBridge } from './WindowControls.tsx'
 import { createRoot } from 'react-dom/client'
 import { formatSelection, type PickedElement } from './element-picker.ts'
 import { rememberComposerElementInfo, startElementCardDecoration } from './element-card.ts'
@@ -1117,6 +1117,8 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => {
     if (!unofficial('desktop')) return () => {}
     if (!isFramelessWin32()) return () => {}
+    const official = isOfficialWindowBridge()
+    if (official) document.documentElement.setAttribute('data-liuli-official-chrome', '')
     const hostEl = document.createElement('div')
     hostEl.id = 'liuli-window-controls-host'
     document.body.appendChild(hostEl)
@@ -1125,6 +1127,7 @@ export function apply(ctx: ClientContext): void {
     return () => {
       root.unmount()
       hostEl.remove()
+      if (official) document.documentElement.removeAttribute('data-liuli-official-chrome')
     }
   }, 'dsh-liuli-ui-enhance: window controls fixed top-right')
 

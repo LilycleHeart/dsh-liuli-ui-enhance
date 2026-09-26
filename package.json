@@ -1,7 +1,7 @@
 {
   "name": "dsh-liuli-ui-enhance",
   "description": "琉璃主题 —— DSH 界面增强插件：M3 动态取色、壁纸磨砂材质、声纹可视化、日/夜切换",
-  "version": "0.1.2-rc.4",
+  "version": "0.1.2-rc.5",
   "keywords": [
     "dsh-plugin",
     "deepseek-harness",
@@ -65,6 +65,7 @@
     "install:desktop": "node scripts/install-desktop.mjs",
     "install:desktop:npm": "node scripts/install-desktop.mjs --from-npm",
     "patch:desktop": "node scripts/patch-desktop-frameless.mjs",
+    "patch:official": "node scripts/patch-official-window-controls.mjs",
     "release": "node scripts/publish.mjs"
   },
   "license": "MIT",
@@ -153,6 +154,7 @@
     "lib/types/**/*.d.ts",
     "scripts/install-desktop.mjs",
     "scripts/patch-desktop-frameless.mjs",
+    "scripts/patch-official-window-controls.mjs",
     "cordis.patch.yml"
   ]
 }
