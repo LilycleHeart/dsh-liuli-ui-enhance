@@ -454,6 +454,12 @@ export function LiuliDockSurface({ sessionId, host }: LiuliDockSurfaceProps): Re
   const existingKinds = new Set(Object.values(snapshot.state.tabs).map(tab => tab.kind))
   const noDockedTabs = Object.values(snapshot.state.nodes).every(node =>
     node.kind !== 'pane' || node.host !== 'dock' || node.tabs.length === 0)
+  // Restored native resources can exist while Liuli's visible dock is empty or
+  // showing another panel. Their switcher belongs only to the official card.
+  const officialCardActive = Object.values(snapshot.state.nodes).some(node =>
+    node.kind === 'pane' && node.host === 'dock'
+    && node.activeTabId !== undefined
+    && snapshot.state.tabs[node.activeTabId]?.kind === 'official')
   // 与旧 PreviewDetailsPanel 同一组菜单项；空状态直接复用这些动作。
   const launcherItems: DockLauncherItem[] = [
     {
@@ -578,7 +584,7 @@ export function LiuliDockSurface({ sessionId, host }: LiuliDockSurfaceProps): Re
         }),
         // 面板选择器：dockkit 把它画在右上格 tab 条的最末端。
         chrome: createElement('span', { className: css.chromeGroup },
-          createElement(OfficialResourceTabs, { sessionId }),
+          officialCardActive ? createElement(OfficialResourceTabs, { sessionId }) : null,
           createElement(LiuliDockPanelPicker, { items: launcherItems })),
       }),
       createElement(LiuliDockEmptyLauncher, { items: launcherItems, visible: noDockedTabs }),
