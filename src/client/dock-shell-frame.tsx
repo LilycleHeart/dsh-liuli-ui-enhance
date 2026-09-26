@@ -368,8 +368,17 @@ function surfaceClass(type: string): string {
 /** 官方面板信息探针：必须是**独立组件** —— 父级按存在性条件渲染组件（合法），
  *  而条件调用 hook 会破坏 hooks 顺序、让整个帧层渲染崩溃并被框架 abdicate
  *  回退到官方 AdvancedFrame（现象：`[data-region-pane]` 全部消失）。 */
-function PanelInfoProbe({ usePanelInfo }: { usePanelInfo: NonNullable<DockShellFrameProps['usePanelInfo']> }): null {
+function PanelInfoProbe({
+  usePanelInfo,
+  onActivePanelChange,
+}: {
+  usePanelInfo: NonNullable<DockShellFrameProps['usePanelInfo']>
+  onActivePanelChange: (panelId: string | null) => void
+}): null {
   const info = usePanelInfo((value: { activePanelId: string | null }) => value)
+  useLayoutEffect(() => {
+    onActivePanelChange((info as { activePanelId?: string | null } | undefined)?.activePanelId ?? null)
+  }, [info, onActivePanelChange])
   useEffect(() => {
     try {
       ;(window as unknown as { __liuliPanelInfo__?: unknown }).__liuliPanelInfo__ = {
@@ -509,6 +518,35 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
     }, 120)
     return () => { window.clearInterval(timer) }
   }, [officialRightbar])
+
+  // Global pages (Plugins and Tasks) have no conversation header/sidebar
+  // button. Keep their reading area clear, then restore the previous right
+  // column only when the same Session returns to the conversation.
+  const globalPageReturn = useRef<{ expanded: boolean; sessionId: string | undefined } | null>(null)
+  const onActivePanelChange = useCallback((panelId: string | null): void => {
+    if (panelId !== null && globalPageReturn.current === null) {
+      const forced = (window as unknown as { __liuliForceExpanded__?: boolean }).__liuliForceExpanded__
+      globalPageReturn.current = {
+        expanded: officialRightbar === true && slotLayout === 'v209'
+          ? forced ?? officialRightbarExpanded
+          : hostPanels.details > 0,
+        sessionId: detailsSession,
+      }
+      if (officialRightbar === true && slotLayout === 'v209') setLiuliDockExpanded(false)
+      hostLayout.closeDetails()
+      return
+    }
+    if (panelId !== null || globalPageReturn.current === null) return
+    const previous = globalPageReturn.current
+    globalPageReturn.current = null
+    if (!previous.expanded || previous.sessionId !== detailsSession) return
+    if (officialRightbar === true && slotLayout === 'v209') {
+      setLiuliDockExpanded(true)
+      window.dispatchEvent(new Event('liuli:ensure-details'))
+    } else {
+      hostLayout.openDetails()
+    }
+  }, [detailsSession, hostLayout, hostPanels.details, officialRightbar, officialRightbarExpanded, slotLayout])
 
   /** 官方右栏展开/收起会让整列宽度变化（连同会话区一起被推挤），与拖手柄同属
    *  「布局正在变」的场景 —— 复用 resize-perf 的磨砂归一机制：变化期间把模糊
@@ -1045,20 +1083,22 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
   useEffect(() => () => { saveShellDock(shellRef.current.dock, lastDockSession.current ?? sessionId) }, [])
 
   /* ── 会话切换关闭详情（官方 AppFrame 语义，经宿主 layout 服务） ──
-     · 新会话若有「展开」存档（liuli:side-pane-session:<id>.open），保持展开，
-       由 PreviewDetailsPanel 恢复；否则按官方语义收起。 ── */
-  const lastSession = useRef(detailsSession)
+     以被选中的 sessionId 判定切换，不能只看 detailsSession：刚创建的空白
+     会话会被 detailsSession 过滤掉，旧右栏因此一直占着空间。 */
+  const lastSession = useRef(sessionId)
   useLayoutEffect(() => {
-    if (detailsSession === undefined) return
-    if (lastSession.current !== undefined && lastSession.current !== detailsSession) {
+    if (sessionId === undefined) return
+    if (lastSession.current !== sessionId) {
       let wantOpen = false
-      try {
-        const raw = localStorage.getItem('liuli:side-pane-session:' + detailsSession)
-        if (raw !== null && raw !== '') {
-          const s = JSON.parse(raw) as { open?: boolean }
-          wantOpen = s.open === true
-        }
-      } catch { /* 忽略 */ }
+      if (detailsSession !== undefined) {
+        try {
+          const raw = localStorage.getItem('liuli:side-pane-session:' + sessionId)
+          if (raw !== null && raw !== '') {
+            const s = JSON.parse(raw) as { open?: boolean }
+            wantOpen = s.open === true
+          }
+        } catch { /* 忽略 */ }
+      }
       if (officialRightbar === true && slotLayout === 'v209') {
         // 迁移模式的可见列宽不读宿主 details 状态；同步琉璃控制器与帧层标记。
         setLiuliDockExpanded(wantOpen)
@@ -1068,8 +1108,8 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
         hostLayout.closeDetails()
       }
     }
-    lastSession.current = detailsSession
-  }, [hostLayout, detailsSession, officialRightbar, slotLayout])
+    lastSession.current = sessionId
+  }, [hostLayout, sessionId, detailsSession, officialRightbar, slotLayout])
 
   /* ── 详情区域与宿主状态同步：面板常驻树中（官方 DetailsColumn 语义：宽度
         0 保持挂载），开合只切换 shard 宽度（0 ↔ 详情宽），由 CSS 过渡驱动动画，
@@ -2196,7 +2236,9 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
           面板悬浮由 grip ⧉ 按钮承担）。
           macOS 保留 caption 行（红绿灯留白 + 窗口拖拽区）。 */}
       {platform === 'darwin' && <div className="dshDesktopMacCaptionRow" aria-hidden="true" />}
-      {typeof usePanelInfo === 'function' ? <PanelInfoProbe usePanelInfo={usePanelInfo} /> : null}
+      {typeof usePanelInfo === 'function'
+        ? <PanelInfoProbe usePanelInfo={usePanelInfo} onActivePanelChange={onActivePanelChange} />
+        : null}
       {officialRightbar === true && slotLayout === 'v209' && (
         <div className={css.officialRightbarHost} data-liuli-official-rightbar-host="">
           {renderSlotLoose('rightbar', {

@@ -591,7 +591,7 @@ function json(res: Parameters<WebRoute['handler']>[1], status: number, body: unk
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
   res.end(JSON.stringify(body))
 }
-/** 读取小型 JSON 请求体（本地设置持久化用，上限 6MB 以容纳壁纸 dataURL）。 */
+/** 读取 JSON 请求体；普通本地请求仍限制在 6 MiB。 */
 async function readJsonBody(req: IncomingMessage, limit = 6 * 1024 * 1024): Promise<unknown> {
   const chunks: Buffer[] = []
   let size = 0
@@ -675,7 +675,11 @@ function liuliSettingsRoute(): WebRoute {
           json(res, 405, { ok: false, error: 'method not allowed' })
           return
         }
-        const body = await readJsonBody(req) as { settings?: unknown; wallpaper?: unknown; sessionMarkers?: unknown } | null
+        // Animated wallpapers may retain their original 32 MiB GIF/APNG/WebP
+        // bytes. Base64 expands that to ~43 MiB inside this JSON payload.
+        // Raise only this same-origin settings route; quota/credential routes
+        // keep readJsonBody's smaller default limit.
+        const body = await readJsonBody(req, 48 * 1024 * 1024) as { settings?: unknown; wallpaper?: unknown; sessionMarkers?: unknown } | null
         if (typeof body !== 'object' || body === null) {
           json(res, 400, { ok: false, error: 'invalid JSON body' })
           return
@@ -693,7 +697,8 @@ function liuliSettingsRoute(): WebRoute {
         }), 'utf8')
         json(res, 200, { ok: true })
       } catch (error) {
-        json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        json(res, error instanceof Error && error.message === 'body too large' ? 413 : 500,
+          { ok: false, error: error instanceof Error ? error.message : String(error) })
       }
     },
   }

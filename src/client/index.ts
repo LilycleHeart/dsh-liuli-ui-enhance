@@ -71,6 +71,9 @@ import {
 } from '../liuli-settings.ts'
 import { en, zh, type LiuliAppearanceKey, featuresZh, featuresEn, type LiuliFeaturesKey } from './locales.ts'
 import { liuliCss } from './liuli-css.ts'
+import { pluginManagerLayoutCss } from './plugin-manager-layout.ts'
+import { officialMaterialGapsCss } from './official-material-gaps.ts'
+import { startPluginManagerIcons } from './plugin-manager-icons.ts'
 import {
   LiuliHeaderVoiceprint, LiuliHeaderChrome, LiuliHeaderResizer,
   LiuliHeaderFullscreen,
@@ -400,7 +403,7 @@ function injectThemeCss(): void {
   const style = document.createElement('style')
   style.id = STYLE_ID
   style.setAttribute('data-liuli-theme', '')
-  style.textContent = liuliCss + '\n' + WIDE_MODE_CSS + '\n' + SETTINGS_DEFER_CSS + '\n' + DESKTOP_ADVANCED_CSS + '\n' + WEB_DOCK_SHELL_CSS
+  style.textContent = liuliCss + '\n' + WIDE_MODE_CSS + '\n' + SETTINGS_DEFER_CSS + '\n' + DESKTOP_ADVANCED_CSS + '\n' + WEB_DOCK_SHELL_CSS + '\n' + pluginManagerLayoutCss + '\n' + officialMaterialGapsCss
   document.head.appendChild(style)
 }
 
@@ -587,6 +590,7 @@ function unequipRootEntryChildren(ctx: ClientContext): void {
  */
 export function apply(ctx: ClientContext): void {
   injectThemeCss()
+  ctx.effect(() => startPluginManagerIcons(), 'dsh-liuli-ui-enhance: plugin manager icons')
 
   // 客户端槽位布局版本：2.0.9 起 advanced 的 root 子槽位改名/改 kind
   // （conversation→main(keyed)、details→rightbar），root 声明表与 details
@@ -1576,7 +1580,8 @@ export function apply(ctx: ClientContext): void {
   // 因此跨重启持久化必须再同步一份到 Host 端 /liuli-settings；纯 Web 无此路由时忽略。
   let localDirty = false
   let remoteStateChain: Promise<void> = Promise.resolve()
-  const pushRemoteState = (): void => {
+  let remoteLoadPromise: Promise<void> = Promise.resolve()
+  const pushRemoteState = (): Promise<void> => {
     remoteStateChain = remoteStateChain
       .catch(() => {})
       .then(async () => {
@@ -1586,17 +1591,31 @@ export function apply(ctx: ClientContext): void {
             method: 'PUT',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify(payload),
-            signal: AbortSignal.timeout(5000),
+            // A preserved 32 MiB WebP/GIF/APNG becomes ~43 MiB of base64.
+            signal: AbortSignal.timeout(30_000),
           })
-          if (!res.ok) throw new Error('HTTP ' + res.status)
-        } catch (_) { /* Host 路由不可用时保留 localStorage 行为 */ }
+          if (!res.ok) {
+            const detail = await res.json().then((value: { error?: string }) => value.error).catch(() => undefined)
+            throw new Error(`HTTP ${res.status}${detail ? `：${detail}` : ''}`)
+          }
+        } catch (error) {
+          // The Web UI may have no Liuli Host route and retains local storage.
+          // Official Desktop depends on this route across launches: surface a
+          // failed write instead of reporting an upload that will later revert.
+          if (window.location.protocol === 'dsh-app:') {
+            throw new Error(`保存到官方桌面端失败：${error instanceof Error ? error.message : String(error)}`)
+          }
+        }
       })
+    return remoteStateChain
   }
-  const writeLiuliSettings = (value: LiuliSettings): void => {
+  const writeLiuliSettings = (value: LiuliSettings): Promise<void> => {
     localDirty = true
     try { localStorage.setItem(LIULI_LS_KEY, JSON.stringify(value)) } catch (_) {}
     window.dispatchEvent(new Event('liuli:sidebar-controls-changed'))
-    pushRemoteState()
+    const saving = pushRemoteState()
+    void saving.catch(error => { console.warn('[liuli] 设置持久化失败:', error) })
+    return saving
   }
   const syncLiuli = (value: LiuliSettings): void => {
     liuliRev += 1
@@ -1607,9 +1626,11 @@ export function apply(ctx: ClientContext): void {
   const loadRemoteState = async (): Promise<void> => {
     if (localDirty) return
     try {
-      const res = await fetch('/liuli-settings', { signal: AbortSignal.timeout(5000) })
+      const res = await fetch('/liuli-settings', { signal: AbortSignal.timeout(30_000) })
       if (!res.ok) return
       const data = await res.json() as { value?: { settings?: unknown; wallpaper?: string | null } | null } | null
+      // An upload may have started while the older Host response was in flight.
+      if (localDirty) return
       const saved = data?.value
       if (saved === null || saved === undefined || (saved.settings === undefined && saved.wallpaper === undefined)) return
       const remote = liuliSettingsOf(saved.settings)
@@ -1641,14 +1662,17 @@ export function apply(ctx: ClientContext): void {
     } catch (_) { /* Host 路由不可用时保留 localStorage 行为 */ }
   }
 
-  const commitLiuli = (next: LiuliSettings): void => {
+  const commitLiuli = (next: LiuliSettings): Promise<void> => {
     const modeChanged = next.sidebar_layout_mode !== readLiuliSettings().sidebar_layout_mode
-    writeLiuliSettings(next)
+    const saved = writeLiuliSettings(next)
     syncLiuli(next)
     void applyLiuliSettings(next)
     // 声纹响应参数热载（HeaderEffects 监听后重读）
     window.dispatchEvent(new CustomEvent('liuli:vp-params'))
-    if (modeChanged) void remoteStateChain.finally(() => { window.location.reload() })
+    if (modeChanged) void saved.then(() => { window.location.reload() }).catch(error => {
+      console.warn('[liuli] 侧栏布局未持久化，暂不刷新:', error)
+    })
+    return saved
   }
   const liuliInjected = (actions: BoundActions<typeof liuliStore>): LiuliAppearanceInjected => {
     liuliBound = actions
@@ -1657,7 +1681,7 @@ export function apply(ctx: ClientContext): void {
     return {
       save: (patch) => {
         const next = { ...readLiuliSettings(), ...patch }
-        commitLiuli(next)
+        void commitLiuli(next)
       },
       reset: () => {
         clearWallpaper()
@@ -1667,43 +1691,55 @@ export function apply(ctx: ClientContext): void {
         void applyLiuliSettings(LIULI_SETTINGS_DEFAULTS)
       },
       uploadWallpaper: async (file) => {
-        const dataUrl = await compressImage(file)
-        await saveWallpaper(dataUrl)
-        // 琉璃 原版行为：上传后自动切换到壁纸背景模式（动态取色随之生效）
-        const current = readLiuliSettings()
-        let next: LiuliSettings = current.background_mode === 'image' ? current : { ...current, background_mode: 'image' as const }
-        // 首次上传且还没有自定义选区时，按窗口比例生成一个默认居中选区。
-        if (current.bg_area === null) {
-          try {
-            const img = await loadImage(dataUrl)
-            const imgRatio = img.naturalWidth / img.naturalHeight
-            const winRatio = window.innerWidth / window.innerHeight
-            const maxW = imgRatio > winRatio ? winRatio / imgRatio : 1
-            const maxH = imgRatio > winRatio ? 1 : imgRatio / winRatio
-            const scale = 0.9
-            const w = maxW * scale
-            const h = maxH * scale
-            const bg_area: LiuliBgArea = {
-              x: (1 - w) / 2,
-              y: (1 - h) / 2,
-              w,
-              h,
-            }
-            next = { ...next, bg_area }
-          } catch (_) { /* 取不到图片尺寸时跳过默认选区 */ }
+        // Stop an older Host GET from overwriting this upload. If it has
+        // already started applying, wait for that restore before writing ours.
+        const wasLocalDirty = localDirty
+        localDirty = true
+        let storedLocally = false
+        try {
+          const dataUrl = await compressImage(file)
+          await remoteLoadPromise
+          await saveWallpaper(dataUrl)
+          storedLocally = true
+          // 琉璃 原版行为：上传后自动切换到壁纸背景模式（动态取色随之生效）
+          const current = readLiuliSettings()
+          let next: LiuliSettings = current.background_mode === 'image' ? current : { ...current, background_mode: 'image' as const }
+          // 首次上传且还没有自定义选区时，按窗口比例生成一个默认居中选区。
+          if (current.bg_area === null) {
+            try {
+              const img = await loadImage(dataUrl)
+              const imgRatio = img.naturalWidth / img.naturalHeight
+              const winRatio = window.innerWidth / window.innerHeight
+              const maxW = imgRatio > winRatio ? winRatio / imgRatio : 1
+              const maxH = imgRatio > winRatio ? 1 : imgRatio / winRatio
+              const scale = 0.9
+              const w = maxW * scale
+              const h = maxH * scale
+              const bg_area: LiuliBgArea = {
+                x: (1 - w) / 2,
+                y: (1 - h) / 2,
+                w,
+                h,
+              }
+              next = { ...next, bg_area }
+            } catch (_) { /* 取不到图片尺寸时跳过默认选区 */ }
+          }
+          liuliBound?.syncWallpaper(dataUrl)
+          await commitLiuli(next)
+        } catch (error) {
+          if (!storedLocally) localDirty = wasLocalDirty
+          throw error
         }
-        liuliBound?.syncWallpaper(dataUrl)
-        commitLiuli(next)
       },
       removeWallpaper: () => {
         clearWallpaper()
         liuliBound?.syncWallpaper(null)
-        pushRemoteState()
+        void pushRemoteState().catch(error => { console.warn('[liuli] 壁纸移除未持久化:', error) })
         // 移除后若处于壁纸模式，回到跟随主题
         const current = readLiuliSettings()
         if (current.background_mode === 'image') {
           const next = { ...current, background_mode: 'theme' as const }
-          commitLiuli(next)
+          void commitLiuli(next)
         } else {
           void applyLiuliSettings(current)
         }
@@ -1715,7 +1751,7 @@ export function apply(ctx: ClientContext): void {
   void applyLiuliSettings(liuliBoot)
   void restoreWallpaper().then(() => applyLiuliSettings(readLiuliSettings())).catch(error => { console.warn('[liuli] 壁纸恢复失败', error) })
   // Desktop 端口每次重启会变：从 Host 端恢复上次保存的设置/壁纸。
-  void loadRemoteState()
+  remoteLoadPromise = loadRemoteState()
   // 跟踪最近一次琉璃设置应用，供 startViewTransition 等待调色板落地后再拍新快照。
   let lastApplyPromise: Promise<void> = Promise.resolve()
   ctx.on('theme/change', () => { lastApplyPromise = applyLiuliSettings(readLiuliSettings()).catch(() => {}) })

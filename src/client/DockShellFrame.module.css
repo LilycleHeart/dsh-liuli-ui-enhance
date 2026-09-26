@@ -185,6 +185,13 @@
   background: transparent !important;
 }
 
+/* Native file tree and text preview inherit Liuli's projected card material.
+   Keep PDF pages, terminal canvas and browser WebContentsView opaque. */
+.officialRightbarHost[data-liuli-native-seat-active] :global([data-sidebar-right-panel]:has([data-files-body], [data-textpreview-state]) [class*='_tabHost']),
+.officialRightbarHost[data-liuli-native-seat-active] :global([data-sidebar-right-panel]:has([data-files-body], [data-textpreview-state]) [data-dockkit-pane]) {
+  background: transparent !important;
+}
+
 .officialRightbarHost[data-liuli-native-seat-active] :global([data-sidebar-right-guide-entry]) {
   --liuli-guide-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z'/%3E%3C/svg%3E");
   border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, .2)) !important;
@@ -274,6 +281,14 @@
 }
 :global([data-testid='dock-shell']:has([data-liuli-global-panel]) [data-shard-region='region:conversation']) {
   flex-grow: 1 !important;
+}
+
+/* Global pages have no conversation header toggle. Vacate the right dock
+   immediately while the layout controller syncs its collapsed state. */
+:global([data-testid='dock-shell']:has([data-liuli-global-panel]) [data-shard-region='region:details']),
+:global([data-testid='dock-shell']:has([data-liuli-global-panel]) [data-shard-region='region:details'] + [data-testid='dock-sash']),
+:global([data-testid='dock-shell']:has([data-liuli-global-panel]) [data-testid='dock-sash']:has(+ [data-shard-region='region:details'])) {
+  display: none !important;
 }
 
 :global(body:has([data-liuli-disable-inner-split]) [data-liuli-native-seat-active] [data-dockkit-split-button]) {

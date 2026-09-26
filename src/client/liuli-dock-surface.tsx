@@ -28,7 +28,8 @@
  *
  * 官方 `rightbar` / `rightbar.session` 席位始终由官方组件挂载，保留导航服务。
  * 本组件由琉璃帧层在同一列渲染；新版客户端默认使用，设置中可切回旧实现。
- * tab 内容仍是琉璃既有的 7 个面板组件。
+ * 每个原生文件/工具 tab 以原生 tab id 映射为独立的琉璃 chip；正文仍由官方
+ * Tab 域和 Seat 渲染，投影到当前聚焦的琉璃卡片。其余面板复用琉璃组件。
  *
  * ## 注意：dockkit 是官方标注的「内部引擎」
  *
@@ -67,7 +68,7 @@ import type { SidebarGitSourceId } from './right-sidebar-api.ts'
 import css from './LiuliDockSurface.module.css'
 import { LIULI_LS_KEY, liuliSettingsOf } from '../liuli-settings.ts'
 import {
-  BugIcon, FileCodeCornerIcon, FileDiffIcon, FolderIcon, GlobeIcon, MessageSquareTextIcon,
+  BugIcon, FileCodeCornerIcon, FileDiffIcon, FileIcon, FolderIcon, GlobeIcon, MessageSquareTextIcon,
   PanelRightCloseIcon, PanelRightOpenIcon, PlusIcon, SquareTerminalIcon,
 } from './SidePaneIcons.tsx'
 
@@ -126,7 +127,15 @@ export interface LiuliSeatOwnerProps {}
 export type LiuliDockKind =
   | 'review' | 'files' | 'terminal' | 'code' | 'browser' | 'side-chat' | 'developer-tools'
 
-type LiuliDockTabKind = LiuliDockKind | 'official'
+type LiuliDockTabKind = LiuliDockKind | 'official' | 'official-native'
+
+const NATIVE_TAB_PREFIX = 'sidebar://official-native/'
+const nativeContentId = (nativeTabId: string): string => `${NATIVE_TAB_PREFIX}${encodeURIComponent(nativeTabId)}`
+function nativeIdFromContentId(contentId: string): string | undefined {
+  if (!contentId.startsWith(NATIVE_TAB_PREFIX)) return undefined
+  try { return decodeURIComponent(contentId.slice(NATIVE_TAB_PREFIX.length)) }
+  catch { return undefined }
+}
 
 interface DockPanelSpec {
   kind: LiuliDockTabKind
@@ -150,6 +159,8 @@ export const LIULI_DOCK_PANELS: readonly DockPanelSpec[] = [
   {
     kind: 'official',
     title: '官方侧栏',
+    // Kept only to migrate tabs opened by older Liuli builds. New native pages
+    // each receive their own official-native dock tab below.
     render: () => createElement(OfficialSidebarSeatPane, { onCollapse: collapseOfficialSeat }),
   },
   {
@@ -250,6 +261,10 @@ interface DockLauncherItem {
 
 /** 菜单与空状态共用的打开动作；终端和辅助对话沿用旧版的多实例语义。 */
 function openDockChoice(sessionId: string, kind: LiuliDockTabKind): void {
+  if (kind === 'official' && window.location.protocol === 'dsh-app:') {
+    prepareOfficialResource(sessionId)
+    return
+  }
   if (window.location.protocol === 'dsh-app:' && (kind === 'terminal' || kind === 'browser' || kind === 'files')) {
     if (!openOfficialTool(sessionId, kind)) console.warn(`[liuli] 等待官方 ${kind} 服务就绪`)
     return
@@ -398,6 +413,16 @@ function LegacyOfficialToolRedirect({ sessionId, tab, url }: { sessionId: string
 }
 
 function renderTabBody(tab: TabRecord, sessionId: string, host: LiuliSidebarHostAccess): ReactNode {
+  if (tab.kind === 'official-native') {
+    const nativeTabId = nativeIdFromContentId(tab.contentId)
+    return nativeTabId === undefined
+      ? createElement('div', { style: { padding: 12 } }, '官方标签身份不可用')
+      : createElement(OfficialSidebarSeatPane, {
+        nativeTabId,
+        label: tab.title,
+        onCollapse: collapseOfficialSeat,
+      })
+  }
   if (window.location.protocol === 'dsh-app:' && (tab.kind === 'browser' || tab.kind === 'terminal' || tab.kind === 'files')) {
     const params = getLatestPanelParams(browserParamKey(sessionId, tab.contentId))
     return createElement(LegacyOfficialToolRedirect, { sessionId, tab, url: params?.url })
@@ -427,7 +452,7 @@ function openOfficialTool(sessionId: string, kind: 'terminal' | 'browser' | 'fil
   try {
     native.openTab(kind, kind === 'browser' && url && url !== 'about:blank'
       ? { params: { url } } : undefined)
-    openLiuliDockPanel(sessionId, 'official', undefined, { skipOfficialPrepare: true })
+    syncOfficialNativeTabs(sessionId, true)
     return true
   } catch (error) {
     console.warn(`[liuli] 官方 ${kind} 暂不可用:`, error)
@@ -444,7 +469,7 @@ function openOfficialFile(sessionId: string, path: string): boolean {
   const address = `dsh-resource://file/session/${encode(sessionId)}/${normalized.split('/').map(encode).join('/')}`
   try {
     native.openResource(address)
-    openLiuliDockPanel(sessionId, 'official', undefined, { skipOfficialPrepare: true })
+    syncOfficialNativeTabs(sessionId, true)
     return true
   } catch (error) {
     console.warn('[liuli] 官方文件预览暂不可用:', error)
@@ -464,10 +489,9 @@ function OfficialEmptyGuide({ sessionId }: { sessionId: string }): ReactElement 
         const tabs = native.tabsIn?.(sessionId) ?? []
         const resource = [...tabs].reverse().find(tab => tab.kind !== 'guide' && !tab.kind.startsWith('liuli-'))
         if (resource) {
-          // Restored native files already have a body; bootstrapping a new
-          // guide over them both steals focus and leaves a redundant tab.
-          if ((native.active?.() as { id?: string } | undefined)?.id !== resource.id) native.focus?.(resource.id)
-          openLiuliDockPanel(sessionId, 'official', undefined, { skipOfficialPrepare: true })
+          // Restored native files already have their own Liuli chips. Do not
+          // create or focus a guide that would steal the selected resource.
+          syncOfficialNativeTabs(sessionId, false)
           ready = true
           return
         }
@@ -490,51 +514,22 @@ function OfficialEmptyGuide({ sessionId }: { sessionId: string }): ReactElement 
 function prepareOfficialResource(sessionId: string): void {
   const native = getOfficialSidebarController()
   if (!native) return
-  const tabs = native.tabsIn?.(sessionId) ?? []
-  if (tabs.length === 0) {
-    try { native.openTab?.('guide') } catch (error) {
-      console.warn('[liuli] 官方文件引导页暂不可用:', error)
+  try {
+    const tabs = (native.tabsIn?.(sessionId) ?? []).filter(tab => tab.kind !== 'guide' && !tab.kind.startsWith('liuli-'))
+    const activeId = (native.active?.() as { id?: string } | undefined)?.id
+    const target = tabs.find(tab => tab.id === activeId) ?? tabs.at(-1)
+    if (target !== undefined) {
+      if (target.id !== activeId) native.focus?.(target.id)
+      syncOfficialNativeTabs(sessionId, true)
+    } else {
+      // The start page remains an empty state. Opening the file entry from an
+      // already occupied dock creates the native files page as a real chip.
+      native.openTab?.('files')
+      syncOfficialNativeTabs(sessionId, true)
     }
-    return
+  } catch (error) {
+    console.warn('[liuli] 官方文件入口暂不可用:', error)
   }
-  const active = native.active?.() as { id?: string } | undefined
-  const activeTab = tabs.find(tab => tab.id === active?.id)
-  if (activeTab && activeTab.kind !== 'guide' && activeTab.kind !== 'files') return
-  const target = [...tabs].reverse().find(tab => tab.kind !== 'guide' && tab.kind !== 'files')
-    ?? activeTab ?? tabs.at(-1)
-  if (target && target.id !== active?.id) native.focus?.(target.id)
-}
-
-/** Official resources share Liuli's visible strip while their real body keeps
- * its upstream lifetime and renderer in the hidden Seat. */
-function OfficialResourceTabs({ sessionId }: { sessionId: string }): ReactElement | null {
-  const [, refresh] = useState(0)
-  useEffect(() => {
-    const source = getOfficialSidebarController()?.openTabs
-    const unsubscribe = source?.subscribe(() => { refresh(v => v + 1) })
-    const timer = window.setInterval(() => { refresh(v => v + 1) }, 400)
-    return () => { unsubscribe?.(); window.clearInterval(timer) }
-  }, [sessionId])
-  const controller = getOfficialSidebarController()
-  const tabs = (controller?.tabsIn?.(sessionId) ?? []).filter(tab => !tab.kind.startsWith('liuli-'))
-  if (tabs.length === 0) return null
-  // The guide is an empty-state doorway. A resource opened from the chat does
-  // not replace it upstream, so drawing both creates the redundant "开始" chip.
-  // Keep it available again after the last real tab closes.
-  const resourceTabs = tabs.filter(tab => tab.kind !== 'guide')
-  const visibleTabs = resourceTabs.length > 0 ? resourceTabs : tabs
-  const activeId = controller?.active?.() as { id?: string } | undefined
-  return <span className={css.nativeTabs} aria-label="官方文件标签">
-    {visibleTabs.map(tab => <button key={tab.id} type="button"
-      className={`${css.nativeTab}${activeId?.id === tab.id ? ' ' + css.nativeTabActive : ''}`}
-      title={tab.title ?? tab.kind} aria-label={`切换到 ${tab.title ?? tab.kind}`}
-      onClick={() => {
-        controller?.focus?.(tab.id)
-        openLiuliDockPanel(sessionId, 'official', undefined, { skipOfficialPrepare: true })
-      }}>
-      <span className={css.nativeTabLabel}>{tab.title ?? tab.kind}</span>
-    </button>)}
-  </span>
 }
 
 export interface LiuliDockSurfaceProps {
@@ -568,14 +563,9 @@ export function LiuliDockSurface({ sessionId, host }: LiuliDockSurfaceProps): Re
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot)
   const [fileDialogOpen, setFileDialogOpen] = useState(false)
   const existingKinds = new Set(Object.values(snapshot.state.tabs).map(tab => tab.kind))
+  const noTabsAtAll = Object.keys(snapshot.state.tabs).length === 0
   const noDockedTabs = Object.values(snapshot.state.nodes).every(node =>
     node.kind !== 'pane' || node.host !== 'dock' || node.tabs.length === 0)
-  // Restored native resources can exist while Liuli's visible dock is empty or
-  // showing another panel. Their switcher belongs only to the official card.
-  const officialCardActive = Object.values(snapshot.state.nodes).some(node =>
-    node.kind === 'pane' && node.host === 'dock'
-    && node.activeTabId !== undefined
-    && snapshot.state.tabs[node.activeTabId]?.kind === 'official')
   // 与旧 PreviewDetailsPanel 同一组菜单项；空状态直接复用这些动作。
   const launcherItems: DockLauncherItem[] = [
     {
@@ -687,26 +677,35 @@ export function LiuliDockSurface({ sessionId, host }: LiuliDockSurfaceProps): Re
         // 琉璃旧侧栏只有一个「新增标签」入口；隐藏 dockkit 默认的每格 + 按钮。
         canAddTab: () => false,
         minPaneFraction: 0.2,
-        intents: intentsWithDropFix(controller, disableInnerSplit),
+        intents: intentsWithDropFix(controller, disableInnerSplit, sessionId),
         labels: DOCK_LABELS,
         renderTab: (tab: TabRecord) => renderTabBody(tab, sessionId, host),
+        renderTabTitle: (tab: TabRecord) => {
+          if (tab.kind !== 'official-native') return tab.title
+          const nativeId = nativeIdFromContentId(tab.contentId)
+          const nativeKind = getOfficialSidebarController()?.tabsIn?.(sessionId).find(item => item.id === nativeId)?.kind
+          const Icon = nativeKind === 'files' ? FolderIcon
+            : nativeKind === 'browser' ? GlobeIcon
+              : nativeKind === 'terminal' ? SquareTerminalIcon : FileIcon
+          return createElement('span', { className: css.nativeTitle },
+            createElement(Icon, { size: 14 }),
+            createElement('span', { className: css.nativeTitleText }, tab.title))
+        },
         renderTabMenuItems: (tab: TabRecord, dismiss: () => void) => createElement(LiuliDockTabMenuItem, {
           tab,
           dismiss,
           sessionId,
         }),
         // 面板选择器：dockkit 把它画在右上格 tab 条的最末端。
-        chrome: createElement('span', { className: css.chromeGroup },
-          officialCardActive ? createElement(OfficialResourceTabs, { sessionId }) : null,
-          createElement(LiuliDockPanelPicker, { items: launcherItems })),
+        chrome: createElement(LiuliDockPanelPicker, { items: launcherItems }),
       }),
-      noDockedTabs && window.location.protocol === 'dsh-app:'
+      noDockedTabs && noTabsAtAll && window.location.protocol === 'dsh-app:'
         ? createElement(OfficialEmptyGuide, { sessionId })
         : createElement(LiuliDockEmptyLauncher, { items: launcherItems, visible: noDockedTabs }),
     ),
     createElement(FloatLayer, {
       state: snapshot.state,
-      intents: intentsWithDropFix(controller, disableInnerSplit),
+      intents: intentsWithDropFix(controller, disableInnerSplit, sessionId),
       labels: DOCK_LABELS,
       renderTab: (tab: TabRecord) => renderTabBody(tab, sessionId, host),
     }),
@@ -729,6 +728,8 @@ function LiuliDockTabMenuItem(props: { tab: TabRecord; dismiss: () => void; sess
     if (spec === undefined) return
     if (kind === 'official') {
       prepareOfficialResource(props.sessionId)
+      props.dismiss()
+      return
     }
     // 通过控制器开内容：同内容已开则聚焦，否则在新格/当前格打开。
     controller.openContent({
@@ -923,7 +924,14 @@ export function LiuliRightbarExpandButton(): ReactElement {
     setLiuliDockExpanded(next)
     publishForceExpanded(next)
     setExpanded(next)
-    if (next) window.dispatchEvent(new Event('liuli:ensure-details'))
+    if (next) {
+      window.dispatchEvent(new Event('liuli:ensure-details'))
+      const selectedSession = (window as unknown as { __liuliDock__?: { sessionId: string } }).__liuliDock__?.sessionId
+      const selectedController = selectedSession === undefined ? undefined : controllers.get(selectedSession)
+      if (selectedSession !== undefined && selectedController !== undefined) {
+        focusNativeForLiuliSelection(selectedSession, selectedController)
+      }
+    }
     try {
       if (next) (window as unknown as { __liuliOpenDetails__?: () => void }).__liuliOpenDetails__?.()
       else (window as unknown as { __liuliCloseDetails__?: () => void }).__liuliCloseDetails__?.()
@@ -983,7 +991,7 @@ export function subscribeLiuliDockAll(listener: () => void): () => void {
  * @param controller - 该会话的 dock 控制器。
  * @returns 满足 `DockIntents` 的包装对象。
  */
-function intentsWithDropFix(controller: DockController, routeInnerEdgesToShell: boolean): DockController & {
+function intentsWithDropFix(controller: DockController, routeInnerEdgesToShell: boolean, sessionId: string): DockController & {
   dropTab: (tabId: string, targetPaneId: string, zone: string) => boolean
 } {
   const wrapped = Object.create(controller) as DockController & {
@@ -1002,6 +1010,39 @@ function intentsWithDropFix(controller: DockController, routeInnerEdgesToShell: 
     if (typeof value === 'function') {
       (wrapped as unknown as Record<string, unknown>)[key] = (value as (...args: unknown[]) => unknown).bind(controller)
     }
+  }
+
+  wrapped.focusTab = (tabId) => {
+    controller.focusTab(tabId)
+    focusNativeForLiuliSelection(sessionId, controller)
+  }
+  wrapped.focusPane = (paneId) => {
+    controller.focusPane(paneId)
+    focusNativeForLiuliSelection(sessionId, controller)
+  }
+  wrapped.placeTab = (tabId, paneId, index) => {
+    const moved = controller.placeTab(tabId, paneId, index)
+    focusNativeForLiuliSelection(sessionId, controller)
+    return moved
+  }
+  wrapped.closeTab = (tabId) => {
+    const record = controller.getSnapshot().state.tabs[tabId]
+    if (record?.kind === 'official-native') {
+      const nativeTabId = nativeIdFromContentId(record.contentId)
+      const native = getOfficialSidebarController()
+      if (nativeTabId !== undefined && (native?.tabsIn?.(sessionId) ?? []).some(tab => tab.id === nativeTabId)) {
+        try { native?.close?.(nativeTabId) }
+        catch (error) { console.warn('[liuli] 官方标签关闭失败:', error); return }
+      }
+    }
+    controller.closeTab(tabId)
+    focusNativeForLiuliSelection(sessionId, controller)
+  }
+  wrapped.duplicateTab = (tabId) => {
+    // Upstream content IDs represent one native occurrence. A copied chip
+    // cannot own a second native body, so leave this tab unique.
+    if (controller.getSnapshot().state.tabs[tabId]?.kind === 'official-native') return tabId
+    return controller.duplicateTab(tabId)
   }
 
   /**
@@ -1033,7 +1074,9 @@ function intentsWithDropFix(controller: DockController, routeInnerEdgesToShell: 
         }
       }
     }
-    return controller.floatTab(tab, rect)
+    const floated = controller.floatTab(tab, rect)
+    focusNativeForLiuliSelection(sessionId, controller)
+    return floated
   }
 
   wrapped.dropTab = (tabId, targetPaneId, zone) => {
@@ -1044,7 +1087,10 @@ function intentsWithDropFix(controller: DockController, routeInnerEdgesToShell: 
     const state = controller.getSnapshot().state
     const source = findTabPaneOf(state, tabId)
     const isEdge = zone !== 'center'
-    if (routeInnerEdgesToShell && isEdge) {
+    // Native resources cannot be moved into the outer shell as a generic code
+    // panel without losing the official renderer. Their edge drops stay in the
+    // Liuli dock engine, where the chip remains draggable/splittable.
+    if (routeInnerEdgesToShell && isEdge && state.tabs[tab]?.kind !== 'official-native') {
       const record = state.tabs[tab]
       const dockType = record === undefined ? undefined : KIND_TO_DOCK_TYPE[record.kind]
       const bridge = getDockHostBridge()
@@ -1083,10 +1129,13 @@ function intentsWithDropFix(controller: DockController, routeInnerEdgesToShell: 
       if (ops.length > 0 && c.run(ops as never)) {
         // 让被拖的 tab 在新格里成为活动项（placeTab 已由 ops 表达，这里只补聚焦）。
         controller.focusTab(tab)
+        focusNativeForLiuliSelection(sessionId, controller)
         return true
       }
     }
-    return controller.dropTab(tab, pane, zone as unknown as DockZone)
+    const dropped = controller.dropTab(tab, pane, zone as unknown as DockZone)
+    if (dropped) focusNativeForLiuliSelection(sessionId, controller)
+    return dropped
   }
   return wrapped
 }
@@ -1256,7 +1305,7 @@ function useOuterDropPreview(sessionId: string, surfaceRef: { current: HTMLDivEl
  * 跨区域拖拽。
  *
  * 官方 API 打开的 tab（如文件预览）会落进官方 layout，用户看不到 —— 由下面的
- * 轮询桥把它们同步进琉璃的 dock 布局（`syncOfficialTabsToDock`）。
+ * 轮询桥按原生 tab id 同步进琉璃的 dock 布局。
  *
  * @param ctx - 客户端插件上下文。
  * @param host - 宿主能力。
@@ -1330,86 +1379,136 @@ interface OfficialTabLike {
   title?: string
 }
 
+function isNativeResource(tab: OfficialTabLike): tab is OfficialTabLike & { id: string; kind: string } {
+  return typeof tab.id === 'string' && typeof tab.kind === 'string'
+    && tab.kind !== 'guide' && !tab.kind.startsWith('liuli-')
+}
+
+function activeDockTabId(controller: DockController): TabId | undefined {
+  const state = controller.getSnapshot().state
+  const pane = state.nodes[state.activePaneId]
+  return pane?.kind === 'pane' ? pane.activeTabId : undefined
+}
+
+function liuliTabForNative(controller: DockController, nativeTabId: string): TabRecord | undefined {
+  const contentId = nativeContentId(nativeTabId)
+  return Object.values(controller.getSnapshot().state.tabs)
+    .find(tab => tab.kind === 'official-native' && tab.contentId === contentId)
+}
+
+/** Make Liuli's selected native chip drive the real upstream Tab domain. */
+function focusNativeForLiuliSelection(sessionId: string, controller: DockController): void {
+  const tabId = activeDockTabId(controller)
+  const tab = tabId === undefined ? undefined : controller.getSnapshot().state.tabs[tabId]
+  if (tab?.kind !== 'official-native') return
+  const nativeTabId = nativeIdFromContentId(tab.contentId)
+  if (nativeTabId === undefined) return
+  const native = getOfficialSidebarController()
+  if (native === undefined || !(native.tabsIn?.(sessionId) ?? []).some(item => item.id === nativeTabId)) return
+  if ((native.active?.() as OfficialTabLike | undefined)?.id !== nativeTabId) native.focus?.(nativeTabId)
+}
+
+/** Mirror upstream records by ID. Existing Liuli chips keep their pane/float
+ * positions; opening the same native resource focuses its existing chip. */
+function syncOfficialNativeTabs(sessionId: string, reveal: boolean, pruneMissing = false): void {
+  const native = getOfficialSidebarController()
+  if (!native?.tabsIn) return
+  const resources = (native.tabsIn(sessionId) as readonly OfficialTabLike[]).filter(isNativeResource)
+  const controller = controllerFor(sessionId)
+  const previousSelection = activeDockTabId(controller)
+  const nativeIds = new Set(resources.map(tab => tab.id))
+  // rc.23 used one aggregate "官方侧栏" chip. Retire it when the native
+  // inventory is available so it cannot sit beside the per-file chips.
+  for (const tab of Object.values(controller.getSnapshot().state.tabs)) {
+    if (tab.kind === 'official') controller.closeTab(tab.id)
+  }
+  if (pruneMissing) {
+    for (const tab of Object.values(controller.getSnapshot().state.tabs)) {
+      if (tab.kind !== 'official-native') continue
+      const nativeTabId = nativeIdFromContentId(tab.contentId)
+      if (nativeTabId !== undefined && !nativeIds.has(nativeTabId)) controller.closeTab(tab.id)
+    }
+  }
+
+  for (const tab of resources) {
+    if (liuliTabForNative(controller, tab.id) !== undefined) continue
+    controller.openContent({
+      kind: 'official-native',
+      contentId: nativeContentId(tab.id),
+      title: tab.title || (tab.kind === 'files' ? '工作区文件' : tab.kind),
+    })
+  }
+  const activeNative = native.active?.() as OfficialTabLike | undefined
+  const preferred = activeNative && isNativeResource(activeNative)
+    ? liuliTabForNative(controller, activeNative.id) : undefined
+  const previous = previousSelection === undefined ? undefined : controller.getSnapshot().state.tabs[previousSelection]
+  const lastResource = resources.at(-1)
+  const target = reveal
+    ? preferred ?? (lastResource === undefined ? undefined : liuliTabForNative(controller, lastResource.id))
+    : previous ?? preferred
+  if (target !== undefined && activeDockTabId(controller) !== target.id) controller.focusTab(target.id)
+  if (!reveal && resources.length > 0 && controller.getSnapshot().state.expanded
+    && activeNative?.kind === 'guide') {
+    focusNativeForLiuliSelection(sessionId, controller)
+  }
+  if (!reveal || resources.length === 0) return
+  controller.setExpanded(true)
+  publishForceExpanded(true)
+  window.dispatchEvent(new Event('liuli:ensure-details'))
+  try { (window as unknown as { __liuliOpenDetails__?: () => void }).__liuliOpenDetails__?.() }
+  catch { /* 宿主入口不可用时忽略 */ }
+}
+
 /**
  * 把**官方 controller 打开的 tab** 同步进琉璃的 dock 布局。
  *
  * 为什么需要：官方 API 可用后，官方插件（对话页文件按钮、官方引导页等）会把 tab 开进
  * **官方 layout**，而官方 surface 在迁移模式下是被 CSS 隐藏的 —— 用户看不到内容。
- * 这里轮询官方 `active()`（官方 controller 的公开方法）。琉璃自身的
- * `liuli-*` 面板仍映射回自己的 dock 类型；官方 guide/files/text 与未来新增的
- * 原生 tab 留在上游 Seat，由琉璃 dock 的 `official` 标签承载其完整正文和控件。
- *
- * 只做「新增」不做「关闭」：官方的关闭语义与琉璃 dock 的 tab 生命周期不一一对应，
- * 误关会吃掉用户手动打开的琉璃面板。
+ * 这里读取官方 `tabsIn(sessionId)` 和 `active()`：每个原生记录拥有一枚同 ID 的
+ * 琉璃 chip，选择与关闭分别转发官方 focus/close，原生正文仍由官方 Seat 持有。
+ * guide 只在琉璃 dock 空白时投影；`liuli-*` 旧面板仍映射回原有类型。
  *
  * @param sessionId - 目标会话（琉璃 dock 布局所属会话）。
  * @returns 释放函数。
  */
 export function startOfficialTabBridge(sessionId: string): () => void {
-  const seen = new Set<string>()
-  // 每次轮询都记录官方 active ID，包括右栏收起时。琉璃面板展开不能把旧的
-  // 官方 active 再次解释为一次导航，否则会每 320ms 抢回用户选中的标签。
+  const seenLegacy = new Set<string>()
   let lastObservedNativeTabId = ''
-  let lastOfficialExpanded = false
   let explicitNativeUntil = 0
-  let requestedFocus: { tabId: string; until: number } | undefined
   let navigationTimer: number | undefined
   let disposed = false
   const poll = (): void => {
     if (disposed) return
     try {
-      const hook = (window as unknown as {
-        __liuliSidebarRight__?: {
-          active?: () => OfficialTabLike | null
-          isExpanded?: () => boolean
-          toggleExpanded?: () => void
-        }
-      }).__liuliSidebarRight__
-      const active = hook?.active?.() ?? null
-      if (active === null || typeof active.id !== 'string') return
-      const nativeActiveChanged = active.id !== lastObservedNativeTabId
+      const native = getOfficialSidebarController()
+      if (!native?.tabsIn) return
+      const tabs = native.tabsIn(sessionId) as readonly OfficialTabLike[]
+      const current = native.active?.() as OfficialTabLike | undefined
+      // The controller can still report the previous session while the Seat is
+      // adopting the newly selected one. Never bind that resource to this dock.
+      const active = current?.id !== undefined && tabs.some(tab => tab.id === current.id) ? current : undefined
+      for (const id of seenLegacy) if (!tabs.some(tab => tab.id === id)) seenLegacy.delete(id)
       const firstObservation = lastObservedNativeTabId === ''
-      lastObservedNativeTabId = active.id
-      const officialExpanded = hook?.isExpanded?.() === true
-      const officialJustExpanded = officialExpanded && !lastOfficialExpanded
-      lastOfficialExpanded = officialExpanded
+      const nativeActiveChanged = active?.id !== lastObservedNativeTabId
+      lastObservedNativeTabId = active?.id ?? ''
+      const explicit = explicitNativeUntil > Date.now()
+      const revealNative = active !== undefined && isNativeResource(active)
+        && (explicit || (!firstObservation && nativeActiveChanged && native.isExpanded?.() === true))
+      // Reconcile every native file/page, not just the selected one. The native
+      // tab ID is the identity key, so re-opening a file focuses its existing
+      // Liuli chip while drag position and float state remain intact.
+      const mountedSession = (native as unknown as { mounted?: { getSnapshot: () => string | undefined } })
+        .mounted?.getSnapshot()
+      syncOfficialNativeTabs(sessionId, revealNative, tabs.length > 0 || mountedSession === sessionId)
+      if (revealNative) { explicitNativeUntil = 0; return }
+      if (active?.id === undefined || active.kind === 'guide') return
       const kind = typeof active.kind === 'string' ? OFFICIAL_KIND_TO_DOCK[active.kind] : undefined
-      const now = Date.now()
-      const explicitNative = explicitNativeUntil > now
-      const confirmedFocus = requestedFocus !== undefined && requestedFocus.until > now
-        && requestedFocus.tabId === active.id
-      if (requestedFocus !== undefined && (confirmedFocus || requestedFocus.until <= now)) requestedFocus = undefined
-      if (kind === undefined) {
-        // The empty right dock already projects the official Guide. Merely
-        // opening that start page must not create a second Liuli tab/card.
-        if (active.kind === 'guide' && Object.values(controllerFor(sessionId).getSnapshot().state.nodes)
-          .every(node => node.kind !== 'pane' || node.host !== 'dock' || node.tabs.length === 0)) return
-        // 官方 `text` 正文拥有 Markdown/code/PDF/image/HTML 渲染器、重新载入、
-        // 换行和行号导航；转成琉璃 CodeViewer 会丢掉这些功能。因此保留
-        // 上游 Tab 域，只把它的整个可见 Seat 放进琉璃的一枚 dock 标签。
-        // 同一文件再次由官方 openResource 打开时 ID 不变；官方 Seat 在用户
-        // 切离时会收起，新的 false→true 展开沿也代表一次显式导航。
-        // Native Seat is visually hidden while Liuli owns the column. Opening
-        // a resource from the chat can be followed by Seat's visibility sync
-        // collapsing its own layout before this poll. An explicit navigation
-        // still reveals our column even when upstream is already collapsed.
-        if ((!officialExpanded && !explicitNative && !confirmedFocus)
-          || (!nativeActiveChanged && !officialJustExpanded && !explicitNative && !confirmedFocus)) return
-        // 桥刚接通时，先前的官方活动文件可能只是恢复状态：只有琉璃尚无
-        // 用户选中的 tab 才把它带进可见 dock。后续 ID 变化代表新的官方导航。
-        if (firstObservation && !explicitNative && !confirmedFocus
-          && Object.keys(controllerFor(sessionId).getSnapshot().state.tabs).length > 0) return
-        explicitNativeUntil = 0
-        openLiuliDockPanel(sessionId, 'official', undefined, { skipOfficialPrepare: true })
-        return
-      }
-      // An explicit upstream resource navigation may commit on a later store
-      // tick. Do not interpret the previous liuli-* active tab as its result.
-      if (explicitNative) return
-      // 对旧代码打开的 `liuli-*` tab 仍由琉璃面板负责。官方 Seat 为此
-      // 产生的展开态不应占第二条轨道，也不需要保留重复正文。
-      if (officialExpanded) hook.toggleExpanded?.()
-      if (seen.has(active.id)) return
+      if (kind === undefined) return
+      if (explicit && !nativeActiveChanged) return
+      // Older liuli-* records still map to their existing panel types. The
+      // native Seat is hidden for these legacy bodies and must not claim width.
+      if (native.isExpanded?.() === true) native.toggleExpanded?.()
+      if (seenLegacy.has(active.id)) return
       // 从官方 contentId 取出文件路径喂给面板。
       // ⚠️ CodeViewerPanel 的两个入参语义不同：`rel` 是**相对会话 cwd**的路径
       //（面板自己拼绝对路径），`absolutePath` 才是绝对路径。早前把两者都塞同一个
@@ -1422,31 +1521,18 @@ export function startOfficialTabBridge(sessionId: string): () => void {
         if (absolute) params.absolutePath = path
         else params.rel = path
       }
-      seen.add(active.id)
+      seenLegacy.add(active.id)
       openLiuliDockPanel(sessionId, kind, params)
     } catch { /* 桥接失败不应影响主流程 */ }
   }
   const onNavigation = (event: Event): void => {
     const detail = (event as CustomEvent<OfficialSidebarNavigationDetail>).detail
     if (detail === undefined || disposed) return
-    if (detail.method === 'focus') {
+    if ((detail.method === 'openTab' && detail.kind === 'guide')
+      || ('kind' in detail && typeof detail.kind === 'string' && detail.kind.startsWith('liuli-'))) {
       explicitNativeUntil = 0
-      requestedFocus = { tabId: detail.tabId, until: Date.now() + 5000 }
-    } else if (typeof detail.kind === 'string' && detail.kind.startsWith('liuli-')) {
-      explicitNativeUntil = 0
-      requestedFocus = undefined
     } else {
       explicitNativeUntil = Date.now() + 5000
-      requestedFocus = undefined
-      // The official API owns the file/browser/terminal body, while Liuli owns
-      // the visible dock track. Reveal the latter in this same navigation turn;
-      // waiting for isExpanded() loses opens from a previously collapsed Seat.
-      // The guide is projected by OfficialEmptyGuide and must not grow a second
-      // outer tab merely because it was opened during initial empty mounting.
-      if ((detail.method === 'openTab' && detail.kind !== 'guide')
-        || (detail.method === 'openResource' && detail.kind !== undefined)) {
-        openLiuliDockPanel(sessionId, 'official', undefined, { skipOfficialPrepare: true })
-      }
     }
     if (navigationTimer !== undefined) window.clearTimeout(navigationTimer)
     navigationTimer = window.setTimeout(() => { navigationTimer = undefined; poll() }, 40)
@@ -1487,7 +1573,11 @@ export function openLiuliDockPanel(
       return
     }
   }
-  if (kind === 'official' && options.skipOfficialPrepare !== true) prepareOfficialResource(sessionId)
+  if (kind === 'official' && window.location.protocol === 'dsh-app:') {
+    if (options.skipOfficialPrepare === true) syncOfficialNativeTabs(sessionId, true)
+    else prepareOfficialResource(sessionId)
+    return
+  }
   const controller = controllerFor(sessionId)
   const spec = specOf(kind)
   if (spec === undefined) return
@@ -1501,7 +1591,7 @@ export function openLiuliDockPanel(
   const previous = kind === 'browser' ? getLatestPanelParams(paramKey) : undefined
   setLatestPanelParams(paramKey, { ...previous, ...params, nonce })
   // 兼容官方正文路径（panel-driver 的 pending 表）；官方正文在迁移模式下不在场，无副作用。
-  if (kind !== 'official') setPanelParams(kind, { ...params, nonce })
+  if (kind !== 'official' && kind !== 'official-native') setPanelParams(kind, { ...params, nonce })
   controller.openContent({
     kind,
     contentId,

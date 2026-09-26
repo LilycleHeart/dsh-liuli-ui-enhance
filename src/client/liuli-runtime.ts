@@ -19,7 +19,7 @@ import {
   LIULI_DEFAULT_SOURCE, liuliApplyBrand, liuliDerivePalette,
 } from './liuli-palette.ts'
 import { LIULI_SETTINGS_DEFAULTS, type LiuliBgArea, type LiuliBgFit, type LiuliSettings } from '../liuli-settings.ts'
-import { animatedWallpaperMime } from './wallpaper-format.ts'
+import { preservedWallpaperMime } from './wallpaper-format.ts'
 
 /** 壁纸持久化键（localStorage，dataURL）。 */
 const WALLPAPER_KEY = 'liuli:wallpaper'
@@ -113,15 +113,15 @@ export function readFileAsDataURL(file: File): Promise<string> {
 }
 
 /**
- * 压缩图片为 JPEG dataURL：长边限制 + 质量档位，让本地存储能容纳照片级图片。
- * 透明图会以白色底合成（壁纸场景可接受）。
+ * 保留 GIF/APNG/WebP 原始字节，避免 canvas 把动画压成单帧 JPEG。
+ * 其余静态图片压缩为 JPEG dataURL（长边限制 + 质量档位）。
  */
 export async function compressImage(file: File, maxDim = 1920, quality = 0.85): Promise<string> {
   if (file.size > 32 * 1024 * 1024) throw new Error('壁纸文件不能超过 32 MB')
   const bytes = new Uint8Array(await file.arrayBuffer())
-  const animatedMime = animatedWallpaperMime(bytes)
-  if (animatedMime) {
-    const original = await readFileAsDataURL(new File([bytes], file.name, { type: animatedMime }))
+  const preservedMime = preservedWallpaperMime(bytes)
+  if (preservedMime) {
+    const original = await readFileAsDataURL(new File([bytes], file.name, { type: preservedMime }))
     await loadImage(original)
     return original
   }

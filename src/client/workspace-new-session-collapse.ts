@@ -20,6 +20,7 @@
 import type { ClientContext } from './compat.ts'
 // Type-only: 拉取 dsh-client-ui-layout 对 ctx.layout（含 openDetails/closeDetails）的类型合并。
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
+import { setLiuliDockExpanded } from './liuli-dock-surface.tsx'
 
 /** 收起（0 宽）与展开（≥300px）之间的判宽阈值。 */
 const DETAILS_WIDTH_MIN = 120
@@ -78,6 +79,9 @@ export function startWorkspaceNewSessionCollapse(ctx: ClientContext): () => void
     if (!isWorkspaceNewSessionLabel(button.getAttribute('aria-label') ?? '')) return
     window.clearTimeout(timer)
     timer = window.setTimeout(() => {
+      // Dockable 模式的可见列由琉璃控制器掌管，官方 layout.details
+      // 可能始终是 0；仅检查 isDetailsOpen 会漏掉这条路径。
+      if (document.querySelector('[data-liuli-dock-surface]') !== null) setLiuliDockExpanded(false)
       if (isDetailsOpen(ctx)) closeHostDetails(ctx)
     }, 0)
   }

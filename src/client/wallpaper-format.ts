@@ -21,3 +21,12 @@ export function animatedWallpaperMime(bytes: Uint8Array): string | undefined {
   }
   return undefined
 }
+
+/** Keep WebP in its original container even when its animation chunks are absent
+ * or not understood. Canvas export always flattens it to one JPEG frame. */
+export function preservedWallpaperMime(bytes: Uint8Array): string | undefined {
+  const animated = animatedWallpaperMime(bytes)
+  if (animated !== undefined) return animated
+  const text = (at: number, size: number) => String.fromCharCode(...bytes.subarray(at, at + size))
+  return text(0, 4) === 'RIFF' && text(8, 4) === 'WEBP' ? 'image/webp' : undefined
+}
