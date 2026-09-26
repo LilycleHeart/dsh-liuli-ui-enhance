@@ -5,7 +5,7 @@
  * 实现自电波推送 dashboard 的「界面设置」面板。
  * 行组件原语（Row/SliderRow/SelectRow/ToggleRow）同时导出给「功能」分区复用。
  */
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { createPortal } from 'react-dom'
 import {
@@ -127,12 +127,16 @@ export function SliderRow(props: {
   tip?: string
 }) {
   const changed = props.defaultValue !== undefined && Math.abs(props.value - props.defaultValue) > 1e-9
+  const progress = props.max > props.min
+    ? Math.max(0, Math.min(100, (props.value - props.min) / (props.max - props.min) * 100))
+    : 0
   return (
     <Row label={props.label} hint={`${props.value}${props.suffix}`} tip={props.tip}>
       <div className={css.sliderWrap}>
         <input
           type="range" className={css.slider} min={props.min} max={props.max} step={props.step ?? 1}
           value={Math.min(props.max, Math.max(props.min, props.value))} disabled={props.disabled === true}
+          style={{ '--liuli-range-fill': `${progress}%` } as CSSProperties}
           onChange={(e) => { props.onChange(Number(e.target.value)) }}
         />
         {/* 数字输入框：不受滑条 min/max 限制，可输入任意值（运行时安全兜底） */}

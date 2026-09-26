@@ -75,7 +75,10 @@
   padding: 6px 10px;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
-  background: var(--dsw-alias-bg-overlay);
+  background-color: rgba(var(--liuli-acrylic-rgb), min(0.92, calc(var(--liuli-material-opacity) + 0.3)));
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
   box-shadow: var(--liuli-shadow);
   font-family: var(--ds-font-family-base);
   font-size: 12px;
@@ -95,32 +98,37 @@
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 12px;
+  height: 22px;
   margin: 0;
-  border-radius: 6px;
+  border: 0;
+  border-radius: 999px;
   cursor: pointer;
-  /* 半透明亚克力轨道（替代 UA 白色实底轨道） */
-  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
-  background-image: var(--liuli-noise);  -webkit-backdrop-filter: var(--liuli-material-blur);
-  backdrop-filter: var(--liuli-material-blur);
+  background: transparent;
 }
 
 .slider::-webkit-slider-runnable-track {
-  height: 4px;
-  border-radius: 2px;
-  background: transparent;
+  height: 6px;
+  border: 1px solid var(--liuli-border-hairline);
+  border-radius: 999px;
+  background: linear-gradient(to right,
+    var(--dsw-alias-brand-primary) 0 var(--liuli-range-fill, 0%),
+    color-mix(in srgb, var(--dsw-alias-label-primary) 36%, rgba(var(--liuli-acrylic-rgb), 0.55))
+      var(--liuli-range-fill, 0%) 100%);
 }
 
 .slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 14px;
-  height: 14px;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
   margin-top: -5px;
   border-radius: 50%;
-  border: 2px solid var(--dsw-alias-bg-base);
+  border: 2px solid var(--dsw-alias-bg-layer-1);
   background: var(--dsw-alias-brand-primary);
-  box-shadow: var(--liuli-glow-brand);
+  box-shadow: 0 0 0 1px var(--dsw-alias-brand-primary),
+    0 0 0 3px color-mix(in srgb, var(--dsw-alias-brand-primary) 20%, transparent),
+    var(--liuli-glow-brand);
   transition: transform 140ms ease;
 }
 
@@ -130,18 +138,25 @@
 }
 
 .slider::-moz-range-track {
-  height: 4px;
-  border-radius: 2px;
-  background: transparent;
+  height: 6px;
+  border: 1px solid var(--liuli-border-hairline);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dsw-alias-label-primary) 36%, rgba(var(--liuli-acrylic-rgb), 0.55));
+}
+
+.slider::-moz-range-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--dsw-alias-brand-primary);
 }
 
 .slider::-moz-range-thumb {
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  border: 2px solid var(--dsw-alias-bg-base);
+  border: 2px solid var(--dsw-alias-bg-layer-1);
   background: var(--dsw-alias-brand-primary);
-  box-shadow: var(--liuli-glow-brand);
+  box-shadow: 0 0 0 1px var(--dsw-alias-brand-primary), var(--liuli-glow-brand);
 }
 
 .slider:disabled {
@@ -166,9 +181,10 @@
   width: 58px;
   flex: none;
   padding: 2px 4px;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 1px solid var(--liuli-border-hairline);
   border-radius: 6px;
-  background: var(--dsw-alias-bg-overlay);
+  background-color: rgba(var(--liuli-acrylic-rgb), min(0.82, calc(var(--liuli-material-opacity) + 0.15)));
+  background-image: var(--liuli-noise);
   color: var(--dsw-alias-label-primary);
   font-family: var(--ds-font-family-code);
   font-size: 12px;
@@ -179,6 +195,7 @@
 .numInput:focus {
   outline: none;
   border-color: var(--dsw-alias-brand-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--dsw-alias-brand-primary) 22%, transparent);
 }
 
 .resetBtn {
@@ -207,14 +224,13 @@
 
 .toggle {
   appearance: none;
-  border: none;
-  background: transparent;
+  border: 1px solid var(--liuli-border-hairline);
   padding: 0;
   cursor: pointer;
   width: 40px;
   height: 22px;
   border-radius: 999px;
-  background: var(--dsw-alias-border-l3);
+  background: color-mix(in srgb, var(--dsw-alias-label-secondary) 36%, rgba(var(--liuli-acrylic-rgb), 0.7));
   position: relative;
   transition: background 160ms var(--ds-ease-in-out);
 }
@@ -235,10 +251,17 @@
 
 .toggleOn {
   background: var(--dsw-alias-brand-primary);
+  border-color: var(--dsw-alias-brand-primary);
 }
 
 .toggleOn .toggleKnob {
   transform: translateX(18px);
+  background: var(--dsw-alias-label-primary-inverted);
+}
+
+.toggle:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 2px;
 }
 
 .toggle:disabled {
@@ -289,7 +312,8 @@
 }
 
 .selector:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background-color: rgba(var(--liuli-acrylic-rgb), min(0.82, calc(var(--liuli-material-opacity) + 0.15)));
+  border-color: var(--dsw-alias-brand-primary);
 }
 
 .selector:active {

@@ -128,6 +128,75 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
+/* HMR can retain guide entries registered by an older plugin build until the
+   host restarts. Keep the visible guide coherent during that transition too. */
+.nativeSkin[data-liuli-native-seat-active] :global([data-sidebar-right-guide] > div:has([data-sidebar-right-guide-entry='liuli-files'])),
+.nativeSkin[data-liuli-native-seat-active] :global([data-sidebar-right-guide] > div:has([data-sidebar-right-guide-entry='liuli-terminal'])),
+.nativeSkin[data-liuli-native-seat-active] :global([data-sidebar-right-guide] > div:has([data-sidebar-right-guide-entry='liuli-browser'])),
+.nativeSkin[data-liuli-native-seat-active] :global([data-sidebar-right-guide] > div:has([data-sidebar-right-guide-entry='liuli-code'])) {
+  display: none !important;
+}
+
+/* The official browser owns a native WebContentsView. Skin only its React
+   chrome; the page keeps the pixels and contrast chosen by the site. */
+.nativeSkin[data-liuli-native-seat-active]:is([data-liuli-native-kind='browser'], [data-liuli-native-kind='terminal']) :global([data-sidebar-right-panel] [class*='_tabHost']),
+.nativeSkin[data-liuli-native-seat-active]:is([data-liuli-native-kind='browser'], [data-liuli-native-kind='terminal']) :global([data-sidebar-right-panel] [data-dockkit-pane]) {
+  background: transparent !important;
+}
+.nativeSkin[data-liuli-native-seat-active][data-liuli-native-kind='browser'] :global(div:has(> form[class*='_toolbar'])) {
+  background: transparent !important;
+}
+.nativeSkin[data-liuli-native-seat-active][data-liuli-native-kind='browser'] :global(form[class*='_toolbar']) {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, .16));
+  background-color: rgba(var(--liuli-acrylic-rgb-low), .35);
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur);
+  backdrop-filter: var(--liuli-material-blur);
+}
+.nativeSkin[data-liuli-native-seat-active][data-liuli-native-kind='browser'] :global(form[class*='_toolbar'] button) {
+  border-radius: 7px;
+}
+.nativeSkin[data-liuli-native-seat-active][data-liuli-native-kind='browser'] :global(form[class*='_toolbar'] button:hover:not(:disabled)) {
+  color: var(--dsw-alias-brand-primary, #8ecdf8);
+  background: var(--dsw-alias-interactive-bg-hover-accent);
+}
+.nativeSkin[data-liuli-native-seat-active][data-liuli-native-kind='browser'] :global(form[class*='_toolbar'] input) {
+  border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, .2));
+  border-radius: var(--liuli-radius-sm, 10px);
+  background-color: rgba(var(--liuli-acrylic-rgb), clamp(.35, var(--liuli-material-opacity, .55), .8));
+  background-image: var(--liuli-noise);
+  color: var(--dsw-alias-label-primary);
+}
+.nativeSkin[data-liuli-native-seat-active][data-liuli-native-kind='browser'] :global(form[class*='_toolbar'] input:focus) {
+  outline: 1px solid var(--dsw-alias-brand-primary, #8ecdf8);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dsw-alias-brand-primary) 12%, transparent);
+}
+
+/* The upstream PTY and xterm keep their input/focus code. Its shell ground
+   uses the same dark semitransparent family as Liuli's former terminal panel.
+   xterm's own renderer may still paint opaque cells supplied by its theme. */
+.nativeSkin[data-liuli-native-seat-active] :global([data-sidebar-terminal]) {
+  background: transparent !important;
+}
+.nativeSkin[data-liuli-native-seat-active] :global([data-sidebar-terminal] [class*='_screen']) {
+  background-color: rgba(0, 0, 0, clamp(.65, calc(var(--liuli-material-opacity, .55) + .24), .9)) !important;
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur);
+  backdrop-filter: var(--liuli-material-blur);
+}
+:global(body:not([data-ds-dark-theme])) .nativeSkin[data-liuli-native-seat-active] :global([data-sidebar-terminal] [class*='_screen']) {
+  background-color: rgba(15, 18, 22, clamp(.72, calc(var(--liuli-material-opacity, .55) + .33), .94)) !important;
+}
+.nativeSkin[data-liuli-native-seat-active] :global([data-sidebar-terminal] .xterm-viewport) {
+  background-color: transparent !important;
+}
+.nativeSkin[data-liuli-native-seat-active] :global([data-sidebar-terminal] [role='status']),
+.nativeSkin[data-liuli-native-seat-active] :global([data-sidebar-terminal] [role='alert']) {
+  background-color: rgba(var(--liuli-acrylic-rgb-low), .4);
+  background-image: var(--liuli-noise);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .nativeSkin[data-liuli-native-seat-active] :global([data-files-entry] > button) { transition: none; }
 }

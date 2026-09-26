@@ -160,7 +160,7 @@ export interface LiuliSidebarHostAccess {
 export const LIULI_DOCK_PANELS: readonly DockPanelSpec[] = [
   {
     kind: 'official',
-    title: '官方侧栏',
+    title: '工作区文件',
     // Kept only to migrate tabs opened by older Liuli builds. New native pages
     // each receive their own official-native dock tab below.
     render: () => createElement(OfficialSidebarSeatPane, { onCollapse: collapseOfficialSeat }),
@@ -512,26 +512,10 @@ function OfficialEmptyGuide({ sessionId }: { sessionId: string }): ReactElement 
   </div>
 }
 
-/** Keep the selected official resource when Liuli opens its preview card. */
+/** The picker opens the native workspace tree. A file preview comes from a
+ * selected tree row, the chat file action, or the explicit file search dialog. */
 function prepareOfficialResource(sessionId: string): void {
-  const native = getOfficialSidebarController()
-  if (!native) return
-  try {
-    const tabs = (native.tabsIn?.(sessionId) ?? []).filter(tab => tab.kind !== 'guide' && !tab.kind.startsWith('liuli-'))
-    const activeId = (native.active?.() as { id?: string } | undefined)?.id
-    const target = tabs.find(tab => tab.id === activeId) ?? tabs.at(-1)
-    if (target !== undefined) {
-      if (target.id !== activeId) native.focus?.(target.id)
-      syncOfficialNativeTabs(sessionId, true)
-    } else {
-      // The start page remains an empty state. Opening the file entry from an
-      // already occupied dock creates the native files page as a real chip.
-      native.openTab?.('files')
-      syncOfficialNativeTabs(sessionId, true)
-    }
-  } catch (error) {
-    console.warn('[liuli] 官方文件入口暂不可用:', error)
-  }
+  if (!openOfficialTool(sessionId, 'files')) console.warn('[liuli] 官方工作区文件暂不可用')
 }
 
 export interface LiuliDockSurfaceProps {
@@ -571,7 +555,7 @@ export function LiuliDockSurface({ sessionId, host }: LiuliDockSurfaceProps): Re
   // 与旧 PreviewDetailsPanel 同一组菜单项；空状态直接复用这些动作。
   const launcherItems: DockLauncherItem[] = [
     {
-      id: 'official', label: '官方文件与预览', icon: createElement(FolderIcon, { size: 16 }),
+      id: 'workspace-files', label: '工作区文件', icon: createElement(FolderIcon, { size: 16 }),
       run: () => {
         openLiuliDockPanel(sessionId, 'official')
       },
@@ -742,7 +726,8 @@ function LiuliDockTabMenuItem(props: { tab: TabRecord; dismiss: () => void; sess
     props.dismiss()
   }
   const others = LIULI_DOCK_PANELS.filter(spec => spec.kind !== props.tab.kind
-    && !(spec.needsSidePaneHost === true))
+    && !(spec.needsSidePaneHost === true)
+    && !(window.location.protocol === 'dsh-app:' && spec.kind === 'code'))
   return createElement('div', { role: 'group' },
     ...others.slice(0, 6).map(spec => createElement('button', {
       key: spec.kind,
@@ -1094,10 +1079,10 @@ function intentsWithDropFix(controller: DockController, routeInnerEdgesToShell: 
     const state = controller.getSnapshot().state
     const source = findTabPaneOf(state, tabId)
     const isEdge = zone !== 'center'
-    // With inner split disabled, an edge gesture must never silently make an
-    // inner pane. Native resources have no outer renderer, so their edge drop
-    // is a no-op; floating remains available for moving them out of the strip.
-    if (routeInnerEdgesToShell && isEdge) {
+    // The setting hides the old/native split control and routes Liuli-owned
+    // tabs to the outer shell. An official-native tab has no outer renderer;
+    // its visible Liuli edge hint must use this controller's four-way split.
+    if (routeInnerEdgesToShell && isEdge && state.tabs[tab]?.kind !== 'official-native') {
       const record = state.tabs[tab]
       const dockType = record === undefined ? undefined : KIND_TO_DOCK_TYPE[record.kind]
       const bridge = getDockHostBridge()
@@ -1115,6 +1100,7 @@ function intentsWithDropFix(controller: DockController, routeInnerEdgesToShell: 
       return false
     }
     const vacates = source !== undefined && source.id === targetPaneId && source.tabs.length === 1
+    if (isEdge && vacates && state.tabs[tab]?.kind === 'official-native') return false
     if (isEdge && vacates) {
       // 用 planner 直接生成操作（保留 zone 决定的轴向：top/bottom → column，
       // left/right → row），并**带上 makeTab** 让引擎回填被腾空的原格。
@@ -1188,7 +1174,7 @@ function useOuterDropPreview(sessionId: string, surfaceRef: { current: HTMLDivEl
     let activeType: string | undefined
     let raf = 0
 
-    const dockTypeOf = (): string | undefined => {
+    const draggedRecord = (): { tab: TabRecord; source: { id: string; tabs: readonly string[] } | undefined } | undefined => {
       const controller = controllers.get(sessionId)
       const st = controller?.getSnapshot().state
       if (st === undefined) return undefined
@@ -1198,18 +1184,38 @@ function useOuterDropPreview(sessionId: string, surfaceRef: { current: HTMLDivEl
       const dragged = surfaceRef.current?.querySelector<HTMLElement>('[data-dockkit-tab][class*="_tabDragging"]')
       const tabId = dragged?.dataset.dockkitTab ?? pressedTabId
       const rec = tabId === undefined ? undefined : st.tabs[tabId as TabId]
-      return rec === undefined ? undefined : KIND_TO_DOCK_TYPE[rec.kind]
+      return rec === undefined ? undefined : { tab: rec, source: findTabPaneOf(st, rec.id) }
+    }
+    const clearNativeDragMarks = (): void => {
+      const el = surfaceRef.current
+      el?.removeAttribute('data-liuli-dragging-native')
+      for (const pane of el?.querySelectorAll<HTMLElement>('[data-liuli-native-single-source]') ?? []) {
+        pane.removeAttribute('data-liuli-native-single-source')
+      }
     }
 
     const refresh = (): void => {
       if (!pressing) return
       const bridge = getDockHostBridge()
       if (!isDockkitTabDragging()) {
+        clearNativeDragMarks()
         bridge.clearPanelDrop?.()
         return
       }
       const el = surfaceRef.current
       if (el === null) return
+      const drag = draggedRecord()
+      const native = drag?.tab.kind === 'official-native'
+      el.toggleAttribute('data-liuli-dragging-native', native)
+      for (const pane of el.querySelectorAll<HTMLElement>('[data-liuli-native-single-source]')) {
+        pane.removeAttribute('data-liuli-native-single-source')
+      }
+      if (native && drag?.source?.tabs.length === 1) {
+        for (const pane of el.querySelectorAll<HTMLElement>('[data-dockkit-pane]')) {
+          if (pane.dataset.dockkitPane === drag.source.id) pane.dataset.liuliNativeSingleSource = ''
+        }
+      }
+      if (native) { bridge.clearPanelDrop?.(); return }
       const r = el.getBoundingClientRect()
       const inside = lastX >= r.left && lastX <= r.right && lastY >= r.top && lastY <= r.bottom
       if (inside && !includeDetails) {
@@ -1222,7 +1228,7 @@ function useOuterDropPreview(sessionId: string, surfaceRef: { current: HTMLDivEl
         bridge.clearPanelDrop?.()
         return
       }
-      if (activeType === undefined) activeType = dockTypeOf()
+      if (activeType === undefined && drag !== undefined) activeType = KIND_TO_DOCK_TYPE[drag.tab.kind]
       if (activeType === undefined) return
       bridge.previewPanelDrop?.(activeType, lastX, lastY, includeDetails)
     }
@@ -1242,6 +1248,7 @@ function useOuterDropPreview(sessionId: string, surfaceRef: { current: HTMLDivEl
       if (e.button !== 0) return
       pressing = true
       activeType = undefined
+      clearNativeDragMarks()
       const pressed = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-dockkit-tab]') : null
       pressedTabId = pressed !== null && surfaceRef.current?.contains(pressed)
         ? pressed.dataset.dockkitTab : undefined
@@ -1255,6 +1262,7 @@ function useOuterDropPreview(sessionId: string, surfaceRef: { current: HTMLDivEl
       pressing = false
       activeType = undefined
       pressedTabId = undefined
+      clearNativeDragMarks()
       getDockHostBridge().clearPanelDrop?.()
     }
     const onMouseMove = (e: MouseEvent): void => {
@@ -1283,6 +1291,7 @@ function useOuterDropPreview(sessionId: string, surfaceRef: { current: HTMLDivEl
       window.removeEventListener('mousemove', onMouseMove, true)
       window.clearInterval(timer)
       if (raf !== 0) cancelAnimationFrame(raf)
+      clearNativeDragMarks()
     }
   }, [sessionId, surfaceRef, includeDetails])
 }
@@ -1581,10 +1590,9 @@ export function openLiuliDockPanel(
   }
   if (window.location.protocol === 'dsh-app:' && kind === 'code') {
     const path = params?.rel || params?.absolutePath
-    if (path) {
-      if (!openOfficialFile(sessionId, path)) console.warn('[liuli] 等待官方文件预览服务就绪')
-      return
-    }
+    if (!path) { prepareOfficialResource(sessionId); return }
+    if (!openOfficialFile(sessionId, path)) console.warn('[liuli] 等待官方文件预览服务就绪')
+    return
   }
   if (kind === 'official' && window.location.protocol === 'dsh-app:') {
     if (options.skipOfficialPrepare === true) syncOfficialNativeTabs(sessionId, true)

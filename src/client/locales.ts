@@ -228,8 +228,8 @@ export const featuresZh = {
   'unofficial.domHint': '悬浮球/自动展开/入场动画/会话标记与右键菜单/重命名/缩放性能护栏等基于 DOM 观察或自有 overlay 的增强；与其它插件改造同一界面元素时冲突则关闭',
   'unofficial.officialRightbar': '并入官方右侧栏（dockable 增强）',
   'unofficial.officialRightbarHint': '新版客户端默认使用：保留官方右栏服务与文件入口，显示琉璃侧栏和整窗四向拖拽；右栏内部分栏由下方开关控制。需要同时启用 Dockable 布局和右侧边栏；关闭后回退旧版自研详细页。切换后需刷新页面',
-  'unofficial.disableInnerRightbarSplit': '禁用右栏内部分栏',
-  'unofficial.disableInnerRightbarSplitHint': '隐藏右栏内置分栏按钮；标签拖到右栏内外的边缘都交给琉璃整窗 Dockable 布局。切换后立即生效',
+  'unofficial.disableInnerRightbarSplit': '优先整窗 Dockable 投放',
+  'unofficial.disableInnerRightbarSplitHint': '隐藏官方分栏按钮。琉璃普通标签优先投放到整窗布局；官方文件标签仍可在琉璃右栏四向拆分。切换后立即生效',
   'reset': '恢复默认',
 } satisfies Record<string, string>
 
@@ -357,8 +357,8 @@ export const featuresEn = {
   'unofficial.domHint': 'Float ball / auto-expand / entrance animations / session markers & context menus / rename / resize performance guard — DOM-observation or own-overlay enhancements. Disable when another plugin reshapes the same UI elements',
   'unofficial.officialRightbar': 'Adopt the official right sidebar (dockable, enhanced)',
   'unofficial.officialRightbarHint': 'Enabled by default on newer clients: keep the official sidebar service and file actions while showing liuli controls and four-edge window docking. The setting below controls splits inside the right sidebar. Requires Dockable layout and Right sidebar. Refresh after toggling.',
-  'unofficial.disableInnerRightbarSplit': 'Disable splits inside the sidebar',
-  'unofficial.disableInnerRightbarSplitHint': 'Hide the sidebar split button and route tab drops at the sidebar edges into liuli’s window-wide Dockable layout. Applies immediately.',
+  'unofficial.disableInnerRightbarSplit': 'Prefer window-wide Dockable drops',
+  'unofficial.disableInnerRightbarSplitHint': 'Hide the official split button. Liuli tabs prefer the window layout; official file tabs can still split in four directions inside the Liuli sidebar. Applies immediately.',
   'reset': 'Reset to defaults',
 } satisfies Record<string, string>
 

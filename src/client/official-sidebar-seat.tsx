@@ -71,6 +71,7 @@ export function OfficialSidebarSeatPane({ onCollapse, nativeTabId, label = 'å¼€å
       delete host.dataset.liuliNativeSeatActive
       delete host.dataset.liuliNativeFullscreen
       delete host.dataset.liuliNativeFloat
+      delete host.dataset.liuliNativeKind
     }
     const sync = (): void => {
       frame = 0
@@ -85,6 +86,7 @@ export function OfficialSidebarSeatPane({ onCollapse, nativeTabId, label = 'å¼€å
       }
       projectedTarget = target
       target.dataset.liuliNativeTargetActive = ''
+      if (active?.kind !== undefined) host.dataset.liuliNativeKind = active.kind
       if (target.closest('[data-dockkit-float]') !== null) host.dataset.liuliNativeFloat = ''
       else delete host.dataset.liuliNativeFloat
       // viewportWidth=0 keeps the upstream seat in auto-fullscreen mode without

@@ -46,7 +46,7 @@ import { LIULI_LS_KEY, liuliSettingsOf } from '../liuli-settings.ts'
 import css from './DockShellFrame.module.css'
 import { HMR_MARKER } from './hmr-marker.ts'
 import { tagConversationContainers } from './conversation-split.ts'
-import { beginResizePerf, endResizePerf } from './resize-perf.ts'
+import { beginResizePerf, endResizePerf, beginSidebarTransitionPerf, endSidebarTransitionPerf } from './resize-perf.ts'
 import { usePopupPresence, usePopupValuePresence } from './use-popup-presence.ts'
 
 /* ── 右侧边栏系列增强开关（与 client/index.ts 的 unofficial('sidebar') 同源） ──
@@ -568,9 +568,9 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
     if (!rightbarPerfReady.current) { rightbarPerfReady.current = true; return () => {} }
     // Column animation changes conversation width, so freeze measured file
     // rows and soften blur; a click-triggered transition needs no pointer shield.
-    beginResizePerf({ pointerShield: false })
-    const timer = window.setTimeout(() => { endResizePerf({ pointerShield: false }) }, 360)
-    return () => { window.clearTimeout(timer); endResizePerf({ pointerShield: false }) }
+    beginSidebarTransitionPerf()
+    const timer = window.setTimeout(endSidebarTransitionPerf, 360)
+    return () => { window.clearTimeout(timer); endSidebarTransitionPerf() }
   }, [officialRightbar, officialRightbarExpanded])
 
   const dragOverlayRef = useRef<DockDragOverlayHandle | null>(null)
@@ -1171,9 +1171,9 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
     // Opening the left column changes conversation width on every animation
     // frame. Protect upstream deliverable rows just as sash resize does, while
     // keeping click targets live because this is not a pointer drag.
-    beginResizePerf({ pointerShield: false })
-    const timer = window.setTimeout(() => { endResizePerf({ pointerShield: false }) }, 360)
-    return () => { window.clearTimeout(timer); endResizePerf({ pointerShield: false }) }
+    beginSidebarTransitionPerf()
+    const timer = window.setTimeout(endSidebarTransitionPerf, 360)
+    return () => { window.clearTimeout(timer); endSidebarTransitionPerf() }
   }, [sidebarCollapsed])
 
   // 详情区域宽度（liuli 自管，突破 desktop shell 的 clamp 300-520；上限 = 视口 88%，

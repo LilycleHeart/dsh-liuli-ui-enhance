@@ -60,13 +60,22 @@
   padding: 4px;
   border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.15));
   border-radius: var(--liuli-radius, 12px);
-  background: rgba(var(--liuli-acrylic-rgb), calc(var(--liuli-material-opacity, 0.55) + 0.3));
+  background-color: rgba(var(--liuli-acrylic-rgb), clamp(0.24, var(--liuli-material-opacity, 0.55), 0.78));
   background-image: var(--liuli-noise);
   -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
   backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
   box-shadow: var(--liuli-shadow, 0 10px 30px rgba(0, 0, 0, 0.22));
   overflow: hidden;
   animation: liuli-sidebar-menu-in 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* The global div[role="menu"] skin uses a fixed 70% fill. This picker follows
+   the user's material opacity instead, with a cap that keeps the blur visible. */
+.pickerMenu[role='menu'][data-liuli-dock-menu] {
+  background-color: rgba(var(--liuli-acrylic-rgb), clamp(0.24, var(--liuli-material-opacity, 0.55), 0.78)) !important;
+  background-image: var(--liuli-noise) !important;
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;
 }
 
 .pickerMenu[data-closing] {
@@ -99,7 +108,7 @@
 .pickerItemIcon {
   display: flex;
   flex: none;
-  color: var(--dsw-alias-label-secondary, inherit);
+  color: var(--dsw-alias-brand-primary, #8ecdf8);
 }
 
 .emptyShell {
@@ -210,7 +219,17 @@
 
 /* 经典侧栏模式把内层边缘投放转交整窗 Dockable 布局。 */
 :global([data-liuli-dock-surface][data-liuli-disable-inner-split] [data-dockkit-split-button]),
-:global([data-liuli-dock-surface][data-liuli-disable-inner-split] [data-dockkit-dock-zone]) {
+:global([data-liuli-dock-surface][data-liuli-disable-inner-split]:not([data-liuli-dragging-native]) [data-dockkit-dock-zone]) {
+  display: none !important;
+}
+
+/* Moving the only native file into an edge of its own pane would require a
+   made-up replacement page. Hide that one impossible target; other panes keep
+   their four-way Liuli drop hints. */
+:global([data-liuli-dock-surface][data-liuli-dragging-native] [data-liuli-native-single-source] [data-dockkit-dock-zone]:not([data-dockkit-dock-zone='center'])) {
+  display: none !important;
+}
+:global([data-liuli-dock-surface][data-liuli-dragging-native] [data-liuli-native-single-source] [data-dockkit-dock-scrim]) {
   display: none !important;
 }
 

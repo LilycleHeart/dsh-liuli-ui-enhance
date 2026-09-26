@@ -50,7 +50,10 @@ export const liuliCss = `
  * 专门禁用即可。
  * 宿主产物行 RO 风暴由 resize-perf.ts 冻结行宽解决（见该文件注释）。
  * ════════════════════════════════════════════════════════════ */
-body[data-liuli-blur-off] {
+/* Sidebar toggles scope the fade to the dock shell; sash/window resizing still
+   fades the whole body. Both use the same final none state. */
+body[data-liuli-blur-off],
+[data-testid="dock-shell"][data-liuli-blur-off] {
   --liuli-material-blur: none !important;
   --liuli-material-blur-strong: none !important;
 }

@@ -352,6 +352,12 @@ const PANEL_SPECS: readonly PanelSpec[] = [
   },
 ]
 
+/** Native Files, Terminal and Browser already contribute guide doors. Keep
+ * their liuli-* registrations for persisted tabs, but do not advertise a
+ * second identical door. Code Viewer needs a path and is opened through the
+ * picker’s file dialog instead of an empty guide tab. */
+const HIDDEN_LIULI_GUIDE_KINDS = new Set(['files', 'terminal', 'browser', 'code'])
+
 /** 面板正文的错误边界：单个面板抛错只显示一条提示，不影响官方右栏其余部分。 */
 class PanelBoundary extends Component<{ label: string; children?: ReactNode }, { error?: string }> {
   constructor(props: { label: string; children?: ReactNode }) {
@@ -542,12 +548,12 @@ function registerPanels(
             kind,
             priority: 'extension',
             title: () => spec.title,
-            guide: [{
+            ...(HIDDEN_LIULI_GUIDE_KINDS.has(spec.kind) ? {} : { guide: [{
               order: spec.order,
               title: () => spec.title,
               description: () => spec.description,
               icon: () => panelIcon(spec),
-            }],
+            }] }),
           }),
           `dsh-liuli-ui-enhance: official sidebar-right ${kind} type`,
         ))

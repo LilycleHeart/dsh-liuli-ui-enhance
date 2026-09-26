@@ -22,7 +22,14 @@ export const pluginManagerLayoutCss = `
 }
 
 [data-plugin-panel] > * {
-  max-width: 1480px !important;
+  max-width: none !important;
+}
+
+/* Like the Conversation body card, each main content surface takes the
+   remaining column height. If the list exceeds it, the official page scrolls. */
+[data-plugin-panel] > :is([data-plugin-group], [data-plugin-detail],
+  [data-plugin-item-detail], [data-plugin-row-detail]) {
+  flex: 1 0 auto;
 }
 
 /* One independent surface per header/list/detail, as on the conversation and
@@ -150,7 +157,6 @@ body[data-liuli-resizing] [data-plugin-panel] > :is(header[data-window-drag], [d
 
 [data-plugin-panel] :is([data-plugin-detail], [data-plugin-item-detail], [data-plugin-row-detail]) {
   box-sizing: border-box;
-  max-width: 1020px !important;
   padding: 16px 20px 24px;
 }
 
