@@ -14,30 +14,11 @@ export function OfficialMenu() {
   }, [])
   useEffect(() => {
     if (!persistent) return
-    const anchor = document.createElement('span')
-    anchor.dataset.liuliMenuSeat = ''
-    let menu: HTMLElement | null = null
-    const style = document.createElement('style')
-    style.textContent = ':host-context([class*="_collapsed"]) [role="menubar"] { flex-direction:column; gap:2px; } :host-context([class*="_collapsed"]) button { width:40px; padding:0; }'
-    const sync = () => {
-      menu ??= document.querySelector<HTMLElement>('[data-windows-menu]')
-      if (!menu) return
-      const row = Array.from(document.querySelectorAll<HTMLElement>('[class*="_logoRow"]'))
-        .find(el => el.getBoundingClientRect().width > 20)
-      anchor.toggleAttribute('data-liuli-menu-fallback', !row)
-      if (row && anchor.parentElement !== row) row.prepend(anchor)
-      else if (!row && anchor.parentElement !== document.body) document.body.append(anchor)
-      menu.dataset.liuliInlineMenu = ''
-      if (menu.parentElement !== anchor) anchor.append(menu)
-      if (menu.shadowRoot && !style.isConnected) menu.shadowRoot.append(style)
-    }
-    sync()
-    const timer = window.setInterval(sync, 300)
+    // The desktop preload already owns this menu at document.body. Keep that
+    // ownership so its controls survive sidebar collapse, float and removal.
+    document.documentElement.dataset.liuliPersistentMenu = ''
     return () => {
-      clearInterval(timer)
-      style.remove()
-      if (menu) { delete menu.dataset.liuliInlineMenu; document.body.append(menu) }
-      anchor.remove()
+      delete document.documentElement.dataset.liuliPersistentMenu
     }
   }, [persistent])
   useEffect(() => {

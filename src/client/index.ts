@@ -624,9 +624,8 @@ export function apply(ctx: ClientContext): void {
   const liuliEnhancedRightbar = officialRightbarSeat && unofficial('layout') && unofficial('sidebar') && !isOfficialWindowBridge()
   if (officialRightbarSeat && unofficial('layout') && unofficial('sidebar') && isOfficialWindowBridge() && bootSettings.sidebar_layout_mode === 'dockable') {
     ctx.effect(() => enhanceOfficialDock(ctx), 'liuli: unified official tabs with Liuli dock gestures')
-    ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
-      name: 'conversation.session.header.utilities', id: 'liuli-header-sidebar-controls', order: -100,
-      inject: () => ({ toggleLeft: () => { ctx.layout.toggleSidebar() } }),
+    ctx.slots.inject('conversation.session.header.corner', () => ctx.slots.register({
+      name: 'conversation.session.header.corner', priority: -1,
     }, HeaderSidebarControls))
   }
   /** 启动生效开关的指纹（远端设置不同则重载，包含右栏模式）。 */

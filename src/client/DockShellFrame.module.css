@@ -24,16 +24,40 @@
   min-width: 0;
   min-height: 0;
   margin: var(--liuli-dock-padding, 8px) 0 var(--liuli-dock-padding, 8px) var(--liuli-dock-padding, 8px);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: var(--liuli-radius, 14px);
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur);
+  backdrop-filter: var(--liuli-material-blur);
+  box-shadow: var(--liuli-glow-brand), var(--liuli-shadow);
+}
+.nativeRightbarCard:has([data-sidebar-right-panel='fullscreen']) {
+  border: 0;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 .nativeRightbarCard :global([data-sidebar-right-panel='push']) {
   inset: 0 !important;
   width: 100% !important;
 }
 .nativeRightbarCard :global([data-dockkit-pane]) {
-  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity)) !important;
-  background-image: var(--liuli-noise);
-  backdrop-filter: var(--liuli-material-blur);
+  background-color: transparent !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
   border-radius: var(--liuli-radius, 14px);
+}
+/* Dockkit paints a solid bg-base on each tabHost, masking the Liuli shell. */
+.nativeRightbarCard :global([data-dockkit-host='dock'][class*='_tabHost']),
+.nativeRightbarCard :global([data-dockkit-host='dock'] [class*='_tabHost']),
+.nativeRightbarCard :global([data-dockkit-empty]) {
+  background: transparent !important;
+}
+/* A missing PDF still paints the document-preview solid fill over the whole
+   sidebar; let the Liuli card show through behind pages and status text. */
+.nativeRightbarCard :global([data-pdf-preview]) {
+  background: transparent !important;
 }
 .pane:has(.nativeRightbarCard [data-sidebar-right-panel='fullscreen']) { overflow: visible; }
 .nativeRightbarCard :global([data-sidebar-right-panel='fullscreen']) {
