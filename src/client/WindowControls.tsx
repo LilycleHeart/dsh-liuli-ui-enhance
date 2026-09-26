@@ -161,12 +161,22 @@ export function WindowControls() {
   const [state, setState] = useState<WindowControlsState>({ available: false, maximized: false })
   /** 避让隐藏态：遮挡交互元素时淡出；悬停右上角检测区唤出。 */
   const official = isOfficialWindowBridge()
+  const [persistent, setPersistent] = useState(document.documentElement.dataset.liuliMenuMode === 'persistent')
   const [hidden, setHidden] = useState(official)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const hiddenRef = useRef(false)
   hiddenRef.current = hidden
   // 页面生命周期内恒定（URL 查询参数由桌面启动器写入，不再变化）。
   const enabled = isFramelessWin32()
+  useEffect(() => {
+    if (!official) return
+    const sync = () => { setPersistent(document.documentElement.dataset.liuliMenuMode === 'persistent') }
+    const observer = new MutationObserver(sync)
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-liuli-menu-mode'] })
+    sync()
+    return () => { observer.disconnect() }
+  }, [official])
+  useEffect(() => { if (persistent) setHidden(false) }, [persistent])
   useEffect(() => official ? startDesktopDrag() : undefined, [official])
 
   const refresh = useCallback(async (): Promise<void> => {
@@ -205,7 +215,7 @@ export function WindowControls() {
 
   // ── 智能避让：遮挡检测 + 悬停唤出（一个 effect 共享调度与指针状态）──
   useEffect(() => {
-    if (!enabled) return () => {}
+    if (!enabled || persistent) return () => {}
     let raf = 0
     // 与 hidden 状态对应的"检测器上次判定"；悬停唤出时复位，保证离开后能重新评估
     let last = false
@@ -299,7 +309,7 @@ export function WindowControls() {
       window.removeEventListener('resize', schedule)
       window.removeEventListener('pointermove', onMove)
     }
-  }, [enabled, official])
+  }, [enabled, official, persistent])
 
   if (!enabled || !state.available) return null
 
@@ -312,7 +322,7 @@ export function WindowControls() {
     {official && <OfficialMenu />}
     <div
       ref={rootRef}
-      className={`${css.controls}${hidden ? ' ' + css.hidden : ''}`}
+      className={`${css.controls}${hidden && !persistent ? ' ' + css.hidden : ''}`}
       data-liuli-window-controls="caption"
     >
       <button type="button" className={css.btn} title="最小化" aria-label="最小化窗口" onClick={() => { act('minimize') }}>
@@ -333,7 +343,7 @@ export function WindowControls() {
     </div>
     {/* 收起提示条：胶囊避让隐藏时，右上角顶部显示一条小横条，提示鼠标移向此处唤出 */}
     <div
-      className={`${css.hint}${hidden ? '' : ' ' + css.hintHidden}`}
+      className={`${css.hint}${hidden && !persistent ? '' : ' ' + css.hintHidden}`}
       data-liuli-window-controls-hint=""
       aria-hidden="true"
     />

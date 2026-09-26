@@ -42,22 +42,38 @@
 }
 :global(html[data-liuli-official-chrome][data-liuli-persistent-menu] [data-windows-menu]) {
   position: fixed !important;
-  top: 6px !important;
+  top: 4px !important;
   left: 12px !important;
   width: max-content;
-  height: 30px !important;
+  height: 32px !important;
   z-index: 2147483503 !important;
   visibility: visible !important;
   pointer-events: auto !important;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 9px;
-  background: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.titlebar {
+  position: fixed;
+  inset: 0 0 auto;
+  height: 40px;
+  z-index: 2147483500;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
+  background-image: var(--liuli-noise);
   -webkit-backdrop-filter: var(--liuli-material-blur);
   backdrop-filter: var(--liuli-material-blur);
+  -webkit-app-region: drag;
 }
-:global(html[data-liuli-official-chrome][data-liuli-persistent-menu] [data-region-pane='region:sidebar'][data-edge-left] .dshDesktopUpstreamSidebar) {
-  box-sizing: border-box;
-  padding-top: 38px !important;
+:global(html[data-liuli-official-chrome][data-liuli-persistent-menu] [data-testid='dock-shell']) {
+  height: calc(100vh - 40px) !important;
+  margin-top: 40px;
+}
+:global(html[data-liuli-official-chrome][data-liuli-persistent-menu] body[data-liuli-settings-open] [role='presentation'][class*='_overlay']) {
+  top: 40px !important;
+  height: calc(100vh - 40px) !important;
 }
 /* Undo only caption positioning. These controls now follow their owning sidebar,
    including when its region is tabbed, moved to another edge or floated. */
@@ -154,6 +170,21 @@
 :global(html[data-liuli-official-chrome]) .hint {
   z-index: 2147483501;
 }
+:global(html[data-liuli-official-chrome][data-liuli-persistent-menu]) .controls {
+  top: 2px;
+  right: 5px;
+  padding: 3px 5px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transition: none;
+}
+:global(html[data-liuli-official-chrome][data-liuli-persistent-menu]) .hint { display: none; }
 :global(html[data-liuli-sidebar-mode='dockable'] [data-dockkit-split-button]),
 :global(html[data-liuli-sidebar-mode='dockable'] [data-sidebar-right-toggle]),
 :global(html[data-liuli-sidebar-mode='dockable'] [data-sidebar-right-expand]) {

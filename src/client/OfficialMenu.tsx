@@ -92,7 +92,7 @@ export function OfficialMenu() {
       document.removeEventListener('drop', end)
     }
   }, [persistent])
-  if (persistent) return null
+  if (persistent) return <div className={css.titlebar} data-liuli-titlebar="" aria-hidden="true" />
   const button = <button ref={trigger} type="button" className={css.menuTrigger}
     aria-label="应用与编辑菜单" aria-expanded={open} title="应用与编辑菜单"
     onFocus={() => { if (!persistent) setOpen(true) }} onClick={() => { setOpen(v => persistent ? !v : true) }}>

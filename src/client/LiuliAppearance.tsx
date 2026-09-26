@@ -164,6 +164,7 @@ export function SliderRow(props: {
 /** 下拉行：Menu + trigger（与通用设置的权限选择器同款外观）。 */
 export function SelectRow(props: {
   label: string
+  tip?: string
   value: string
   options: { value: string; label: string }[]
   onChange: (v: string) => void
@@ -171,7 +172,7 @@ export function SelectRow(props: {
   const [open, setOpen] = useState(false)
   const label = props.options.find(o => o.value === props.value)?.label ?? props.value
   return (
-    <Row label={props.label}>
+    <Row label={props.label} {...(props.tip ? { tip: props.tip } : {})}>
       <Menu
         open={open}
         onClose={() => { setOpen(false) }}

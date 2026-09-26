@@ -80,8 +80,9 @@ export function LiuliFeaturesSection({
         <SelectRow label="右侧栏布局（切换后刷新界面）" value={s.sidebar_layout_mode}
           options={[{ value: 'dockable', label: '琉璃 Dockable · 四向拆分' }, { value: 'official', label: '官方侧边栏 · 原生布局' }]}
           onChange={v => { set({ sidebar_layout_mode: v as LiuliSettings['sidebar_layout_mode'] }) }} />
-        <SelectRow label="左上角应用菜单" value={s.desktop_menu_mode}
-          options={[{ value: 'floating', label: '悬浮 · 悬停唤出' }, { value: 'persistent', label: '常驻 · 直接显示菜单' }]}
+        <SelectRow label="窗口顶栏" value={s.desktop_menu_mode}
+          tip="悬浮控件在右上角按需唤出；传统标题栏常驻显示应用菜单和最小化、最大化、关闭按钮，并把卡片内容排在其下方。"
+          options={[{ value: 'floating', label: '悬浮控件（无标题栏）' }, { value: 'persistent', label: '传统标题栏（常驻）' }]}
           onChange={v => { set({ desktop_menu_mode: v as LiuliSettings['desktop_menu_mode'] }) }} />
         <SliderRow label="触顶卡片拖窗高度" value={s.desktop_drag_height} suffix="px" min={0} max={40} step={2}
           onChange={v => { set({ desktop_drag_height: v }) }} />
