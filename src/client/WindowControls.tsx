@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import css from './WindowControls.module.css'
 import { isResizeInProgress } from './resize-perf.ts'
+import { OfficialMenu } from './OfficialMenu.tsx'
 
 /** Whether the current page is the win32 frameless desktop shell. */
 export function isFramelessWin32(): boolean {
@@ -306,6 +307,7 @@ export function WindowControls() {
 
   return (
     <>
+    {official && <OfficialMenu />}
     <div
       ref={rootRef}
       className={`${css.controls}${hidden ? ' ' + css.hidden : ''}`}

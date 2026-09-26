@@ -27,23 +27,95 @@
   transition: opacity 140ms var(--ds-ease-in-out);
 }
 
-/* Official Desktop's menu and sidebar toggle keep their native actions. Give
-   them a compact top row inside the sidebar, above the brand and New Session. */
-:global(html[data-liuli-official-chrome] [data-region-pane='region:sidebar']) {
-  box-sizing: border-box;
-  padding-top: 36px;
-}
+/* Window-level island: no row, no dock-pane padding, no assumed sidebar location. */
 :global(html[data-liuli-official-chrome] [data-windows-menu]) {
-  top: 6px !important;
+  top: 22px !important;
+  left: 44px !important;
   height: 28px !important;
-  border-radius: 8px;
-  background: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
-  -webkit-backdrop-filter: var(--liuli-material-blur);
+  z-index: 2147483503 !important;
+  visibility: hidden;
+  pointer-events: none;
+}
+:global(html[data-liuli-official-chrome][data-liuli-menu-open] [data-windows-menu]) {
+  visibility: visible;
+  pointer-events: auto;
+}
+/* Undo only caption positioning. These controls now follow their owning sidebar,
+   including when its region is tabbed, moved to another edge or floated. */
+:global(html[data-liuli-official-chrome] [class*='_logoRow'] [class*='_toggle']) {
+  position: relative !important;
+  inset: auto !important;
+  z-index: auto !important;
+  flex-shrink: 0;
+}
+:global(html[data-liuli-official-chrome] [class*='_collapsed'] [class*='_newSession']) {
+  position: relative !important;
+  inset: auto !important;
+  z-index: auto !important;
+  margin: 4px auto 12px !important;
+}
+:global(html[data-liuli-official-chrome] [class*='_collapsed'] [class*='_logoRow']) {
+  height: 60px !important;
+  min-height: 60px;
+  padding-top: 16px !important;
+  justify-content: center !important;
+}
+:global(html[data-liuli-official-chrome] [class*='_collapsed'] [class*='_toggle'] [class*='_panelIcon']) {
+  display: inline !important;
+}
+:global(html[data-liuli-official-chrome] [class*='_logoRow']) {
+  -webkit-app-region: no-drag !important;
+}
+.menuTrigger {
+  position: fixed;
+  top: 0;
+  left: 22px;
+  width: 36px;
+  height: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  z-index: 2147483502;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+.menuTrigger::after {
+  content: '';
+  position: absolute;
+  inset: 4px 4px auto;
+  height: 4px;
+  border-radius: 4px;
+  background: var(--dsw-alias-label-primary);
+  opacity: .65;
+}
+.menuTrigger:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); }
+.menuIsland {
+  position: fixed;
+  left: 12px;
+  top: 16px;
+  width: 154px;
+  height: 40px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 14px;
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
+  background-image: var(--liuli-noise);
   backdrop-filter: var(--liuli-material-blur);
+  box-shadow: var(--liuli-shadow);
+  z-index: 2147483502;
+  transition: opacity 140ms ease, transform 140ms ease;
+  pointer-events: none;
+  -webkit-app-region: no-drag;
 }
-:global(html[data-liuli-official-chrome] [data-sidebar-collapsed='true'] [data-region-pane='region:conversation-header'] header) {
-  padding-inline-start: 184px !important;
+.menuGrip {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 40px;
+  color: var(--dsw-alias-label-tertiary);
+  -webkit-app-region: drag;
+  pointer-events: auto;
 }
+.menuClosed { opacity: 0; visibility: hidden; transform: translateY(-4px); }
 :global(html[data-liuli-official-chrome]) .controls,
 :global(html[data-liuli-official-chrome]) .hint {
   z-index: 2147483501;
@@ -115,6 +187,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .controls, .hint, .btn { transition: none; }
+  .controls, .hint, .btn, .menuIsland { transition: none; }
   .btn:active { transform: none; }
 }

@@ -719,7 +719,18 @@ export function apply(ctx: ClientContext): void {
       // 尽早重定向一次（官方 AppFrame 若先渲染过，会在这里被覆盖回来）。
       ctx.effect(() => {
         attachWebLayout?.()
-        return () => {}
+        // rc.2 owns its layout store in the controller constructor and removed
+        // attachPanels. Route the public sidebar command while our dock root is
+        // mounted, including the official shortcut; restore on plugin disposal.
+        const layout = ctx.layout as unknown as { attachPanels?: unknown; toggleSidebar: () => void }
+        if (typeof layout.attachPanels === 'function') return () => {}
+        const original = layout.toggleSidebar
+        const routed = () => {
+          if (document.querySelector('[data-testid="dock-shell"]') !== null) hostLayout.toggleSidebar()
+          else original.call(layout)
+        }
+        layout.toggleSidebar = routed
+        return () => { if (layout.toggleSidebar === routed) layout.toggleSidebar = original }
       }, 'dsh-liuli-ui-enhance: web layout actions redirect')
       // 窄视口喂 narrow（官方 AppFrame 的 setNarrow 职责；Web 下帧占满视口）。
       ctx.effect(() => {
