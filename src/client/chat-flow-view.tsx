@@ -28,7 +28,12 @@ import { useId, useMemo, useState, type ReactNode } from 'react'
 import {
   MarkdownText, JsonBlock, TerminalBlock, ReadBlock, DiffBlock,
   SearchBlock, WebBlock, DisclosureRow, StateDot,
-  IconThinkOutline14, IconApiOutline14, IconBrowseOutline16, IconEditOutline16, IconSearchOutline16, IconSparkle16,
+  IconThinkOutlineRegular as IconThinkOutline14,
+  IconApiOutlineRegular as IconApiOutline14,
+  IconBrowseOutlineRegular as IconBrowseOutline16,
+  IconEditOutlineRegular as IconEditOutline16,
+  IconSearchOutlineRegular as IconSearchOutline16,
+  IconSparkleRegular as IconSparkle16,
   type DiffBlockLabels, type MarkdownLabels, type ReadBlockLabels,
   type SearchBlockLabels, type TerminalBlockLabels, type WebBlockLabels,
 } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -47,6 +52,7 @@ const MD_LABELS: MarkdownLabels = {
 const TERMINAL_LABELS: TerminalBlockLabels = {
   signal: s => `信号 ${s}`,
   exitCode: c => `退出码 ${c}`,
+  noExitCode: '无退出码',
   running: '运行中',
   failed: '失败',
   done: '完成',
@@ -59,6 +65,9 @@ const TERMINAL_LABELS: TerminalBlockLabels = {
   expand: n => `展开 ${n} 行`,
 }
 const READ_LABELS: ReadBlockLabels = {
+  codeLabel: '代码',
+  wrapLabel: '自动换行',
+  unwrapLabel: '不换行',
   window: (shown, total) => `第 ${shown}/${total} 行`,
   copy: '复制',
   copied: '已复制',
@@ -68,13 +77,15 @@ const READ_LABELS: ReadBlockLabels = {
   expand: n => `展开其余 ${n} 行`,
 }
 const DIFF_LABELS: DiffBlockLabels = {
+  codeLabel: '代码',
+  wrapLabel: '自动换行',
+  unwrapLabel: '不换行',
   copy: '复制',
   copied: '已复制',
   collapseAria: '折叠',
   expandAria: n => `展开 ${n} 行`,
   collapse: '收起',
   expand: n => `展开其余 ${n} 行`,
-  files: count => count === 1 ? '1 个文件' : `${count} 个文件`,
 }
 const SEARCH_LABELS: SearchBlockLabels = {
   pathsSummary: (shown, total, truncated) => truncated ? `前 ${shown}/${total} 条路径（截断）` : `${shown}/${total} 条路径`,

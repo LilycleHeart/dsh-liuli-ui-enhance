@@ -40,6 +40,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 // Type-only: ui-workspace 的 ctx.uiWorkspace 服务面（startSession/pickDirectory）。
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
+import type {} from '@deepseek-ai/dsh-api-job-controller/client'
 // Type-only: ui-renderer 的 ctx.slots / ctx.uiRenderer 声明（2.0.4 slots 所有权）。
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: ui-chat 合并 useChat 标准 props 与 ChatSnapshot 视图（2.0.4 起）。
@@ -53,6 +54,7 @@ import type { InputTriggerSource, ReferenceCodec } from '@deepseek-ai/dsh-client
 import type {} from '@deepseek-ai/dsh-client-ui-model-selection/client'
 import { liuliRemoteApi, liuliModelDirectory, liuliRemoteNamespace } from './remote-api.ts'
 import type { ObservableSnapshot } from './compat.ts'
+import { selectedSessionId } from './compat.ts'
 import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
 import { LiuliAppearanceSection, type LiuliAppearanceInjected } from './LiuliAppearance.tsx'
 import { LiuliAppearanceRow, type LiuliAppearanceRowInjected } from './LiuliAppearanceRow.tsx'
@@ -176,7 +178,7 @@ function officialRightbarSeatEnabled(slotLayout: SlotLayoutMode): boolean {
  *  connection 不再持有 .api（remote 调用经 ctx.remote.*；modelDirectories 供额度层订阅）。
  *  注意：包级 boot 图依赖（package.json dsh.client.inject）不含 ui-layout / ui-conversation，
  *  避免 advanced 模式下 ui-layout 条目缺席造成的启动图死锁。 */
-export const inject = ['slots', 'locale', 'theme', 'layout', 'sessions', 'workspaces', 'conversation', 'uiConversation', 'inputTriggers', 'remote', 'remote.llm', 'remote.settings', 'remote.session', 'modelDirectories']
+export const inject = ['slots', 'locale', 'theme', 'layout', 'sessions', 'workspaces', 'uiWorkspace', 'uiSession', 'jobs', 'conversation', 'uiConversation', 'inputTriggers', 'remote', 'remote.llm', 'remote.settings', 'remote.session', 'modelDirectories']
 
 /** 宽边模式样式：对话信息区在宽屏下撑满可用宽度（提高左右空间利用率）。 */
 const WIDE_MODE_CSS = [
@@ -778,8 +780,8 @@ export function apply(ctx: ClientContext): void {
       // 全局声明台账，与声明者是谁无关）。形状不符时防御性放弃（回退桌面原生帧）。
       type RootChildren = {
         'sidebar': { kind: 'single'; scope: 'root' }
-        'conversation': { kind: 'single'; scope: 'session-maybe' }
-        'details': { kind: 'single'; scope: 'session' }
+        'main': { kind: 'keyed'; scope: 'root' }
+        'rightbar': { kind: 'single'; scope: 'root' }
         'shell.overlay': { kind: 'list'; scope: 'root' }
       }
       const rootOptions = {
@@ -1013,7 +1015,7 @@ export function apply(ctx: ClientContext): void {
   }
   ctx.effect(() => ctx.inputTriggers.registerSource(source), 'dsh-liuli-ui-enhance: element picker source')
   const insertElement = (info: PickedElement): void => {
-    const current = ctx.sessions.list.getSnapshot().current
+    const current = selectedSessionId(ctx.sessions.list.getSnapshot())
     if (current === undefined) return
     const actx = ctx.sessions.scope(current)
     if (actx === undefined) return
@@ -1057,7 +1059,7 @@ export function apply(ctx: ClientContext): void {
   }
   ctx.effect(() => ctx.inputTriggers.registerSource(fileSource), 'dsh-liuli-ui-enhance: file reference source')
   const insertFileReference = (path: string): void => {
-    const current = ctx.sessions.list.getSnapshot().current
+    const current = selectedSessionId(ctx.sessions.list.getSnapshot())
     if (current === undefined) return
     const actx = ctx.sessions.scope(current)
     if (actx === undefined) return
@@ -1073,7 +1075,7 @@ export function apply(ctx: ClientContext): void {
   }
 
   const insertCommitReference = (commit: string): void => {
-    const current = ctx.sessions.list.getSnapshot().current
+    const current = selectedSessionId(ctx.sessions.list.getSnapshot())
     if (current === undefined) return
     const actx = ctx.sessions.scope(current)
     if (actx === undefined) return
@@ -1260,6 +1262,9 @@ export function apply(ctx: ClientContext): void {
   // 定义在 dock shell 之前，供其注入同一份数据面。
   const sidePaneHost: SidePaneHostAccess = {
     sessionList: ctx.sessions.list,
+    jobs: ctx.jobs.state,
+    watchJobs: id => ctx.jobs.watchRows(id as SessionId),
+    sessionStatus: ctx.uiSession.sessionStatus,
     getSessionFace: id => ctx.sessions.binding(id as SessionId)?.session,
     // 2.0.4：Chat 内容快照经 uiConversation.binding(id).target('chat') 解析
     //（与官方 ui-chat 的 chatSource 同构；target 未就绪时快照为 undefined）。
@@ -1292,7 +1297,7 @@ export function apply(ctx: ClientContext): void {
       }
       return childId
     },
-    openSession: id => { ctx.sessions.open(id as SessionId) },
+    openSession: id => { ctx.uiWorkspace.openSession(id as SessionId) },
     archiveSession: id => ctx.workspaces.archiveSession(id as SessionId),
     archivedSessionIds: {
       getSnapshot: () => ctx.workspaces.list.getSnapshot().archivedSessionIds,
@@ -1320,15 +1325,15 @@ export function apply(ctx: ClientContext): void {
   }
   const stepSession = (dir: 1 | -1): void => {
     const snap = ctx.sessions.list.getSnapshot()
-    const current = snap.current
+    const current = selectedSessionId(snap)
     if (current === undefined) {
       const first = snap.ids[0]
-      if (first !== undefined) ctx.sessions.open(first)
+      if (first !== undefined) ctx.uiWorkspace.openSession(first)
       return
     }
     const index = snap.ids.indexOf(current)
     const next = snap.ids[index + dir]
-    if (next !== undefined) ctx.sessions.open(next)
+    if (next !== undefined) ctx.uiWorkspace.openSession(next)
   }
   // /side、/btw 指令桥：命令在 node 半注册、仅返回成功；这里监听 command/executed
   // （控制面事件，不进模型历史）。
@@ -1337,7 +1342,7 @@ export function apply(ctx: ClientContext): void {
   //   末尾的卡片（BtwAnswerHost），不打开侧边栏窗口、不改变主会话上下文。
   ctx.effect(() => ctx.events.on('command/executed', (sessionId: unknown, name: unknown, result: unknown) => {
     if (name !== 'side' && name !== 'btw') return
-    const current = ctx.sessions.list.getSnapshot().current
+    const current = selectedSessionId(ctx.sessions.list.getSnapshot())
     if (sessionId !== current) return
     const payload = result as { kind?: string; text?: string } | null | undefined
     if (payload?.kind !== 'success') return
@@ -1459,11 +1464,11 @@ export function apply(ctx: ClientContext): void {
   // 宿主收起同样走关闭动画：抑制 RO 同步，防止动画期间被翻回打开。
   // 只在「当前会话真的变了」时重置：session list 的任何其他更新（状态/流式/未读）
   // 也会触发快照变化，若在此处重置会把 previewOpen 拉偏，导致 Ctrl+Alt+B 首按失效。
-  let lastCurrentSession = ctx.sessions.list.getSnapshot().current
+  let lastCurrentSession = selectedSessionId(ctx.sessions.list.getSnapshot())
   ctx.effect(() => {
     if (!unofficial('sidebar')) return () => {}
     return ctx.sessions.list.subscribe(() => {
-      const current = ctx.sessions.list.getSnapshot().current
+      const current = selectedSessionId(ctx.sessions.list.getSnapshot())
       if (current === lastCurrentSession) return
       lastCurrentSession = current
       setPaneSyncSuppressed(true)
@@ -1482,7 +1487,7 @@ export function apply(ctx: ClientContext): void {
       // 只在侧边栏增强开启时接管。
       if ((window as unknown as { __liuliSidebarEnabled__?: boolean }).__liuliSidebarEnabled__ !== true) return
       const target = e.target as Element | null
-      const sessionId = ctx.sessions.list.getSnapshot().current ?? undefined
+      const sessionId = selectedSessionId(ctx.sessions.list.getSnapshot())
       const cwd = sessionId === undefined ? undefined : ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd
 
       // 1) 会话正文里的链接（a[href]）：只劫持 [data-phase] 内的本地回环/前端文件链接。
@@ -2017,7 +2022,7 @@ export function apply(ctx: ClientContext): void {
     /** 迁移模式 → 自己的 dock 布局；否则走官方/自研回退链路。 */
     const drive = (kind: LiuliDockKind, params?: LiuliPanelParams): void => {
       if (liuliEnhancedRightbar) {
-        const current = ctx.sessions.list.getSnapshot().current
+        const current = selectedSessionId(ctx.sessions.list.getSnapshot())
         if (typeof current === 'string' && current !== '') {
           openLiuliDockPanel(current, kind, params)
           return

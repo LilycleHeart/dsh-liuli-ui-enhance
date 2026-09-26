@@ -13,7 +13,9 @@
  */
 import clsx from 'clsx'
 import {
-  IconDarkOutline16, IconFollowsystemOutline16, IconLightOutline16,
+  IconDarkOutlineRegular as IconDarkOutline16,
+  IconFollowsystemOutlineRegular as IconFollowsystemOutline16,
+  IconLightOutlineRegular as IconLightOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ThemePreference } from '@deepseek-ai/dsh-client-ui-theme/client'

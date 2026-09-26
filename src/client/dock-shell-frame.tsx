@@ -19,6 +19,7 @@
 import { Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import { selectedSessionId } from './compat.ts'
 import {
   addPanel, collectTabsNodes, createPanel, findNode, findParentSplit, findTabsContaining, MIN_SIZE, moveFloat, movePanel, panelCount,
   patchPanel, placePanel, removePanel, resizeSplitTo, setActivePanel, updateFloat,
@@ -137,7 +138,7 @@ type LooseRenderSlot = (
 
 export type DockShellFrameProps =
   & PropsRuntime<'root'>
-  & PropsRenderSlots<'sidebar' | 'conversation' | 'details' | 'shell.overlay'>
+  & PropsRenderSlots<'sidebar' | 'main' | 'rightbar' | 'shell.overlay'>
   & {
     dockShell: DockShellHandle
     hostLayout: HostLayoutFace
@@ -151,6 +152,8 @@ export type DockShellFrameProps =
      *  在右栏关闭时拿不到挂载点，ctx.sidebarRight 会一直报
      *  "no session surface is mounted"。 */
     officialRightbar?: boolean
+    /** Legacy desktop frames only; the official 0.1.7 root has root-scoped children. */
+    SessionProvider?: (props: { children: ReactNode }) => ReactNode
   }
 
 interface DragSource {
@@ -427,9 +430,9 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
   const hostGetSnapshot = useCallback(() => hostLayout.getSnapshot(), [hostLayout])
   const hostPanels = useSyncExternalStore(hostSubscribe, hostGetSnapshot)
   const platform = platformOf()
-  const sessionId = useSessions(s => s.current)
+  const sessionId = useSessions(selectedSessionId)
   const detailsSession = useSessions((s) => {
-    const current = s.current
+    const current = selectedSessionId(s)
     return current !== undefined && s.byId[current]?.blank === false ? current : undefined
   })
   /** 琉璃 dock surface 的宿主能力（与自研侧边栏共用同一份数据面桥）。 */
@@ -1227,7 +1230,7 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
         // 2.0.9：对话区槽位是 keyed 的 'main'，用 entryKey 选中 conversation 面板。
         return slotLayout === 'v209'
           ? renderSlotLoose('main', {}, { entryKey: 'conversation' })
-          : renderSlot('conversation', {})
+          : renderSlotLoose('conversation', {})
       case REGION_CONVERSATION_HEADER:
         // 页头面板只提供宿主容器；官方 ConversationRoot 渲染出的 <header>
         // 由 syncConversationHeader() 在 DOM 层搬入这里（React 仍持有节点引用，
@@ -1268,9 +1271,9 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
         // legacy（2.0.4）：details 是 strict session scope slot，必须在
         // SessionProvider 之下渲染（官方 AppFrame 同构）——无会话时 provider
         // 自动渲染 empty，不会像直接 renderSlot 那样抛 SlotAssemblyError。
-        return (
+        return SessionProvider === undefined ? null : (
           <SessionProvider>
-            {renderSlot('details', {
+            {renderSlotLoose('details', {
               sessionId: detailsSession,
               openDetails: () => hostLayout.openDetails(),
               closeDetails: () => hostLayout.closeDetails(),

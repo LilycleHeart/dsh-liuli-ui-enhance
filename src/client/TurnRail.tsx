@@ -81,8 +81,8 @@ function contentText(content: readonly { type?: string; text?: string }[] | unde
 
 /** 递归收集一个 tool 子树里的 git commit 号。 */
 function collectToolCommits(block: ToolCallBlock, hashes: string[]): void {
-  const name = 'name' in block ? block.name : block.call?.name
-  const argsRaw = 'argsRaw' in block ? block.argsRaw : block.call?.argsRaw
+  const name = 'name' in block ? block.name : 'call' in block ? block.call?.name : undefined
+  const argsRaw = 'argsRaw' in block ? block.argsRaw : 'call' in block ? block.call?.argsRaw : undefined
   const haystack = `${name ?? ''} ${argsRaw ?? ''}`
   const isGitTool = name?.toLowerCase() === 'git' || /git/i.test(name ?? '')
   const looksLikeCommit = /git commit\b/i.test(haystack)

@@ -114,16 +114,6 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       scope: 'session'
       owner: LiuliSeatOwnerProps
     }
-    /**
-     * 会话 header 的角落席位（官方右侧栏的展开按钮就注册在这里）。
-     * 琉璃在迁移模式下用**同款外观**的按钮在此驱动自己的 dock 控制器
-     *（见 `LiuliRightbarExpandButton`）。
-     */
-    'conversation.session.header.corner': {
-      kind: 'single'
-      scope: 'session'
-      owner: LiuliSeatOwnerProps
-    }
   }
 }
 

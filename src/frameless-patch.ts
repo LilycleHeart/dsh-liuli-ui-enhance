@@ -425,7 +425,16 @@ function commitRuntime(
  * 读客户端 app.asar 内 package.json 的版本号（DSH Desktop 版本），失败返回 undefined。
  * 用于判断当前客户端是否属于「自动补丁已知不安全」的版本线。
  */
-function readDesktopVersion(asarPath: string): string | undefined {
+function readDesktopIdentity(resourcesDir: string): { name: string; version: string } | undefined {
+  const loosePackage = joinPath(resourcesDir, 'app', 'package.json')
+  if (existsSync(loosePackage)) {
+    try {
+      const parsed = JSON.parse(readFileSync(loosePackage, 'utf8')) as { name?: unknown; version?: unknown }
+      if (typeof parsed.name === 'string' && typeof parsed.version === 'string') return { name: parsed.name, version: parsed.version }
+    } catch { /* An unreadable desktop identity must never permit patching. */ }
+    return undefined
+  }
+  const asarPath = joinPath(resourcesDir, 'app.asar')
   try {
     // 关键：读 asar 内部条目内容必须关掉 Electron 的 ASAR 钩子，否则
     // openSync(app.asar) 会被钩子当作归档内路径处理而失败（readAsarHeader
@@ -442,8 +451,10 @@ function readDesktopVersion(asarPath: string): string | undefined {
         raw = readPackedEntry(asarPath, entry, contentStart)
       }
       if (raw === undefined) return undefined
-      const parsed = JSON.parse(raw.toString('utf8')) as { version?: unknown }
-      return typeof parsed.version === 'string' ? parsed.version : undefined
+      const parsed = JSON.parse(raw.toString('utf8')) as { name?: unknown; version?: unknown }
+      return typeof parsed.name === 'string' && typeof parsed.version === 'string'
+        ? { name: parsed.name, version: parsed.version }
+        : undefined
     })
   } catch {
     return undefined
@@ -585,6 +596,9 @@ export function applyFramelessPatch(): void {
     return
   }
 
+  const identity = readDesktopIdentity(resourcesDir)
+  if (identity?.name !== 'dsh-plugin-desktop') return
+
   const asarPath = joinPath(resourcesDir, 'app.asar')
   const backupPath = joinPath(resourcesDir, 'app.asar.bak-frameless')
 
@@ -596,7 +610,7 @@ export function applyFramelessPatch(): void {
 
   // 2.0.5+ 客户端上自动补丁会破坏主进程启动（见 isAutoPatchBlocked 注释），
   // 这里在写入前直接跳过：保持 app.asar 原样，客户端可正常启动。
-  const desktopVersion = readDesktopVersion(asarPath)
+  const desktopVersion = identity.version
   if (isAutoPatchBlocked(desktopVersion)) {
     // 运行期无法自动完成该补丁：改了 asar 头就必须同步 exe 内嵌的
     // SHA256(header)（Electron 完整性校验），而运行中的 exe 被系统锁定、
@@ -697,6 +711,8 @@ export function revertFramelessPatch(): void {
     console.warn('[dsh-liuli-ui-enhance] 无边框补丁还原跳过：process.resourcesPath 为空，无法定位客户端安装目录')
     return
   }
+
+  if (readDesktopIdentity(resourcesDir)?.name !== 'dsh-plugin-desktop') return
 
   const asarPath = joinPath(resourcesDir, 'app.asar')
 

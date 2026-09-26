@@ -22,7 +22,7 @@ import type { ConversationLocation, ConversationNodeContext, ConversationNodeDef
 // Type-only: pulls the SessionEvent augmentation that adds the code-dispatch
 // child-call lifecycle events (tool/code-dispatch-start / tool/code-dispatch).
 import type {} from '@deepseek-ai/dsh-tools/types'
-import { isAppendSurfaceEvent } from './compat.ts'
+import { isAppendSurfaceEvent, selectedSessionId } from './compat.ts'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { requestReviewFile } from './review-bus.ts'
 import { revealSidebarPath, revealToast, type SidebarGitChange } from './right-sidebar-api.ts'
@@ -181,8 +181,8 @@ interface StepFileState {
 /**
  * 每轮文件变更的 Definition（适配 code-dispatch 子调用的版本）：
  * 当前 DSH 的 edit/write 以 code-dispatch 子调用形式执行（root tool/call 是
- * run_code，子调用走 tool/code-dispatch-start / tool/code-dispatch）：
- * - match：子调用起（id = c:<subCallId>，start 于 code-dispatch-start）；
+ * run_code，子调用走 tool/ptc-dispatch-start / tool/ptc-dispatch）：
+ * - match：子调用起（id = c:<subCallId>，start 于 ptc-dispatch-start）；
  *   也兼容 root tool/call + tool/result（id = r:<callId>）；
  * - update：从 name + arguments（对象→JSON）合成 hunks，刷新行级缓存；
  * - buildViewNode：有变更的调用在结果 seq 锚点发布 `liuli-round-summary` 节点。
@@ -208,10 +208,10 @@ export const fileChangesDefinition: ConversationNodeDefinition<StepFileState> = 
   kind: 'liuli-file-changes',
   target: 'chat',
   match: (event) => {
-    if (event.type === 'tool/code-dispatch-start') {
+    if (event.type === 'tool/ptc-dispatch-start') {
       return { id: 'c:' + String(event.data.subCallId), role: 'start' }
     }
-    if (event.type === 'tool/code-dispatch') {
+    if (event.type === 'tool/ptc-dispatch') {
       return { id: 'c:' + String(event.data.subCallId), role: 'update' }
     }
     if (event.type === 'tool/call') {
@@ -223,7 +223,7 @@ export const fileChangesDefinition: ConversationNodeDefinition<StepFileState> = 
     return null
   },
   start: (_context, match) => {
-    if (match.event.type === 'tool/code-dispatch-start') {
+    if (match.event.type === 'tool/ptc-dispatch-start') {
       return {
         turn: locationTurnOf(match.location),
         step: locationStepOf(match.location),
@@ -236,7 +236,7 @@ export const fileChangesDefinition: ConversationNodeDefinition<StepFileState> = 
         anchorSeq: undefined,
       }
     }
-    if (match.event.type !== 'tool/call') throw new Error('liuli-file-changes start requires a tool/call or code-dispatch-start')
+    if (match.event.type !== 'tool/call') throw new Error('liuli-file-changes start requires a tool/call or ptc-dispatch-start')
     return {
       turn: match.event.data.turn,
       step: match.event.data.step,
@@ -252,7 +252,7 @@ export const fileChangesDefinition: ConversationNodeDefinition<StepFileState> = 
   },
   update: (context, match) => {
     // 子调用结果：从 name + arguments 合成 hunks。
-    if (match.event.type === 'tool/code-dispatch') {
+    if (match.event.type === 'tool/ptc-dispatch') {
       if (match.event.data.isError === true) return context.state
       const call = context.state.call
       if (call === null) return context.state
@@ -261,8 +261,7 @@ export const fileChangesDefinition: ConversationNodeDefinition<StepFileState> = 
       return mergeHunks(context, hunks, match.event.seq)
     }
     if (match.event.type !== 'tool/result' || !isAppendSurfaceEvent(match.event)) return context.state
-    const result = match.event.data.message.content[0]
-    if (result.isError === true) return context.state
+    if (match.event.data.error !== undefined) return context.state
     const call = context.state.call
     if (call === null) return context.state
     const resultView = null
@@ -560,7 +559,7 @@ export function RoundSummaryCard({ node, openFile, useChat, useSessions, session
   // 会话回退：conversation.chat.node 的 keyed renderer 在某些渲染路径下可能
   // 拿不到 slot 注入的 sessionId；此时从 sessions 快照取当前会话兜底，
   // 避免「在资源管理器中打开」因 sessionId 为空而静默无操作。
-  const currentSessionId = useSessions(state => state.current)
+  const currentSessionId = useSessions(selectedSessionId)
   const effectiveSessionId = sessionId ?? currentSessionId
   const cwd = useSessions(state => state.byId[effectiveSessionId]?.cwd)
 

@@ -1,0 +1,6 @@
+diff --git a/lib/index.js b/lib/index.js
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -2566 +2566 @@
+-	useStripScrollFades(stripTabs, pane.tabs);
++	// Liuli disables decorative strip fades, so skip their scroll and resize measurements.

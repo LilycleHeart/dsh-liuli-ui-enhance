@@ -19,6 +19,7 @@
  * 纯函数部分（sanitizeSessionTitle）可在 Node 直接跑 TS 单测。
  */
 import type { ClientContext, SessionId } from './compat.ts'
+import { selectedSessionId } from './compat.ts'
 
 /** formatSelection 输出的元素块起始标记（与 element-card.ts 同构）。 */
 const ELEMENT_MARKER = '[selected element]'
@@ -261,7 +262,7 @@ function decorateAll(ctx: Pick<ClientContext, 'sessions'>): void {
       }
       const session = ctx.sessions.binding(id)?.session
       // 提取真实文字：当前会话优先 DOM 气泡（必然渲染），其次会话快照。
-      const text = id === snap.current
+      const text = id === selectedSessionId(snap)
         ? domBlockMessageText() ?? snapshotBlockMessageText(session)
         : snapshotBlockMessageText(session)
       if (text !== undefined && text !== '') {
@@ -271,7 +272,7 @@ function decorateAll(ctx: Pick<ClientContext, 'sessions'>): void {
       }
       // 窗口里还没有含元素块的消息（长会话只载了最近几轮）：对当前会话补载
       // 历史，让标题显示不依赖手动滚动（有上限，避免把整个长会话全量载入）。
-      if (id === snap.current && (olderAttempts.get(id) ?? 0) < 6) {
+      if (id === selectedSessionId(snap) && (olderAttempts.get(id) ?? 0) < 6) {
         olderAttempts.set(id, (olderAttempts.get(id) ?? 0) + 1)
         try {
           const s = session as { loadOlder?: () => Promise<unknown> }

@@ -10,6 +10,7 @@
  * list 快照的 current 即为目标会话，无需反查行级 sessionId。
  */
 import type { ClientContext, SessionId } from './compat.ts'
+import { selectedSessionId } from './compat.ts'
 import { sanitizeSessionTitle } from './session-title-filter.ts'
 
 /** 行内标题文本：第一个非空、无子元素、不在按钮内的叶子 span（状态点/标记都是 SVG，无文本）。 */
@@ -28,7 +29,7 @@ export function readRowTitle(row: HTMLElement): string | undefined {
  */
 export function resolveSessionId(ctx: Pick<ClientContext, 'sessions'>, row: HTMLElement): SessionId | undefined {
   const snap = ctx.sessions.list.getSnapshot()
-  if (row.getAttribute('aria-selected') === 'true') return snap.current
+  if (row.getAttribute('aria-selected') === 'true') return selectedSessionId(snap)
   // 收集行内所有非空叶子 span 文本（状态/标题/时间等），看哪个 displayTitle 命中。
   // 不能用"第一个非空叶子"——会话行第一个非空文本往往是状态标签（如"进行中"），
   // 而非标题。
@@ -148,7 +149,7 @@ export function startSessionRename(ctx: Pick<ClientContext, 'sessions'>): () => 
     e.stopPropagation()
     // 双击前首次 click 已 open：list 快照 current 即目标会话
     const snap = ctx.sessions.list.getSnapshot()
-    const id = snap.current
+    const id = selectedSessionId(snap)
     if (id === undefined) return
     const summary = snap.byId[id]
     if (summary === undefined) return

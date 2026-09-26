@@ -53,3 +53,12 @@ export type {
 
 /** 各 client 面声明合并后的 cordis Context，等价于旧 ClientContext 别名。 */
 export type ClientContext = Context
+
+/** The 0.1.7 catalog no longer stores a `current` field. Workspace navigation
+ * retains the selected Session with the `mainView` source instead. */
+export function selectedSessionId(state: SessionListState): SessionId | undefined {
+  for (const id of state.ids) {
+    if ((state.byId[id]?.retainedBy.mainView ?? 0) > 0) return id
+  }
+  return Object.values(state.byId).find(row => (row.retainedBy.mainView ?? 0) > 0)?.id
+}

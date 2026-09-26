@@ -9,7 +9,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import clsx from 'clsx'
 import { createPortal } from 'react-dom'
 import {
-  Button, Input, Menu, IconChevronDownOutline14,
+  Button, Input, Menu, IconChevronDownOutlineRegular as IconChevronDownOutline14,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime, PropsStore, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { LiuliBgArea, LiuliSettings } from '../liuli-settings.ts'

@@ -15,6 +15,7 @@ import { createPortal } from 'react-dom'
 import type {
   ObservableSnapshot, SessionFace, SessionListState,
 } from './compat.ts'
+import { selectedSessionId } from './compat.ts'
 import type { SidePaneHostAccess } from './SidePaneExtraPanels.tsx'
 import { ChatFlowView, ChatFlowPartial, contentText } from './chat-flow-view.tsx'
 import css from './BtwAnswer.module.css'
@@ -67,7 +68,8 @@ export function BtwAnswerHost({ host, sessionList }: BtwAnswerHostProps) {
   const [flowHost, setFlowHost] = useState<HTMLElement | null>(null)
   const listHostRef = useRef<HTMLDivElement | null>(null)
   const nextId = useRef(1)
-  const current = useSnapshot(sessionList)?.current
+  const list = useSnapshot(sessionList)
+  const current = list === undefined ? undefined : selectedSessionId(list)
 
   // 会话切换：清掉旧会话的回答卡片。
   const lastSession = useRef(current)
@@ -114,7 +116,7 @@ export function BtwAnswerHost({ host, sessionList }: BtwAnswerHostProps) {
       const detail = (e as CustomEvent<{ question?: string }>).detail
       const question = detail?.question?.trim()
       if (question === undefined || question === '') return
-      const sessionId = sessionList.getSnapshot().current
+      const sessionId = selectedSessionId(sessionList.getSnapshot())
       if (sessionId === undefined) return
       const id = nextId.current++
       setCards(prev => [...prev, { id, question }])

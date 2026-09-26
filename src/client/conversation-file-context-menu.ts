@@ -12,6 +12,7 @@
  * 挂在「非官方增强 → DOM 观察增强」开关组下，关闭时完全不挂载。
  */
 import type { ClientContext, SessionId } from './compat.ts'
+import { selectedSessionId } from './compat.ts'
 import { requestReviewFile } from './review-bus.ts'
 import { revealSidebarPath, revealToast } from './right-sidebar-api.ts'
 import { absOf, relOf } from './TurnFileCard.tsx'
@@ -37,7 +38,7 @@ function toolRowPath(row: HTMLElement): string | null {
 /** 当前会话兜底（官方工具行没有自带 path/sessionId 数据属性时用）。 */
 function withCurrentSession(ctx: Ctx, path: string): FileTarget {
   const snap = ctx.sessions.list.getSnapshot()
-  const sessionId = snap.current
+  const sessionId = selectedSessionId(snap)
   return {
     path,
     cwd: sessionId === undefined ? undefined : snap.byId[sessionId]?.cwd,

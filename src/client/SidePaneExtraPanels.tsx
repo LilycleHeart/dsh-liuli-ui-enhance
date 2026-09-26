@@ -7,11 +7,16 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { IconSendOutline14, IconPlusOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  IconSendOutlineRegular as IconSendOutline14,
+  IconPlusOutlineRegular as IconPlusOutline16,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   ObservableSnapshot, SessionFace, SessionId, SessionListState,
 } from './compat.ts'
 import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
+import type { JobsSnapshot } from '@deepseek-ai/dsh-api-job-controller/client'
+import type { SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
 import { ChatFlowView, ChatFlowPartial } from './chat-flow-view.tsx'
 import { LIULI_LS_KEY, liuliSettingsOf } from '../liuli-settings.ts'
 import { usePopupPresence } from './use-popup-presence.ts'
@@ -21,6 +26,10 @@ import css from './SidePaneExtraPanels.module.css'
 export interface SidePaneHostAccess {
   /** 会话列表标准 feed。 */
   sessionList: ObservableSnapshot<SessionListState>
+  /** Background-job rosters now live in the Job Controller, outside the Session catalog. */
+  jobs: ObservableSnapshot<JobsSnapshot>
+  watchJobs: (id: string) => () => void
+  sessionStatus: ObservableSnapshot<SessionStatusSnapshot>
   /** 解析会话的对外面（prompt + 生命周期快照 + projections）。 */
   getSessionFace: (id: string) => SessionFace | undefined
   /** 2.0.4：会话的 Chat 内容快照源（legacy.nodes/partial 兼容投影）。 */
@@ -222,6 +231,9 @@ export interface DeveloperToolsPanelProps {
 /** 开发者工具：会话/投影/作业/存储诊断（DSH developer-tools 的 DSH 实现）。 */
 export function DeveloperToolsPanel({ sessionId, host }: DeveloperToolsPanelProps) {
   const list = useSnapshot(host.sessionList)
+  const jobSnapshot = useSnapshot(host.jobs)
+  const statuses = useSnapshot(host.sessionStatus)
+  useEffect(() => sessionId === undefined ? undefined : host.watchJobs(sessionId), [host, sessionId])
   const face = sessionId === undefined ? undefined : host.getSessionFace(sessionId)
   const pressure = useSnapshot(face?.projections.faceOf('contextPressure'))
   const breakdown = useSnapshot(face?.projections.faceOf('contextBreakdown'))
@@ -230,7 +242,8 @@ export function DeveloperToolsPanel({ sessionId, host }: DeveloperToolsPanelProp
   const stats = useSnapshot(face?.projections.faceOf('sessionStats'))
 
   const summary = sessionId === undefined ? undefined : list?.byId[sessionId as SessionId]
-  const jobs = sessionId === undefined ? undefined : list?.jobsBySession[sessionId as SessionId]
+  const jobs = sessionId === undefined ? undefined : jobSnapshot?.rows[sessionId]
+  const completed = sessionId === undefined ? false : statuses?.get(sessionId as SessionId)?.completionUnread === true
 
   const storage = useMemo(() => {
     const rows: Array<{ key: string; bytes: number }> = []
@@ -253,7 +266,7 @@ export function DeveloperToolsPanel({ sessionId, host }: DeveloperToolsPanelProp
         <Row k="标题" v={summary?.displayTitle ?? '—'} />
         <Row k="cwd" v={summary?.cwd ?? '—'} />
         {/* 2.0.4：SessionSummary 移除 agentPreset 字段（会话摘要瘦身）。 */}
-        <Row k="状态" v={summary === undefined ? '—' : summary.running ? '运行中' : summary.completed === true ? '已完成' : '空闲'} />
+        <Row k="状态" v={summary === undefined ? '—' : summary.running ? '运行中' : completed ? '已完成' : '空闲'} />
         <Row k="更新于" v={summary === undefined ? '—' : relTime(summary.updatedAt)} />
       </Section>
       <Section title="模型请求统计">
