@@ -2,7 +2,7 @@
  * 对话页双容器拆分（advanced dock 模式）：
  *  - 官方 ConversationRoot 的 DOM 为
  *      div[data-phase]
- *      ├── div[data-slot="conversation.session.header"]  (inline style: display: contents)
+ *      ├── div[data-slot="conversation.header"]          (inline style: display: contents)
  *      │   └── header
  *      └── div[data-conversation-scroll]                  (正文滚动卡片)
  *    两个子节点本身并列，但 header 槽位容器是 display: contents，视觉上
@@ -25,7 +25,8 @@ function tagPhase(phase: HTMLElement): void {
   phase.setAttribute(SPLIT_ATTR, '')
   // 旧版结构：header 直接是 phase 子级；新版结构：header 包在 slot 占位 div 内。
   const headerHost =
-    phase.querySelector<HTMLElement>(':scope > div[data-slot="conversation.session.header"]')
+    phase.querySelector<HTMLElement>(':scope > div[data-slot="conversation.header"]')
+    ?? phase.querySelector<HTMLElement>(':scope > div[data-slot="conversation.session.header"]')
     ?? phase.querySelector<HTMLElement>(':scope > header')
   const bodyHost = phase.querySelector<HTMLElement>(':scope > [data-conversation-scroll]')
   if (headerHost !== null) headerHost.setAttribute(HEADER_CONTAINER_ATTR, '')

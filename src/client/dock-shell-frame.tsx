@@ -229,12 +229,13 @@ export function isAdvancedShell(): boolean {
   } catch { return false }
 }
 
-/** 会话 header 的定位选择器：官方槽位容器（display:contents）直下 header，或 phase 直下 header。
+/** 会话 header 的定位选择器：0.1.7 使用根作用域 conversation.header；
+ *  较早版本使用 conversation.session.header。只匹配 phase 的直接槽位子级，
  *  不要用 `div[data-phase] header` 全量匹配 —— 提问卡片（QuestionComposer/PlanReviewPanel）
  *  内部也是 <header> 标签，会被误认成会话 header 搬进页头面板（表现为提问弹出时
  *  页头显示提问卡的内容）。与 conversation-split.ts 的定位语义保持一致。 */
 const CONVERSATION_HEADER_SELECTOR =
-  'div[data-phase] > div[data-slot="conversation.session.header"] > header, div[data-phase] > header'
+  'div[data-phase] > div[data-slot="conversation.header"] > header, div[data-phase] > div[data-slot="conversation.session.header"] > header, div[data-phase] > header'
 
 /** 直接子级的最小像素尺寸（会话列 640×160，普通面板 240×160）。
  *  渲染期换算 flexGrow 与 sash 拖拽 clamp 共用同一套最小尺寸语义。
@@ -795,7 +796,7 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
     if (headerHost === null) {
       // 没有页头面板（被拖成标签组/浮动窗口关闭）：把 header 放回会话面板的 slot 占位容器。
       if (conversationPane === null) return
-      const slot = conversationPane.querySelector<HTMLElement>('div[data-slot="conversation.session.header"]')
+      const slot = conversationPane.querySelector<HTMLElement>('div[data-slot="conversation.header"], div[data-slot="conversation.session.header"]')
       const phase = conversationPane.querySelector<HTMLElement>('div[data-phase]')
       for (const header of conversationPane.querySelectorAll<HTMLElement>(CONVERSATION_HEADER_SELECTOR)) {
         if (slot !== null && header.parentElement !== slot) slot.appendChild(header)
