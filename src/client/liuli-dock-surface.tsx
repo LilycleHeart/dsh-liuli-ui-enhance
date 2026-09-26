@@ -394,6 +394,25 @@ function renderTabBody(tab: TabRecord, sessionId: string, host: LiuliSidebarHost
     spec.render(sessionId, host, getLatestPanelParams(paramKey), tab))
 }
 
+/** Keep the selected official resource when Liuli opens its preview card. */
+function prepareOfficialResource(sessionId: string): void {
+  const native = getOfficialSidebarController()
+  if (!native) return
+  const tabs = native.tabsIn?.(sessionId) ?? []
+  if (tabs.length === 0) {
+    try { native.openTab?.('guide') } catch (error) {
+      console.warn('[liuli] 官方文件引导页暂不可用:', error)
+    }
+    return
+  }
+  const active = native.active?.() as { id?: string } | undefined
+  const activeTab = tabs.find(tab => tab.id === active?.id)
+  if (activeTab && activeTab.kind !== 'guide' && activeTab.kind !== 'files') return
+  const target = [...tabs].reverse().find(tab => tab.kind !== 'guide' && tab.kind !== 'files')
+    ?? activeTab ?? tabs.at(-1)
+  if (target && target.id !== active?.id) native.focus?.(target.id)
+}
+
 /** Official resources share Liuli's visible strip while their real body keeps
  * its upstream lifetime and renderer in the hidden Seat. */
 function OfficialResourceTabs({ sessionId }: { sessionId: string }): ReactElement | null {
@@ -465,9 +484,6 @@ export function LiuliDockSurface({ sessionId, host }: LiuliDockSurfaceProps): Re
     {
       id: 'official', label: '官方文件与预览', icon: createElement(FolderIcon, { size: 16 }),
       run: () => {
-        try { getOfficialSidebarController()?.openTab?.('guide') } catch (error) {
-          console.warn('[liuli] 打开官方侧栏引导页失败:', error)
-        }
         openLiuliDockPanel(sessionId, 'official')
       },
     },
@@ -613,7 +629,7 @@ function LiuliDockTabMenuItem(props: { tab: TabRecord; dismiss: () => void; sess
     const spec = specOf(kind)
     if (spec === undefined) return
     if (kind === 'official') {
-      try { getOfficialSidebarController()?.openTab?.('guide') } catch { /* 服务暂不可用时仍可打开标签 */ }
+      prepareOfficialResource(props.sessionId)
     }
     // 通过控制器开内容：同内容已开则聚焦，否则在新格/当前格打开。
     controller.openContent({
@@ -1346,6 +1362,7 @@ export function openLiuliDockPanel(
   params?: LiuliPanelParams,
   options: { newInstance?: boolean } = {},
 ): void {
+  if (kind === 'official') prepareOfficialResource(sessionId)
   const controller = controllerFor(sessionId)
   const spec = specOf(kind)
   if (spec === undefined) return
