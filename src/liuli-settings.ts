@@ -146,6 +146,8 @@ export interface LiuliSettings {
    *  /liuli-window 窗口控制路由、系统回环音频授权；关闭时自动还原已打的补丁
    *  （原生标题栏回归）。 */
   unofficial_desktop: boolean
+  desktop_menu_mode: 'floating' | 'persistent'
+  desktop_drag_height: number
   /** 右侧边栏（详细页）：PreviewDetailsPanel（Git 审查/浏览器/终端/代码查看/开发者工具/
    *  辅助对话等全部标签）、header 预览按钮、详细页自动展开等附属功能。 */
   unofficial_sidebar: boolean
@@ -224,6 +226,8 @@ export const LIULI_SETTINGS_DEFAULTS: LiuliSettings = {
   unofficial_enabled: true,
   unofficial_layout: true,
   unofficial_desktop: true,
+  desktop_menu_mode: 'floating',
+  desktop_drag_height: 24,
   unofficial_sidebar: true,
   unofficial_browser: true,
   unofficial_dom: true,
@@ -298,6 +302,8 @@ export const LiuliSettingsSchema: z<LiuliSettings> = z.object({
   unofficial_enabled: z.boolean().default(true),
   unofficial_layout: z.boolean().default(true),
   unofficial_desktop: z.boolean().default(true),
+  desktop_menu_mode: z.union(['floating', 'persistent']).default('floating'),
+  desktop_drag_height: z.number().min(0).max(40).default(24),
   unofficial_sidebar: z.boolean().default(true),
   unofficial_browser: z.boolean().default(true),
   unofficial_dom: z.boolean().default(true),

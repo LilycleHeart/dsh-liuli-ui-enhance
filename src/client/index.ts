@@ -619,7 +619,7 @@ export function apply(ctx: ClientContext): void {
   }
   const officialRightbarSeat = officialRightbarSeatEnabled(slotLayout)
   // 琉璃四向 dock 需要自研帧层；用户关闭 Dockable 布局时保留官方原生右栏。
-  const liuliEnhancedRightbar = officialRightbarSeat && unofficial('layout') && unofficial('sidebar')
+  const liuliEnhancedRightbar = officialRightbarSeat && unofficial('layout') && unofficial('sidebar') && !isOfficialWindowBridge()
   /** 启动生效开关的指纹（远端设置不同则重载，包含右栏模式）。 */
   const unofficialFlagsOf = (s: LiuliSettings): string =>
     [s.unofficial_enabled, s.unofficial_layout, s.unofficial_desktop, s.unofficial_sidebar, s.unofficial_browser, s.unofficial_dom, wantsLiuliOfficialSidebar(s)].join(',')
@@ -730,7 +730,23 @@ export function apply(ctx: ClientContext): void {
           else original.call(layout)
         }
         layout.toggleSidebar = routed
-        return () => { if (layout.toggleSidebar === routed) layout.toggleSidebar = original }
+        const rightbar = layout as typeof layout & { openRightbar: (track: boolean, fullscreen: boolean) => void; closeRightbar: () => void }
+        const originalOpen = rightbar.openRightbar
+        const originalClose = rightbar.closeRightbar
+        const open = (track: boolean, fullscreen: boolean) => {
+          if (document.querySelector('[data-testid="dock-shell"]') !== null) hostLayout.openDetails()
+          else originalOpen.call(rightbar, track, fullscreen)
+        }
+        const close = () => {
+          if (document.querySelector('[data-testid="dock-shell"]') !== null) hostLayout.closeDetails()
+          else originalClose.call(rightbar)
+        }
+        if (isOfficialWindowBridge()) { rightbar.openRightbar = open; rightbar.closeRightbar = close }
+        return () => {
+          if (layout.toggleSidebar === routed) layout.toggleSidebar = original
+          if (rightbar.openRightbar === open) rightbar.openRightbar = originalOpen
+          if (rightbar.closeRightbar === close) rightbar.closeRightbar = originalClose
+        }
       }, 'dsh-liuli-ui-enhance: web layout actions redirect')
       // 窄视口喂 narrow（官方 AppFrame 的 setNarrow 职责；Web 下帧占满视口）。
       ctx.effect(() => {

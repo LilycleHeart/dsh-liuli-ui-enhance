@@ -18,6 +18,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import css from './WindowControls.module.css'
 import { isResizeInProgress } from './resize-perf.ts'
 import { OfficialMenu } from './OfficialMenu.tsx'
+import { startDesktopDrag } from './desktop-drag.ts'
 
 /** Whether the current page is the win32 frameless desktop shell. */
 export function isFramelessWin32(): boolean {
@@ -166,6 +167,7 @@ export function WindowControls() {
   hiddenRef.current = hidden
   // 页面生命周期内恒定（URL 查询参数由桌面启动器写入，不再变化）。
   const enabled = isFramelessWin32()
+  useEffect(() => official ? startDesktopDrag() : undefined, [official])
 
   const refresh = useCallback(async (): Promise<void> => {
     const next = await fetchWindowState()

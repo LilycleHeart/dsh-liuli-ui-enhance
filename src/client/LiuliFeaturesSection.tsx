@@ -77,6 +77,11 @@ export function LiuliFeaturesSection({
   return (
     <div className={css.section}>
       <div className={css.grid}>
+        <SelectRow label="左上角应用菜单" value={s.desktop_menu_mode}
+          options={[{ value: 'floating', label: '悬浮 · 悬停唤出' }, { value: 'persistent', label: '常驻 · 侧栏胶囊' }]}
+          onChange={v => { set({ desktop_menu_mode: v as LiuliSettings['desktop_menu_mode'] }) }} />
+        <SliderRow label="触顶卡片拖窗高度" value={s.desktop_drag_height} suffix="px" min={0} max={40} step={2}
+          onChange={v => { set({ desktop_drag_height: v }) }} />
         <ToggleRow
           label={t('wideMode')}
           checked={s.wide_mode}

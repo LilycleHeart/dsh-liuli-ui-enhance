@@ -391,7 +391,7 @@ function panelIcon(spec: PanelSpec): ReactElement {
  *  不注册该席位时官方会退化成默认占位图标 —— 那正是「icon 被替换」的原因。 */
 function panelTitleBody(spec: PanelSpec): () => ReactElement {
   return function LiuliOfficialPanelTitle(): ReactElement {
-    return panelIcon(spec)
+    return createElement('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 } }, panelIcon(spec), spec.title)
   }
 }
 

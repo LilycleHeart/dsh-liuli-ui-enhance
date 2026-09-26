@@ -18,6 +18,31 @@
   min-width: 0;
   min-height: 0;
 }
+.nativeRightbarCard {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  margin: var(--liuli-dock-padding, 8px) 0 var(--liuli-dock-padding, 8px) var(--liuli-dock-padding, 8px);
+}
+.nativeRightbarCard :global([data-sidebar-right-panel='push']) {
+  inset: 0 !important;
+  width: 100% !important;
+}
+.nativeRightbarCard :global([data-dockkit-pane]) {
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity)) !important;
+  background-image: var(--liuli-noise);
+  backdrop-filter: var(--liuli-material-blur);
+  border-radius: var(--liuli-radius, 14px);
+}
+.pane:has(.nativeRightbarCard [data-sidebar-right-panel='fullscreen']) { overflow: visible; }
+.nativeRightbarCard :global([data-sidebar-right-panel='fullscreen']) {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  max-width: none !important;
+  z-index: 90;
+}
 
 /* ── 面板（dock pane）：最小结构容器，不附加观感 ── */
 

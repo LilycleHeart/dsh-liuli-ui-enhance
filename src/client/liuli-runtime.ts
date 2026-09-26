@@ -324,6 +324,8 @@ const FONT_BUILTIN = '"Inter", "Segoe UI", system-ui, -apple-system, "PingFang S
 export async function applyLiuliSettings(settings: LiuliSettings): Promise<void> {
   const seq = ++liuliApplySeq
   const cfg = { ...LIULI_SETTINGS_DEFAULTS, ...(settings ?? {}) }
+  document.documentElement.dataset.liuliMenuMode = cfg.desktop_menu_mode
+  document.documentElement.dataset.liuliDragHeight = String(cfg.desktop_drag_height)
   const wallpaper = loadWallpaper()
   const body = document.body
   const set = (k: string, v: string): void => { body.style.setProperty(k, v) }

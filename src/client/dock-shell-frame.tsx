@@ -1263,11 +1263,11 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
             const w = window as unknown as { __liuliDetailsRender__?: { count: number; at: string } }
             w.__liuliDetailsRender__ = { count: (w.__liuliDetailsRender__?.count ?? 0) + 1, at: new Date().toISOString() }
           } catch { /* 诊断不应影响主流程 */ }
-          return renderSlotLoose('rightbar', {
+          return <div className={css.nativeRightbarCard} data-liuli-unified-rightbar="">{renderSlotLoose('rightbar', {
             width: detailsWidth,
             viewportWidth: typeof window === 'undefined' ? 0 : window.innerWidth,
             canShow: true,
-          })
+          })}</div>
         }
         // legacy（2.0.4）：details 是 strict session scope slot，必须在
         // SessionProvider 之下渲染（官方 AppFrame 同构）——无会话时 provider
