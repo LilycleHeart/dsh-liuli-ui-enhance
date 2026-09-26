@@ -58,7 +58,21 @@
   cursor: help;
 }
 
-/* 窄屏下隐藏额度文本，避免挤压标题区 */
+/* 官方标题行本身是 inline-size container。按实际卡片宽度收缩，
+   因此 dock 拆栏或浮动缩窄时也生效，不依赖整个窗口宽度。 */
+@container (max-width: 860px) {
+  .quotaTrack {
+    display: none;
+  }
+}
+
+@container (max-width: 700px) {
+  .quota {
+    display: none;
+  }
+}
+
+/* 旧版客户端没有标题行容器时保留视口兜底。 */
 @media (max-width: 720px) {
   .quota {
     display: none;

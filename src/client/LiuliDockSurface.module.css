@@ -331,11 +331,11 @@
   }
 }
 .chromeGroup { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
-.nativeTabs { display: inline-flex; gap: 3px; max-width: 145px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.nativeTabs { display: inline-flex; gap: 3px; max-width: min(38vw, 280px); min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .nativeTabs::-webkit-scrollbar { display: none; }
 .nativeTab {
   flex: 0 0 auto; display: inline-flex; align-items: center; height: 25px;
-  max-width: 115px; padding: 0 7px; border: 1px solid transparent;
+  max-width: 220px; padding: 0 7px; border: 1px solid transparent;
   border-radius: 8px; background: transparent; color: var(--dsw-alias-label-secondary);
   font-size: 12px; cursor: pointer;
 }

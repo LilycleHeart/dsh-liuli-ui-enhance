@@ -382,6 +382,21 @@ function PanelInfoProbe({ usePanelInfo }: { usePanelInfo: NonNullable<DockShellF
   return null
 }
 
+/** Follow the official root-scoped main panel selection (plugins, settings, etc.). */
+function OfficialMainSlot({
+  usePanelInfo,
+  renderSlot,
+}: {
+  usePanelInfo: NonNullable<DockShellFrameProps['usePanelInfo']>
+  renderSlot: LooseRenderSlot
+}): ReactNode {
+  const panelId = usePanelInfo(info => info.activePanelId)
+  return <>
+    {panelId !== null && <span data-liuli-global-panel="" hidden />}
+    {renderSlot('main', {}, { entryKey: panelId ?? 'conversation' })}
+  </>
+}
+
 /** 官方右侧栏展开时的轨道宽度。
  *  优先用用户拖出来的宽度（`detailsWidth`，与自研 details 列共用同一份记忆），
  *  没有记忆时回落到官方 ui-layout 的默认比例（45%，min 300 / max 70% 视口）。
@@ -791,6 +806,13 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
   const syncConversationHeader = useCallback(() => {
     const rootEl = rootRef.current
     if (rootEl === null) return
+    // The official global panels replace ConversationRoot. A previously moved
+    // conversation header must not be rescued into the independent header card.
+    if (rootEl.querySelector('[data-liuli-global-panel]') !== null) {
+      rootEl.querySelector('[data-liuli-conversation-header-host] > header')?.remove()
+      headerRef.current = null
+      return
+    }
     const conversationPane = rootEl.querySelector<HTMLElement>('[data-region-pane="region:conversation"]')
     const headerHost = rootEl.querySelector<HTMLElement>('[data-liuli-conversation-header-host]')
     if (headerHost === null) {
@@ -1228,9 +1250,12 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
       case REGION_SIDEBAR:
         return renderSlot('sidebar', { collapsed: sidebarCollapsed, width: sidebarWidth })
       case REGION_CONVERSATION:
-        // 2.0.9：对话区槽位是 keyed 的 'main'，用 entryKey 选中 conversation 面板。
+        // 0.1.7 的 main 是 keyed slot；官方插件页等全局面板通过
+        // layout.selectPanel 切换 activePanelId，必须跟随该值渲染。
         return slotLayout === 'v209'
-          ? renderSlotLoose('main', {}, { entryKey: 'conversation' })
+          ? typeof usePanelInfo === 'function'
+            ? <OfficialMainSlot usePanelInfo={usePanelInfo} renderSlot={renderSlotLoose} />
+            : renderSlotLoose('main', {}, { entryKey: 'conversation' })
           : renderSlotLoose('conversation', {})
       case REGION_CONVERSATION_HEADER:
         // 页头面板只提供宿主容器；官方 ConversationRoot 渲染出的 <header>

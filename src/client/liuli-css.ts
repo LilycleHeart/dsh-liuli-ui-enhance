@@ -1932,6 +1932,53 @@ div[data-phase='active'] {
   background: var(--dsw-alias-border-l1);
 }
 
+/* 会话仍有运行任务时，与官方归档流程同样先明确确认“停止并归档”。 */
+[data-liuli-archive-dialog] {
+  box-sizing: border-box;
+  width: min(480px, calc(100vw - 32px));
+  max-height: min(80vh, 640px);
+  margin: auto;
+  padding: 24px;
+  overflow: auto;
+  border: 1px solid var(--dsw-alias-border-inverted);
+  border-radius: var(--liuli-radius);
+  background: rgba(var(--liuli-acrylic-rgb), 0.82);
+  color: var(--dsw-alias-label-primary);
+  box-shadow: var(--dsw-shadow-lv3);
+  -webkit-backdrop-filter: var(--liuli-material-blur);
+  backdrop-filter: var(--liuli-material-blur);
+}
+[data-liuli-archive-dialog]::backdrop {
+  background: rgba(0, 0, 0, 0.42);
+}
+[data-liuli-archive-dialog] h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  line-height: 26px;
+}
+[data-liuli-archive-dialog] p,
+[data-liuli-archive-dialog] li {
+  font-size: 14px;
+  line-height: 22px;
+}
+[data-liuli-archive-dialog] p { margin: 0 0 12px; }
+[data-liuli-archive-dialog] ul { margin: 0 0 20px; padding-left: 20px; }
+[data-liuli-archive-dialog] [role="alert"] { color: var(--dsw-alias-state-error-primary); }
+.liuli-archive-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.liuli-archive-actions button {
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 1px solid var(--dsw-alias-border-inverted);
+  border-radius: var(--liuli-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  cursor: pointer;
+}
+.liuli-archive-actions button:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.liuli-archive-actions button:disabled { opacity: 0.5; cursor: default; }
+.liuli-archive-actions .liuli-archive-confirm { color: var(--dsw-alias-state-error-primary); }
+
 /* 宿主产物行「打开方式」按钮：去掉实底背景（常态与 hover 都透明）。
    注意：不能只清 iconBtn —— 上面的 div[class*="_menu"] 会误伤
    menuWrap 容器（class 含 _menu），给图标套上 70% 半透明灰框。

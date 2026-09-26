@@ -3,9 +3,9 @@
  *
  * 官方 ui-workspace 的会话行右键菜单是通过改官方文件实现的；本模块把它
  * 搬进 dsh-liuli-ui-enhance 插件：document 级 contextmenu 委托，右键会话行弹出自绘
- * 菜单（标记 / 重命名 / 分叉 / 归档）。标记复用 session-markers.ts 的
- * localStorage store，重命名复用 session-rename.ts 的内联输入框，分叉/归档
- * 经 ctx.sessions.fork / ctx.workspaces.archiveSession。
+ * 菜单（标记 + 官方“更多”的置顶 / 重命名 / 分叉 / 归档）。标记复用
+ * session-markers.ts 的 localStorage store；官方会话操作走 uiWorkspace，
+ * 与原生菜单共享工作区列表、置顶排序和归档导航状态。
  */
 import type { ClientContext, SessionId } from './compat.ts'
 import { resolveSessionId, readRowTitle, locateTitleSpan, mountEditor } from './session-rename.ts'
@@ -15,7 +15,72 @@ import { dismissLiuliContextMenu } from './context-menu-presence.ts'
 
 const MARKERS: readonly SessionMarker[] = ['in-progress', 'todo', 'done']
 
-type Ctx = Pick<ClientContext, 'sessions' | 'workspaces'>
+type Ctx = Pick<ClientContext, 'sessions' | 'workspaces' | 'uiWorkspace'>
+
+type ActiveArchiveItem = { readonly id: string; readonly label?: string }
+type ActiveArchiveEntry = { readonly kind: string; readonly items?: readonly ActiveArchiveItem[] }
+
+/** 官方 Host 以此错误报告仍在运行的任务；不要自动停止它们。 */
+function activeArchiveActivity(reason: unknown): readonly ActiveArchiveEntry[] | undefined {
+  if (!(reason instanceof Error) || reason.name !== 'WorkspaceArchiveError') return undefined
+  const error = (reason as Error & { rpcError?: { code?: string; details?: { activity?: readonly ActiveArchiveEntry[] } } }).rpcError
+  return error?.code === 'workspace/session-active' ? error.details?.activity : undefined
+}
+
+/** 与官方归档确认等价的显式“停止并归档”步骤，保留琉璃的材质。 */
+function confirmActiveArchive(ctx: Ctx, id: SessionId, title: string, activity: readonly ActiveArchiveEntry[]): void {
+  document.querySelector('[data-liuli-archive-dialog]')?.remove()
+  const dialog = document.createElement('dialog')
+  dialog.setAttribute('data-liuli-archive-dialog', '')
+  dialog.setAttribute('aria-label', '归档会话确认')
+  const heading = document.createElement('h2')
+  heading.textContent = '停止任务并归档会话？'
+  const description = document.createElement('p')
+  description.textContent = `“${title}”还有正在进行的任务。归档前需要停止这些任务。`
+  const list = document.createElement('ul')
+  const kindLabel: Record<string, string> = { turn: '当前对话', subagent: '子任务', job: '后台任务', schedule: '计划任务' }
+  for (const entry of activity) {
+    const item = document.createElement('li')
+    const names = entry.items?.map(value => value.label ?? value.id).filter(Boolean).join('、')
+    item.textContent = `${kindLabel[entry.kind] ?? entry.kind}${names ? `：${names}` : ''}`
+    list.appendChild(item)
+  }
+  const error = document.createElement('p')
+  error.setAttribute('role', 'alert')
+  error.hidden = true
+  const footer = document.createElement('div')
+  footer.className = 'liuli-archive-actions'
+  const cancel = document.createElement('button')
+  cancel.type = 'button'
+  cancel.textContent = '取消'
+  const confirm = document.createElement('button')
+  confirm.type = 'button'
+  confirm.className = 'liuli-archive-confirm'
+  confirm.textContent = '停止并归档'
+  footer.append(cancel, confirm)
+  dialog.append(heading, description, list, error, footer)
+  const close = (): void => { dialog.close(); dialog.remove() }
+  cancel.addEventListener('click', close)
+  dialog.addEventListener('cancel', (event) => {
+    if (confirm.disabled) { event.preventDefault(); return }
+    event.preventDefault()
+    close()
+  })
+  confirm.addEventListener('click', () => {
+    cancel.disabled = true
+    confirm.disabled = true
+    error.hidden = true
+    ctx.uiWorkspace.archiveSession(id, { stopActivity: true }).then(close).catch((reason: unknown) => {
+      cancel.disabled = false
+      confirm.disabled = false
+      error.textContent = reason instanceof Error ? reason.message : String(reason)
+      error.hidden = false
+    })
+  })
+  document.body.appendChild(dialog)
+  dialog.showModal()
+  cancel.focus()
+}
 
 /** 弹出一个固定定位的自绘菜单；返回 close 用于外部清理。 */
 function renderMenu(ctx: Ctx, row: HTMLElement, id: SessionId, title: string, x: number, y: number): void {
@@ -51,21 +116,39 @@ function renderMenu(ctx: Ctx, row: HTMLElement, id: SessionId, title: string, x:
     if (action === 'rename') {
       const span = locateTitleSpan(row, title)
       if (span === null) return
-      const session = ctx.sessions.binding(id)?.session
-      if (session === undefined) return
-      mountEditor(span, title, (t) => session.rename(t))
+      mountEditor(span, title, async (t) => {
+        // 非当前会话不一定有 binding；按官方重命名流程临时持有会话。
+        const result = await ctx.sessions.using(id, { source: 'workspaceOperation' }, reference => reference.binding.session.rename(t))
+        if (!result.ok) throw new Error(result.error.message)
+      })
+      return
+    }
+    if (action === 'pin' || action === 'unpin') {
+      const call = action === 'pin' ? ctx.uiWorkspace.pinSession(id) : ctx.uiWorkspace.unpinSession(id)
+      call.catch((reason: unknown) => { console.warn('liuli session pin failed:', reason) })
       return
     }
     if (action === 'fork') {
-      ctx.sessions.fork({ sessionId: id }).catch((reason: unknown) => { console.warn('liuli fork failed:', reason) })
+      ctx.uiWorkspace.forkSession(id).catch((reason: unknown) => { console.warn('liuli fork failed:', reason) })
       return
     }
     if (action === 'archive') {
-      ctx.workspaces.archiveSession(id).catch((reason: unknown) => { console.warn('liuli archive failed:', reason) })
+      ctx.uiWorkspace.archiveSession(id).catch((reason: unknown) => {
+        const activity = activeArchiveActivity(reason)
+        if (activity !== undefined) confirmActiveArchive(ctx, id, title, activity)
+        else console.warn('liuli archive failed:', reason)
+      })
+      return
+    }
+    if (action === 'unarchive') {
+      ctx.uiWorkspace.unarchiveSession(id).catch((reason: unknown) => { console.warn('liuli unarchive failed:', reason) })
     }
   }
 
   const currentMarker = getSessionMarker(id)
+  const workspace = ctx.workspaces.list.getSnapshot()
+  const archived = workspace.archivedSessionIds.includes(id)
+  const pinned = workspace.pinnedSessionIds.includes(id)
 
   const appendItem = (label: string, action: string, icon: string, opts: { danger?: boolean; active?: boolean } = {}): void => {
     const btn = document.createElement('button')
@@ -100,9 +183,10 @@ function renderMenu(ctx: Ctx, row: HTMLElement, id: SessionId, title: string, x:
   sep.className = 'liuli-menu-sep'
   menu.appendChild(sep)
 
+  if (!archived) appendItem(pinned ? '取消置顶' : '置顶会话', pinned ? 'unpin' : 'pin', ICONS.pin)
   appendItem('重命名', 'rename', ICONS.edit)
   appendItem('分叉会话', 'fork', ICONS.branch)
-  appendItem('归档会话', 'archive', ICONS.archive, { danger: true })
+  appendItem(archived ? '恢复会话' : '归档会话', archived ? 'unarchive' : 'archive', ICONS.archive, { danger: !archived })
 
   // 定位：夹紧视口（先 visibility:hidden 测量真实尺寸）
   const r = menu.getBoundingClientRect()
@@ -141,6 +225,8 @@ export function startSessionContextMenu(ctx: Ctx): () => void {
     const id = resolveSessionId(ctx, row)
     if (id === undefined) return
     const summary = ctx.sessions.list.getSnapshot().byId[id]
+    // 官方“更多”不会为未开始的空会话提供操作。
+    if (summary?.blank === true) return
     const title = summary?.displayTitle ?? readRowTitle(row) ?? ''
     e.preventDefault()
     e.stopPropagation()

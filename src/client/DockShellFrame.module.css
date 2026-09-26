@@ -171,8 +171,109 @@
   display: none !important;
 }
 
+/* The upstream guide is projected into Liuli's card. Its stock dock tab host
+   paints an opaque base that otherwise covers the wallpaper/material. Scope the
+   override to the guide body so document and terminal rendering keep their own
+   backgrounds. */
+.officialRightbarHost[data-liuli-native-seat-active] :global([data-sidebar-right-panel]:has([data-sidebar-right-guide]) [class*='_tabHost']),
+.officialRightbarHost[data-liuli-native-seat-active] :global([data-sidebar-right-panel]:has([data-sidebar-right-guide]) [data-dockkit-pane]),
+.officialRightbarHost[data-liuli-native-seat-active] :global([data-sidebar-right-panel]:has([data-sidebar-right-guide]) [data-dockkit-empty]) {
+  background: transparent !important;
+}
+
+.officialRightbarHost[data-liuli-native-seat-active] :global([data-sidebar-right-guide]) {
+  background: transparent !important;
+}
+
+.officialRightbarHost[data-liuli-native-seat-active] :global([data-sidebar-right-guide-entry]) {
+  --liuli-guide-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z'/%3E%3C/svg%3E");
+  border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, .2)) !important;
+  border-radius: var(--liuli-radius, 14px) !important;
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, .55)) !important;
+  background-image: var(--liuli-noise) !important;
+  -webkit-backdrop-filter: var(--liuli-material-blur) !important;
+  backdrop-filter: var(--liuli-material-blur) !important;
+  box-shadow: var(--liuli-glow-brand), var(--liuli-shadow-subtle, 0 1px 3px rgba(0, 0, 0, .08));
+}
+
+.officialRightbarHost[data-liuli-native-seat-active] :global([data-sidebar-right-guide-entry]:hover) {
+  border-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 45%, transparent) !important;
+  background-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 12%, rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, .55))) !important;
+}
+
+/* Builtin guide cards and the terminal card both place their artwork in the
+   first direct span. Replace that artwork with one monochrome Material glyph
+   coloured by the live Liuli theme token. Text and shortcuts remain upstream. */
+.officialRightbarHost[data-liuli-native-seat-active] :global([data-sidebar-right-guide-entry] > span:first-of-type) {
+  color: var(--dsw-alias-brand-primary, #8ecdf8) !important;
+}
+
+.officialRightbarHost[data-liuli-native-seat-active] :global([data-sidebar-right-guide-entry] > span:first-of-type svg) {
+  display: none !important;
+}
+
+.officialRightbarHost[data-liuli-native-seat-active] :global([data-sidebar-right-guide-entry] > span:first-of-type::before) {
+  content: '';
+  display: block;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  background: currentColor;
+  -webkit-mask: var(--liuli-guide-icon) center / contain no-repeat;
+  mask: var(--liuli-guide-icon) center / contain no-repeat;
+}
+
+.officialRightbarHost[data-liuli-native-seat-active] :global(:is([data-sidebar-right-guide-entry='files'], [data-sidebar-right-guide-entry='liuli-files'])) {
+  --liuli-guide-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z'/%3E%3C/svg%3E");
+}
+.officialRightbarHost[data-liuli-native-seat-active] :global(:is([data-sidebar-right-guide-entry='terminal'], [data-sidebar-right-guide-entry='liuli-terminal'])) {
+  --liuli-guide-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -960 960 960'%3E%3Cpath d='M140-160q-24 0-42-18t-18-42v-520q0-24 18-42t42-18h680q24 0 42 18t18 42v520q0 24-18 42t-42 18H140Zm0-60h680v-436H140v436Zm160-72-42-42 103-104-104-104 43-42 146 146-146 146Zm190 4v-60h220v60H490Z'/%3E%3C/svg%3E");
+}
+.officialRightbarHost[data-liuli-native-seat-active] :global(:is([data-sidebar-right-guide-entry='browser'], [data-sidebar-right-guide-entry='liuli-browser'])) {
+  --liuli-guide-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm7.9 9h-3.4a15.7 15.7 0 0 0-1.2-5.3A8.03 8.03 0 0 1 19.9 11zM12 4.1c.9 1.2 1.9 3.4 2.4 6.9H9.6c.5-3.5 1.5-5.7 2.4-6.9zM4.1 13h3.4c.2 2 .7 3.8 1.2 5.3A8.03 8.03 0 0 1 4.1 13zm0-2a8.03 8.03 0 0 1 4.6-5.3A15.7 15.7 0 0 0 7.5 11H4.1zM12 19.9c-.9-1.2-1.9-3.4-2.4-6.9h4.8c-.5 3.5-1.5 5.7-2.4 6.9zm3.3-1.6a15.7 15.7 0 0 0 1.2-5.3h3.4a8.03 8.03 0 0 1-4.6 5.3z'/%3E%3C/svg%3E");
+}
+.officialRightbarHost[data-liuli-native-seat-active] :global([data-sidebar-right-guide-entry='liuli-review']) {
+  --liuli-guide-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M10 3H2v8h8V3zm-2 6H4V5h4v4zm14 4h-8v8h8v-8zm-2 6h-4v-4h4v4zM13 3h2v5h5v2h-7V3zM4 14h7v7H9v-5H4v-2z'/%3E%3C/svg%3E");
+}
+.officialRightbarHost[data-liuli-native-seat-active] :global([data-sidebar-right-guide-entry='liuli-side-chat']) {
+  --liuli-guide-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z'/%3E%3C/svg%3E");
+}
+.officialRightbarHost[data-liuli-native-seat-active] :global([data-sidebar-right-guide-entry='liuli-code']) {
+  --liuli-guide-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z'/%3E%3C/svg%3E");
+}
+.officialRightbarHost[data-liuli-native-seat-active] :global([data-sidebar-right-guide-entry='liuli-developer-tools']) {
+  --liuli-guide-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M20 8h-2.81c-.45-.78-1.07-1.45-1.82-1.96L17 4.41 15.59 3l-2.17 2.17C12.96 5.06 12.49 5 12 5s-.96.06-1.41.17L8.41 3 7 4.41l1.62 1.63C7.88 6.55 7.26 7.22 6.81 8H4v2h2.09c-.05.33-.09.66-.09 1v1H4v2h2v1c0 .34.04.67.09 1H4v2h2.81c1.04 1.79 2.97 3 5.19 3s4.15-1.21 5.19-3H20v-2h-2.09c.05-.33.09-.66.09-1v-1h2v-2h-2v-1c0-.34-.04-.67-.09-1H20V8zm-4 4v3c0 .22-.03.47-.07.7l-.1.65-.37.65c-.72 1.24-2.04 2-3.46 2s-2.74-.77-3.46-2l-.37-.64-.1-.66C8.03 15.48 8 15.23 8 15v-4c0-.23.03-.48.07-.7l.1-.65.37-.65c.72-1.24 2.04-2 3.46-2s2.74.77 3.46 2l.37.64.1.66c.04.22.07.47.07.7v3z'/%3E%3C/svg%3E");
+}
+
+.officialRightbarHost[data-liuli-native-seat-active] :global([data-sidebar-right-guide] > span:first-child) {
+  color: var(--dsw-alias-brand-primary, #8ecdf8) !important;
+}
+.officialRightbarHost[data-liuli-native-seat-active] :global([data-sidebar-right-guide] > span:first-child svg) {
+  display: none !important;
+}
+.officialRightbarHost[data-liuli-native-seat-active] :global([data-sidebar-right-guide] > span:first-child::before) {
+  content: '';
+  display: block;
+  width: 48px;
+  height: 48px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm-4.6-4.6 6.8-2.2 2.2-6.8-6.8 2.2-2.2 6.8zm4.6-4.6a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm-4.6-4.6 6.8-2.2 2.2-6.8-6.8 2.2-2.2 6.8zm4.6-4.6a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
 .officialRightbarHost[data-liuli-native-fullscreen] {
   z-index: 90;
+}
+
+/* The main slot can show global pages such as Plugins. They use the full main
+   region; its separate conversation header card and sash must vacate then. */
+:global([data-testid='dock-shell']:has([data-liuli-global-panel]) [data-shard-region='region:conversation-header']),
+:global([data-testid='dock-shell']:has([data-liuli-global-panel]) [data-shard-region='region:conversation-header'] + [data-testid='dock-sash']),
+:global([data-testid='dock-shell']:has([data-liuli-global-panel]) [data-testid='dock-sash']:has(+ [data-shard-region='region:conversation-header'])) {
+  display: none !important;
+}
+:global([data-testid='dock-shell']:has([data-liuli-global-panel]) [data-shard-region='region:conversation']) {
+  flex-grow: 1 !important;
 }
 
 :global(body:has([data-liuli-disable-inner-split]) [data-liuli-native-seat-active] [data-dockkit-split-button]) {

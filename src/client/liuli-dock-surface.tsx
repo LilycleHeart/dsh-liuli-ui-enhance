@@ -461,7 +461,17 @@ function OfficialEmptyGuide({ sessionId }: { sessionId: string }): ReactElement 
       const native = getOfficialSidebarController()
       if (!native?.openTab) return
       try {
-        const guide = native.tabsIn?.(sessionId).find(tab => tab.kind === 'guide')
+        const tabs = native.tabsIn?.(sessionId) ?? []
+        const resource = [...tabs].reverse().find(tab => tab.kind !== 'guide' && !tab.kind.startsWith('liuli-'))
+        if (resource) {
+          // Restored native files already have a body; bootstrapping a new
+          // guide over them both steals focus and leaves a redundant tab.
+          if ((native.active?.() as { id?: string } | undefined)?.id !== resource.id) native.focus?.(resource.id)
+          openLiuliDockPanel(sessionId, 'official', undefined, { skipOfficialPrepare: true })
+          ready = true
+          return
+        }
+        const guide = tabs.find(tab => tab.kind === 'guide')
         if (guide) native.focus?.(guide.id)
         else native.openTab('guide')
         ready = true
@@ -506,11 +516,16 @@ function OfficialResourceTabs({ sessionId }: { sessionId: string }): ReactElemen
     return () => { unsubscribe?.(); window.clearInterval(timer) }
   }, [sessionId])
   const controller = getOfficialSidebarController()
-  const tabs = controller?.tabsIn?.(sessionId) ?? []
+  const tabs = (controller?.tabsIn?.(sessionId) ?? []).filter(tab => !tab.kind.startsWith('liuli-'))
   if (tabs.length === 0) return null
+  // The guide is an empty-state doorway. A resource opened from the chat does
+  // not replace it upstream, so drawing both creates the redundant "开始" chip.
+  // Keep it available again after the last real tab closes.
+  const resourceTabs = tabs.filter(tab => tab.kind !== 'guide')
+  const visibleTabs = resourceTabs.length > 0 ? resourceTabs : tabs
   const activeId = controller?.active?.() as { id?: string } | undefined
   return <span className={css.nativeTabs} aria-label="官方文件标签">
-    {tabs.map(tab => <button key={tab.id} type="button"
+    {visibleTabs.map(tab => <button key={tab.id} type="button"
       className={`${css.nativeTab}${activeId?.id === tab.id ? ' ' + css.nativeTabActive : ''}`}
       title={tab.title ?? tab.kind} aria-label={`切换到 ${tab.title ?? tab.kind}`}
       onClick={() => {
@@ -1374,7 +1389,12 @@ export function startOfficialTabBridge(sessionId: string): () => void {
         // 上游 Tab 域，只把它的整个可见 Seat 放进琉璃的一枚 dock 标签。
         // 同一文件再次由官方 openResource 打开时 ID 不变；官方 Seat 在用户
         // 切离时会收起，新的 false→true 展开沿也代表一次显式导航。
-        if (!officialExpanded || (!nativeActiveChanged && !officialJustExpanded && !explicitNative && !confirmedFocus)) return
+        // Native Seat is visually hidden while Liuli owns the column. Opening
+        // a resource from the chat can be followed by Seat's visibility sync
+        // collapsing its own layout before this poll. An explicit navigation
+        // still reveals our column even when upstream is already collapsed.
+        if ((!officialExpanded && !explicitNative && !confirmedFocus)
+          || (!nativeActiveChanged && !officialJustExpanded && !explicitNative && !confirmedFocus)) return
         // 桥刚接通时，先前的官方活动文件可能只是恢复状态：只有琉璃尚无
         // 用户选中的 tab 才把它带进可见 dock。后续 ID 变化代表新的官方导航。
         if (firstObservation && !explicitNative && !confirmedFocus
@@ -1412,15 +1432,21 @@ export function startOfficialTabBridge(sessionId: string): () => void {
     if (detail.method === 'focus') {
       explicitNativeUntil = 0
       requestedFocus = { tabId: detail.tabId, until: Date.now() + 5000 }
-    } else if ((typeof detail.kind === 'string' && detail.kind.startsWith('liuli-'))
-      || (detail.method === 'openResource' && detail.kind === undefined)) {
-      // A resource can resolve to a Liuli extension even without options.kind.
-      // Never defer that panel behind an earlier native-navigation grace period.
+    } else if (typeof detail.kind === 'string' && detail.kind.startsWith('liuli-')) {
       explicitNativeUntil = 0
       requestedFocus = undefined
     } else {
       explicitNativeUntil = Date.now() + 5000
       requestedFocus = undefined
+      // The official API owns the file/browser/terminal body, while Liuli owns
+      // the visible dock track. Reveal the latter in this same navigation turn;
+      // waiting for isExpanded() loses opens from a previously collapsed Seat.
+      // The guide is projected by OfficialEmptyGuide and must not grow a second
+      // outer tab merely because it was opened during initial empty mounting.
+      if ((detail.method === 'openTab' && detail.kind !== 'guide')
+        || (detail.method === 'openResource' && detail.kind !== undefined)) {
+        openLiuliDockPanel(sessionId, 'official', undefined, { skipOfficialPrepare: true })
+      }
     }
     if (navigationTimer !== undefined) window.clearTimeout(navigationTimer)
     navigationTimer = window.setTimeout(() => { navigationTimer = undefined; poll() }, 40)
