@@ -6,9 +6,29 @@
 import { createElement, useLayoutEffect, useRef, type ReactElement } from 'react'
 import { getOfficialSidebarController, OFFICIAL_SIDEBAR_NAVIGATION_EVENT } from './sidebar-right-tabs.ts'
 import css from './LiuliDockSurface.module.css'
+import materialCss from './OfficialSidebarMaterial.module.css'
 
 const HOST_SELECTOR = '[data-liuli-official-rightbar-host]'
 let projectedTarget: HTMLElement | null = null
+
+function overlaps(a: DOMRect, b: DOMRect): boolean {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
+}
+
+/** The native Seat is a fixed overlay. Never let it cover a different Liuli
+ * float that the user has raised above the file card. */
+function mayProjectOverFloats(target: HTMLElement): boolean {
+  const surface = target.closest<HTMLElement>('[data-liuli-dock-surface]')
+  if (surface === null) return true
+  const current = target.closest<HTMLElement>('[data-dockkit-float]')
+  const targetRect = target.getBoundingClientRect()
+  const currentZ = current === null ? -1 : Number(current.style.zIndex || 0)
+  for (const peer of surface.querySelectorAll<HTMLElement>('[data-dockkit-float]')) {
+    if (peer === current || peer.getClientRects().length === 0 || !overlaps(targetRect, peer.getBoundingClientRect())) continue
+    if (current === null || Number(peer.style.zIndex || 0) > currentZ) return false
+  }
+  return true
+}
 
 function positionNativeSeat(host: HTMLElement, target: HTMLElement, fullscreen: boolean): boolean {
   const rect = fullscreen
@@ -38,6 +58,7 @@ export function OfficialSidebarSeatPane({ onCollapse, nativeTabId, label = 'å¼€å
     const target = ref.current
     const host = document.querySelector<HTMLElement>(HOST_SELECTOR)
     if (target === null || host === null) return
+    if (materialCss.nativeSkin !== undefined) host.classList.add(materialCss.nativeSkin)
     let fullscreen = false
     let collapsedByUser = false
     let frame = 0
@@ -56,7 +77,8 @@ export function OfficialSidebarSeatPane({ onCollapse, nativeTabId, label = 'å¼€å
       const controller = getOfficialSidebarController()
       const active = controller?.active?.() as { id?: string; kind?: string } | undefined
       const ownsActive = nativeTabId === undefined ? active?.kind === 'guide' : active?.id === nativeTabId
-      if (!ownsActive || !positionNativeSeat(host, target, fullscreen)) {
+      if (!ownsActive || (!fullscreen && !mayProjectOverFloats(target))
+        || !positionNativeSeat(host, target, fullscreen)) {
         clearProjection()
         collapsedByUser = false
         return
@@ -100,6 +122,7 @@ export function OfficialSidebarSeatPane({ onCollapse, nativeTabId, label = 'å¼€å
       resize.observe(shard)
     }
     window.addEventListener('resize', schedule)
+    window.addEventListener('pointerdown', schedule, true)
     document.addEventListener('visibilitychange', schedule)
     window.addEventListener(OFFICIAL_SIDEBAR_NAVIGATION_EVENT, schedule)
     const unsubscribeNative = getOfficialSidebarController()?.openTabs?.subscribe(schedule)
@@ -148,6 +171,7 @@ export function OfficialSidebarSeatPane({ onCollapse, nativeTabId, label = 'å¼€å
     return () => {
       resize.disconnect()
       window.removeEventListener('resize', schedule)
+      window.removeEventListener('pointerdown', schedule, true)
       document.removeEventListener('visibilitychange', schedule)
       window.removeEventListener(OFFICIAL_SIDEBAR_NAVIGATION_EVENT, schedule)
       unsubscribeNative?.()

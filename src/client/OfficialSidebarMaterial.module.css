@@ -1,0 +1,133 @@
+/* Scoped skin for the projected official SidebarRight Seat. All selectors live
+   under .nativeSkin while its real content is visible; PDF pages, browser
+   webviews and terminal canvases keep their own backgrounds. */
+.nativeSkin[data-liuli-native-seat-active] {
+  --liuli-native-folder: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z'/%3E%3C/svg%3E");
+  --liuli-native-folder-open: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M2 8V5c0-1.1.9-2 2-2h5l2 2h9c1.1 0 2 .9 2 2v3M3 20l3-10h16l-3 10H3z' stroke='black' stroke-width='2' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E");
+  --liuli-native-file: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z'/%3E%3C/svg%3E");
+  --liuli-native-code: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z'/%3E%3C/svg%3E");
+  --liuli-native-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 8a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM5 18l3.5-4.5 2.5 3.01L14.5 12 19 18H5z'/%3E%3C/svg%3E");
+  --liuli-native-video: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M18 4H6c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-6 12.5V7.5l6 4.5-6 4.5z'/%3E%3C/svg%3E");
+  --liuli-native-audio: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 3v12.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z'/%3E%3C/svg%3E");
+  --liuli-native-article: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM11 17H7v-2h4v2zm6-4H7v-2h10v2zm0-4H7V7h10v2z'/%3E%3C/svg%3E");
+  --liuli-native-pdf: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM8 12h2.5c1.4 0 2.2.8 2.2 2.1 0 1.3-.8 2.1-2.2 2.1H9.4V19H8v-7zm1.4 1.3v1.6h1c.6 0 .9-.3.9-.8s-.3-.8-.9-.8h-1zm4.2-1.3h2c1.8 0 2.9 1.3 2.9 3.5S17.4 19 15.6 19h-2v-7zm1.4 1.3v4.4h.5c1 0 1.6-.8 1.6-2.2s-.6-2.2-1.6-2.2H15z'/%3E%3C/svg%3E");
+  --liuli-native-table: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-8 14H5v-4h6v4zm0-6H5V7h6v4zm8 6h-6v-4h6v4zm0-6h-6V7h6v4z'/%3E%3C/svg%3E");
+  --liuli-native-slides: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h7v2H8v2h8v-2h-2v-2h7c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 14H3V5h18v12zm-12-2 6-4-6-4v8z'/%3E%3C/svg%3E");
+  --liuli-native-archive: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2zm5 10h-2v2h-2v-2H9v-2h2v-2h2v2h2v2z'/%3E%3C/svg%3E");
+  --liuli-native-refresh: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.93 9h-2.02A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z'/%3E%3C/svg%3E");
+}
+
+/* The native file tree already supplies expansion, scrolling and opening.
+   These rules only replace paint, never element order or hit targets. */
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-state='tree']) {
+  background: transparent !important;
+  color: var(--dsw-alias-label-primary);
+}
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-state='tree'] > div:first-child) {
+  min-height: 40px;
+  padding-inline: 12px 8px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, .16));
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 4%, transparent);
+}
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-state='tree'] > div:first-child [data-files-path]) {
+  color: var(--dsw-alias-label-secondary);
+}
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-body]) {
+  padding: 8px 8px 10px 10px;
+  scrollbar-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 65%, transparent) transparent;
+}
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-entry] > button) {
+  position: relative;
+  gap: 8px;
+  min-height: 29px;
+  padding: 5px 8px;
+  border-radius: var(--liuli-radius-sm, 10px);
+  transition: background-color 120ms var(--ds-ease-in-out, ease), color 120ms var(--ds-ease-in-out, ease);
+}
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-entry] > button:hover) {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, .14));
+}
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-entry] > button:active) {
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 16%, transparent);
+}
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-entry] > button:focus-visible),
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-reload]:focus-visible) {
+  outline: 2px solid var(--dsw-alias-brand-primary, #8ecdf8);
+  outline-offset: -2px;
+}
+
+/* Preserve the official icon box in the flex row; paint a 16px Material mask
+   over it so neither the row width nor its click target changes. */
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-entry] > button > svg:first-child) {
+  opacity: 0 !important;
+}
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-entry] > button::before) {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  width: 16px;
+  height: 16px;
+  transform: translateY(-50%);
+  background-color: var(--dsw-alias-brand-primary, #8ecdf8);
+  -webkit-mask: var(--liuli-native-entry-icon, var(--liuli-native-file)) center / contain no-repeat;
+  mask: var(--liuli-native-entry-icon, var(--liuli-native-file)) center / contain no-repeat;
+  pointer-events: none;
+}
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-entry='directory']) {
+  --liuli-native-entry-icon: var(--liuli-native-folder);
+}
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-entry='directory']:has(> button[aria-expanded='true'])) {
+  --liuli-native-entry-icon: var(--liuli-native-folder-open);
+}
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-entry='file']) {
+  --liuli-native-entry-icon: var(--liuli-native-file);
+}
+
+/* Different silhouettes retain the native tree's at-a-glance type distinction.
+   Attribute matching follows the stable path provided by the official row. */
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-entry='file']:is([data-files-path$='.pdf' i])) { --liuli-native-entry-icon: var(--liuli-native-pdf); }
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-entry='file']:is([data-files-path$='.png' i], [data-files-path$='.jpg' i], [data-files-path$='.jpeg' i], [data-files-path$='.gif' i], [data-files-path$='.svg' i], [data-files-path$='.webp' i], [data-files-path$='.apng' i], [data-files-path$='.avif' i], [data-files-path$='.bmp' i])) { --liuli-native-entry-icon: var(--liuli-native-image); }
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-entry='file']:is([data-files-path$='.mp4' i], [data-files-path$='.mov' i], [data-files-path$='.m4v' i], [data-files-path$='.webm' i], [data-files-path$='.mkv' i], [data-files-path$='.avi' i], [data-files-path$='.mpeg' i])) { --liuli-native-entry-icon: var(--liuli-native-video); }
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-entry='file']:is([data-files-path$='.mp3' i], [data-files-path$='.wav' i], [data-files-path$='.flac' i], [data-files-path$='.ogg' i], [data-files-path$='.m4a' i], [data-files-path$='.aac' i])) { --liuli-native-entry-icon: var(--liuli-native-audio); }
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-entry='file']:is([data-files-path$='.js' i], [data-files-path$='.jsx' i], [data-files-path$='.ts' i], [data-files-path$='.tsx' i], [data-files-path$='.py' i], [data-files-path$='.rs' i], [data-files-path$='.go' i], [data-files-path$='.java' i], [data-files-path$='.cpp' i], [data-files-path$='.c' i], [data-files-path$='.h' i], [data-files-path$='.css' i], [data-files-path$='.scss' i], [data-files-path$='.html' i], [data-files-path$='.vue' i], [data-files-path$='.json' i], [data-files-path$='.yaml' i], [data-files-path$='.yml' i], [data-files-path$='.sh' i], [data-files-path$='.ps1' i])) { --liuli-native-entry-icon: var(--liuli-native-code); }
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-entry='file']:is([data-files-path$='.md' i], [data-files-path$='.mdx' i], [data-files-path$='.markdown' i], [data-files-path$='.txt' i], [data-files-path$='.doc' i], [data-files-path$='.docx' i], [data-files-path$='.rtf' i], [data-files-path$='.odt' i])) { --liuli-native-entry-icon: var(--liuli-native-article); }
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-entry='file']:is([data-files-path$='.csv' i], [data-files-path$='.tsv' i], [data-files-path$='.xls' i], [data-files-path$='.xlsx' i], [data-files-path$='.ods' i])) { --liuli-native-entry-icon: var(--liuli-native-table); }
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-entry='file']:is([data-files-path$='.ppt' i], [data-files-path$='.pptx' i], [data-files-path$='.key' i])) { --liuli-native-entry-icon: var(--liuli-native-slides); }
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-entry='file']:is([data-files-path$='.zip' i], [data-files-path$='.rar' i], [data-files-path$='.7z' i], [data-files-path$='.tar' i], [data-files-path$='.gz' i])) { --liuli-native-entry-icon: var(--liuli-native-archive); }
+
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-reload]) {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  color: var(--dsw-alias-label-secondary);
+}
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-reload]:hover) {
+  color: var(--dsw-alias-brand-primary, #8ecdf8);
+  background: var(--dsw-alias-interactive-bg-hover-accent);
+}
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-reload] > svg) { opacity: 0 !important; }
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-reload]::before) {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  background: currentColor;
+  -webkit-mask: var(--liuli-native-refresh) center / contain no-repeat;
+  mask: var(--liuli-native-refresh) center / contain no-repeat;
+  pointer-events: none;
+}
+
+.nativeSkin[data-liuli-native-seat-active] :global([data-files-state='no-workspace']) {
+  margin: 14px;
+  padding: 14px;
+  border: 1px dashed var(--dsw-alias-border-l2, rgba(128, 128, 128, .25));
+  border-radius: var(--liuli-radius-sm, 10px);
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, .55));
+  background-image: var(--liuli-noise);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nativeSkin[data-liuli-native-seat-active] :global([data-files-entry] > button) { transition: none; }
+}

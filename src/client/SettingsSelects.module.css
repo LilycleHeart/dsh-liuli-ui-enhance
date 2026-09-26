@@ -76,11 +76,13 @@
   box-sizing: border-box;
   padding: 4px;
   border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.25));
-  border-radius: var(--liuli-radius, 14px);
-  background: color-mix(in srgb, var(--dsw-alias-surface-primary, #ffffff) 86%, transparent);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
-  -webkit-backdrop-filter: var(--liuli-material-blur, blur(16px));
-  backdrop-filter: var(--liuli-material-blur, blur(16px));
+  border-radius: var(--liuli-radius-sm, 10px);
+  /* The runtime's legacy div[class*="_menu"] selector has higher specificity. */
+  background-color: rgba(var(--liuli-acrylic-rgb), min(0.92, calc(var(--liuli-material-opacity, 0.55) + 0.3))) !important;
+  background-image: var(--liuli-noise) !important;
+  box-shadow: var(--liuli-shadow);
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;
   display: flex;
   flex-direction: column;
   gap: 1px;

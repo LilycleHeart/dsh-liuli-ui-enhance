@@ -31,7 +31,7 @@ function renderMenu(ctx: Ctx, row: HTMLElement, id: WorkspaceId, title: string, 
   menu.setAttribute('role', 'menu')
   menu.setAttribute('data-liuli-context-menu', '')
   Object.assign(menu.style, {
-    position: 'fixed', left: '0', top: '0', visibility: 'hidden', zIndex: '1200',
+    position: 'fixed', left: '0', top: '0', visibility: 'hidden', zIndex: '2147482500',
   } as Partial<CSSStyleDeclaration>)
   document.body.appendChild(menu)
 
@@ -86,9 +86,8 @@ function renderMenu(ctx: Ctx, row: HTMLElement, id: WorkspaceId, title: string, 
   appendItem('重命名工作区', 'rename', ICONS.edit)
   appendItem('删除工作区', 'delete', ICONS.trash, { danger: true })
 
-  const r = menu.getBoundingClientRect()
-  const left = Math.min(Math.max(x, 8), window.innerWidth - r.width - 8)
-  const top = Math.min(Math.max(y, 8), window.innerHeight - r.height - 8)
+  const left = Math.max(8, Math.min(x, window.innerWidth - menu.offsetWidth - 8))
+  const top = Math.max(8, Math.min(y, window.innerHeight - menu.offsetHeight - 8))
   menu.style.left = left + 'px'
   menu.style.top = top + 'px'
   menu.style.visibility = 'visible'

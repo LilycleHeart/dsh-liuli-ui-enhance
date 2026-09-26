@@ -709,6 +709,7 @@ export function LiuliAppearanceSection({
 
         <SliderRow
           label={t('radius')} value={s.corner_radius} suffix="px" min={0} max={40}
+          tip={t('radius.tip')}
           onChange={(v) => { set({ corner_radius: v }) }}
         />
 

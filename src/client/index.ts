@@ -73,6 +73,7 @@ import { en, zh, type LiuliAppearanceKey, featuresZh, featuresEn, type LiuliFeat
 import { liuliCss } from './liuli-css.ts'
 import { pluginManagerLayoutCss } from './plugin-manager-layout.ts'
 import { officialMaterialGapsCss } from './official-material-gaps.ts'
+import { settingsMenuMaterialCss } from './settings-menu-material.ts'
 import { startPluginManagerIcons } from './plugin-manager-icons.ts'
 import {
   LiuliHeaderVoiceprint, LiuliHeaderChrome, LiuliHeaderResizer,
@@ -106,6 +107,7 @@ import { startSessionRename } from './session-rename.ts'
 import { startSessionMarkerDecoration } from './session-markers.ts'
 import { startSessionTitleFilter } from './session-title-filter.ts'
 import { startSessionContextMenu } from './session-context-menu.ts'
+import { startLeftActivityView } from './left-activity-view.tsx'
 import { startSettingsSelectUpgrade } from './settings-selects.ts'
 import { startStatsLineIcons } from './stats-line-icons.ts'
 import { startComposerSeatAnchor } from './composer-seat-anchor.ts'
@@ -270,11 +272,11 @@ const DESKTOP_ADVANCED_CSS = [
   '}',
   '/* 底部触底后不再用底部圆角：右侧边栏底边贴窗口，保持直角。 */',
   'body[data-dsh-desktop-mode="advanced"] [class*="_detailsCol"] [data-preview-panel] {',
-  '  border-radius: var(--liuli-radius, 14px) 0 0 0 !important;',
+  '  border-radius: var(--liuli-window-radius, 14px) 0 0 0 !important;',
   '}',
   '/* 详情列在左：镜像为左贴边直角、右上角保留圆角（右缘留 16px 间隙）。 */',
   'body[data-dsh-desktop-mode="advanced"] .dshDesktopDetailsSurface[data-edge-left] [data-preview-panel] {',
-  '  border-radius: 0 var(--liuli-radius, 14px) 0 0 !important;',
+  '  border-radius: 0 var(--liuli-window-radius, 14px) 0 0 !important;',
   '}',
   '/* 侧栏根被 slot 注入内联宽度（280px 列宽），会顶掉右留白；',
   '   100% !important 收回内容盒，恢复卡片间隙（收起态 padding 0 时不受影响） */',
@@ -360,8 +362,8 @@ const WEB_DOCK_SHELL_CSS = [
   '[data-testid="dock-shell"][data-shell-mode="web"] .dshDesktopConversationSurface { min-width: 0 !important; }',
   '[data-testid="dock-shell"][data-shell-mode="web"] [class*="_detailsCol"] [class*="_panel"] { border-left: none !important; }',
   '[data-testid="dock-shell"][data-shell-mode="web"] .dshDesktopDetailsSurface { padding-bottom: 0 !important; }',
-  '[data-testid="dock-shell"][data-shell-mode="web"] [class*="_detailsCol"] [data-preview-panel] { border-radius: var(--liuli-radius, 14px) 0 0 0 !important; }',
-  '[data-testid="dock-shell"][data-shell-mode="web"] .dshDesktopDetailsSurface[data-edge-left] [data-preview-panel] { border-radius: 0 var(--liuli-radius, 14px) 0 0 !important; }',
+  '[data-testid="dock-shell"][data-shell-mode="web"] [class*="_detailsCol"] [data-preview-panel] { border-radius: var(--liuli-window-radius, 14px) 0 0 0 !important; }',
+  '[data-testid="dock-shell"][data-shell-mode="web"] .dshDesktopDetailsSurface[data-edge-left] [data-preview-panel] { border-radius: 0 var(--liuli-window-radius, 14px) 0 0 !important; }',
   '[data-testid="dock-shell"][data-shell-mode="web"] [class*="_sidebarCol"] > div > [class*="_root"] { width: 100% !important; }',
 ].join('\n')
 /** 解析元素选择器引用（ui-preview 同构：ref = JSON.stringify(PickedElement)）。 */
@@ -403,7 +405,7 @@ function injectThemeCss(): void {
   const style = document.createElement('style')
   style.id = STYLE_ID
   style.setAttribute('data-liuli-theme', '')
-  style.textContent = liuliCss + '\n' + WIDE_MODE_CSS + '\n' + SETTINGS_DEFER_CSS + '\n' + DESKTOP_ADVANCED_CSS + '\n' + WEB_DOCK_SHELL_CSS + '\n' + pluginManagerLayoutCss + '\n' + officialMaterialGapsCss
+  style.textContent = liuliCss + '\n' + WIDE_MODE_CSS + '\n' + SETTINGS_DEFER_CSS + '\n' + DESKTOP_ADVANCED_CSS + '\n' + WEB_DOCK_SHELL_CSS + '\n' + pluginManagerLayoutCss + '\n' + officialMaterialGapsCss + '\n' + settingsMenuMaterialCss
   document.head.appendChild(style)
 }
 
@@ -919,6 +921,21 @@ export function apply(ctx: ClientContext): void {
     if (!unofficial('dom')) return () => {}
     return startSessionContextMenu(ctx)
   }, 'dsh-liuli-ui-enhance: session context menu')
+
+  // 左栏活动视图：保留官方工作区浏览器，通过官方会话状态与导航服务展示
+  // 需要处理、进行中和刚完成的会话，随时切回原工作区列表。
+  ctx.effect(() => {
+    if (!unofficial('dom')) return () => {}
+    return startLeftActivityView({
+      sessions: ctx.sessions.list,
+      statuses: ctx.uiSession.sessionStatus,
+      archived: {
+        getSnapshot: () => ctx.workspaces.list.getSnapshot().archivedSessionIds,
+        subscribe: listener => ctx.workspaces.list.subscribe(listener),
+      },
+      openSession: id => { ctx.uiWorkspace.openSession(id) },
+    })
+  }, 'dsh-liuli-ui-enhance: left activity view')
 
   // ── 工作区/目录行右键菜单：重命名/删除工作区（不改官方代码）──
   ctx.effect(() => {

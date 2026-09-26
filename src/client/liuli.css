@@ -15,7 +15,8 @@
     "Liberation Mono", Menlo, "PingFang SC", "Microsoft YaHei";
   --dsw-font-family-display: "MiSans", "Space Grotesk", "Segoe UI", system-ui, sans-serif;
 
-  /* 琉璃 外观令牌（供模块 CSS 引用；运行时按设置覆盖） */
+  /* 页面窗口圆角由设置控制；内部卡片与控件保持独立的固定阶梯。 */
+  --liuli-window-radius: 14px;
   --liuli-radius: 14px;
   --liuli-radius-sm: 10px;
   --liuli-glow-strength: 0.15;
@@ -456,7 +457,7 @@ div[data-phase] > div[aria-hidden="true"]:first-child {
 div[data-phase]:not([data-phase='active']) > div[aria-hidden="true"]:first-child {
   -webkit-mask-image: none !important;
   mask-image: none !important;
-  clip-path: inset(0 round var(--liuli-radius, 14px));
+  clip-path: inset(0 round var(--liuli-window-radius, 14px));
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -1473,7 +1474,7 @@ body:has(.dim-jh-page) .dim-jh-modalOverlay {
 
 body:has(.dim-jh-page) .dim-jh-modal {
   border: 1px solid var(--dsw-alias-border-l1) !important;
-  border-radius: var(--liuli-radius, 14px) !important;
+  border-radius: var(--liuli-window-radius, 14px) !important;
   background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55)) !important;
   background-image: var(--liuli-noise) !important;
   -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;
@@ -1521,7 +1522,7 @@ body:has(.dim-jh-page) .dim-jh-loginOverlay {
 
 body:has(.dim-jh-page) .dim-jh-loginDialog {
   border: 1px solid var(--dsw-alias-border-l1) !important;
-  border-radius: var(--liuli-radius, 14px) !important;
+  border-radius: var(--liuli-window-radius, 14px) !important;
   background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55)) !important;
   background-image: var(--liuli-noise) !important;
   -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;

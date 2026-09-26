@@ -1143,6 +1143,10 @@ export function LiuliHeaderResizer() {
     let lastGeomKey = ''
     let lastMaskWidth = -1
     let maskSettle: ReturnType<typeof setTimeout> | null = null
+    const cssRadius = (value: string, fallback = 14): number => {
+      const parsed = Number.parseFloat(value)
+      return Number.isFinite(parsed) ? Math.max(0, parsed) : fallback
+    }
     const sync = (force = false): void => {
       if (root === null) return
       const headerRect = header.getBoundingClientRect()
@@ -1191,7 +1195,7 @@ export function LiuliHeaderResizer() {
       if (root.dataset.phase !== 'active') {
         const w = blurRect.width
         const h = blurRect.height
-        const radius = Number.parseFloat(getComputedStyle(root).borderTopLeftRadius) || 14
+        const radius = cssRadius(document.body.style.getPropertyValue('--liuli-window-radius'))
         const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><rect x="0" y="0" width="${w}" height="${h}" rx="${radius}"/></svg>`
         root.style.setProperty('--dsh-wallpaper-mask', `url("data:image/svg+xml,${encodeURIComponent(svg)}")`)
         return
@@ -1204,7 +1208,7 @@ export function LiuliHeaderResizer() {
         width: r.width,
         height: r.height,
       })
-      const headerRadius = Number.parseFloat(getComputedStyle(header).borderTopLeftRadius) || 14
+      const headerRadius = cssRadius(getComputedStyle(header).borderTopLeftRadius)
       const headerSvg = !inDockHeaderPanel && headerRect.height > 0
         ? (() => {
           const r = local(headerRect)
@@ -1216,10 +1220,10 @@ export function LiuliHeaderResizer() {
         const r = local(bodyRect)
         // oxlint-disable-next-line typescript/no-non-null-assertion -- bodyRect is defined only when body exists
         const bodyStyle = getComputedStyle(body!)
-        const topRadius = Number.parseFloat(bodyStyle.borderTopLeftRadius) || 14
+        const topRadius = cssRadius(bodyStyle.borderTopLeftRadius)
         const bottomRadius = Math.max(
-          Number.parseFloat(bodyStyle.borderBottomLeftRadius) || 0,
-          Number.parseFloat(bodyStyle.borderBottomRightRadius) || 0,
+          cssRadius(bodyStyle.borderBottomLeftRadius, 0),
+          cssRadius(bodyStyle.borderBottomRightRadius, 0),
         )
         if (bottomRadius > 0) {
           bodySvg = `<rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" rx="${topRadius}"/>`
@@ -1229,7 +1233,7 @@ export function LiuliHeaderResizer() {
       } else {
         // scrollBody 缺失/高度为 0（收起侧栏等布局重排的中间态）：退化为整卡 mask，
         // 覆盖整个 root 并带圆角，避免生成空 SVG 让壁纸模糊层完全消失（“模糊没了”）。
-        const fallbackRadius = Number.parseFloat(getComputedStyle(root).borderTopLeftRadius) || 14
+        const fallbackRadius = cssRadius(document.body.style.getPropertyValue('--liuli-window-radius'))
         bodySvg = `<rect x="0" y="0" width="${w}" height="${h}" rx="${fallbackRadius}"/>`
       }
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${headerSvg}${bodySvg}</svg>`
@@ -1261,7 +1265,7 @@ export function LiuliHeaderResizer() {
     scrollBodyObserver?.observe(scrollBody!)
     // mask 几何只取决于圆角/布局留白。缩放护栏会逐帧写 body 的模糊变量；
     // 若对每次 style 变化都强制重建 SVG mask，会把缩放优化抵消掉。
-    const maskStyleKey = (): string => ['--liuli-radius', '--liuli-radius-sm', '--liuli-dock-padding']
+    const maskStyleKey = (): string => ['--liuli-window-radius', '--liuli-dock-padding']
       .map(name => document.body.style.getPropertyValue(name)).join('|')
     let lastMaskStyleKey = maskStyleKey()
     const bodyObserver = new MutationObserver(() => {

@@ -31,6 +31,12 @@
   color: var(--dsw-alias-brand-primary, #0079bf);
 }
 
+/* Match the official SidebarRight controls: the same outline panel glyph,
+   mirrored only for the collapsed header button. */
+.officialExpandGlyph,
+.officialCollapseGlyph { width: 15px; height: 15px; }
+.officialExpandGlyph { transform: scaleX(-1); }
+
 .expandButton:focus-visible,
 .pickerButton:focus-visible,
 .pickerItem:focus-visible,

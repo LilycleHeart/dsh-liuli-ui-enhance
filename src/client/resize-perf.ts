@@ -20,7 +20,7 @@
  *     运行时（TurnRail 跟随让位等）识别缩放期。
  *  4. 窗口 resize 同样触发宿主 RO 风暴：监听 window resize，期间自动进入/退出
  *     护栏（防抖 300ms）。
- *  5. 全视口透明「指针护盾」（data-liuli-resize-shield）：普通 DOM 元素、
+ *  5. 指针拖拽专用的全视口透明「指针护盾」（data-liuli-resize-shield）：普通 DOM 元素、
  *     pointer-events:auto、z-index 盖过一切 DOM 内容（含内嵌 <webview> 与
  *     iframe）。护盾先于内嵌 guest 命中测试——拖拽期间指针无论扫到哪里，
  *     事件都落在护盾上并冒泡回主窗口监听，内嵌 guest 收不到 pointerdown：
@@ -29,6 +29,8 @@
  *
  * begin/end 引用计数配对，多个拖拽源（dock-shell sash /
  * PreviewPanel 手柄 / 宿主原生手柄 / 窗口 resize）可安全重叠。
+ * 点击侧栏开合只改列宽，调用时传 pointerShield:false，避免 300ms 动画
+ * 期间透明护盾挡住用户的下一次点击。
  */
 
 /** 宿主产物行（ui-deliverables 插件的稳定 DOM 锚点，非 CSS hash）。 */
@@ -49,6 +51,8 @@ const THAW_TOTAL_MS = 800
 const THAW_START_DELAY_MS = 60
 
 let depth = 0
+/** Only pointer-driven resizes need the full-screen guest pointer shield. */
+let shieldDepth = 0
 /** 护盾 z-index：盖过一切 DOM（菜单层 2147482500 / 内嵌 webview / 验证探针），
  *  但不能压过宿主原生 WebContentsView（窗口级图层，不受 DOM z-index 控制，
  *  由 reportGeometryLoop 的 isResizeInProgress 门控隐藏，机制互不冲突）。 */
@@ -208,13 +212,16 @@ function removeResizeShield(): void {
 }
 
 /** 进入缩放护栏（引用计数 +1；首次进入时冻结产物行并挂标记）。 */
-export function beginResizePerf(): void {
+export function beginResizePerf(options: { pointerShield?: boolean } = {}): void {
   if (typeof window === 'undefined') return
   depth += 1
+  if (options.pointerShield !== false) {
+    shieldDepth += 1
+    if (shieldDepth === 1) ensureResizeShield()
+  }
   if (depth !== 1) return
   thawToken += 1 // 打断上一轮尚未完成的分批解冻
   document.body.setAttribute(RESIZING_ATTR, '')
-  ensureResizeShield()
   // 冻结产物行：先批量读宽（一次回流），再批量写内联 width，避免读写交替。
   const rows = Array.from(document.querySelectorAll<HTMLElement>(ROW_SELECTOR))
   const widths = rows.map(el => el.getBoundingClientRect().width)
@@ -233,8 +240,12 @@ export function beginResizePerf(): void {
 }
 
 /** 退出缩放护栏（引用计数 -1；归零时分批解冻产物行、渐显磨砂并摘标记）。 */
-export function endResizePerf(): void {
+export function endResizePerf(options: { pointerShield?: boolean } = {}): void {
   if (depth <= 0) return
+  if (options.pointerShield !== false && shieldDepth > 0) {
+    shieldDepth -= 1
+    if (shieldDepth === 0) removeResizeShield()
+  }
   depth -= 1
   if (depth !== 0) return
   if (failsafe !== null) {
@@ -242,6 +253,7 @@ export function endResizePerf(): void {
     failsafe = null
   }
   document.body.removeAttribute(RESIZING_ATTR)
+  shieldDepth = 0
   removeResizeShield()
   fadeBlurIn()
   // 节流解冻：宽度还原会触发宿主 RO 的一次性 measure（每行百毫秒级），

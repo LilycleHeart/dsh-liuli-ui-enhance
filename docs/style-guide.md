@@ -41,7 +41,7 @@
 
 ```
 宿主语义层   --dsw-alias-*        （插件在 liuli-css.ts 中整体定义/覆盖）
-插件外观层   --liuli-*            （圆角、材质、辉光等，运行时随设置覆盖）
+插件外观层   --liuli-*            （窗口圆角、固定内部圆角、材质、辉光等；仅对应设置项动态覆盖）
 宿主原始层   --dsw-specific-*     （少量专用令牌，由插件定义）
 静态层       --dsw-static-*       （宿主静态色，仅在无法语义化时使用）
 ```
@@ -108,12 +108,13 @@
 
 ### 2.3 外观令牌
 
-定义在 `liuli.css` / `liuli-css.ts` 的 `:root`，由设置页运行时覆盖：
+定义在 `liuli.css` / `liuli-css.ts` 的 `:root`。圆角类令牌中，只有窗口圆角由设置页运行时覆盖；内部卡片与控件的圆角保持固定：
 
 | 令牌 | 默认值 | 说明 |
 | --- | --- | --- |
-| `--liuli-radius` | `14px` | 卡片 / 大面板圆角 |
-| `--liuli-radius-sm` | `10px` | 控件 / 小卡 / 输入框圆角 |
+| `--liuli-window-radius` | `14px` | 页面外壳、dock 面板、浮动窗口圆角；由「窗口圆角」设置控制 |
+| `--liuli-radius` | `14px` | 内部卡片、大弹层的固定圆角 |
+| `--liuli-radius-sm` | `10px` | 控件、小卡、输入框的固定圆角 |
 | `--liuli-material-opacity` | `0.55`（暗色 0.5） | 亚克力底透明度 |
 | `--liuli-material-blur` | `blur(18px) saturate(1.6)` | 标准磨砂 |
 | `--liuli-material-blur-strong` | （运行时派生） | 强磨砂档，嵌套 backdrop 采样衰减场景 |
@@ -198,7 +199,8 @@ overflow: hidden;
 | 值 | 场景 |
 | --- | --- |
 | `999px` | 药丸：pill 按钮、badge、branchBadge、dragGhost、toast、chip |
-| `var(--liuli-radius)` 14px | 卡片、面板、浮动窗口、弹层大卡 |
+| `var(--liuli-window-radius)` 14px | 页面外壳、dock 面板、浮动窗口；可由用户设置为 0–40px |
+| `var(--liuli-radius)` 14px | 内部卡片、弹层大卡 |
 | `var(--liuli-radius-sm)` 10px | 输入框、小卡、菜单面板、工具栏按钮、行 hover |
 | `8px` | chip、菜单项、图标小按钮、右键菜单项 |
 | `7px` | 26px 图标按钮、浏览器 moreItem |
@@ -229,7 +231,7 @@ overflow: hidden;
   position: relative;
   z-index: 1;                 /* 自建堆叠上下文，防止 ::before z-index:-1 逃逸 */
   border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: var(--liuli-radius, 14px);
+  border-radius: var(--liuli-window-radius, 14px);
   background-color: transparent;
   background-image: none;
   box-shadow: var(--liuli-glow-brand), var(--liuli-shadow);
@@ -472,7 +474,7 @@ CSS Modules 内普通面板只用 `edgeBottom` 类；区域表面镜像用 `:glo
 
 #### 6.2.3 消息气泡
 
-- 用户 / 助手气泡圆角跟随 `var(--liuli-radius)`（可到 22px 药丸），文字颜色用 `--dsw-specific-bubble-fg`。
+- 用户 / 助手气泡圆角使用固定 `var(--liuli-radius)`（14px），文字颜色用 `--dsw-specific-bubble-fg`。
 - 辅助对话面板内气泡：`max-width: 92%`，用户 `align-self: flex-end` + 品牌 12% 底，助手 `align-self: flex-start` + 亚克力底。
 
 #### 6.2.4 卡片层次
@@ -690,7 +692,7 @@ CSS Modules 内普通面板只用 `edgeBottom` 类；区域表面镜像用 `:glo
 写任何新 UI 前逐项核对：
 
 - [ ] 颜色全部走 `--dsw-alias-*` / `--liuli-*` 令牌，无硬编码色值
-- [ ] 圆角使用 `--liuli-radius` / `--liuli-radius-sm` / 8px / 999px 阶梯
+- [ ] 页面窗口圆角使用 `--liuli-window-radius`；内部元素使用固定的 `--liuli-radius` / `--liuli-radius-sm` / 8px / 999px 阶梯
 - [ ] 卡片按 5.1 / 5.2 选择正确材质配方（检查是否有 fixed 后代）
 - [ ] 按钮有 hover / active / disabled / focus-visible 四态
 - [ ] 输入框有 focus 品牌描边 + 光圈

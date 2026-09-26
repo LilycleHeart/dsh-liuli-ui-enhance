@@ -20,7 +20,8 @@ export const liuliCss = `
     "Liberation Mono", Menlo, "PingFang SC", "Microsoft YaHei";
   --dsw-font-family-display: "MiSans", "Space Grotesk", "Segoe UI", system-ui, sans-serif;
 
-  /* 琉璃 外观令牌（供模块 CSS 引用；运行时按设置覆盖） */
+  /* 页面窗口圆角由设置控制；内部卡片与控件保持独立的固定阶梯。 */
+  --liuli-window-radius: 14px;
   --liuli-radius: 14px;
   --liuli-radius-sm: 10px;
   --liuli-glow-strength: 0.15;
@@ -465,7 +466,7 @@ div[data-phase]::before {
 div[data-phase]:not([data-phase='active'])::before {
   -webkit-mask-image: none !important;
   mask-image: none !important;
-  clip-path: inset(0 round var(--liuli-radius, 14px));
+  clip-path: inset(0 round var(--liuli-window-radius, 14px));
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -490,7 +491,7 @@ div[data-phase='hero']::before {
 div[data-phase='active']:not(:has(header))::before {
   -webkit-mask-image: none !important;
   mask-image: none !important;
-  clip-path: inset(0 round var(--liuli-radius, 14px) var(--liuli-radius, 14px) 0 0);
+  clip-path: inset(0 round var(--liuli-window-radius, 14px) var(--liuli-window-radius, 14px) 0 0);
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -965,7 +966,7 @@ div[data-phase] > div > header {
   margin-bottom: 12px !important;
   padding: 12px 28px 0 20px !important;
   border: 1px solid var(--dsw-alias-border-l1) !important;
-  border-radius: var(--liuli-radius, 14px) !important;
+  border-radius: var(--liuli-window-radius, 14px) !important;
 }
 
 /* 官方 header 底部 1px 分隔线会与卡片圆角冲突，去掉 */
@@ -1076,7 +1077,7 @@ div[data-phase] > div > header [class*="_tabs"] [class*="_tab"]::after,
    卡片一旦成为定位上下文，absolute 会随滚动内容滚动、rail 滚出视口。 */
 [data-conversation-scroll] {
   border: 1px solid var(--dsw-alias-border-l1) !important;
-  border-radius: var(--liuli-radius, 14px) !important;
+  border-radius: var(--liuli-window-radius, 14px) !important;
 }
 
 /* 琉璃：正文卡片底部直切、向下延伸到窗口边缘（WIP ConversationRoot
@@ -1271,7 +1272,7 @@ div[data-phase='active'] {
   z-index: 1 !important;
   /* 描边与会话区卡片 [data-conversation-scroll] 一致（1px solid border-l1） */
   border: 1px solid var(--dsw-alias-border-l1) !important;
-  border-radius: 0 var(--liuli-radius, 14px) var(--liuli-radius, 14px) 0 !important;
+  border-radius: 0 var(--liuli-window-radius, 14px) var(--liuli-window-radius, 14px) 0 !important;
   background-color: transparent !important;
   background-image: none !important;
   box-shadow: var(--liuli-glow-brand), var(--liuli-shadow) !important;
@@ -1427,7 +1428,7 @@ div[data-phase='active'] {
    被这里强改成 bubble-fg（否则暗色主题下 tooltip 文字变深色）。 */
 [class*="_bubble"]:not([role="tooltip"]) {
   color: var(--dsw-specific-bubble-fg, var(--dsw-alias-label-primary)) !important;
-  /* 对话消息气泡圆角跟随“圆角大小”设置 */
+  /* 对话消息气泡使用固定卡片档，不跟随页面窗口圆角设置。 */
   border-radius: var(--liuli-radius, 22px) !important;
 }
 
@@ -1657,7 +1658,7 @@ div[data-phase='active'] {
 [class*="_detailsCol"] [data-preview-panel] {
   position: relative !important;
   z-index: 1 !important;
-  border-radius: var(--liuli-radius, 14px) 0 0 var(--liuli-radius, 14px) !important;
+  border-radius: var(--liuli-window-radius, 14px) 0 0 var(--liuli-window-radius, 14px) !important;
   background-color: transparent !important;
   background-image: none !important;
   box-shadow: var(--liuli-glow-brand), var(--liuli-shadow) !important;
@@ -1941,7 +1942,7 @@ div[data-phase='active'] {
   padding: 24px;
   overflow: auto;
   border: 1px solid var(--dsw-alias-border-inverted);
-  border-radius: var(--liuli-radius);
+  border-radius: var(--liuli-window-radius, 14px);
   background: rgba(var(--liuli-acrylic-rgb), 0.82);
   color: var(--dsw-alias-label-primary);
   box-shadow: var(--dsw-shadow-lv3);
@@ -2319,7 +2320,7 @@ body[data-liuli-resizing] [data-testid="dock-shell"] [data-region-pane="region:d
  * [dsh-client-ui-chat] .VnbZpq_fileCard
  * 审计：medium
  * 问题一 —— 圆角写死 16px：既非卡片档 14px、也非控件档 10px，不在琉璃圆角
- *   阶梯（规范 4.1）内，用户调整 --liuli-radius 时这张附件卡不会同步。
+ *   阶梯（规范 4.1）内，改为固定卡片档使同屏附件卡保持一致。
  * 问题二 —— border 的回退值是硬编码色 #0000001f，属规范 2.1 明令禁止的
  *   组件内字面量；改为语义令牌 border-l1（卡片/发丝线档，规范 2.2）。
  * 问题三（同项 low 的根因一并修）—— 底走 semi-transparent 的
@@ -2347,7 +2348,7 @@ body[data-liuli-resizing] [data-testid="dock-shell"] [data-region-pane="region:d
  *   这是浮在会话流与壁纸之上的预览浮层，实底会留下与周围磨砂卡不一致的硬色块。
  *   规范 5.2：无 fixed 后代的悬浮小卡走简化亚克力配方，浮层另加
  *   --liuli-material-blur-strong（backdrop 采样衰减场景）。
- * 圆角 —— 原 10px 已在控件档，但仍以 var(--liuli-radius-sm) 表达，跟随设置。
+ * 圆角 —— 原 10px 已在控件档，仍以固定的 var(--liuli-radius-sm) 表达。
  * 兄弟类排除：同模块存在 PvW7sq_markPreview（含 _preview 子串），用 :not() 排除。
  * ──────────────────────────────────────────────────────────── */
 [class*="_preview"]:not([class*="_markPreview"]):not([data-liuli-wallpaper-preview] *) {
@@ -2467,7 +2468,7 @@ body[data-liuli-resizing] [data-testid="dock-shell"] [data-region-pane="region:d
 
 /* 【发现 4，high】输入卡「切换工作区」虚线描边：
  * .Q7WfXG_cardWorkspaceTrigger:after 用 mask:url("data:image/svg+xml,…rect rx='22'
- * stroke-dasharray='4 4'") 把虚线图案与圆角烧进图片，改 --liuli-radius 或换描边色都
+ * stroke-dasharray='4 4'") 把虚线图案与圆角烧进图片，控件圆角或描边色变化时
  * 无法同步（DOM 里也没有可隐藏的 svg）→ 去掉 mask，改用令牌化
  * border:1px dashed + border-radius:inherit（跟随卡片自身圆角，官方升级改半径也同步）。
  * :after 是 absolute + inset:-1px，补 1px border 不改变外框尺寸。
@@ -2698,7 +2699,7 @@ body[data-liuli-resizing] [data-testid="dock-shell"] [data-region-pane="region:d
 }
 
 /* 发现 2（medium）：同输入框写死 6px 圆角 —— 6px 在琉璃阶梯里属 18–22px 迷你
-   按钮/代码段档，不在输入框档，且不随设置页圆角滑条变化。
+   按钮/代码段档，不在输入框的固定控件档。
    改控件档 var(--liuli-radius-sm)（默认 10px）。 */
 [data-goal-bar] [class*="_objectiveInput"] {
   border-radius: var(--liuli-radius-sm, 10px) !important;
@@ -2730,7 +2731,7 @@ body[data-liuli-resizing] [data-testid="dock-shell"] [data-region-pane="region:d
 
 /* 发现 7（medium）：新建文件夹输入框 .HzweGa_createInput 44px 高配 22px 圆角
    （恰好等于高度一半的全药丸形），琉璃体系里没有对应档位（药丸只给 pill 按钮/
-   badge/chip，输入框统一控件档），且不随 --liuli-radius-sm 调整。
+   badge/chip，输入框统一固定控件档）。
    背景属 [role="dialog"] input 已有亚克力覆盖范围，此处只修形状、不重复声明。 */
 [class*="_createInput"] {
   border-radius: var(--liuli-radius-sm, 10px) !important;
@@ -2746,8 +2747,8 @@ body[data-liuli-resizing] [data-testid="dock-shell"] [data-region-pane="region:d
 }
 
 /* 发现 9（medium）：28px 目录列表行 .HzweGa_row 写死 6px 圆角（迷你按钮档），
-   其 hover/选中底色已是琉璃品牌色，但高亮形状与琉璃其它列表行不一致，也不随圆角
-   设置变化。改控件档 var(--liuli-radius-sm)。
+   其 hover/选中底色已是琉璃品牌色，但高亮形状与琉璃其它列表行不一致。
+   改固定控件档 var(--liuli-radius-sm)。
    用 rowSeat > row 的父子结构锚定，避免命中 _rowName / _rowIcon / _rowChevron
    等同前缀子元素以及设置对话框里的其它 _row 容器；_rowSelected 与 _row 同元素，
    一并生效。 */
@@ -2842,9 +2843,8 @@ body[data-liuli-resizing] [data-testid="dock-shell"] [data-region-pane="region:d
 /* ────────────────────────────────────────────────────────────
  * [dsh-client-ui-workspace] .SJMXQW_sectionHeader（审计：medium）
  * 问题 —— 圆角写死 12px，不在琉璃阶梯（规范 4.1：999 / 14 / 10 / 8 / 7 / 6 / 4 / 2）内，
- *   不随「圆角大小」设置变化；同屏相邻的搜索容器 10px、行 hover 8px，一行里三套圆角。
- * 处理 —— 落到控件 / 行档 var(--liuli-radius-sm)（该变量由设置派生：
- *   liuli-runtime.ts:407 写入 min(用户圆角, 10)）。该盒只用来裁剪内部滑动标签
+ *   同屏相邻的搜索容器 10px、行 hover 8px，一行里三套圆角。
+ * 处理 —— 落到固定控件 / 行档 var(--liuli-radius-sm)。该盒只用来裁剪内部滑动标签
  *   （overflow:hidden），改圆角不改盒尺寸、不影响 36px 行高与标签过渡。
  * 选择器：本模块以 _sectionHeader 结尾的类只此一个（另有 _sectionLabel /
  *   _sectionLabelHidden 含 _section 前缀，不被 *= "_sectionHeader" 命中）。
@@ -2859,12 +2859,11 @@ body[data-liuli-resizing] [data-testid="dock-shell"] [data-region-pane="region:d
  * 审计：medium（侧栏搜索 / 清除 / 新建工作区 / 视图选项四个按钮全为正圆）
  * 问题 —— 官方一律 border-radius:50%：图标按钮 28×28（_iconButton / _search /
  *   _searchButton）、清除 24×24。而同一元素 _search 加挂 _searchExpanded 后圆角变
- *   10px 方角，同一控件两种形状语言；四个按钮也都不随「圆角大小」设置走
- *   （规范 4.1「控件永远 7–10px 档」/ 6.1.1 尺寸对照表）。
- * 处理 —— 统一到控件档 var(--liuli-radius-sm)（= min(用户圆角, 10)）。此处取设置驱动的
- *   10px 档、而非 §6.1.1 给 28px 图标按钮的静态 7 / 8px 游标值：这四件控件与展开态
+ *   10px 方角，同一控件两种形状语言（规范 4.1「控件 7–10px 档」）。
+ * 处理 —— 统一到固定控件档 var(--liuli-radius-sm)。此处取 10px 档，
+ *   而非 §6.1.1 给 28px 图标按钮的 7 / 8px 值：这四件控件与展开态
  *   搜索框同处一行，只有同档才能消除「折叠 ↔ 展开」的圆角跳变（审计对 .SJMXQW_searchExpanded
- *   的诉求正是「与相邻 .SJMXQW_iconButton 不得脱节」），并让四个按钮跟随设置。
+ *   的诉求正是「与相邻 .SJMXQW_iconButton 不得脱节」）。
  *   只改圆角：保留官方 28 / 24px 尺寸、hover 底、0.18s 过渡与全部交互。
  * 兄弟类收窄 —— _iconButton 在 6 个官方包同名（本包另有 ozLDBG_iconButton 16×16
  *   行内入口，属审计 low 项，不在此处改），故限定在 _sectionHeader 内（该排按钮的实际
@@ -2885,9 +2884,9 @@ body[data-liuli-resizing] [data-testid="dock-shell"] [data-region-pane="region:d
 /* ────────────────────────────────────────────────────────────
  * [dsh-client-ui-workspace] .SJMXQW_searchExpanded（审计：medium）
  * 问题 —— 展开态搜索框圆角写死 10px 字面量。数值恰好等于控件档默认值，属
- *   「看起来对、机制错」：不读 var(--liuli-radius-sm)，用户在设置里调大 / 调小圆角后
- *   该输入框不跟随，与同屏控件脱节（规范 10 checklist：圆角一律走 --liuli-radius-sm）。
- * 处理 —— 改走 var(--liuli-radius-sm)（= min(用户圆角, 10)），与上一块的
+ *   「看起来对、机制错」：不读 var(--liuli-radius-sm)，后续固定控件档调整时
+ *   该输入框会与同屏控件脱节（规范 10 checklist：内部圆角走 --liuli-radius-sm）。
+ * 处理 —— 改走固定的 var(--liuli-radius-sm)，与上一块的
  *   _search / _searchButton / _clearButton 同档：折叠态容器（$= "_search" 命中）与
  *   展开态容器（本块命中）取值一致，展开动画过程中圆角不再跳变。
  *   只换圆角表达式：保留官方 0.5px 描边、30px 高、margin-inline:-2px、透明底与内边距
@@ -2904,7 +2903,7 @@ body[data-liuli-resizing] [data-testid="dock-shell"] [data-region-pane="region:d
 /* ────────────────────────────────────────────────────────────
  * [dsh-client-ui-workspace] .SJMXQW_renameInput（审计：medium）
  * 问题 —— 工作区 / 会话重命名输入框（模态内，44px 高）圆角写死 22px，是按高度反推的
- *   药丸魔法值，不读 var(--liuli-radius-sm)；同屏其它 input 会跟随设置，于是两种圆角并存
+ *   药丸魔法值，不读 var(--liuli-radius-sm)；同屏其它 input 用固定控件档，于是两种圆角并存
  *   （规范 6.4：输入框统一 border-radius: var(--liuli-radius-sm, 10px)）。
  * 处理 —— 取控件档而非 999px 药丸：药丸语义在琉璃只给状态胶囊 / 徽标 / chip（规范 4.1），
  *   44px 文本输入框走药丸会让两侧基线留白失衡；改 var(--liuli-radius-sm)。
@@ -3128,7 +3127,7 @@ ul[class*="_menu"] {
  *   var(--liuli-noise) + backdrop-filter，否则只是壁纸上一块发灰的半透片）。
  * 问题 2（medium，固定圆角）：同一元素写死 'border-radius:16px' —— 不在琉璃
  *   圆角阶梯（规范 4.1 / 6.4：输入框走控件档 var(--liuli-radius-sm) 10px），
- *   也不随插件圆角设置同步。
+ *   与同屏固定控件档不一致。
  * 处理：换标准磨砂配方 + 控件档圆角。
  *   用元素限定 textarea 收窄 '[class*="_detail"]'：_detailsCol / _detailPanel
  *   等同前缀兄弟类都是 div，不会被误伤（规范 9.2）。
@@ -3155,7 +3154,7 @@ textarea[class*="_detail"] {
  *   官方同规则内的 'gap:38px' 属布局尺寸，按约定不触碰。
  * ──────────────────────────────────────────────────────────── */
 [role="dialog"][class*="_dialog"]:has(textarea[class*="_detail"]) {
-  border-radius: var(--liuli-radius, 14px) !important;
+  border-radius: var(--liuli-window-radius, 14px) !important;
 }
 
 /* ────────────────────────────────────────────────────────────
@@ -3318,7 +3317,7 @@ div[aria-label][class*="_card"] {
  * [dsh-client-ui-primitives · HoverCard.module.css] .card —— 浮层卡圆角（medium）
  * 问题：固定 border-radius:12px，不在规范 4.1 的圆角阶梯（卡片 14 / 控件 7-10 / 药丸 999），
  *       与相邻琉璃浮层肉眼可辨地差 2px。
- * 处理：浮层大卡归卡片档 var(--liuli-radius, 14px)，随设置页「圆角大小」联动。
+ * 处理：浮层大卡归固定卡片档 var(--liuli-radius, 14px)。
  * ──────────────────────────────────────────────────────────── */
 body > [class*="_card"],
 div[aria-label][class*="_card"] {
@@ -3422,7 +3421,7 @@ body[data-ds-dark-theme] [class*="_jsonTree"][class*="_root"] {
  *       （规范 5.1 标准卡配方）。
  * ──────────────────────────────────────────────────────────── */
 [role="dialog"][class*="_dialog"] {
-  border-radius: var(--liuli-radius, 14px) !important;
+  border-radius: var(--liuli-window-radius, 14px) !important;
   border: 1px solid var(--dsw-alias-border-l1) !important;
   box-shadow: var(--liuli-glow-brand), var(--liuli-shadow) !important;
 }
@@ -3571,7 +3570,7 @@ body[data-ds-dark-theme] [class*="_jsonTree"][class*="_root"] {
  * 问题：DiffBlock / ReadBlock / SearchBlock / TerminalBlock / WebBlock / markdown CodeBlock
  *       六个模块各自把 --dsl-*-radius 写死 12px（bundle 中 '.block { --dsl-diff-radius: 12px; … }'
  *       共六处），规范 4.1 规定卡片永远用 14px 档：这些卡与同屏琉璃内嵌小卡（10px）和区域大卡
- *       （14px）都不对齐，且是硬编码常量，无法随设置页「圆角大小」联动。
+ *       （14px）都不对齐，且是硬编码常量，不使用内部卡片档令牌。
  * 处理：在**承载这些块的容器**上重设六枚令牌为 var(--liuli-radius, 14px)。
  *       CSS 自定义属性的层叠特性保证此路可行：祖先上的 !important 声明会压过后代元素自身的
  *       普通声明（后代只在「自身有声明」时才不回退继承，而 !important 的继承值优先级更高），
@@ -3733,7 +3732,7 @@ body > ul[class*="_menu"] {
  * 按 style-guide §4.1 取 var(--liuli-radius) 14px，与同屏侧栏卡 / 对话卡同档。
  * 面板根已有 overflow: hidden，::before 用 border-radius: inherit 自动跟随。 */
 [class*="_overlay"] > [class*="_panel"] {
-  border-radius: var(--liuli-radius, 14px) !important;
+  border-radius: var(--liuli-window-radius, 14px) !important;
 }
 
 /* ── 3. 全屏模态遮罩 z-index:1000 → 模态遮罩档（medium） ─────
@@ -3804,8 +3803,7 @@ body[data-liuli-settings-open] [role="dialog"] [class*="_selectInput"] select {
 
 /* ── 2a. 模型行卡片圆角 16px → 卡片档（medium） ──────────────
  * 官方 .iwpW_G_rowCard { border-radius:16px }：本页最大面积卡片，比琉璃卡片档
- * （style-guide §4.1 var(--liuli-radius) 14px）大 2px，且写死值不随用户调节的
- * 「卡片圆角」变化，与相邻琉璃卡圆角不齐。
+ * （style-guide §4.1 var(--liuli-radius) 14px）大 2px，与相邻琉璃卡圆角不齐。
  * 注：其背景配方已由 liuli-css.ts 629–636 行 li[class*="rowCard"] 覆盖，
  * 此处只补缺失的圆角，不重复背景规则。 */
 body[data-liuli-settings-open] [role="dialog"] [class*="_rowCard"] {
@@ -3852,8 +3850,7 @@ body[data-liuli-settings-open] [role="dialog"] input[class$="_input"] {
  * background: var(--dsw-alias-bg-layer-3); border:0; border-radius:14px;
  * overflow:hidden }。bg-layer-3 在琉璃下是不透明实色（亮 #d2dce6 / 暗 #333d4e，
  * palette 的 bg3 亦为 alphaComposite 后的实色），整卡是不透明板 + 描边阴影，
- * 透不出壁纸；圆角写死 14px 虽与卡片档默认值巧合一致，但用户调「卡片圆角」时
- * 不跟随，同屏圆角不齐。
+ * 透不出壁纸；本卡维持固定卡片档 14px 圆角。
  * 做法（style-guide §5.1）：根置透明、撤掉 elevation-stroke，材质交给 ::before
  * 独立层 —— 根不持有 backdrop-filter，避免成为 fixed 后代的包含块把卡内浮层
  * 压进卡内。
@@ -3935,8 +3932,7 @@ body[data-liuli-settings-open] [role="dialog"] [class*="_switcher"] {
  * background: var(--dsw-alias-bg-layer-3); border-radius:16px;
  * transition: border-color .16s, background .16s }。bg-layer-3 在琉璃下是不透明
  * 实色（亮 #d2dce6 / 暗 #333d4e），插件卡成实心板，遮住壁纸与亚克力；圆角 16px
- * 比琉璃卡片档大 2px，用户调小卡片圆角后本页仍写死 16px，展开 / 收起时与相邻
- * 琉璃卡圆角对不齐。
+ * 比琉璃固定卡片档大 2px，展开 / 收起时与相邻琉璃卡圆角对不齐。
  * 配方与二、4 的清单卡一致（§5.1：根透明 + ::before 材质层 + position/overflow
  * 护栏），独立声明而不并入该组，因为本卡描边形态不同：官方已有 .5px border，
  * 只把 border-color 换成 border-l2 发丝线即可（厚度不变、尺寸零变化，官方
@@ -4242,7 +4238,7 @@ body[data-ds-dark-theme] {
 
 /* ── dsh-client-ui-subagent · SubagentHeaderLineage.module.css ─────────────
  * 问题（medium×2）：代理切换浮层 .tcG1Aq_menu ①圆角写死 20px（药丸档，超出菜单档，
- * 不随用户圆角设置联动）②position:fixed 却只给 z-index:100，不在 style-guide §8
+ * 与固定菜单档不一致）②position:fixed 却只给 z-index:100，不在 style-guide §8
  * 任何一档，与琉璃浮动窗口 / 布局菜单 / 悬浮球 / 拾取卡同屏时会被整块压住。
  * 该浮层内联渲染在消息头部（非 portal），用 :has() 锚定其独有的树内容
  * （_node / _metrics 仅本包出现）精确锁定，避免命中其它包的 _menu。 */
@@ -4251,9 +4247,8 @@ body[data-ds-dark-theme] {
   z-index: 2147482500 !important; /* §8 标准弹出层档 */
 }
 
-/* 问题（medium）：菜单项 / 点击区圆角写死 8px，无法随用户圆角设置缩放，
- * 与上层菜单面板叠加时内外圆角不匹配。改为跟随控件档令牌，内缩 2px 保持同心，
- * 默认解析为 8px（§4.1 菜单项档），用户改圆角时自动联动。 */
+/* 问题（medium）：菜单项 / 点击区圆角写死 8px，与上层菜单面板叠加时
+ * 内外圆角不匹配。改为固定控件档减 2px，得到 8px 菜单项档（§4.1）。 */
 [class*="_menu"]:has([class*="_node"], [class*="_metrics"]) [class*="_row"],
 [class*="_menu"]:has([class*="_node"], [class*="_metrics"]) [class*="_clickarea"] {
   border-radius: calc(var(--liuli-radius-sm, 10px) - 2px) !important;
@@ -4295,7 +4290,7 @@ button[class*="_trigger"][aria-haspopup="tree"] {
 }
 
 /* 问题（medium）：工具卡内的「问答记录卡」（AskQuestionCard.card）圆角写死 12px，
- * 与同屏 14px 卡片混排时圆角不齐、且不随用户设置变化；其证据里同时含不透明实底
+ * 与同屏 14px 卡片混排时圆角不齐；其证据里同时含不透明实底
  * var(--dsw-alias-bg-base)（琉璃重定义为 #f8f9fa / #121316 实色），在磨砂消息流里是一块实心砖，
  * 一并按 §5.2 简化亚克力配方（该卡无 fixed 后代）改为半透明 + 噪声 + 磨砂。
  * 用 :has() 锚定本卡独有的 _verdict / _questionList，避免 [class*="_card"] 宽匹配误伤其它包卡片。 */
@@ -4309,7 +4304,7 @@ button[class*="_trigger"][aria-haspopup="tree"] {
 
 /* ── dsh-client-ui-theme · AppearanceRow.module.css ───────────────────────
  * 问题（medium）：外观设置的主题方块 .OlZvdG_themeCube 圆角写死 20px —— 该控件既非药丸
- * 也非菜单，20px 属药丸级，超出卡片档且不随用户圆角设置联动。
+ * 也非菜单，20px 属药丸级，超出固定卡片档。
  * 注：琉璃自研外观方块的 local 同为 themeCube（16px，同样不在 §4.1 阶梯内），
  * 本规则会一并收敛到卡片档，混排时两者圆角一致。 */
 [class*="_themeCube"] {
@@ -4326,7 +4321,7 @@ button[class*="_trigger"][aria-haspopup="tree"] {
 
 /* 问题（medium）：步进器内的 17×12 微型上下箭头圆角写死 3px，不在琉璃阶梯内
  * （3px 偏方，与整体 M3 形状语言不符）。按 §4.1「18–22px 关闭 / 浮动小按钮 = 6px」
- * 收敛为 calc(--liuli-radius-sm - 4px)，默认 6px 并随用户圆角设置联动。
+ * 收敛为 calc(--liuli-radius-sm - 4px)，固定为 6px 微型按钮档。
  * 选择器限定在 _stepper 内，避免命中其它包的 _arrow。 */
 [class*="_stepper"] [class*="_arrow"] {
   border-radius: calc(var(--liuli-radius-sm, 10px) - 4px) !important;
@@ -4972,7 +4967,7 @@ body:has(.dim-jh-page) .dim-jh-modalOverlay {
 
 body:has(.dim-jh-page) .dim-jh-modal {
   border: 1px solid var(--dsw-alias-border-l1) !important;
-  border-radius: var(--liuli-radius, 14px) !important;
+  border-radius: var(--liuli-window-radius, 14px) !important;
   background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55)) !important;
   background-image: var(--liuli-noise) !important;
   -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;
@@ -5020,7 +5015,7 @@ body:has(.dim-jh-page) .dim-jh-loginOverlay {
 
 body:has(.dim-jh-page) .dim-jh-loginDialog {
   border: 1px solid var(--dsw-alias-border-l1) !important;
-  border-radius: var(--liuli-radius, 14px) !important;
+  border-radius: var(--liuli-window-radius, 14px) !important;
   background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, 0.55)) !important;
   background-image: var(--liuli-noise) !important;
   -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;

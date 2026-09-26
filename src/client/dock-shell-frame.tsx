@@ -33,7 +33,7 @@ import { REVIEW_DRIVE_EVENT, REVIEW_FILE_EVENT } from './review-bus.ts'
 // 注意：liuli-dock-surface 只从 dock-shell-frame 取 getDockHostBridge，这里反向
 // 取 setLiuliDockExpanded 构成循环引用 —— 两边都只在**运行时**调用（不在模块
 // 顶层求值），ESM 的循环依赖对函数引用是安全的。
-import { setLiuliDockExpanded, LiuliDockSurface, startOfficialTabBridge, type LiuliSidebarHostAccess } from './liuli-dock-surface.tsx'
+import { LIULI_DOCK_EXPANDED_EVENT, setLiuliDockExpanded, LiuliDockSurface, startOfficialTabBridge, type LiuliSidebarHostAccess } from './liuli-dock-surface.tsx'
 import {
   createDockShellStore, defaultShellLayout, exportDockJSON, findRegion, importDockJSON, isRegionPanel,
   listShellSlotNames, loadSavedDock, loadShellSlotByName, regionLabel, saveShellDock,
@@ -485,10 +485,8 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
     return () => { window.removeEventListener('liuli:ensure-details', ensureDetails) }
   }, [officialRightbar, slotLayout, actions])
 
-  /** 官方右侧栏展开状态（迁移期）：展开状态住在官方 sidebar-right 自己的 store
-   *  里、帧层读不到，这里轮询官方控制器自检钩子，只为决定这一列的轨道宽度。
-   *  间隔取 120ms：400ms 时「点开标签后布局要等近半秒才让出宽度」，观感像卡住；
-   *  官方组件自己负责 push/fullscreen 呈现，所以这里只需要跟上它的展开/收起。 */
+  /** 琉璃右栏以同步事件更新列宽；低频轮询只兜底恢复/跨会话状态。
+   *  之前每 120ms 轮询会把一次开合额外拖慢最多 120ms。 */
   const [officialRightbarExpanded, setOfficialRightbarExpanded] = useState(false)
   useEffect(() => {
     if (officialRightbar !== true) return () => {}
@@ -512,11 +510,23 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
       return lastKnown
     }
     setOfficialRightbarExpanded(read())
-    const timer = window.setInterval(() => {
+    const sync = (): void => {
       const next = read()
       setOfficialRightbarExpanded(prev => (prev === next ? prev : next))
-    }, 120)
-    return () => { window.clearInterval(timer) }
+    }
+    const onExpanded = (event: Event): void => {
+      const next = (event as CustomEvent<boolean>).detail
+      if (typeof next === 'boolean') {
+        lastKnown = next
+        setOfficialRightbarExpanded(prev => (prev === next ? prev : next))
+      } else sync()
+    }
+    window.addEventListener(LIULI_DOCK_EXPANDED_EVENT, onExpanded)
+    const timer = window.setInterval(sync, 1000)
+    return () => {
+      window.removeEventListener(LIULI_DOCK_EXPANDED_EVENT, onExpanded)
+      window.clearInterval(timer)
+    }
   }, [officialRightbar])
 
   // Global pages (Plugins and Tasks) have no conversation header/sidebar
@@ -552,11 +562,15 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
    *  「布局正在变」的场景 —— 复用 resize-perf 的磨砂归一机制：变化期间把模糊
    *  渐变收敛（有 ~140ms 过渡，不是硬切），动画结束后再渐变回来，避免每帧重绘
    *  大面积 backdrop-filter。420ms 覆盖官方滑入/滑出动画的时长。 */
-  useEffect(() => {
+  const rightbarPerfReady = useRef(false)
+  useLayoutEffect(() => {
     if (officialRightbar !== true) return () => {}
-    beginResizePerf()
-    const timer = window.setTimeout(() => { endResizePerf() }, 420)
-    return () => { window.clearTimeout(timer); endResizePerf() }
+    if (!rightbarPerfReady.current) { rightbarPerfReady.current = true; return () => {} }
+    // Column animation changes conversation width, so freeze measured file
+    // rows and soften blur; a click-triggered transition needs no pointer shield.
+    beginResizePerf({ pointerShield: false })
+    const timer = window.setTimeout(() => { endResizePerf({ pointerShield: false }) }, 360)
+    return () => { window.clearTimeout(timer); endResizePerf({ pointerShield: false }) }
   }, [officialRightbar, officialRightbarExpanded])
 
   const dragOverlayRef = useRef<DockDragOverlayHandle | null>(null)
@@ -1151,6 +1165,16 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
 
   const sidebarCollapsed = hostPanels.narrow ? !hostPanels.narrowExpanded : hostPanels.sidebar === 0
   const sidebarWidth = sidebarCollapsed ? (platform === 'darwin' ? 90 : 56) : hostPanels.sidebar
+  const leftbarPerfReady = useRef(false)
+  useLayoutEffect(() => {
+    if (!leftbarPerfReady.current) { leftbarPerfReady.current = true; return () => {} }
+    // Opening the left column changes conversation width on every animation
+    // frame. Protect upstream deliverable rows just as sash resize does, while
+    // keeping click targets live because this is not a pointer drag.
+    beginResizePerf({ pointerShield: false })
+    const timer = window.setTimeout(() => { endResizePerf({ pointerShield: false }) }, 360)
+    return () => { window.clearTimeout(timer); endResizePerf({ pointerShield: false }) }
+  }, [sidebarCollapsed])
 
   // 详情区域宽度（liuli 自管，突破 desktop shell 的 clamp 300-520；上限 = 视口 88%，
   // 同时保证「侧栏 + 会话最小 480 + 详情」不超视口）。宿主开合（hostPanels.details 0↔w）仍驱动折叠。

@@ -184,7 +184,7 @@ function renderMenu(ctx: Ctx, file: FileTarget, x: number, y: number): void {
   menu.setAttribute('role', 'menu')
   menu.setAttribute('data-liuli-context-menu', '')
   Object.assign(menu.style, {
-    position: 'fixed', left: '0', top: '0', visibility: 'hidden', zIndex: '1200',
+    position: 'fixed', left: '0', top: '0', visibility: 'hidden', zIndex: '2147482500',
   } as Partial<CSSStyleDeclaration>)
   document.body.appendChild(menu)
 
@@ -244,10 +244,9 @@ function renderMenu(ctx: Ctx, file: FileTarget, x: number, y: number): void {
   appendItem('复制绝对路径', ICONS.copy, () => { void copyText(abs) })
   appendItem('复制相对路径', ICONS.copy, () => { void copyText(rel) })
 
-  // 定位：先 visibility:hidden 测量真实尺寸，再夹紧视口。
-  const r = menu.getBoundingClientRect()
-  const left = Math.min(Math.max(x, 8), window.innerWidth - r.width - 8)
-  const top = Math.min(Math.max(y, 8), window.innerHeight - r.height - 8)
+  // 入场 scale 动画影响 getBoundingClientRect；offset 尺寸是最终菜单尺寸。
+  const left = Math.max(8, Math.min(x, window.innerWidth - menu.offsetWidth - 8))
+  const top = Math.max(8, Math.min(y, window.innerHeight - menu.offsetHeight - 8))
   menu.style.left = left + 'px'
   menu.style.top = top + 'px'
   menu.style.visibility = 'visible'

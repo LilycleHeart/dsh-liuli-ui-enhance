@@ -67,13 +67,15 @@ import { getDockHostBridge } from './dock-shell-frame.tsx'
 import type { SidebarGitSourceId } from './right-sidebar-api.ts'
 import css from './LiuliDockSurface.module.css'
 import { LIULI_LS_KEY, liuliSettingsOf } from '../liuli-settings.ts'
+import { IconPanelLeftOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   BugIcon, FileCodeCornerIcon, FileDiffIcon, FileIcon, FolderIcon, GlobeIcon, MessageSquareTextIcon,
-  PanelRightCloseIcon, PanelRightOpenIcon, PlusIcon, SquareTerminalIcon,
+  PlusIcon, SquareTerminalIcon,
 } from './SidePaneIcons.tsx'
 
 const SIDEBAR_CONTROLS_EVENT = 'liuli:sidebar-controls-changed'
-let lastDockPointer = { x: 0, y: 0 }
+export const LIULI_DOCK_EXPANDED_EVENT = 'liuli:dock-expanded-changed'
+let lastDockPointer = { x: 0, y: 0, at: 0 }
 
 function innerSplitDisabled(): boolean {
   try {
@@ -672,7 +674,7 @@ export function LiuliDockSurface({ sessionId, host }: LiuliDockSurfaceProps): Re
         // 上限交给引擎常量（MAX_DOCK_PANES = 4），不再像官方那样写死 2。
         // 经典模式仍让 dockkit 识别边缘落区，再由 intentsWithDropFix 转交
         // 外层 Dockable 布局；分栏按钮由 CSS 隐藏，不能把 canSplit 设为 false。
-        canSplit: disableInnerSplit || (canSplit(snapshot.state) && dockPaneCount(snapshot.state) < MAX_DOCK_PANES),
+        canSplit: canSplit(snapshot.state) && dockPaneCount(snapshot.state) < MAX_DOCK_PANES,
         hideSplitWhenBlocked: false,
         // 琉璃旧侧栏只有一个「新增标签」入口；隐藏 dockkit 默认的每格 + 按钮。
         canAddTab: () => false,
@@ -883,6 +885,7 @@ function readForceExpanded(): boolean | undefined {
 function publishForceExpanded(next: boolean): void {
   try {
     ;(window as unknown as { __liuliForceExpanded__?: boolean }).__liuliForceExpanded__ = next
+    window.dispatchEvent(new CustomEvent<boolean>(LIULI_DOCK_EXPANDED_EVENT, { detail: next }))
   } catch { /* 忽略 */ }
 }
 
@@ -946,9 +949,9 @@ export function LiuliRightbarExpandButton(): ReactElement {
     'data-liuli-rightbar-expanded': expanded || undefined,
     title: expanded ? '收起右侧边栏' : '打开右侧边栏',
     onClick: () => { apply(!expanded) },
-  }, expanded
-    ? createElement(PanelRightCloseIcon, { size: 16 })
-    : createElement(PanelRightOpenIcon, { size: 16 }))
+  }, createElement(IconPanelLeftOutlineRegular, {
+    className: expanded ? css.officialCollapseGlyph : css.officialExpandGlyph,
+  }))
 }
 
 /** 订阅所有控制器的变化（帧层用它决定右栏列宽度何时重算）。 */
@@ -1057,9 +1060,13 @@ function intentsWithDropFix(controller: DockController, routeInnerEdgesToShell: 
     const record = controller.getSnapshot().state.tabs[tab]
     const kind = typeof record?.kind === 'string' ? record.kind : undefined
     const dockType = kind === undefined ? undefined : KIND_TO_DOCK_TYPE[kind]
-    // 释放点：dockkit 传入的 rect（视口坐标）中心；没有 rect 时退回视口中心。
-    const x = rect === undefined ? window.innerWidth / 2 : rect.x + rect.width / 2
-    const y = rect === undefined ? window.innerHeight / 3 : rect.y + 20
+    // Dockkit's float rectangle is a cascade position, not the actual drop
+    // point. The pointer capture records the release coordinates separately.
+    const pointerIsFresh = Date.now() - lastDockPointer.at < 500
+    const x = pointerIsFresh ? lastDockPointer.x
+      : rect === undefined ? window.innerWidth / 2 : rect.x + rect.width / 2
+    const y = pointerIsFresh ? lastDockPointer.y
+      : rect === undefined ? window.innerHeight / 3 : rect.y + 20
     if (dockType !== undefined) {
       const bridge = getDockHostBridge()
       if (typeof bridge.dropPanelAt === 'function') {
@@ -1087,10 +1094,10 @@ function intentsWithDropFix(controller: DockController, routeInnerEdgesToShell: 
     const state = controller.getSnapshot().state
     const source = findTabPaneOf(state, tabId)
     const isEdge = zone !== 'center'
-    // Native resources cannot be moved into the outer shell as a generic code
-    // panel without losing the official renderer. Their edge drops stay in the
-    // Liuli dock engine, where the chip remains draggable/splittable.
-    if (routeInnerEdgesToShell && isEdge && state.tabs[tab]?.kind !== 'official-native') {
+    // With inner split disabled, an edge gesture must never silently make an
+    // inner pane. Native resources have no outer renderer, so their edge drop
+    // is a no-op; floating remains available for moving them out of the strip.
+    if (routeInnerEdgesToShell && isEdge) {
       const record = state.tabs[tab]
       const dockType = record === undefined ? undefined : KIND_TO_DOCK_TYPE[record.kind]
       const bridge = getDockHostBridge()
@@ -1177,6 +1184,7 @@ function useOuterDropPreview(sessionId: string, surfaceRef: { current: HTMLDivEl
     let pressing = false
     let lastX = 0
     let lastY = 0
+    let pressedTabId: string | undefined
     let activeType: string | undefined
     let raf = 0
 
@@ -1184,11 +1192,12 @@ function useOuterDropPreview(sessionId: string, surfaceRef: { current: HTMLDivEl
       const controller = controllers.get(sessionId)
       const st = controller?.getSnapshot().state
       if (st === undefined) return undefined
-      // 手势中"被拖的 tab"由 dockkit 内部持有；这里取活动 tab 作为近似
-      //（dockkit 拖动时活动 tab 就是被拖的那个 chip）。
-      const paneNode = Object.values(st.nodes).find(n => n.kind === 'pane' && n.id === st.activePaneId)
-      const tabId = paneNode !== undefined && paneNode.kind === 'pane' ? paneNode.activeTabId : undefined
-      const rec = tabId === undefined ? undefined : st.tabs[tabId]
+      // Dockkit deliberately does not select a chip on pointerdown. Read its
+      // dragging marker, then the chip captured on press; using activeTabId
+      // would preview/move the wrong panel for a background tab.
+      const dragged = surfaceRef.current?.querySelector<HTMLElement>('[data-dockkit-tab][class*="_tabDragging"]')
+      const tabId = dragged?.dataset.dockkitTab ?? pressedTabId
+      const rec = tabId === undefined ? undefined : st.tabs[tabId as TabId]
       return rec === undefined ? undefined : KIND_TO_DOCK_TYPE[rec.kind]
     }
 
@@ -1226,29 +1235,33 @@ function useOuterDropPreview(sessionId: string, surfaceRef: { current: HTMLDivEl
       if (e.buttons === 0) return
       lastX = e.clientX
       lastY = e.clientY
-      lastDockPointer = { x: lastX, y: lastY }
+      lastDockPointer = { x: lastX, y: lastY, at: Date.now() }
       schedule()
     }
     const onDown = (e: PointerEvent): void => {
       if (e.button !== 0) return
       pressing = true
       activeType = undefined
+      const pressed = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-dockkit-tab]') : null
+      pressedTabId = pressed !== null && surfaceRef.current?.contains(pressed)
+        ? pressed.dataset.dockkitTab : undefined
       lastX = e.clientX
       lastY = e.clientY
-      lastDockPointer = { x: lastX, y: lastY }
+      lastDockPointer = { x: lastX, y: lastY, at: Date.now() }
     }
     const onUp = (e: PointerEvent): void => {
-      lastDockPointer = { x: e.clientX, y: e.clientY }
+      lastDockPointer = { x: e.clientX, y: e.clientY, at: Date.now() }
       if (raf !== 0) { cancelAnimationFrame(raf); raf = 0 }
       pressing = false
       activeType = undefined
+      pressedTabId = undefined
       getDockHostBridge().clearPanelDrop?.()
     }
     const onMouseMove = (e: MouseEvent): void => {
       if (e.buttons === 0) return
       lastX = e.clientX
       lastY = e.clientY
-      lastDockPointer = { x: lastX, y: lastY }
+      lastDockPointer = { x: lastX, y: lastY, at: Date.now() }
       schedule()
     }
 

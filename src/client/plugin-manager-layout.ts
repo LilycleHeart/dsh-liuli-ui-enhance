@@ -2,24 +2,21 @@
  * Liuli reading surface for the official plugin manager.
  *
  * The upstream page is transparent, capped at 960px and laid out as one long
- * column. On an image wallpaper its secondary text sits directly on the image.
- * These selectors stay under the manager's stable data attributes so the
- * official page, forms, switches, install flow and navigation keep ownership.
+ * column. Give its header and each content section the same separate acrylic
+ * card used by the other dock regions, while preserving the upstream controls.
  */
 export const pluginManagerLayoutCss = `
-[data-plugin-panel] {
-  gap: 16px !important;
-  padding-right: clamp(12px, 2vw, 28px) !important;
-  padding-left: clamp(12px, 2vw, 28px) !important;
-  padding-bottom: 24px !important;
-  color: var(--dsw-alias-label-primary) !important;
-  background-color: rgba(var(--liuli-acrylic-rgb), max(0.88, var(--liuli-material-opacity, 0.55))) !important;
-  background-image: var(--liuli-noise) !important;
-  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;
-  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;
+[data-testid='dock-shell'] [data-region-pane='region:conversation']:has([data-plugin-panel]) {
+  /* The page's scrollport needs its own 8px shadow clearance. Transfer the
+     existing region inset here so the cards still line up with other panes. */
+  padding: 0 !important;
 }
 
-body[data-liuli-resizing] [data-plugin-panel] {
+[data-plugin-panel] {
+  gap: calc(2 * var(--liuli-dock-padding, 8px)) !important;
+  padding: var(--liuli-dock-padding, 8px) !important;
+  color: var(--dsw-alias-label-primary) !important;
+  background: transparent !important;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
@@ -28,15 +25,56 @@ body[data-liuli-resizing] [data-plugin-panel] {
   max-width: 1480px !important;
 }
 
+/* One independent surface per header/list/detail, as on the conversation and
+   right dock. Material is on ::before: the page may host fixed menus/modals. */
+[data-plugin-panel] > :is(header[data-window-drag], [data-plugin-group],
+  [data-plugin-detail], [data-plugin-item-detail], [data-plugin-row-detail]) {
+  position: relative;
+  z-index: 1;
+  isolation: isolate;
+  box-sizing: border-box;
+  border: 1px solid var(--dsw-alias-border-l1) !important;
+  border-radius: var(--liuli-window-radius, var(--liuli-radius, 14px)) !important;
+  background: transparent !important;
+  box-shadow: var(--liuli-glow-brand), var(--liuli-shadow) !important;
+}
+
+[data-plugin-panel] > :is(header[data-window-drag], [data-plugin-group],
+  [data-plugin-detail], [data-plugin-item-detail], [data-plugin-row-detail])::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
+  background-image: var(--liuli-noise);
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
+  pointer-events: none;
+}
+
+[data-plugin-panel] > header[data-window-drag]::before {
+  -webkit-backdrop-filter: var(--liuli-material-blur);
+  backdrop-filter: var(--liuli-material-blur);
+}
+
+body[data-liuli-resizing] [data-plugin-panel] > :is(header[data-window-drag], [data-plugin-group],
+  [data-plugin-detail], [data-plugin-item-detail], [data-plugin-row-detail])::before {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
 [data-plugin-panel] > header[data-window-drag] {
-  padding-top: 20px !important;
+  min-height: 78px;
+  align-items: center;
+  padding: 12px 20px !important;
 }
 
 [data-plugin-panel] [class*="_pageTitle"],
 [data-plugin-panel] [class*="_groupTitle"],
 [data-plugin-panel] [class*="_cardTitle"] {
   color: var(--dsw-alias-label-primary) !important;
-  font-weight: 650 !important;
+  font-weight: 600 !important;
 }
 
 [data-plugin-panel] [class*="_pageIntro"],
@@ -44,17 +82,13 @@ body[data-liuli-resizing] [data-plugin-panel] {
 [data-plugin-panel] [class*="_count"] {
   color: var(--dsw-alias-label-secondary) !important;
   opacity: 1 !important;
+  text-shadow: var(--liuli-text-depth);
 }
 
 [data-plugin-panel] [data-plugin-group] {
-  box-sizing: border-box;
   container-type: inline-size;
-  gap: 10px !important;
-  padding: 12px 14px 14px;
-  border: 1px solid var(--liuli-border-hairline);
-  border-radius: var(--liuli-radius, 14px);
-  background-color: color-mix(in srgb, var(--dsw-alias-bg-layer-1) 18%, transparent);
-  box-shadow: var(--liuli-shadow-subtle, 0 1px 3px rgba(0, 0, 0, .08));
+  gap: 8px !important;
+  padding: 14px 16px;
 }
 
 [data-plugin-panel] [data-plugin-group] > ul {
@@ -75,13 +109,14 @@ body[data-liuli-resizing] [data-plugin-panel] {
   margin: 0 !important;
   border: 1px solid var(--liuli-border-hairline);
   border-radius: var(--liuli-radius-sm, 10px) !important;
-  background-color: color-mix(in srgb, var(--dsw-alias-bg-layer-2) 34%, transparent);
+  background-color: rgba(var(--liuli-acrylic-rgb), min(0.82, calc(var(--liuli-material-opacity) + 0.15)));
+  background-image: var(--liuli-noise);
   transition: background-color 140ms ease, border-color 140ms ease;
 }
 
 [data-plugin-panel] :is(li[data-plugin-package], li[data-plugin-item]):is(:hover, :focus-within) {
   border-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 46%, transparent);
-  background-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 11%, var(--dsw-alias-bg-layer-2));
+  background-color: rgba(var(--liuli-acrylic-rgb), min(0.9, calc(var(--liuli-material-opacity) + 0.22)));
 }
 
 [data-plugin-panel] :is(li[data-plugin-package], li[data-plugin-item]) > [class*="_cardHead"] {
@@ -116,14 +151,11 @@ body[data-liuli-resizing] [data-plugin-panel] {
 [data-plugin-panel] :is([data-plugin-detail], [data-plugin-item-detail], [data-plugin-row-detail]) {
   box-sizing: border-box;
   max-width: 1020px !important;
-  padding: 0 18px 24px;
-  border: 1px solid var(--liuli-border-hairline);
-  border-radius: var(--liuli-radius, 14px);
-  background-color: color-mix(in srgb, var(--dsw-alias-bg-layer-1) 24%, transparent);
+  padding: 16px 20px 24px;
 }
 
 [data-plugin-panel] :is([data-plugin-detail], [data-plugin-item-detail], [data-plugin-row-detail]) [class*="_detailTop"] {
-  padding-top: 18px !important;
+  padding-top: 0 !important;
 }
 
 [data-plugin-panel] :is([data-plugin-detail], [data-plugin-item-detail], [data-plugin-row-detail]) [class*="_detailHead"] {

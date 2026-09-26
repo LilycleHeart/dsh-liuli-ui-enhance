@@ -1,0 +1,67 @@
+/* Activity lives in the official workspace browser, so its surfaces inherit
+   the same Liuli variables/material rather than introducing a second pane. */
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tab,
+.tabActive {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 27px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary, #888);
+  font: 600 11px/1.2 system-ui;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tab:hover,
+.tabActive:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, .12)); }
+.tabActive { color: var(--dsw-alias-brand-primary, var(--liuli-accent, #6ca6ff)); }
+.tabActive::after { content: ''; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: 18px; height: 2px; border-radius: 2px; background: currentColor; }
+.tab:focus-visible,
+.tabActive:focus-visible,
+.row:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary, #6ca6ff); outline-offset: -2px; }
+.badge { min-width: 13px; padding: 1px 3px; border-radius: 7px; background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, .15)); text-align: center; font-size: 9px; }
+
+.panel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+  padding: 3px 5px 12px 0;
+}
+.section { margin: 5px 0 11px; }
+.sectionTitle { display: flex; align-items: center; justify-content: space-between; margin: 0 7px 3px; color: var(--dsw-alias-label-tertiary, #888); font: 600 11px/1.4 system-ui; }
+.sectionCount { opacity: .7; font-variant-numeric: tabular-nums; }
+.row { width: 100%; min-width: 0; display: flex; align-items: center; gap: 7px; padding: 7px 8px; border: 0; border-radius: 9px; background: transparent; color: var(--dsw-alias-label-primary, inherit); text-align: left; cursor: pointer; }
+.row:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, .12)); }
+.statusIcon { flex: none; display: grid; place-items: center; width: 17px; height: 17px; color: var(--dsw-alias-label-tertiary, #888); }
+.statusIcon.attention { color: var(--dsw-alias-brand-primary, var(--liuli-accent, #6ca6ff)); }
+.statusIcon.running { color: var(--dsw-alias-brand-primary, var(--liuli-accent, #6ca6ff)); }
+.statusIcon.completed { color: var(--dsw-alias-label-secondary, #aaa); }
+.rowText { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.rowTitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 12px/1.35 system-ui; }
+.rowMeta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dsw-alias-label-tertiary, #888); font: 10px/1.3 system-ui; }
+.empty { display: flex; align-items: center; flex-direction: column; gap: 8px; margin: 36px 12px; color: var(--dsw-alias-label-tertiary, #888); text-align: center; font: 11px/1.4 system-ui; }
+.empty svg { width: 21px; height: 21px; opacity: .7; }
+
+:global([data-liuli-activity-tabs]) { flex: none; display: contents; }
+:global([data-liuli-activity-panel]) { display: none; flex: 1; min-height: 0; }
+:global([data-liuli-activity-view]) > :global([class*="_sectionHeader"]) > :global([class*="_sectionLabel"]) { display: none; }
+:global([data-liuli-activity-view="activity"]) > :global([class*="_sectionHeader"]) > :global([class*="_searchSlot"]),
+:global([data-liuli-activity-view="activity"]) > :global([class*="_sectionHeader"]) > :global([class*="_headerActions"]) { display: none; }
+:global([data-liuli-activity-view="activity"]) > :global([class*="_listArea"]) > :not([data-liuli-activity-panel]) { display: none; }
+:global([data-liuli-activity-view="activity"]) :global([data-liuli-activity-panel]) { display: flex; }
+:global([class*="_rail"]) :global([data-liuli-activity-tabs]),
+:global([class*="_rail"]) :global([data-liuli-activity-panel]) { display: none; }

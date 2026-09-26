@@ -25,7 +25,7 @@
   min-height: 0;
   margin: var(--liuli-dock-padding, 8px) 0 var(--liuli-dock-padding, 8px) var(--liuli-dock-padding, 8px);
   border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: var(--liuli-radius, 14px);
+  border-radius: var(--liuli-window-radius, 14px);
   background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
   background-image: var(--liuli-noise);
   -webkit-backdrop-filter: var(--liuli-material-blur);
@@ -46,7 +46,7 @@
   background-color: transparent !important;
   background-image: none !important;
   backdrop-filter: none !important;
-  border-radius: var(--liuli-radius, 14px);
+  border-radius: var(--liuli-window-radius, 14px);
 }
 /* Dockkit paints a solid bg-base on each tabHost, masking the Liuli shell. */
 .nativeRightbarCard :global([data-dockkit-host='dock'][class*='_tabHost']),
@@ -88,7 +88,7 @@
      让非区域卡片边缘与对话卡、侧栏卡在同一参考线上。 */
   margin: var(--liuli-dock-padding, 8px);
   border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.14));
-  border-radius: var(--liuli-radius, 14px);
+  border-radius: var(--liuli-window-radius, 14px);
   background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
   background-image: var(--liuli-noise);
   -webkit-backdrop-filter: var(--liuli-material-blur);
@@ -346,7 +346,7 @@
   overflow: hidden;
   margin: 0 0 0 var(--liuli-dock-padding, 8px);
   border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.14));
-  border-radius: var(--liuli-radius, 14px) 0 0 var(--liuli-radius, 14px);
+  border-radius: var(--liuli-window-radius, 14px) 0 0 var(--liuli-window-radius, 14px);
   box-shadow: var(--liuli-glow-brand), var(--liuli-shadow);
   background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
   background-image: var(--liuli-noise);
@@ -448,11 +448,11 @@
 }
 
 :global(.dshDesktopSidebarSurface[data-edge-right] .dshDesktopUpstreamSidebar > div > div[class*="root"]) {
-  border-radius: 14px 0 0 14px !important;
+  border-radius: var(--liuli-window-radius, 14px) 0 0 var(--liuli-window-radius, 14px) !important;
 }
 
 :global(.dshDesktopSidebarSurface:not([data-edge-left]):not([data-edge-right]) .dshDesktopUpstreamSidebar > div > div[class*="root"]) {
-  border-radius: var(--liuli-radius, 14px) !important;
+  border-radius: var(--liuli-window-radius, 14px) !important;
 }
 
 /* 详细页 surface padding：左/右边缘贴边，中间四边留白；下方无卡片时底部触底。
@@ -504,22 +504,22 @@
 
 /* 详细页内卡圆角：贴边侧直角，非贴边侧圆角；底部只在下方无卡片时触底。 */
 :global([data-testid="dock-shell"] .dshDesktopDetailsSurface:not([data-edge-right]) [data-preview-panel]) {
-  border-top-right-radius: var(--liuli-radius, 14px) !important;
+  border-top-right-radius: var(--liuli-window-radius, 14px) !important;
 }
 
 :global([data-testid="dock-shell"] .dshDesktopDetailsSurface:not([data-edge-bottom]):not([data-edge-right]) [data-preview-panel]) {
-  border-bottom-right-radius: var(--liuli-radius, 14px) !important;
+  border-bottom-right-radius: var(--liuli-window-radius, 14px) !important;
 }
 
 :global([data-testid="dock-shell"] .dshDesktopDetailsSurface:not([data-edge-bottom]):not([data-edge-left]) [data-preview-panel]) {
-  border-bottom-left-radius: var(--liuli-radius, 14px) !important;
+  border-bottom-left-radius: var(--liuli-window-radius, 14px) !important;
 }
 
 /* 对话页在上下堆叠中位于顶部/中部时，按第一条规范恢复四边留白与底部圆角
    （全局 active 规则默认让会话卡底部触底，这里仅对下方还有卡片的会话列撤销）。 */
 :global([data-testid="dock-shell"] .dshDesktopConversationSurface[data-has-below] [data-conversation-scroll]) {
-  border-bottom-left-radius: var(--liuli-radius, 14px) !important;
-  border-bottom-right-radius: var(--liuli-radius, 14px) !important;
+  border-bottom-left-radius: var(--liuli-window-radius, 14px) !important;
+  border-bottom-right-radius: var(--liuli-window-radius, 14px) !important;
   margin-bottom: 0 !important;
 }
 
@@ -1168,7 +1168,7 @@
   flex-direction: column;
   /* 与对话页 / 左侧边栏卡片一致的材质：透明底 + ::before 亚克力磨砂 */
   border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.24));
-  border-radius: var(--liuli-radius, 14px);
+  border-radius: var(--liuli-window-radius, 14px);
   background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
   background-image: var(--liuli-noise);
   -webkit-backdrop-filter: var(--liuli-material-blur);

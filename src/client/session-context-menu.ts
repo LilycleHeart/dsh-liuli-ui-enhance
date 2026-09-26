@@ -95,7 +95,7 @@ function renderMenu(ctx: Ctx, row: HTMLElement, id: SessionId, title: string, x:
     left: '0',
     top: '0',
     visibility: 'hidden',
-    zIndex: '1200',
+    zIndex: '2147482500',
   } as Partial<CSSStyleDeclaration>)
   document.body.appendChild(menu)
 
@@ -189,9 +189,10 @@ function renderMenu(ctx: Ctx, row: HTMLElement, id: SessionId, title: string, x:
   appendItem(archived ? '恢复会话' : '归档会话', archived ? 'unarchive' : 'archive', ICONS.archive, { danger: !archived })
 
   // 定位：夹紧视口（先 visibility:hidden 测量真实尺寸）
-  const r = menu.getBoundingClientRect()
-  const left = Math.min(Math.max(x, 8), window.innerWidth - r.width - 8)
-  const top = Math.min(Math.max(y, 8), window.innerHeight - r.height - 8)
+  // CSS entrance animation scales the box; offset metrics preserve its final
+  // size so the menu never slips outside a narrow window while appearing.
+  const left = Math.max(8, Math.min(x, window.innerWidth - menu.offsetWidth - 8))
+  const top = Math.max(8, Math.min(y, window.innerHeight - menu.offsetHeight - 8))
   menu.style.left = left + 'px'
   menu.style.top = top + 'px'
   menu.style.visibility = 'visible'

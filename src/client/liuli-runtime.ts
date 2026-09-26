@@ -473,12 +473,15 @@ export async function applyLiuliSettings(settings: LiuliSettings): Promise<void>
   if (cfg.wide_mode === true) body.dataset.liuliWide = '1'
   else delete body.dataset.liuliWide
 
-  // ── 圆角 / 泛光 / 阴影 / 面板留白 ──
+  // ── 页面外壳圆角 / 泛光 / 阴影 / 面板留白 ──
   const radius = Math.max(0, Math.min(40, Number(cfg.corner_radius ?? 14)))
   const dockPadding = Math.max(0, Math.min(16, Number(cfg.dock_padding ?? 8)))
   set('--liuli-dock-padding', dockPadding + 'px')
-  set('--liuli-radius', radius + 'px')
-  set('--liuli-radius-sm', Math.min(radius, 10) + 'px')
+  // 旧版把用户值写进卡片和控件令牌，令菜单、消息气泡、文件卡等一同变形。
+  // 固定内部语义档，并覆盖热更新后可能残留的 body inline 旧值。
+  set('--liuli-radius', '14px')
+  set('--liuli-radius-sm', '10px')
+  set('--liuli-window-radius', radius + 'px')
   set('--liuli-glow-strength', (cfg.glow_enabled ? (cfg.glow_intensity ?? 15) : 0) / 100 + '')
   set('--liuli-shadow-strength', (cfg.shadow_enabled ? (cfg.shadow_intensity ?? 60) : 0) / 100 + '')
 
