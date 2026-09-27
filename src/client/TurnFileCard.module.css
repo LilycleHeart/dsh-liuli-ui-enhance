@@ -16,6 +16,15 @@
   animation: liuli-turn-files-enter 180ms ease-out both;
 }
 
+/* The active conversation already blurs its wallpaper once on
+   div[data-phase]::before. Keep this file card's tint, noise and outline, but
+   avoid a second backdrop sampling pass for every visible round summary.
+   Retain the card's own blur when it is rendered outside that surface. */
+:global(div[data-phase='active']) .root {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
 .head {
   display: flex;
   align-items: center;

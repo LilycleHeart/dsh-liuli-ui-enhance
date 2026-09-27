@@ -298,11 +298,9 @@
   padding: 0 14px;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 18px;
-  /* 半透明亚克力（琉璃 配方）：无 fixed 后代，无包含块陷阱 */
+  /* 设置面板外层已磨砂，此处保留半透明染色与噪声。 */
   background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
   background-image: var(--liuli-noise);
-  -webkit-backdrop-filter: var(--liuli-material-blur);
-  backdrop-filter: var(--liuli-material-blur);
   font: inherit;
   font-size: 14px;
   line-height: 22px;
@@ -345,9 +343,7 @@
   /* 半透明亚克力（琉璃 配方） */
   background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity));
   background-image: var(--liuli-noise);
-  /* 磨砂跟随"模糊强度"滑条（与其它卡片一致） */
-  -webkit-backdrop-filter: var(--liuli-material-blur);
-  backdrop-filter: var(--liuli-material-blur);
+  /* 壁纸仅由设置面板材质层采样磨砂，避免嵌套 blur。 */
 }
 
 .wallpaperTitle {

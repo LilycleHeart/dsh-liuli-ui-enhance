@@ -203,6 +203,14 @@
   box-shadow: var(--liuli-glow-brand), var(--liuli-shadow-subtle, 0 1px 3px rgba(0, 0, 0, .08));
 }
 
+/* A docked native Guide is painted over the existing acrylic rightbar card.
+   Reuse that one backdrop sample; entry tint/noise/border still distinguish
+   each action. Floats and fullscreen do not sit over this card and keep blur. */
+:global([data-testid='dock-shell']:has([data-liuli-official-rightbar])) .officialRightbarHost[data-liuli-native-seat-active]:not([data-liuli-native-float]):not([data-liuli-native-fullscreen]) :global([data-sidebar-right-guide-entry]) {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
 .officialRightbarHost[data-liuli-native-seat-active] :global([data-sidebar-right-guide-entry]:hover) {
   border-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 45%, transparent) !important;
   background-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 12%, rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity, .55))) !important;

@@ -54,6 +54,12 @@ html[data-platform='darwin'] body[data-ds-dark-theme] {
   border-color: var(--liuli-border-hairline) !important;
 }
 
+/* The active Conversation has a single wallpaper blur behind the transcript. */
+div[data-phase='active'] [data-changed-files] {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
 /* Answered ask_user_question transcript is a tool-row content card; preserve
    its question/answer hierarchy while replacing only the stock solid fill. */
 [data-tool='ask_user_question'] :is(div, dl)[class$='_card'] {
@@ -70,6 +76,12 @@ html[data-platform='darwin'] body[data-ds-dark-theme] {
   background-image: var(--liuli-noise) !important;
   -webkit-backdrop-filter: var(--liuli-material-blur) !important;
   backdrop-filter: var(--liuli-material-blur) !important;
+}
+
+div[data-phase='active'] [data-tool='ask_user_question'] :is(div, dl)[class$='_card'],
+div[data-phase='active'] [data-workflow-run] [class$='_runHeader'] {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 
 body[data-liuli-resizing] :is([data-changed-files],

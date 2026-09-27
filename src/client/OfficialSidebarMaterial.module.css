@@ -197,6 +197,15 @@
   background-image: var(--liuli-noise);
 }
 
+/* Docked browser/terminal chrome sits over the already blurred Liuli card.
+   Avoid a second full-width/full-height backdrop pass there. Float and
+   fullscreen projections keep their own blur because no card is behind them. */
+:global([data-testid='dock-shell']:has([data-liuli-official-rightbar])) .nativeSkin[data-liuli-native-seat-active][data-liuli-native-kind='browser']:not([data-liuli-native-float]):not([data-liuli-native-fullscreen]) :global(form[class*='_toolbar']),
+:global([data-testid='dock-shell']:has([data-liuli-official-rightbar])) .nativeSkin[data-liuli-native-seat-active][data-liuli-native-kind='terminal']:not([data-liuli-native-float]):not([data-liuli-native-fullscreen]) :global([data-sidebar-terminal] [class*='_screen']) {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .nativeSkin[data-liuli-native-seat-active] :global([data-files-entry] > button) { transition: none; }
 }

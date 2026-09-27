@@ -625,6 +625,13 @@ button[class*="_toBottom"] {
   backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur));
 }
 
+/* 会话正文已由 data-phase::before 磨砂；内层命令卡只需染色与噪声。
+   保留上面的通用规则，避免卡片搬到独立面板时失去自身磨砂。 */
+[data-conversation-scroll] [data-variant="others"]:not([data-tool]) {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
 /* ════════════════════════════════════════════════════════════
  * 模型/提供商设置卡片：rowCard / addCard / setupCard 及内嵌 editor。
  * 用卡片级亚克力配方（0.45 + 噪声 + 磨砂），与其他设置分区卡片一致

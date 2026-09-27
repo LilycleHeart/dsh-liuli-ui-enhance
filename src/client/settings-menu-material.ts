@@ -28,17 +28,14 @@ body[data-ds-dark-theme] [data-shortcut-modal="settings"]
   --dsw-alias-settings-card-stroke: var(--dsw-alias-border-l2);
 }
 
-/* AccountSection has no fixed descendants in either card. Its identity card
-   is identified by its immediate identity row; balanceCard has a unique local
-   name. This avoids painting every generic card in the settings tree. */
+/* AccountSection's identity card is identified by its immediate identity row;
+   balanceCard has a unique local name. Avoid generic card selectors. */
 [data-shortcut-modal="settings"] :is([class$="_card"]:has(> [class$="_identity"]), [class$="_balanceCard"]) {
   background-color: var(--dsw-alias-settings-card-fill) !important;
   background-image: var(--liuli-noise) !important;
   border-color: var(--dsw-alias-settings-card-stroke) !important;
   border-radius: var(--liuli-radius, 14px) !important;
   box-shadow: var(--liuli-glow-brand), var(--liuli-shadow) !important;
-  -webkit-backdrop-filter: var(--liuli-material-blur) !important;
-  backdrop-filter: var(--liuli-material-blur) !important;
 }
 body[data-ds-dark-theme] [data-shortcut-modal="settings"] section:has(> [class$="_balanceCard"])
   :is([class$="_status"], [class$="_secondary"], [class$="_unavailable"]) {
@@ -62,8 +59,6 @@ body[data-ds-dark-theme] [data-shortcut-modal="settings"] section:has(> [class$=
   background-image: var(--liuli-noise) !important;
   border-radius: var(--liuli-radius-sm, 10px) !important;
   box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l2) !important;
-  -webkit-backdrop-filter: var(--liuli-material-blur) !important;
-  backdrop-filter: var(--liuli-material-blur) !important;
 }
 [data-shortcut-modal="settings"] [data-slot="settings.general.item"]
   :is(button[class$="_selector"], [class$="_setting"] > button[class$="_button"]):hover {
@@ -95,6 +90,31 @@ body[data-ds-dark-theme] [data-shortcut-modal="settings"] section:has(> [class$=
 }
 [data-shortcut-modal="settings"] button[role="switch"][aria-checked="true"] > [class$="_thumb"] {
   background: var(--dsw-alias-label-primary-foreground) !important;
+}
+
+/* The dialog's own ::before already performs the strong wallpaper blur.
+   Child controls keep their independent tint, noise, stroke and contrast, but
+   do not resample the same backdrop for every row. The two inventory cards
+   must retain their ::before tint layer because their roots are transparent. */
+[data-shortcut-modal="settings"] :is(
+  li[class*="rowCard"], li[class*="setupCard"], div[class*="addCard"],
+  li[class*="rowCard"] div[class$="_editor"],
+  li[class*="setupCard"] div[class$="_editor"],
+  div[class*="addCard"] div[class$="_editor"],
+  input[class$="_input"], [class*="_switcher"], [class*="_search"] input,
+  [data-liuli-settings-trigger],
+  [class$="_card"]:has(> [class$="_identity"]), [class$="_balanceCard"],
+  [data-slot="settings.general.item"] [class$="_stepper"],
+  [data-slot="settings.general.item"] button[class$="_selector"],
+  [data-slot="settings.general.item"] [class$="_setting"] > button[class$="_button"]
+) {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+[data-shortcut-modal="settings"]
+  :is([class*="_MT6gCq_card"], [class*="_BDWblG_card"])::before {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 
 /* Official MenuSurface supplies its own isolated material child.  Painting
@@ -163,9 +183,6 @@ fieldset[data-install-registry] input[class*="_registryCustomField"] {
 }
 
 body[data-liuli-resizing] [data-shortcut-modal="settings"]::before,
-body[data-liuli-resizing] [data-shortcut-modal="settings"] :is([class$="_card"]:has(> [class$="_identity"]), [class$="_balanceCard"]),
-body[data-liuli-resizing] [data-shortcut-modal="settings"] [data-slot="settings.general.item"]
-  :is([class$="_stepper"], button[class$="_selector"], [class$="_setting"] > button[class$="_button"]),
 body[data-liuli-resizing] [data-menu-material="translucent"] > [aria-hidden="true"][class*="_material"],
 body[data-liuli-resizing] fieldset[data-install-registry],
 body[data-liuli-resizing] [data-liuli-context-menu] {
