@@ -67,13 +67,35 @@
   backdrop-filter: var(--liuli-material-blur);
   -webkit-app-region: drag;
 }
+/* The official shell reserves 40px for its native caption in modal masks.
+   Liuli replaces that caption, so settings and other modal backdrops cover the
+   viewport from the top edge. Keep the dialog's separate clearance unchanged. */
+:global(html[data-liuli-official-chrome]) {
+  --dsh-frame-chrome-top: 0px !important;
+}
 :global(html[data-liuli-official-chrome][data-liuli-persistent-menu] [data-testid='dock-shell']) {
-  height: calc(100vh - 40px) !important;
-  margin-top: 40px;
+  /* Keep the frame inside the viewport; a top margin can enlarge the document
+     scroll range even when the frame height is reduced by the same amount. */
+  box-sizing: border-box;
+  height: 100vh !important;
+  min-height: 0 !important;
+  margin-top: 0;
+  padding-top: 40px;
 }
 :global(html[data-liuli-official-chrome][data-liuli-persistent-menu] body[data-liuli-settings-open] [role='presentation'][class*='_overlay']) {
-  top: 40px !important;
-  height: calc(100vh - 40px) !important;
+  top: 0 !important;
+  height: 100vh !important;
+}
+/* The settings mask also covers Liuli's body-level window chrome while the
+   modal is open; its panel and portaled menus keep their own higher layers. */
+:global(html[data-liuli-official-chrome] body[data-liuli-settings-open] [data-windows-menu]) {
+  z-index: 2147482700 !important;
+}
+:global(html[data-liuli-official-chrome] body[data-liuli-settings-open]) .titlebar,
+:global(html[data-liuli-official-chrome] body[data-liuli-settings-open]) .controls,
+:global(html[data-liuli-official-chrome] body[data-liuli-settings-open]) .hint,
+:global(html[data-liuli-official-chrome] body[data-liuli-settings-open]) .menuPersistent {
+  z-index: 2147482700 !important;
 }
 /* Undo only caption positioning. These controls now follow their owning sidebar,
    including when its region is tabbed, moved to another edge or floated. */

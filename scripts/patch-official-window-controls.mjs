@@ -8,7 +8,7 @@ import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
-const version = '0.1.7-rc.2';
+const version = '0.2.0-rc.2';
 const marker = '[liuli official window controls v1]';
 const dir = resolve(process.env.DSH_OFFICIAL_DIR || join(process.env.LOCALAPPDATA, 'Programs', 'DeepSeek Harness'));
 const asarPath = join(dir, 'resources', 'app.asar');

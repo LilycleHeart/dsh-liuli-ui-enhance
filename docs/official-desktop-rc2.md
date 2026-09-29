@@ -1,6 +1,12 @@
 # 官方 DeepSeek Harness Desktop 0.1.7-rc.2 适配
 
-本分支以官方 `@deepseek-ai/dsh-desktop` 0.1.7-rc.2 为目标，保留原 `beta` 分支供社区 DSH Desktop 2.0.13 使用。插件包版本为 `0.1.2-rc.28`，只声明与 dsh 0.1.7-rc.2 兼容。
+> 当前桌面端为 **0.2.0-rc.2**。系统更新会覆盖之前的窗口补丁；
+> `scripts/patch-official-window-controls.mjs` 现仅对 0.2.0-rc.2 生效，
+> 备份目录为 `liuli-window-controls-backup-0.2.0-rc.2`。下文 0.1.7-rc.2 的接口迁移与逐版记录保留作历史说明。
+
+0.2.0-rc.2 的设置和通用模态遮罩读取 `--dsh-frame-chrome-top`，原生标题栏移除后由琉璃置为 0；设置弹窗打开时窗口顶栏也落在遮罩下方，暗色遮罩覆盖整个视口。
+
+原适配分支以官方 `@deepseek-ai/dsh-desktop` 0.1.7-rc.2 为目标，保留原 `beta` 分支供社区 DSH Desktop 2.0.13 使用。当时插件包版本为 `0.1.2-rc.28`，只声明与 dsh 0.1.7-rc.2 兼容。
 
 ## 接口迁移
 
@@ -14,7 +20,7 @@
 
 旧版的无边框补丁只允许在应用包名为 `dsh-plugin-desktop` 的社区客户端上运行。官方桌面端包名为 `@deepseek-ai/dsh-desktop`；插件在其 Host 中不会修改 `app.asar` 或执行补丁还原。
 
-默认保留官方标题栏。需要琉璃悬浮按钮时，可显式运行独立的 Windows 官方壳补丁；它只支持 0.1.7-rc.2，不会由插件自动执行。
+默认保留官方标题栏。需要琉璃悬浮按钮时，可显式运行独立的 Windows 官方壳补丁；当前脚本只支持 0.2.0-rc.2，不会由插件自动执行。
 
 ```powershell
 node scripts/patch-official-window-controls.mjs --check
@@ -24,7 +30,7 @@ node scripts/patch-official-window-controls.mjs --apply
 node scripts/patch-official-window-controls.mjs --revert
 ```
 
-补丁备份安装目录内的 EXE 和 app.asar 到 `liuli-window-controls-backup-0.1.7-rc.2`。它修改主窗口为无边框、增加四项窗口动作的 IPC 白名单，沿用官方发送者校验，并同步 ASAR 哈希；修改后的 EXE 不再匹配厂商原签名。应用升级会覆盖补丁，新版本必须重新适配，不能直接套用。还原时检查文件哈希，拒绝覆盖已升级的应用。
+补丁备份安装目录内的 EXE 和 app.asar 到 `liuli-window-controls-backup-0.2.0-rc.2`。它修改主窗口为无边框、增加四项窗口动作的 IPC 白名单，沿用官方发送者校验，并同步 ASAR 哈希；修改后的 EXE 不再匹配厂商原签名。应用升级会覆盖补丁，新版本必须重新适配，不能直接套用。还原时检查文件哈希，拒绝覆盖已升级的应用。
 
 插件识别官方桥接后启用右上角悬浮胶囊：平时隐藏，移入右上角显示。左上角应用与编辑菜单收进悬浮胶囊，顶部短提示条支持悬停、点击或键盘聚焦展开，不再占据标题栏或 dock 布局高度。侧栏开关和新建会话恢复面板内定位，随侧栏移动；窄轨图标避开 dock 抓手。应用窗口拖动由胶囊抓手提供，不将 dock 标签改成窗口拖动区。插件未加载时，预加载脚本提供常驻窗口按钮兜底。
 
