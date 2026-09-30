@@ -1,3 +1,5 @@
+import { isLayoutInProgress, LAYOUT_SETTLED_EVENT } from './resize-perf.ts'
+
 /** Subtract interactive rectangles before handing any pixels to Electron's drag region. */
 export function startDesktopDrag(): () => void {
   const host = document.createElement('div')
@@ -10,14 +12,19 @@ export function startDesktopDrag(): () => void {
   const sync = () => {
     frame = 0
     const height = Number(document.documentElement.dataset.liuliDragHeight ?? 24)
-    const blocked = pressed || document.body.hasAttribute('data-liuli-settings-open')
+    const blocked = pressed || isLayoutInProgress() || document.body.hasAttribute('data-liuli-settings-open')
       || Array.from(document.querySelectorAll<HTMLElement>('[aria-modal="true"], [role="menu"], [role="listbox"]'))
         .some(el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden' && getComputedStyle(el).opacity !== '0')
     const rects: Array<{ x: number; y: number; w: number; h: number }> = []
     if (!blocked && height > 0) {
       const exclusions = Array.from(document.querySelectorAll<HTMLElement>(interactive))
-        .filter(el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden')
+        // getClientRects() on a child of a skipped content-visibility subtree
+        // realizes that entire message. Check visibility before any geometry.
+        .filter(el => typeof el.checkVisibility === 'function'
+          ? el.checkVisibility({ contentVisibilityAuto: true, visibilityProperty: true })
+          : el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden')
         .map(el => el.getBoundingClientRect())
+        .filter(r => r.width > 0 && r.height > 0 && r.bottom > 8 && r.top < height + 16)
       for (const pane of document.querySelectorAll<HTMLElement>('[data-region-pane], [data-testid="dock-pane"], [data-testid="dock-float"]')) {
         const r = pane.getBoundingClientRect()
         if (r.width < 30 || r.height < height || r.top < -1 || r.top > 16) continue
@@ -49,6 +56,7 @@ export function startDesktopDrag(): () => void {
   // Bounded interval also follows CSS-only hover controls and dock animations.
   const timer = window.setInterval(schedule, 250)
   window.addEventListener('resize', schedule)
+  window.addEventListener(LAYOUT_SETTLED_EVENT, schedule)
   window.addEventListener('pointerdown', down, true)
   window.addEventListener('pointerup', up, true)
   window.addEventListener('pointercancel', up, true)
@@ -58,6 +66,7 @@ export function startDesktopDrag(): () => void {
     clearInterval(timer)
     cancelAnimationFrame(frame)
     window.removeEventListener('resize', schedule)
+    window.removeEventListener(LAYOUT_SETTLED_EVENT, schedule)
     window.removeEventListener('pointerdown', down, true)
     window.removeEventListener('pointerup', up, true)
     window.removeEventListener('pointercancel', up, true)

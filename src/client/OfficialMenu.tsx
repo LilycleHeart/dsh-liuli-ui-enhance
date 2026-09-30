@@ -21,18 +21,9 @@ export function OfficialMenu() {
       delete document.documentElement.dataset.liuliPersistentMenu
     }
   }, [persistent])
-  useEffect(() => {
-    const html = document.documentElement
-    const position = () => {
-      const left = 12
-      const top = 16
-      html.style.setProperty('--liuli-menu-left', `${Math.max(8, left)}px`)
-      html.style.setProperty('--liuli-menu-top', `${Math.max(8, top)}px`)
-    }
-    position()
-    const timer = window.setInterval(position, 200)
-    return () => { clearInterval(timer); html.style.removeProperty('--liuli-menu-left'); html.style.removeProperty('--liuli-menu-top') }
-  }, [])
+  // WindowControls.module.css already supplies the fixed 12px/16px position.
+  // Polling those constants rewrites the root style attribute and wakes every
+  // style observer, even while the menu is closed or a sash is being dragged.
   useEffect(() => {
     if (persistent) return
     const html = document.documentElement
