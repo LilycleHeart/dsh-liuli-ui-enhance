@@ -6,7 +6,7 @@
 
 <br>
 
-<img src="https://img.shields.io/badge/version-0.1.0-8b5cf6.svg" alt="version">
+<img src="https://img.shields.io/npm/v/dsh-liuli-ui-enhance.svg" alt="npm version">
 <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="license">
 <img src="https://img.shields.io/badge/TypeScript-strict-3178c6.svg" alt="TypeScript">
 <img src="https://img.shields.io/badge/React-18-61dafb.svg" alt="React">
@@ -47,17 +47,21 @@ DeepSeek Harness 的 **Material Design 3 × Fluent 2 融合主题**插件：动�
 
 ## 安装
 
-> 前置条件：已安装 [Node.js](https://nodejs.org) 20+ 与 [pnpm](https://pnpm.io/installation)，
-> 且启动过一次 DSH Desktop（首次启动会生成 `~/.dsh/profiles/desktop`）。
+DSH 0.2.0-rc.2 用户可在官方「插件」页面输入 `dsh-liuli-ui-enhance@0.1.2` 安装。
+官方安装器会管理依赖和 bundle 注册，无需运行本地安装脚本。也可使用官方 CLI：
+
+```bash
+dsh plugin --profile desktop add dsh-liuli-ui-enhance@0.1.2
+```
+
+本地开发/调试时，需安装 [Node.js](https://nodejs.org) 20+ 与 [pnpm](https://pnpm.io/installation)，
+并启动过一次 DSH Desktop（首次启动会生成 `~/.dsh/profiles/desktop`）：
 
 ```bash
 pnpm install            # 首次：安装依赖并构建 lib/（install:desktop 也会自动补这步）
 pnpm install:desktop
 pnpm patch:desktop      # 推荐：win32 无边框补丁（自动补丁失败不阻断插件）
 ```
-
-> 插件已发布到 npm（`dsh-liuli-ui-enhance`），可通过 `dsh1024 plugin --profile web add dsh-liuli-ui-enhance` 安装；
-> 本地开发/调试仍推荐用本仓库的 `pnpm install:desktop` 手动安装。
 
 详见 [docs/install.md](docs/install.md)。
 

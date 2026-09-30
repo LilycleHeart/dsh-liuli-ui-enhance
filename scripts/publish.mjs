@@ -74,6 +74,7 @@ function execCMD(cmd, args, opts = {}) {
       ...rest,
     })
     if (result.error) throw result.error
+    if (result.status !== 0) throw new Error(`${cmd} exited with ${result.status}: ${(result.stderr ?? '').toString().trim()}`)
     return capture ? (result.stdout ?? '').toString('utf8').trim() : result
   }
   const result = spawnSync(cmd, args, {
@@ -82,6 +83,7 @@ function execCMD(cmd, args, opts = {}) {
     ...rest,
   })
   if (result.error) throw result.error
+  if (result.status !== 0) throw new Error(`${cmd} exited with ${result.status}: ${(result.stderr ?? '').toString().trim()}`)
   return capture ? (result.stdout ?? '').toString('utf8').trim() : result
 }
 
@@ -150,11 +152,11 @@ async function main() {
     if (!ALLOWED_BUMPS.has(bump) && !/^\d+\.\d+\.\d+$/.test(bump)) {
       fail(`--bump 只接受 patch|minor|major 或形如 0.2.0 的版本号，收到「${bump}」`)
     }
-    const [major, minor, patch] = pkg.version.split('.').map(Number)
+    const [major, minor, patch] = pkg.version.split('-')[0].split('.').map(Number)
     let next
     if (bump === 'major') next = `${major + 1}.0.0`
     else if (bump === 'minor') next = `${major}.${minor + 1}.0`
-    else if (bump === 'patch') next = `${major}.${minor}.${patch + 1}`
+    else if (bump === 'patch') next = `${major}.${minor}.${pkg.version.includes('-') ? patch : patch + 1}`
     else next = bump
     console.log(`当前版本：${pkg.version} → 目标版本：${next}`)
     log('dry-run：到这里为止，未改文件、未推送、未发布。')
@@ -170,6 +172,7 @@ async function main() {
   } else {
     fail(`--bump 只接受 patch|minor|major 或形如 0.2.0 的版本号，收到「${bump}」`)
   }
+  targetVersion = targetVersion.replace(/^v/, '')
   console.log(`目标版本：${targetVersion}`)
 
   // 5. 提交版本变更 + 打 git tag。

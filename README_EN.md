@@ -6,7 +6,7 @@
 
 <br>
 
-<img src="https://img.shields.io/badge/version-0.1.0-8b5cf6.svg" alt="version">
+<img src="https://img.shields.io/npm/v/dsh-liuli-ui-enhance.svg" alt="npm version">
 <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="license">
 <img src="https://img.shields.io/badge/TypeScript-strict-3178c6.svg" alt="TypeScript">
 <img src="https://img.shields.io/badge/React-18-61dafb.svg" alt="React">
@@ -38,6 +38,16 @@ A **Material Design 3 × Fluent 2** fusion theme plugin for DeepSeek Harness: dy
 Full features: [docs/features.md](docs/features.md) (Chinese).
 
 ## Install
+
+For DSH 0.2.0-rc.2, enter `dsh-liuli-ui-enhance@0.1.2` on the official Plugins page,
+or use the official CLI:
+
+```bash
+dsh plugin --profile desktop add dsh-liuli-ui-enhance@0.1.2
+```
+
+The official installer manages dependencies and bundle registration. No local installer is needed.
+For source development:
 
 ```bash
 pnpm install:desktop

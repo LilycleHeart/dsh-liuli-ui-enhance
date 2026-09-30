@@ -15,11 +15,22 @@
 > 插件加载——此时页面内窗口按钮仍可用，只是原生标题栏按钮会保留；客户端更新后重启
 > 一次即恢复无边框。
 >
-> **发布形态**：插件当前**尚未发布到 npm**（registry 404），DSH 内置市场也不接受
-> GitHub 安装目标，因此唯一受支持的安装路径是本仓库手动安装（`pnpm install:desktop`）。
-> `pnpm install:desktop:npm` 会先查询 npm registry，未发布时直接报错并提示改用本地安装。
+### 官方插件安装
 
-### 自动安装（推荐）
+0.1.2 适配 DSH 0.2.0-rc.2。在官方「插件」页面输入 `dsh-liuli-ui-enhance@0.1.2` 安装，
+或通过官方 CLI 执行：
+
+```bash
+dsh plugin --profile desktop add dsh-liuli-ui-enhance@0.1.2
+```
+
+官方安装器会管理依赖和 `dsh.profile.bundles` 注册；不需要再运行本仓库的安装脚本。
+旧版 0.1.1 面向旧 DSH，安装时应检查宿主与插件的兼容版本。
+
+官方安装器也支持 GitHub 和 `.tgz`。GitHub 源码安装需要构建产物，pnpm 可能要求用户允许
+`prepare` 构建脚本；npm 包已包含编译好的 `lib/`，适合普通用户直接安装。
+
+### 本地开发安装
 
 > **前置条件（首次安装务必确认）**：
 > 1. 已安装 [Node.js](https://nodejs.org) 20+ 与 [pnpm](https://pnpm.io/installation)；
@@ -41,7 +52,7 @@ pnpm install:desktop
 #    插件启动时也会自动必装该补丁，手动执行只是提前打上，免去重启一次）
 pnpm patch:desktop
 
-# 或等发布到 npm 后，从 npm 安装（当前不可用，会直接报错提示改用本地安装）：
+# 或从 npm 安装，安装器会先检查 registry 中的版本：
 pnpm install:desktop:npm
 ```
 
@@ -61,7 +72,8 @@ pnpm install:desktop:npm
 > integrity，spec 不变时**即使 tarball 内容已经更新，也会判成 `Already up to date`**
 > （`pnpm install` / `pnpm install --force` / `pnpm add file:<同名 tarball>` 都一样），
 > 结果是改了样式却看不到任何变化。指纹命名让内容变化 ⇒ spec 变化 ⇒ pnpm 必然重新解析解包；
-> 内容没变则 spec 不变，安装保持幂等。安装完成后**刷新页面**即加载新 bundle，不要重启 DSH Desktop。
+> 内容没变则 spec 不变，安装保持幂等。配置是否能立即应用取决于 profile 的重载模式；
+> 替换已加载的插件包后，应按宿主提示重启以加载新的模块。
 
 > **从旧包名 `@deepseek-ai/liuli-theme` 迁移时**：安装器会自动清理它自己写入的
 > `dsh-liuli-ui-enhance` 旧 insert 块，但不会删除旧包名 `@deepseek-ai/liuli-theme` 的依赖和
@@ -165,8 +177,8 @@ pnpm add file:/tmp/liuli/dsh-liuli-ui-enhance-0.1.0.tgz
    DSH 启动报 duplicate loader entry id 并拒绝启动。
    cordis.patch.yml 保持 []（或只放与插件无关的 patch 条目）。
 
-6. 安装后不需要重启 DSH Desktop
-   客户端插件安装到 profile 后，刷新页面即可加载新 bundle；不要主动重启 DSH Desktop（会改变 Web 端口并打断调试）。
+6. 按宿主返回的应用状态处理重载
+   配置重载可能立即应用，但已加载插件包的替换需要重启进程；仅刷新浏览器不保证清除包缓存。
 
 7. 隐藏原生标题栏需要额外宿主补丁
    插件只能提供页面内窗口按钮，不能从渲染进程隐藏原生标题栏。
