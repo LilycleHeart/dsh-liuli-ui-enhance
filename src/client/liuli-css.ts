@@ -1093,6 +1093,13 @@ div[data-phase='active'] [data-conversation-scroll] {
    composer 的 sticky bottom：恰好贴住可见底边（不裁切、不留缝），正文卡片
    触底与滚动几何都不变。 */
 
+/* 新版「深度求索中」用独立语义色和 TextShimmer，旧版 _turnStatus 不再命中。
+   在状态行局部映射品牌色，文字、鲸鱼图标与扫光随动态主题一起更新。 */
+[data-chat-running] {
+  --dsw-alias-label-deep-diving: var(--dsw-alias-brand-primary);
+  --dsw-alias-label-deep-diving-shimmer: color-mix(in srgb, var(--dsw-alias-brand-primary) 45%, #ffffff);
+}
+
 /* 思考展开后的置顶标题保持透明，去掉官方 bg-base 实底条。 */
 [data-variant="think"] [data-disclosure-row] {
   background: transparent !important;
