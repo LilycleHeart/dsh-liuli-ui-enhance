@@ -1093,6 +1093,11 @@ div[data-phase='active'] [data-conversation-scroll] {
    composer 的 sticky bottom：恰好贴住可见底边（不裁切、不留缝），正文卡片
    触底与滚动几何都不变。 */
 
+/* 思考展开后的置顶标题保持透明，去掉官方 bg-base 实底条。 */
+[data-variant="think"] [data-disclosure-row] {
+  background: transparent !important;
+}
+
 /* 长对话渲染减负只作用于正文普通条目。官方过程组用 hidden="until-found"
    控制整轮折叠；content-visibility:auto 会覆盖浏览器的隐藏样式，把已折叠
    的组暴露出来，点击后又被 ChatGroupSeat 的隐藏状态 effect 收回。

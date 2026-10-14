@@ -970,6 +970,11 @@ div[class$="hoverCard"] {
 }
 
 
+/* 思考展开后的置顶标题保持透明，去掉官方 bg-base 实底条。 */
+[data-variant="think"] [data-disclosure-row] {
+  background: transparent !important;
+}
+
 /* 普通正文条目跳过屏外布局；官方隐藏条目、过程组及其内嵌 flow 不参与
    （hidden="until-found" 依赖 content-visibility:hidden，详见 liuli-css.ts）。 */
 @supports (content-visibility: auto) {
