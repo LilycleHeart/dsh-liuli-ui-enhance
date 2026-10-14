@@ -973,6 +973,12 @@ div[class$="hoverCard"] {
 }
 
 
+/* 新版「深度求索中」的文字、鲸鱼图标与 TextShimmer 扫光跟随动态品牌色。 */
+[data-chat-running] {
+  --dsw-alias-label-deep-diving: var(--dsw-alias-brand-primary);
+  --dsw-alias-label-deep-diving-shimmer: color-mix(in srgb, var(--dsw-alias-brand-primary) 45%, #ffffff);
+}
+
 /* 思考展开后的置顶标题保持透明，去掉官方 bg-base 实底条。 */
 [data-variant="think"] [data-disclosure-row] {
   background: transparent !important;
