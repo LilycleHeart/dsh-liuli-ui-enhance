@@ -1672,8 +1672,10 @@ div[data-phase='active'] {
   backdrop-filter: var(--liuli-material-blur);
   pointer-events: none;
 }
-/* 工作区树底部淡出层：WIP 已移除该元素，插件隐藏官方残留层 */
-[class*="_fade"] {
+/* 工作区树底部淡出层只隐藏左侧栏里的独立 span。
+   过程组正文也会按滚动溢出挂 _fadeTop/_fadeBottom；隐藏正文会让溢出消失，
+   类名被移除后正文再次出现，形成 ResizeObserver 驱动的显示/隐藏循环。 */
+[class*="_sidebarCol"] span[class$="_fade"] {
   display: none !important;
 }
 
