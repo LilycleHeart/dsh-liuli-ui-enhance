@@ -618,7 +618,7 @@ CSS Modules 内普通面板只用 `edgeBottom` 类；区域表面镜像用 `:glo
 
 - 缩放期间：`body[data-liuli-resizing]` 用于 JS 让位；`body[data-liuli-blur-off]` 关磨砂。
 - **禁止**全局 `* { transition: none !important }` 一刀切——会杀掉 TurnRail 刻度级联等装饰过渡；需要禁过渡时精确到 `.shard` 等目标元素。
-- 长对话：`[data-chat-flow] > * { content-visibility: auto; contain-intrinsic-size: auto 300px }`（已有）。
+- 长对话：仅普通正文条目启用 `content-visibility: auto; contain-intrinsic-size: auto 300px`；排除 `[hidden]`、`[data-step-process]`、`[data-chat-group-key]` 和 `[data-step-process-content]` 内嵌信息流，保留官方过程组的折叠与滚动行为。
 
 ---
 

@@ -1096,13 +1096,12 @@ div[data-phase='active'] [data-conversation-scroll] {
    composer 的 sticky bottom：恰好贴住可见底边（不裁切、不留缝），正文卡片
    触底与滚动几何都不变。 */
 
-/* 长对话渲染减负：对话流条目启用 content-visibility:auto，屏外条目跳过
-   布局/绘制（首次渲染后 auto 记忆真实尺寸，滚动条几何基本无感）。
-   实测（demo/inspect-sash-perf.mjs，338 条目/6.5k 元素）：sash 拖拽的
-   按下/松手尖峰约减半（358→170ms / 646→380ms），拖拽中段长任务归零；
-   同时降低长对话常规滚动与输入时的主线程占用。 */
+/* 长对话渲染减负只作用于正文普通条目。官方过程组用 hidden="until-found"
+   控制整轮折叠；content-visibility:auto 会覆盖浏览器的隐藏样式，把已折叠
+   的组暴露出来，点击后又被 ChatGroupSeat 的隐藏状态 effect 收回。
+   过程组及其内嵌 flow 保持官方布局，避免高度占位干扰组内滚动测量。 */
 @supports (content-visibility: auto) {
-  [data-chat-flow] > * {
+  [data-chat-flow]:not([data-step-process-content]) > :not([hidden]):not([data-step-process]):not([data-chat-group-key]) {
     content-visibility: auto;
     contain-intrinsic-size: auto 300px;
   }

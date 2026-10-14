@@ -973,10 +973,10 @@ div[class$="hoverCard"] {
 }
 
 
-/* 长对话渲染减负：对话流条目启用 content-visibility:auto，屏外条目跳过
-   布局/绘制（详见 liuli-css.ts 同源注释）。 */
+/* 普通正文条目跳过屏外布局；官方隐藏条目、过程组及其内嵌 flow 不参与
+   （hidden="until-found" 依赖 content-visibility:hidden，详见 liuli-css.ts）。 */
 @supports (content-visibility: auto) {
-  [data-chat-flow] > * {
+  [data-chat-flow]:not([data-step-process-content]) > :not([hidden]):not([data-step-process]):not([data-chat-group-key]) {
     content-visibility: auto;
     contain-intrinsic-size: auto 300px;
   }
