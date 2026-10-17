@@ -1,4 +1,5 @@
 /** 琉璃 运行时：把界面设置应用到 DOM（品牌取色/壁纸/材质/字体/圆角/泛光阴影）。 */
+import { fontStack, type FontFamilies } from './font-priority.ts'
 
 /* applyLiuliSettings 竞态保护：async 链（壁纸取色 await）与主题切换/滑条
    高频写入并发时，只有最后一次调用允许落地 —— 旧调用捕获的 isDark 与最新
@@ -385,8 +386,24 @@ export function applyLiuliWallpaper(settings: LiuliSettings): void {
   }
 }
 
-const FONT_MISANS = '"MiSans", "Inter", "Space Grotesk", "Segoe UI", system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif'
-const FONT_BUILTIN = '"Inter", "Segoe UI", system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif'
+let currentFontFamilies: FontFamilies = { text: '', code: '', terminal: '' }
+let currentFontMode: 'misans' | 'builtin' = 'misans'
+
+/** Consume the native theme's font preferences without maintaining another settings copy. */
+export function setLiuliFontFamilies(families: FontFamilies): void {
+  currentFontFamilies = families
+  applyLiuliFonts()
+}
+
+function applyLiuliFonts(): void {
+  const style = document.body.style
+  const text = fontStack(currentFontFamilies.text, 'text', currentFontMode)
+  const code = fontStack(currentFontFamilies.code, 'code')
+  style.setProperty('--dsw-font-family', text)
+  style.setProperty('--dsw-font-family-display', text)
+  style.setProperty('--ds-font-family-code', code)
+  style.setProperty('--dsw-font-mono', code)
+}
 
 /**
  * 应用一份 琉璃 设置。动态取色是异步的（壁纸解码），品牌映射分两步：
@@ -467,7 +484,8 @@ export async function applyLiuliSettings(settings: LiuliSettings): Promise<void>
   }
 
   // ── 字体 ──
-  set('--dsw-font-family', cfg.font_mode === 'builtin' ? FONT_BUILTIN : FONT_MISANS)
+  currentFontMode = cfg.font_mode
+  applyLiuliFonts()
 
   // ── 宽边模式（宽屏下对话信息区撑满可用宽度） ──
   if (cfg.wide_mode === true) body.dataset.liuliWide = '1'

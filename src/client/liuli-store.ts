@@ -10,9 +10,11 @@ import { LIULI_SETTINGS_DEFAULTS, type LiuliSettings } from '../liuli-settings.t
 import { MODEL_RETRY_DEFAULTS, type ModelRetryState } from './model-retry-store.ts'
 import { HISTORY_LOAD_DEFAULT_BATCHES, type HistoryLoadState } from './history-load-store.ts'
 import { THINKING_FILL_DEFAULTS, type ThinkingFillState } from './thinking-fill-store.ts'
+import type { FontFamilies } from './font-priority.ts'
 
 /** 槽位 store 状态。 */
 export interface LiuliStoreState {
+  fontFamilies: FontFamilies
   settings: LiuliSettings
   revision: number
   wallpaper: string | null
@@ -26,6 +28,7 @@ export interface LiuliStoreState {
 }
 
 type LiuliStoreActions = {
+  syncFonts: (draft: LiuliStoreState, fonts: FontFamilies) => void
   syncSettings: (draft: LiuliStoreState, settings: LiuliSettings, revision: number) => void
   syncWallpaper: (draft: LiuliStoreState, wallpaper: string | null) => void
   syncModelRetry: (draft: LiuliStoreState, patch: Partial<ModelRetryState>) => void
@@ -37,6 +40,7 @@ type LiuliStoreActions = {
 export function createLiuliStore(): EngineStoreHandle<LiuliStoreState, LiuliStoreActions> {
   return defineStore({
     init: (): LiuliStoreState => ({
+      fontFamilies: { text: '', code: '', terminal: '' },
       settings: LIULI_SETTINGS_DEFAULTS,
       revision: -1,
       wallpaper: null,
@@ -55,6 +59,7 @@ export function createLiuliStore(): EngineStoreHandle<LiuliStoreState, LiuliStor
       thinkingFill: { ...THINKING_FILL_DEFAULTS },
     }),
     actions: {
+      syncFonts: (d, fonts) => { d.fontFamilies = fonts },
       syncSettings: (d, settings, revision) => {
         if (revision <= d.revision) return
         d.settings = settings

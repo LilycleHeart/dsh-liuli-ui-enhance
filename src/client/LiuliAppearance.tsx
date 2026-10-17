@@ -18,9 +18,13 @@ import { bgGeometry, normalizeAreaToRatio, loadWallpaper, subscribeWallpaper } f
 import type { createLiuliStore } from './liuli-store.ts'
 import { usePopupValuePresence } from './use-popup-presence.ts'
 import css from './LiuliAppearance.module.css'
+import { FontPriorityPanel } from './FontPriorityEditor.tsx'
+import type { FontRole } from './font-priority.ts'
 
 /** 注入面：设置写入 + 壁纸操作 + 文案。 */
 export interface LiuliAppearanceInjected {
+  /** Native theme settings own all three font-family lists and their persistence. */
+  setFontFamily: (role: FontRole, value: string) => void
   /** 保存一个或多个字段（localStorage 持久化 + 立即应用）。 */
   save: (patch: Partial<LiuliSettings>) => void
   /** 恢复默认（清空字段 + 清除壁纸）。 */
@@ -595,7 +599,7 @@ function ColorRow(props: { label: string; value: string; onChange: (v: string) =
 
 /** 渲染 琉璃 设置「外观」分区 section。 */
 export function LiuliAppearanceSection({
-  useStore, t, save, reset, uploadWallpaper, removeWallpaper,
+  useStore, t, save, reset, uploadWallpaper, removeWallpaper, setFontFamily,
 }: LiuliAppearanceComponentProps) {
   const state = useStore(s => s)
   const s = state.settings
@@ -750,6 +754,14 @@ export function LiuliAppearanceSection({
           onChange={(v) => { set({ shadow_intensity: v }) }}
         />
       </div>
+
+      <FontPriorityPanel title={t('fontPriority')} hint={t('fontPriority.hint')} live={t('fontPriority.live')}
+        titles={{ text: t('fontPriority.text'), code: t('fontPriority.code'), terminal: t('fontPriority.terminal') }}
+        families={state.fontFamilies} fontMode={s.font_mode} onChange={setFontFamily}
+        labels={{ add: t('fontPriority.add'), up: t('fontPriority.up'), down: t('fontPriority.down'),
+          remove: t('fontPriority.remove'), empty: t('fontPriority.empty'), reset: t('fontPriority.reset'), preview: t('fontPriority.preview'),
+          priority: t('fontPriority.order'), first: t('fontPriority.first'), next: t('fontPriority.next'), choose: t('fontPriority.choose'),
+          placeholder: t('fontPriority.placeholder'), fallback: t('fontPriority.fallback'), default: t('fontPriority.default') }} />
 
       {/* 壁纸 */}
       <div className={css.wallpaperBlock}>

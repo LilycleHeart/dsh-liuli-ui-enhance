@@ -84,6 +84,19 @@ export const FileCodeCornerIcon = (props: IconProps) => (
   />
 )
 
+export const ChevronUpIcon = (props: IconProps) => (
+  <MaterialIcon {...props} d="m7.41 14.59 4.59-4.58 4.59 4.58L18 13.18l-6-6-6 6z" />
+)
+export const ChevronDownIcon = (props: IconProps) => (
+  <MaterialIcon {...props} d="m7.41 8.59 4.59 4.58 4.59-4.58L18 10l-6 6-6-6z" />
+)
+export const CloseIcon = (props: IconProps) => (
+  <MaterialIcon {...props} d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+)
+export const ResetIcon = (props: IconProps) => (
+  <MaterialIcon {...props} d="M13 3a9 9 0 0 0-9 9H1l4 4 4-4H6a7 7 0 1 1 7 7v2a9 9 0 0 0 0-18z" />
+)
+
 /** Material add（新增标签）。 */
 export const PlusIcon = (props: IconProps) => (
   <MaterialIcon

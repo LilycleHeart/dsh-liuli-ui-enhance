@@ -39,10 +39,17 @@ before(async () => {
       response.end(await readFile(new URL(`../node_modules/${pkg}/umd/${pkg}.development.js`, import.meta.url), 'utf8'))
       return
     }
+    if (name === 'font-primitives.js') {
+      // Core editor tests mock only the platform popup. Native Menu interaction
+      // is exercised through the packaged plugin in the real DSH client.
+      response.setHeader('Content-Type', 'text/javascript')
+      response.end('export const Menu=({anchor})=>anchor')
+      return
+    }
     if (name === 'react-shim.js' || name === 'jsx-runtime.js' || name === 'sidebar-right-tabs.ts' || name === 'seat-styles.js') {
       response.setHeader('Content-Type', 'text/javascript')
       response.end(name === 'react-shim.js'
-        ? 'export const {createElement,useEffect,useLayoutEffect,useRef,useState}=window.React'
+        ? 'export const {createElement,useEffect,useLayoutEffect,useRef,useState,useId}=window.React'
         : name === 'jsx-runtime.js'
           ? 'export const jsx=(type,props,key)=>window.React.createElement(type,{...props,key}),jsxs=jsx,Fragment=window.React.Fragment'
         : name === 'sidebar-right-tabs.ts'
@@ -57,9 +64,10 @@ before(async () => {
       response.end(`export const css=${JSON.stringify(compiled.code.toString())};export const classes=${JSON.stringify(Object.fromEntries(Object.entries(compiled.exports).map(([k,v])=>[k,v.name])))};`)
       return
     }
-    if (name === 'window-style.js') {
-      const source = await readFile(new URL('../src/client/WindowControls.module.css', import.meta.url))
-      const compiled = transform({ filename: 'WindowControls.module.css', code: source, cssModules: true })
+    if (name === 'window-style.js' || name === 'font-style.js') {
+      const file=name === 'window-style.js' ? 'WindowControls.module.css' : 'FontPriorityEditor.module.css'
+      const source = await readFile(new URL('../src/client/'+file, import.meta.url))
+      const compiled = transform({ filename: file, code: source, cssModules: true })
       response.setHeader('Content-Type', 'text/javascript')
       response.end(`const style=document.createElement('style');style.textContent=${JSON.stringify(compiled.code.toString())};document.head.append(style);export default ${JSON.stringify(Object.fromEntries(Object.entries(compiled.exports).map(([k,v])=>[k,v.name])))};`)
       return
@@ -69,13 +77,15 @@ before(async () => {
       response.end(await readFile(new URL('../src/client/liuli.css', import.meta.url), 'utf8'))
       return
     }
-    if (['resize-perf.ts','desktop-drag.ts','use-sidebar-presence.ts','sidebar-content.tsx','official-sidebar-seat.tsx','OfficialMenu.tsx'].includes(name)) {
+    if (['resize-perf.ts','desktop-drag.ts','use-sidebar-presence.ts','sidebar-content.tsx','official-sidebar-seat.tsx','OfficialMenu.tsx','font-priority.ts','FontPriorityEditor.tsx','SidePaneIcons.tsx'].includes(name)) {
       const source = await readFile(new URL(`../src/client/${name}`, import.meta.url), 'utf8')
       response.setHeader('Content-Type', 'text/javascript')
       response.end(transpileModule(source, { compilerOptions: { target: ScriptTarget.ES2022, module: ModuleKind.ESNext, jsx: JsxEmit.ReactJSX } }).outputText
         .replaceAll("from 'react'", "from '/react-shim.js'")
+        .replaceAll("from '@deepseek-ai/dsh-client-ui-primitives'", "from '/font-primitives.js'")
         .replaceAll('from "react/jsx-runtime"', 'from "/jsx-runtime.js"')
         .replaceAll("from './WindowControls.module.css'", "from '/window-style.js'")
+        .replaceAll("from './FontPriorityEditor.module.css'", "from '/font-style.js'")
         .replace(/from '\.\/[^']+\.module\.css'/g, "from '/seat-styles.js'"))
     } else {
       response.setHeader('Content-Type', 'text/html')
@@ -382,4 +392,68 @@ browserTest('window titlebar switches between floating and persistent twice with
   assert.deepEqual(result, ['persistent','floating','persistent','floating'].map(mode => ({
     mode, titlebar: mode === 'persistent', padding: mode === 'persistent' ? '40px' : '0px', menuVisible: mode === 'persistent',
   })))
+})
+
+browserTest('font priority editor adds, reorders and removes fonts while preserving other roles and real browser fallback', async () => {
+  const result=await evaluate(async()=>{
+    const {FontPriorityEditor}=await import('/FontPriorityEditor.tsx')
+    const {fontStack}=await import('/font-priority.ts')
+    const container=document.createElement('div');document.body.append(container)
+    const root=ReactDOM.createRoot(container)
+    const titles={text:'界面与正文',code:'代码',terminal:'终端'}
+    const labels={add:'添加字体',up:'上移',down:'下移',remove:'移除',empty:'默认',reset:'恢复默认',preview:'字体预览'}
+    function Harness(){
+      const [fonts,setFonts]=React.useState({text:'',code:'"Consolas"',terminal:'"Courier New"'})
+      window.fontEditorValue=fonts
+      return React.createElement(React.Fragment,null,...Object.keys(titles).map(role=>React.createElement(FontPriorityEditor,{key:role,role,title:titles[role],labels,value:fonts[role],onChange:value=>setFonts(previous=>({...previous,[role]:value}))})))
+    }
+    root.render(React.createElement(Harness))
+    const settle=async()=>{await new Promise(r=>setTimeout(r,20));await nextFrame()}
+    const button=name=>[...container.querySelectorAll('button')].find(x=>x.getAttribute('aria-label')===name)
+    try{
+      await settle()
+      const input=container.querySelector('input[aria-label="界面与正文：添加字体"]')
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'Missing Test Font, Arial, Consolas, Arial')
+      input.dispatchEvent(new Event('input',{bubbles:true}));await settle()
+      input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,isComposing:true}));await settle()
+      const composingPreserved=fontEditorValue.text===''
+      input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await settle()
+      const added=fontEditorValue.text
+      button('界面与正文：上移 Consolas').click();await settle()
+      const reordered=fontEditorValue.text
+      button('界面与正文：移除 Missing Test Font').click();await settle()
+      const removed=fontEditorValue.text
+      const canvas=document.createElement('canvas'),context=canvas.getContext('2d')
+      context.font='16px Arial';const baseline=context.measureText('WWWWiiii1111').width
+      context.font='16px '+fontStack('Missing Test Font, Arial','text');const fallback=context.measureText('WWWWiiii1111').width
+      const first=container.querySelector('fieldset')
+      ;[...first.querySelectorAll('button')].find(x=>x.textContent==='恢复默认').click();await settle()
+      return{composingPreserved,added,reordered,removed,reset:fontEditorValue.text,code:fontEditorValue.code,terminal:fontEditorValue.terminal,fallbackMatches:baseline===fallback}
+    }finally{root.unmount();container.remove();delete window.fontEditorValue}
+  })
+  assert.deepEqual(result,{composingPreserved:true,added:'"Missing Test Font", "Arial", "Consolas"',reordered:'"Missing Test Font", "Consolas", "Arial"',removed:'"Consolas", "Arial"',reset:'',code:'"Consolas"',terminal:'"Courier New"',fallbackMatches:true})
+})
+
+browserTest('Liuli font panel switches roles with tabs and keeps narrow cards inside their container', async () => {
+ const result=await evaluate(async()=>{
+  const {FontPriorityPanel}=await import('/FontPriorityEditor.tsx')
+  const container=document.createElement('div');container.style.width='320px';container.setAttribute('role','dialog');document.body.append(container)
+  const lateStyle=document.createElement('style');lateStyle.textContent='[role=dialog] input{background-color:rgba(30,47,40,.47)!important;background-image:linear-gradient(transparent,transparent)!important}';document.head.append(lateStyle)
+  const root=ReactDOM.createRoot(container)
+  const titles={text:'界面与正文',code:'代码',terminal:'终端'}
+  const labels={add:'添加字体',up:'上移',down:'下移',remove:'移除',empty:'默认',reset:'恢复默认',preview:'字体预览'}
+  root.render(React.createElement(FontPriorityPanel,{title:'字体优先级',hint:'按顺序匹配字体',live:'即时生效',titles,labels,families:{text:'"MiSans", "Inter"',code:'"Consolas"',terminal:''},fontMode:'misans',onChange:()=>{}}))
+  const settle=async()=>{await new Promise(r=>setTimeout(r,20));await nextFrame()}
+  try{
+   await settle()
+   const initial=container.querySelector('[role=tab][aria-selected=true]').textContent.includes('界面与正文')
+   const code=[...container.querySelectorAll('[role=tab]')].find(x=>x.textContent.includes('代码'));code.click();await settle()
+   const codeSelected=code.getAttribute('aria-selected')==='true'&&!!container.querySelector('input[aria-label="代码：添加字体"]')
+   code.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));await settle()
+   const terminalSelected=container.querySelector('[role=tab][aria-selected=true]').textContent.includes('终端')
+   const overflow=container.scrollWidth>container.clientWidth
+   return{initial,codeSelected,terminalSelected,overflow,panelCount:container.querySelectorAll('[role=tabpanel]').length,transparentInput:getComputedStyle(container.querySelector('input')).backgroundColor==='rgba(0, 0, 0, 0)',transparentSample:getComputedStyle(container.querySelector('p[aria-label$=字体预览]')).backgroundColor==='rgba(0, 0, 0, 0)'}
+  }finally{root.unmount();container.remove();lateStyle.remove()}
+ })
+ assert.deepEqual(result,{initial:true,codeSelected:true,terminalSelected:true,overflow:false,panelCount:1,transparentInput:true,transparentSample:true})
 })

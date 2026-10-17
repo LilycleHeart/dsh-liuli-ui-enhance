@@ -63,7 +63,7 @@ import { createLiuliAppearanceStore } from './liuli-appearance-store.ts'
 import { createLiuliStore } from './liuli-store.ts'
 import {
   clearWallpaper, loadWallpaper, compressImage, saveWallpaper, loadImage, restoreWallpaper,
-  applyLiuliSettings, applyLiuliWallpaper,
+  applyLiuliSettings, applyLiuliWallpaper, setLiuliFontFamilies,
 } from './liuli-runtime.ts'
 import {
   LIULI_LS_KEY, LIULI_SETTINGS_DEFAULTS, liuliSettingsOf, wantsLiuliOfficialSidebar,
@@ -1608,6 +1608,11 @@ export function apply(ctx: ClientContext): void {
   const liuliT = ctx.locale.bind(LIULI_LOCALE_NS)
   let liuliBound: BoundActions<typeof liuliStore> | undefined
   let liuliRev = 0
+  setLiuliFontFamilies(ctx.theme.getTheme().fontFamilies)
+  ctx.on('theme/change', snapshot => {
+    setLiuliFontFamilies(snapshot.fontFamilies)
+    liuliBound?.syncFonts(snapshot.fontFamilies)
+  })
   const readLiuliSettings = (): LiuliSettings => {
     try {
       const raw = localStorage.getItem(LIULI_LS_KEY)
@@ -1715,9 +1720,11 @@ export function apply(ctx: ClientContext): void {
   }
   const liuliInjected = (actions: BoundActions<typeof liuliStore>): LiuliAppearanceInjected => {
     liuliBound = actions
+    liuliBound.syncFonts(ctx.theme.getTheme().fontFamilies)
     liuliBound.syncWallpaper(loadWallpaper())
     liuliBound.syncSettings(readLiuliSettings(), liuliRev)
     return {
+      setFontFamily: (role, value) => { ctx.theme.setFontFamily(role, value) },
       save: (patch) => {
         const next = { ...readLiuliSettings(), ...patch }
         void commitLiuli(next)
