@@ -8,12 +8,11 @@ import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
-const version = '0.2.0-rc.2';
+const supportedVersions = new Set(['0.2.0-rc.2', '0.2.1-rc.2']);
 const marker = '[liuli official window controls v1]';
 const dir = resolve(process.env.DSH_OFFICIAL_DIR || join(process.env.LOCALAPPDATA, 'Programs', 'DeepSeek Harness'));
 const asarPath = join(dir, 'resources', 'app.asar');
 const exePath = join(dir, 'DeepSeek Harness.exe');
-const backup = join(dir, 'liuli-window-controls-backup-' + version);
 const hash = value => createHash('sha256').update(value).digest('hex');
 const fail = message => { throw new Error(message); };
 const unpack = bytes => {
@@ -31,8 +30,11 @@ function replaceOnce(text, before, after) {
   return text.replace(before, after);
 }
 function assertClosed() {
-  const output = execFileSync('powershell.exe', ['-NoProfile', '-Command', '@(Get-Process -Name "DeepSeek Harness" -ErrorAction SilentlyContinue).Id; exit 0'], { encoding: 'utf8', windowsHide: true });
-  if (output.trim()) fail('Exit DeepSeek Harness before applying or reverting the shell patch');
+  const output = execFileSync('powershell.exe', ['-NoProfile', '-Command', 'ConvertTo-Json -InputObject @(Get-Process -Name "DeepSeek Harness" -ErrorAction SilentlyContinue | Select-Object Id, Path) -Compress; exit 0'], { encoding: 'utf8', windowsHide: true });
+  const processes = JSON.parse(output.trim() || '[]');
+  if (processes.some(item => !item.Path || resolve(item.Path).toLowerCase() === exePath.toLowerCase())) {
+    fail('Exit DeepSeek Harness before applying or reverting the shell patch');
+  }
 }
 const mainBridge = `\n// ${marker}
 ipcMain.handle("liuli-official-window", (event, action) => {
@@ -78,7 +80,17 @@ if (process.platform === "win32" && process.isMainFrame && location.protocol ===
 const archive = readFileSync(asarPath);
 const info = unpack(archive);
 const identity = JSON.parse(readEntry(archive, info, 'package.json'));
-if (identity.name !== '@deepseek-ai/dsh-desktop' || identity.version !== version) fail('This patch supports only official Desktop ' + version);
+if (identity.name !== '@deepseek-ai/dsh-desktop' || !supportedVersions.has(identity.version)) {
+  fail('This patch supports only official Desktop ' + [...supportedVersions].join(' or '));
+}
+const version = identity.version;
+const backup = join(dir, 'liuli-window-controls-backup-' + version);
+function restoreUnpackedFiles() {
+  for (const name of ['main.js', 'preload-app.cjs']) {
+    const saved = join(backup, name);
+    if (existsSync(saved)) copyFileSync(saved, join(asarPath + '.unpacked', 'lib', name));
+  }
+}
 let main = readEntry(archive, info, 'lib/main.js').toString();
 if (process.argv.includes('--revert')) {
   assertClosed();
@@ -86,6 +98,7 @@ if (process.argv.includes('--revert')) {
   if (hash(archive) !== record.patchedAsar || hash(readFileSync(exePath)) !== record.patchedExe) fail('Application changed after patching; refuse to overwrite an update');
   copyFileSync(join(backup, 'app.asar'), asarPath);
   copyFileSync(join(backup, 'DeepSeek Harness.exe'), exePath);
+  restoreUnpackedFiles();
   console.log('Original official shell restored');
   process.exit(0);
 }
@@ -143,5 +156,6 @@ try {
   console.log('Window patch applied with backups and updated ASAR integrity hash');
 } catch (error) {
   copyFileSync(join(backup,'app.asar'),asarPath); copyFileSync(join(backup,'DeepSeek Harness.exe'),exePath);
+  restoreUnpackedFiles();
   throw error;
 }

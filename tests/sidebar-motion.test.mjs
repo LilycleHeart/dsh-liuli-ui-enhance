@@ -8,7 +8,7 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { after, before, test } from 'node:test'
-import { transpileModule, ScriptTarget, ModuleKind } from 'typescript'
+import { transpileModule, ScriptTarget, ModuleKind, JsxEmit } from 'typescript'
 import { transform } from 'lightningcss'
 
 const chromePath = process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe'
@@ -39,10 +39,12 @@ before(async () => {
       response.end(await readFile(new URL(`../node_modules/${pkg}/umd/${pkg}.development.js`, import.meta.url), 'utf8'))
       return
     }
-    if (name === 'react-shim.js' || name === 'sidebar-right-tabs.ts' || name === 'seat-styles.js') {
+    if (name === 'react-shim.js' || name === 'jsx-runtime.js' || name === 'sidebar-right-tabs.ts' || name === 'seat-styles.js') {
       response.setHeader('Content-Type', 'text/javascript')
       response.end(name === 'react-shim.js'
-        ? 'export const {createElement,useLayoutEffect,useRef,useState}=window.React'
+        ? 'export const {createElement,useEffect,useLayoutEffect,useRef,useState}=window.React'
+        : name === 'jsx-runtime.js'
+          ? 'export const jsx=(type,props,key)=>window.React.createElement(type,{...props,key}),jsxs=jsx,Fragment=window.React.Fragment'
         : name === 'sidebar-right-tabs.ts'
           ? 'export const getOfficialSidebarController=()=>window.nativeController;export const OFFICIAL_SIDEBAR_NAVIGATION_EVENT="test-native-navigation"'
           : 'export default {nativeSeatTarget:"testNativeTarget",nativeSeatPlaceholder:"testNativePlaceholder",nativeSkin:"testNativeSkin"}')
@@ -55,16 +57,25 @@ before(async () => {
       response.end(`export const css=${JSON.stringify(compiled.code.toString())};export const classes=${JSON.stringify(Object.fromEntries(Object.entries(compiled.exports).map(([k,v])=>[k,v.name])))};`)
       return
     }
+    if (name === 'window-style.js') {
+      const source = await readFile(new URL('../src/client/WindowControls.module.css', import.meta.url))
+      const compiled = transform({ filename: 'WindowControls.module.css', code: source, cssModules: true })
+      response.setHeader('Content-Type', 'text/javascript')
+      response.end(`const style=document.createElement('style');style.textContent=${JSON.stringify(compiled.code.toString())};document.head.append(style);export default ${JSON.stringify(Object.fromEntries(Object.entries(compiled.exports).map(([k,v])=>[k,v.name])))};`)
+      return
+    }
     if (name === 'liuli.css') {
       response.setHeader('Content-Type', 'text/css')
       response.end(await readFile(new URL('../src/client/liuli.css', import.meta.url), 'utf8'))
       return
     }
-    if (['resize-perf.ts','desktop-drag.ts','use-sidebar-presence.ts','sidebar-content.tsx','official-sidebar-seat.tsx'].includes(name)) {
+    if (['resize-perf.ts','desktop-drag.ts','use-sidebar-presence.ts','sidebar-content.tsx','official-sidebar-seat.tsx','OfficialMenu.tsx'].includes(name)) {
       const source = await readFile(new URL(`../src/client/${name}`, import.meta.url), 'utf8')
       response.setHeader('Content-Type', 'text/javascript')
-      response.end(transpileModule(source, { compilerOptions: { target: ScriptTarget.ES2022, module: ModuleKind.ESNext } }).outputText
+      response.end(transpileModule(source, { compilerOptions: { target: ScriptTarget.ES2022, module: ModuleKind.ESNext, jsx: JsxEmit.ReactJSX } }).outputText
         .replaceAll("from 'react'", "from '/react-shim.js'")
+        .replaceAll('from "react/jsx-runtime"', 'from "/jsx-runtime.js"')
+        .replaceAll("from './WindowControls.module.css'", "from '/window-style.js'")
         .replace(/from '\.\/[^']+\.module\.css'/g, "from '/seat-styles.js'"))
     } else {
       response.setHeader('Content-Type', 'text/html')
@@ -331,4 +342,44 @@ browserTest('window drag regions defer geometry during sidebar animation and nev
     }finally{release();stop();header.remove();offscreen.remove()}
   })
   assert.deepEqual(result,{paused:true,resumed:true,offscreenReads:0,buttonProtected:true})
+})
+
+browserTest('window titlebar switches between floating and persistent twice without remounting', async () => {
+  const result = await evaluate(async () => {
+    const { OfficialMenu } = await import('/OfficialMenu.tsx')
+    const html = document.documentElement
+    html.setAttribute('data-liuli-official-chrome', '')
+    html.dataset.liuliMenuMode = 'floating'
+    const container = document.createElement('div')
+    const frame = document.createElement('div')
+    frame.dataset.testid = 'dock-shell'
+    const nativeMenu = document.createElement('div')
+    nativeMenu.setAttribute('data-windows-menu', '')
+    document.body.append(container, frame, nativeMenu)
+    const root = ReactDOM.createRoot(container)
+    root.render(React.createElement(OfficialMenu))
+    const settle = async () => { await new Promise(r => setTimeout(r, 30)); await nextFrame(); await nextFrame() }
+    await settle()
+    const modes = []
+    try {
+      for (const mode of ['persistent', 'floating', 'persistent', 'floating']) {
+        html.dataset.liuliMenuMode = mode
+        await settle()
+        modes.push({
+          mode,
+          titlebar: container.querySelector('[data-liuli-titlebar]') !== null,
+          padding: getComputedStyle(frame).paddingTop,
+          menuVisible: getComputedStyle(nativeMenu).visibility === 'visible',
+        })
+      }
+      return modes
+    } finally {
+      root.unmount(); container.remove(); frame.remove(); nativeMenu.remove()
+      html.removeAttribute('data-liuli-official-chrome')
+      delete html.dataset.liuliMenuMode
+    }
+  })
+  assert.deepEqual(result, ['persistent','floating','persistent','floating'].map(mode => ({
+    mode, titlebar: mode === 'persistent', padding: mode === 'persistent' ? '40px' : '0px', menuVisible: mode === 'persistent',
+  })))
 })
