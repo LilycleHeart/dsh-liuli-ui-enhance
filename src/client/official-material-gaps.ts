@@ -20,6 +20,56 @@ html[data-platform='darwin'] body[data-ds-dark-theme] {
   backdrop-filter: none !important;
 }
 
+/* Input now owns an icon+input wrapper. The outer search field owns the only
+   border and material; keep the nested primitive aligned and transparent. */
+[data-testid='task-manager-page'] [class$='_searchField'] {
+  box-sizing: border-box;
+  height: 40px;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--liuli-radius-sm, 10px);
+  background-color: rgba(var(--liuli-acrylic-rgb), min(0.82, calc(var(--liuli-material-opacity) + 0.12)));
+  background-image: var(--liuli-noise);
+}
+
+[data-testid='task-manager-page'] [class$='_searchField'] > span:has(> input[type='search']) {
+  display: flex;
+  flex: 1 1 0%;
+  min-width: 0;
+  height: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+[data-testid='task-manager-page'] [class$='_searchField'] > span > span:has(> svg) {
+  display: flex;
+  position: static;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  transform: none;
+}
+
+[data-testid='task-manager-page'] input[type='search'] {
+  box-sizing: border-box;
+  flex: 1 1 0%;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0;
+  outline: 0;
+  background: transparent !important;
+  box-shadow: none !important;
+  font: inherit;
+}
+
 [data-testid='task-manager-page'] > :is([class$='_listPane'], [class$='_detail']) {
   position: relative;
   z-index: 1;

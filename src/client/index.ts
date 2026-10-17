@@ -91,7 +91,8 @@ import { installResizePerfWatcher } from './resize-perf.ts'
 import { startHeaderTabIndicator } from './header-tab-indicator.ts'
 import { startHeaderTextAnimation } from './header-text-animation.ts'
 import { startConversationSplit } from './conversation-split.ts'
-import { disposeSupplierQuota, initSupplierQuota, refreshSupplierQuota, setCommandCodeRemote } from './supplier-quota.ts'
+import { disposeSupplierQuota, initSupplierQuota, refreshSupplierQuota, setCommandCodeRemote, setDeepSeekAccountRemote } from './supplier-quota.ts'
+import type { DeepSeekAccountQuotaRemote } from './deepseek-account-quota.ts'
 import { startQuotaTokenInject } from './quota-token-inject.ts'
 import { SupplierQuota } from './SupplierQuota.tsx'
 import { loadHistoryBatches, saveHistoryBatches } from './history-load-store.ts'
@@ -1003,6 +1004,27 @@ export function apply(ctx: ClientContext): void {
   // ── 供应商额度：注入 remote 适配层 + 模型目录，供 header 工具区显示当前供应商额度 ──
   initSupplierQuota(liuliRemoteApi(ctx), liuliModelDirectory(ctx))
   ctx.effect(() => () => disposeSupplierQuota(), 'dsh-liuli-ui-enhance: supplier quota dispose')
+
+  ctx.effect(() => {
+    const fiber = ctx.inject(['remote.account'], remoteCtx => {
+      const namespace = liuliRemoteNamespace(remoteCtx, 'account')
+      setDeepSeekAccountRemote(namespace === null ? null : {
+        getBalance: () => {
+          const method = namespace.getBalance as unknown as ((client: {
+            version: string; locale: string; timezoneOffsetSeconds: number
+          }) => ReturnType<DeepSeekAccountQuotaRemote['getBalance']>) | undefined
+          const version = (globalThis as { __DSH_BOOT__?: { release?: { version?: string } } }).__DSH_BOOT__?.release?.version
+          if (method === undefined || !version) return Promise.resolve({ ok: false, error: { message: '账号余额服务尚未就绪' } })
+          return method.call(namespace, {
+            version, locale: ctx.locale.getSnapshot().active,
+            timezoneOffsetSeconds: -new Date().getTimezoneOffset() * 60,
+          })
+        },
+      })
+      return () => { setDeepSeekAccountRemote(null) }
+    })
+    return () => { void fiber.dispose() }
+  }, 'dsh-liuli-ui-enhance: DeepSeek account quota remote')
 
   // ── 第三方 provider 插件额度：Command Code 插件（@mars-sea/dsh-commandcode-provider）
   //    自己把账户/额度报告挂在 `remote.commandcode` 上。它的挂载时机晚于本插件

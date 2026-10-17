@@ -26,12 +26,13 @@
 import type { ModelSelection } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { SessionId } from './compat.ts'
 import type { LiuliRemoteApi, ModelDirectoryLike } from './remote-api.ts'
+import { deepSeekAccountQuota, type DeepSeekAccountQuotaRemote } from './deepseek-account-quota.ts'
 
 /* ── 展示数据模型 ─────────────────────────────────────────────── */
 
 export interface SupplierQuotaItem {
   /** 稳定 key，用于 React 列表渲染。 */
-  key: 'month' | 'week' | 'fiveHours' | 'credits'
+  key: 'month' | 'week' | 'fiveHours' | 'credits' | 'bonus'
   /** 中文短标签：本月 / 本周 / 5小时。 */
   label: string
   /** 展示文本（可以是 "12.5/100"、百分比、原始字符串）。 */
@@ -532,7 +533,28 @@ async function fetchCommandCode(_api: LiuliRemoteApi, ctx: { provider: string })
 
 /* ── 适配器列表 ───────────────────────────────────────────────── */
 
+let deepSeekAccountRemote: DeepSeekAccountQuotaRemote | null = null
+let deepSeekAccountInflight: Promise<SupplierQuotaData> | null = null
+
+export function setDeepSeekAccountRemote(remote: DeepSeekAccountQuotaRemote | null): void {
+  deepSeekAccountRemote = remote
+  deepSeekAccountInflight = null
+  if (currentSessionId !== null) void refreshSupplierQuota()
+}
+
+async function fetchDeepSeekAccount(): Promise<SupplierQuotaData> {
+  if (deepSeekAccountRemote === null) return { kind: 'unavailable', provider: 'deepseek-account' }
+  if (deepSeekAccountInflight !== null) return deepSeekAccountInflight
+  const request = deepSeekAccountRemote.getBalance().then(response => {
+    if (!response.ok) throw new Error(response.error?.message ?? 'DeepSeek 账号余额查询失败')
+    return deepSeekAccountQuota(response.value ?? null)
+  }).finally(() => { if (deepSeekAccountInflight === request) deepSeekAccountInflight = null })
+  deepSeekAccountInflight = request
+  return request
+}
+
 const adapters: SupplierQuotaAdapter[] = [
+  { id: 'deepseek-account', match: provider => provider === 'deepseek-account', fetch: fetchDeepSeekAccount },
   {
     // new-api / one-api 中转站（zero.cat）：Host 侧用「系统访问令牌」查
     // /api/user/self 的 quota，再按站点 quota_per_unit 换算成货币余额。
@@ -682,7 +704,7 @@ export async function refreshSupplierQuota(): Promise<void> {
     if (generation !== refreshGeneration) return
     if (current === null) {
       // 目录未就绪（catalog 未加载）：不报错，保持 idle 语义等目录回调重跑。
-      setState({ status: 'idle', error: '' })
+      setState({ provider: null, model: null, data: null, status: 'idle', error: '' })
       return
     }
 
@@ -720,6 +742,8 @@ export function disposeSupplierQuota(): void {
   remote = null
   modelDirectory = null
   commandCodeRemote = null
+  deepSeekAccountRemote = null
+  deepSeekAccountInflight = null
   commandCodeCache = null
   commandCodeInflight = null
   refreshGeneration += 1

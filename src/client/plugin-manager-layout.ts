@@ -28,14 +28,14 @@ export const pluginManagerLayoutCss = `
 /* Like the Conversation body card, each main content surface takes the
    remaining column height. If the list exceeds it, the official page scrolls. */
 [data-plugin-panel] > :is([data-plugin-group], [data-plugin-detail],
-  [data-plugin-item-detail], [data-plugin-row-detail]) {
+  [data-plugin-item-detail], [data-plugin-row-detail], [class$='_installedPanel'], [class$='_tabPanel']) {
   flex: 1 0 auto;
 }
 
 /* One independent surface per header/list/detail, as on the conversation and
    right dock. Material is on ::before: the page may host fixed menus/modals. */
 [data-plugin-panel] > :is(header[data-window-drag], [data-plugin-group],
-  [data-plugin-detail], [data-plugin-item-detail], [data-plugin-row-detail]) {
+  [data-plugin-detail], [data-plugin-item-detail], [data-plugin-row-detail], [class$='_installedPanel'], [class$='_tabPanel']) {
   position: relative;
   z-index: 1;
   isolation: isolate;
@@ -47,7 +47,7 @@ export const pluginManagerLayoutCss = `
 }
 
 [data-plugin-panel] > :is(header[data-window-drag], [data-plugin-group],
-  [data-plugin-detail], [data-plugin-item-detail], [data-plugin-row-detail])::before {
+  [data-plugin-detail], [data-plugin-item-detail], [data-plugin-row-detail], [class$='_installedPanel'], [class$='_tabPanel'])::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -66,7 +66,7 @@ export const pluginManagerLayoutCss = `
 }
 
 body[data-liuli-resizing] [data-plugin-panel] > :is(header[data-window-drag], [data-plugin-group],
-  [data-plugin-detail], [data-plugin-item-detail], [data-plugin-row-detail])::before {
+  [data-plugin-detail], [data-plugin-item-detail], [data-plugin-row-detail], [class$='_installedPanel'], [class$='_tabPanel'])::before {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
@@ -96,6 +96,12 @@ body[data-liuli-resizing] [data-plugin-panel] > :is(header[data-window-drag], [d
   container-type: inline-size;
   gap: 8px !important;
   padding: 14px 16px;
+}
+
+/* New hosts wrap all installed groups together: keep one body card below the header. */
+[data-plugin-panel] > :is([class$='_installedPanel'], [class$='_tabPanel']) {
+  min-height: 0;
+  padding: 0 0 12px;
 }
 
 [data-plugin-panel] [data-plugin-group] > ul {
