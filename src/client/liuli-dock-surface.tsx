@@ -37,7 +37,7 @@
  * 行为异常，优先复核 `LayoutState` / `DockIntents` / planner 的形状。
  */
 import type { Context } from '@deepseek-ai/cordis'
-import { useSyncExternalStore } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
 import { Component, createElement, useEffect, useRef, useState, type ErrorInfo, type ReactElement, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import {
@@ -68,6 +68,7 @@ import type { SidebarGitSourceId } from './right-sidebar-api.ts'
 import css from './LiuliDockSurface.module.css'
 import { LIULI_LS_KEY, liuliSettingsOf } from '../liuli-settings.ts'
 import { IconPanelLeftOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { isLayoutInProgress, LAYOUT_SETTLED_EVENT } from './resize-perf.ts'
 import {
   BugIcon, FileCodeCornerIcon, FileDiffIcon, FileIcon, FolderIcon, GlobeIcon, MessageSquareTextIcon,
   PlusIcon, SquareTerminalIcon,
@@ -523,6 +524,8 @@ export interface LiuliDockSurfaceProps {
   sessionId: string
   /** 宿主能力（与自研侧边栏共用）。 */
   host: LiuliSidebarHostAccess
+  /** Keep docked bodies intact until their exit translation has finished. */
+  retainExpanded?: boolean
 }
 
 /**
@@ -533,7 +536,7 @@ export interface LiuliDockSurfaceProps {
  *  - 栏内分栏上限 `MAX_DOCK_PANES = 4` 格（官方限制 2）
  *  - 其余（标签条、chip、右键菜单、浮窗、分隔条拖拽、键盘无障碍）都是 dockkit 原生
  */
-export function LiuliDockSurface({ sessionId, host }: LiuliDockSurfaceProps): ReactElement {
+export function LiuliDockSurface({ sessionId, host, retainExpanded }: LiuliDockSurfaceProps): ReactElement {
   const controller = controllerFor(sessionId)
   const [disableInnerSplit, setDisableInnerSplit] = useState(innerSplitDisabled)
   useEffect(() => {
@@ -547,6 +550,8 @@ export function LiuliDockSurface({ sessionId, host }: LiuliDockSurfaceProps): Re
   }, [])
   // dockkit 的控制器本身就是可订阅源（React-free，快照引用只在布局变化时改变）。
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot)
+  const presentedState = useMemo(() => retainExpanded === undefined || snapshot.state.expanded === retainExpanded
+    ? snapshot.state : { ...snapshot.state, expanded: retainExpanded }, [snapshot.state, retainExpanded])
   const [fileDialogOpen, setFileDialogOpen] = useState(false)
   const existingKinds = new Set(Object.values(snapshot.state.tabs).map(tab => tab.kind))
   const noTabsAtAll = Object.keys(snapshot.state.tabs).length === 0
@@ -652,7 +657,7 @@ export function LiuliDockSurface({ sessionId, host }: LiuliDockSurfaceProps): Re
       },
     },
       createElement(DockSurface, {
-        state: snapshot.state,
+        state: presentedState,
         // 'edges' = 四边（含上下）；官方用 'horizontal' 只给左右。
         dropZones: 'edges',
         // 上限交给引擎常量（MAX_DOCK_PANES = 4），不再像官方那样写死 2。
@@ -763,6 +768,7 @@ function LiuliDockPanelPicker({ items }: { items: readonly DockLauncherItem[] })
   const present = useExitPresence(open, 160)
   const buttonRef = useRef<HTMLButtonElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const anchorRef = useRef<DOMRect | undefined>(undefined)
   useEffect(() => {
     if (!open) return
     const onDown = (event: MouseEvent): void => {
@@ -781,7 +787,9 @@ function LiuliDockPanelPicker({ items }: { items: readonly DockLauncherItem[] })
       window.removeEventListener('resize', onResize)
     }
   }, [open])
-  const anchor = buttonRef.current?.getBoundingClientRect()
+  // Opening this menu is the only operation that needs its anchor geometry.
+  // Reading it during every render forces layout even when the menu is shut.
+  const anchor = anchorRef.current
   return createElement('div', { className: css.pickerHost },
     createElement('button', {
       ref: buttonRef,
@@ -790,7 +798,10 @@ function LiuliDockPanelPicker({ items }: { items: readonly DockLauncherItem[] })
       'aria-label': '新增标签',
       'aria-expanded': open,
       'data-liuli-dock-picker': '',
-      onClick: () => { setOpen(v => !v) },
+      onClick: () => {
+        if (!open) anchorRef.current = buttonRef.current?.getBoundingClientRect()
+        setOpen(v => !v)
+      },
       className: css.pickerButton + (open ? ' ' + css.pickerButtonActive : ''),
     }, createElement(PlusIcon, { size: 16 })),
     present && anchor !== undefined && createPortal(createElement('div', {
@@ -1500,7 +1511,7 @@ export function startOfficialTabBridge(sessionId: string): () => void {
   let navigationTimer: number | undefined
   let disposed = false
   const poll = (): void => {
-    if (disposed) return
+    if (disposed || isLayoutInProgress()) return
     try {
       const native = getOfficialSidebarController()
       if (!native?.tabsIn) return
@@ -1560,6 +1571,7 @@ export function startOfficialTabBridge(sessionId: string): () => void {
     navigationTimer = window.setTimeout(() => { navigationTimer = undefined; poll() }, 40)
   }
   window.addEventListener(OFFICIAL_SIDEBAR_NAVIGATION_EVENT, onNavigation)
+  window.addEventListener(LAYOUT_SETTLED_EVENT, poll)
   poll()
   const timer = window.setInterval(poll, 320)
   return () => {
@@ -1567,6 +1579,7 @@ export function startOfficialTabBridge(sessionId: string): () => void {
     window.clearInterval(timer)
     if (navigationTimer !== undefined) window.clearTimeout(navigationTimer)
     window.removeEventListener(OFFICIAL_SIDEBAR_NAVIGATION_EVENT, onNavigation)
+    window.removeEventListener(LAYOUT_SETTLED_EVENT, poll)
   }
 }
 

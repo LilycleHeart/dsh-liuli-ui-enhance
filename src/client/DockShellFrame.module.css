@@ -332,7 +332,7 @@
   flex-direction: column;
 }
 
-.officialRightbarCard > :global(.liuli-dock-surface) {
+.officialRightbarContent > :global(.liuli-dock-surface) {
   position: relative;
   z-index: 1;
   flex: 1 1 auto;
@@ -342,6 +342,7 @@
 
 .officialRightbarCard {
   position: relative;
+  min-width: 0;
   /* 纵向留白由本列（区域 pane）自己的 surface padding 提供，与自研 details 列
      同一份留白；卡片自身不再叠加上下 margin。早前卡片用
      `height: calc(100% - 2×padding)` + 上下 margin 的做法，在本列已有
@@ -581,9 +582,71 @@
   transition: none;
 }
 
+/* Animate the material shell's width and the adjacent conversation normally.
+   The separate content layer keeps its full width behind the card's clip. */
+:global([data-liuli-official-shell]) .shard[data-shard-region='region:details'] {
+  transition: flex-basis 300ms var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.officialRightbarContent {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  contain: layout paint;
+}
+
+:global([data-liuli-official-shell][data-liuli-rightbar-phase]:not([data-liuli-rightbar-phase='open'])) .shard[data-shard-region='region:details'] .officialRightbarContent {
+  width: var(--liuli-sidebar-content-width, var(--liuli-rightbar-slide));
+  min-width: var(--liuli-sidebar-content-width, var(--liuli-rightbar-slide));
+  max-width: var(--liuli-sidebar-content-width, var(--liuli-rightbar-slide));
+  will-change: transform;
+}
+
+/* The native body is a fixed overlay outside the material card. Its matching
+   translation follows the shell's moving left edge without geometry polling. */
+:global([data-liuli-official-shell]) .officialRightbarHost[data-liuli-native-column]:not([data-liuli-native-float]):not([data-liuli-native-fullscreen]) [data-sidebar-right-panel] {
+  animation: none;
+  translate: var(--liuli-rightbar-slide) 0;
+  transition: translate 300ms var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+:global([data-liuli-official-shell][data-liuli-rightbar-visible]) .officialRightbarHost[data-liuli-native-column]:not([data-liuli-native-float]):not([data-liuli-native-fullscreen]) [data-sidebar-right-panel] {
+  translate: 0 0;
+}
+
+:global([data-liuli-official-shell][data-liuli-rightbar-phase='preparing']) .officialRightbarHost [data-sidebar-right-panel] {
+  transition: none !important;
+}
+
+:global([data-liuli-official-shell][data-liuli-rightbar-phase='closed']) .shard[data-shard-region='region:details'] .officialRightbarContent {
+  content-visibility: hidden;
+}
+
+:global([data-liuli-official-shell][data-liuli-rightbar-phase='closed']) .officialRightbarHost[data-liuli-native-column]:not([data-liuli-native-float]):not([data-liuli-native-fullscreen]) [data-sidebar-right-panel],
+:global([data-liuli-official-shell][data-liuli-rightbar-phase='closed']) .officialRightbarHost[data-liuli-native-column]:not([data-liuli-native-float]):not([data-liuli-native-fullscreen]) [data-sidebar-right-panel] * {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+:global([data-liuli-official-shell][data-liuli-rightbar-phase]:not([data-liuli-rightbar-phase='open'])) .shard[data-shard-region='region:details'] [data-dockkit-host='dock'],
+:global([data-liuli-official-shell][data-liuli-rightbar-phase]:not([data-liuli-rightbar-phase='open'])) .shard[data-shard-region='region:details'] [data-dockkit-host='dock'] *,
+:global([data-liuli-official-shell][data-liuli-rightbar-phase]:not([data-liuli-rightbar-phase='open'])) .officialRightbarHost[data-liuli-native-column]:not([data-liuli-native-float]):not([data-liuli-native-fullscreen]) [data-sidebar-right-panel] * {
+  pointer-events: none !important;
+  animation-play-state: paused !important;
+}
+
+:global([data-liuli-official-shell]) .dockBody[data-resizing] .shard {
+  transition: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .shard {
-    transition: none;
+  .shard,
+  :global([data-liuli-official-shell]) .shard[data-shard-region='region:details'],
+  .officialRightbarHost [data-sidebar-right-panel] {
+    transition: none !important;
   }
 }
 

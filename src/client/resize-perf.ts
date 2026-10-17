@@ -12,10 +12,8 @@
  * 手段（不改任何宿主源码）：
  *  1. 缩放开始时把每个产物行宽度冻结为当前像素值——行宽不再随列宽变化，宿主
  *     RO 便不再触发；缩放结束后分帧批量还原（避免宿主 measure 堆成单帧尖峰）。
- *  2. 磨砂渐隐/渐显：backdrop-filter 每帧重采样背景很昂贵，缩放期降为 none，
- *     但直接开关会「突然消失」，故用 ~140ms rAF 渐变过渡（blur 半径与 saturate
- *     同步归一到恒等滤镜，再交给 body[data-liuli-blur-off] 的 CSS none 覆盖；
- *     结束时摘标记再渐变回配置值）。prefers-reduced-motion 下跳过渐变。
+ *  2. 恢复磨砂渐隐/渐显：交互开始时用约 140ms 渐变减弱，结束时渐变恢复。
+ *     辉光、阴影及噪点保持原样。
  *  3. body 挂 data-liuli-resizing 标记，供 CSS（过渡关闭，见 liuli-css）与
  *     运行时（TurnRail 跟随让位等）识别缩放期。
  *  4. 窗口 resize 同样触发宿主 RO 风暴：监听 window resize，期间自动进入/退出
@@ -29,22 +27,22 @@
  *
  * begin/end 引用计数配对，多个拖拽源（dock-shell sash /
  * PreviewPanel 手柄 / 宿主原生手柄 / 窗口 resize）可安全重叠。
- * 程序触发的侧栏开合冻结产物行宽度，并保留原有的磨砂渐隐/渐显，
- * 但不挂拖拽标记或全屏指针护盾，列宽动画可继续运行。
+ * 程序触发的侧栏开合冻结产物行、暂停辅助几何测量，并保留磨砂渐变，
+ * 以固定尺寸做位移过渡，不挂拖拽标记或全屏指针护盾。
  */
 
 /** 宿主产物行（ui-deliverables 插件的稳定 DOM 锚点，非 CSS hash）。 */
 const ROW_SELECTOR = '[data-produced-files-row]'
 /** body 上的缩放期标记（CSS/运行时共同识别）。 */
 export const RESIZING_ATTR = 'data-liuli-resizing'
-/** 磨砂关闭标记（渐变归一后挂上，CSS 以 none 覆盖，见 liuli-css）。 */
+export const SIDEBAR_TRANSITION_ATTR = 'data-liuli-layout-transition'
+export const LAYOUT_SETTLED_EVENT = 'liuli:layout-settled'
 const BLUR_OFF_ATTR = 'data-liuli-blur-off'
+const BLUR_FADE_MS = 140
 /** 兜底：pointerup 丢失等异常下的单次缩放上限。 */
 const FAILSAFE_MS = 15000
 /** 窗口 resize 结束后多久退出护栏。 */
 const WINDOW_SETTLE_MS = 300
-/** 磨砂渐隐/渐显时长。 */
-const BLUR_FADE_MS = 140
 /** 解冻节流：总时长上限（ms），行多时拉长单次间隔而非堆大单帧。 */
 const THAW_TOTAL_MS = 800
 /** 解冻启动延迟：让松开后的提交渲染先完成。 */
@@ -60,8 +58,9 @@ let shieldDepth = 0
  *  由 reportGeometryLoop 的 isResizeInProgress 门控隐藏，机制互不冲突）。 */
 const SHIELD_Z = 2147483100
 let shieldEl: HTMLElement | null = null
-/** 产物行 → 冻结前的原始内联 width（跨连续多次拖拽保持，解冻时还原）。 */
-const originalWidths = new Map<HTMLElement, string>()
+const WIDTH_PROPERTIES = ['width', 'min-width', 'max-width'] as const
+/** Keep priorities too: a drag must not discard the host's inline constraints. */
+const originalWidths = new Map<HTMLElement, Array<{ name: string; value: string; priority: string }>>()
 let failsafe: ReturnType<typeof setTimeout> | null = null
 let windowWatcherInstalled = false
 let windowSettle: ReturnType<typeof setTimeout> | null = null
@@ -75,6 +74,24 @@ type BlurFadeState = { target: HTMLElement | null; saved: BlurSnapshot | null; r
 /** Drag/window resize changes the body; sidebar animation changes only the dock shell. */
 const fullBlurFade: BlurFadeState = { target: null, saved: null, raf: 0, offActive: false }
 const sidebarBlurFade: BlurFadeState = { target: null, saved: null, raf: 0, offActive: false }
+
+let settledFrame = 0
+
+/** Includes click-driven column animations. Readers
+ * must not force offscreen conversation content to lay out during this phase. */
+export function isLayoutInProgress(): boolean {
+  return depth > 0 || sidebarTransitionDepth > 0 || fullBlurFade.raf !== 0 || sidebarBlurFade.raf !== 0
+}
+
+function notifyLayoutSettled(): void {
+  if (typeof window === 'undefined' || settledFrame !== 0) return
+  settledFrame = requestAnimationFrame(() => {
+    settledFrame = 0
+    if (isLayoutInProgress()) return
+    document.body.removeAttribute(SIDEBAR_TRANSITION_ATTR)
+    window.dispatchEvent(new Event(LAYOUT_SETTLED_EVENT))
+  })
+}
 
 /** 当前是否处于缩放护栏内（拖拽/窗口 resize 期间）。 */
 export function isResizeInProgress(): boolean {
@@ -118,6 +135,7 @@ function restoreBlurVars(state: BlurFadeState): void {
   else target.style.removeProperty('--liuli-material-blur-strong')
   state.saved = null
   state.target = null
+  notifyLayoutSettled()
 }
 
 /** 从当前生效值渐变到恒等滤镜，完成后挂 BLUR_OFF_ATTR（CSS none 无缝接管）。 */
@@ -229,12 +247,18 @@ function removeResizeShield(): void {
  *  when another transition starts before the previous thaw finishes. */
 function freezeProducedFileRows(): void {
   const rows = Array.from(document.querySelectorAll<HTMLElement>(ROW_SELECTOR))
-  const widths = rows.map(el => el.getBoundingClientRect().width)
+  // Preserve fractional pixels and the row's own box-sizing so freezing does
+  // not resize it and trigger its observer before the drag even starts.
+  const widths = rows.map(el => getComputedStyle(el).width)
   rows.forEach((el, i) => {
-    const width = widths[i] ?? 0
-    if (!Number.isFinite(width) || width <= 0) return
-    if (!originalWidths.has(el)) originalWidths.set(el, el.style.width)
-    el.style.width = `${Math.round(width)}px`
+    const width = widths[i] ?? ''
+    const w = Number.parseFloat(width)
+    if (!Number.isFinite(w) || w <= 0) return
+    if (!originalWidths.has(el)) originalWidths.set(el, WIDTH_PROPERTIES.map(name => ({
+      name, value: el.style.getPropertyValue(name), priority: el.style.getPropertyPriority(name),
+    })))
+    // Width alone is still limited by max-width:100% / flex-shrink.
+    for (const name of WIDTH_PROPERTIES) el.style.setProperty(name, width, 'important')
   })
 }
 
@@ -252,8 +276,11 @@ function scheduleProducedFileRowsThaw(): void {
     if (token !== thawToken || depth !== 0 || sidebarTransitionDepth !== 0) return
     const slice = pending.slice(cursor, cursor + batchSize)
     cursor += batchSize
-    for (const [el, width] of slice) {
-      el.style.width = width
+    for (const [el, properties] of slice) {
+      for (const { name, value, priority } of properties) {
+        if (value === '') el.style.removeProperty(name)
+        else el.style.setProperty(name, value, priority)
+      }
       originalWidths.delete(el)
     }
     if (cursor < pending.length) setTimeout(step, interval)
@@ -261,12 +288,18 @@ function scheduleProducedFileRowsThaw(): void {
   setTimeout(step, THAW_START_DELAY_MS)
 }
 
-/** Guard a programmatic sidebar animation while keeping the existing frosted-glass
- *  fade. Unlike dragging, it must not mark the body as resizing or block clicks. */
-export function beginSidebarTransitionPerf(): void {
-  if (typeof window === 'undefined') return
+/** Retain the original material fade while the sidebar content stays fixed. */
+export function beginSidebarTransitionPerf(): () => void {
+  if (typeof window === 'undefined') return () => {}
+  let released = false
+  const release = (): void => {
+    if (released) return
+    released = true
+    endSidebarTransitionPerf()
+  }
   sidebarTransitionDepth += 1
-  if (sidebarTransitionDepth !== 1) return
+  if (sidebarTransitionDepth !== 1) return release
+  document.body.setAttribute(SIDEBAR_TRANSITION_ATTR, '')
   thawToken += 1
   if (depth === 0) freezeProducedFileRows()
   const shell = document.querySelector<HTMLElement>('[data-testid="dock-shell"]')
@@ -279,17 +312,16 @@ export function beginSidebarTransitionPerf(): void {
       : undefined
     fadeBlurOut(sidebarBlurFade, shell, baseline)
   }
+  return release
 }
 
 export function endSidebarTransitionPerf(): void {
   if (sidebarTransitionDepth <= 0) return
   sidebarTransitionDepth -= 1
   if (sidebarTransitionDepth !== 0) return
-  // A pointer resize may still be active. Keep the shell faded until that
-  // guard ends; otherwise its local blur variables override the body-wide
-  // none state and the glass reappears in the middle of a drag.
   if (depth === 0) fadeBlurIn(sidebarBlurFade)
   scheduleProducedFileRowsThaw()
+  notifyLayoutSettled()
 }
 
 /** 进入缩放护栏（引用计数 +1；首次进入时冻结产物行并挂标记）。 */
@@ -305,11 +337,7 @@ export function beginResizePerf(options: { pointerShield?: boolean } = {}): void
   document.body.setAttribute(RESIZING_ATTR, '')
   if (sidebarTransitionDepth === 0) freezeProducedFileRows()
   fadeBlurOut(fullBlurFade, document.body)
-  // If a sidebar transition just ended but its shell is still fading back in,
-  // reverse that local animation as the pointer-driven fade starts.
-  if (sidebarBlurFade.target !== null && sidebarTransitionDepth === 0) {
-    fadeBlurOut(sidebarBlurFade, sidebarBlurFade.target)
-  }
+  if (sidebarBlurFade.target !== null && sidebarTransitionDepth === 0) fadeBlurOut(sidebarBlurFade, sidebarBlurFade.target)
   failsafe = setTimeout(() => {
     failsafe = null
     depth = 1
@@ -317,7 +345,7 @@ export function beginResizePerf(options: { pointerShield?: boolean } = {}): void
   }, FAILSAFE_MS)
 }
 
-/** 退出缩放护栏（引用计数 -1；归零时分批解冻产物行、渐显磨砂并摘标记）。 */
+/** 退出缩放护栏（引用计数 -1；归零时分批解冻产物行并摘标记）。 */
 export function endResizePerf(options: { pointerShield?: boolean } = {}): void {
   if (depth <= 0) return
   if (options.pointerShield !== false && shieldDepth > 0) {
@@ -338,6 +366,7 @@ export function endResizePerf(options: { pointerShield?: boolean } = {}): void {
   // 节流解冻：宽度还原会触发宿主 RO 的一次性 measure。若侧栏动画仍在
   // 进行，则交由它结束时恢复，避免两个护栏重叠时过早解冻。
   scheduleProducedFileRowsThaw()
+  notifyLayoutSettled()
 }
 
 /**
@@ -365,16 +394,28 @@ export function installResizePerfWatcher(): void {
   // 宿主桌面壳自带的缩放手柄（advanced 壳的 dshDesktopResizeHandle 等）：
   // capture 阶段识别按压即进入护栏，pointerup/cancel 退出。
   document.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return
     const target = e.target
     if (!(target instanceof Element)) return
-    if (target.closest('.dshDesktopResizeHandle') === null) return
+    const handle = target.closest<HTMLElement>('.dshDesktopResizeHandle, [data-dockkit-divider], [data-dockkit-float-resize]')
+    if (handle === null) return
     beginResizePerf()
+    let released = false
     const release = (): void => {
-      window.removeEventListener('pointerup', release)
-      window.removeEventListener('pointercancel', release)
+      if (released) return
+      released = true
+      window.removeEventListener('pointerup', onRelease, true)
+      window.removeEventListener('pointercancel', onRelease, true)
+      window.removeEventListener('blur', release)
+      handle.removeEventListener('lostpointercapture', onRelease)
       endResizePerf()
     }
-    window.addEventListener('pointerup', release)
-    window.addEventListener('pointercancel', release)
+    const onRelease = (event: PointerEvent): void => {
+      if (event.pointerId === e.pointerId) release()
+    }
+    window.addEventListener('pointerup', onRelease, true)
+    window.addEventListener('pointercancel', onRelease, true)
+    window.addEventListener('blur', release)
+    handle.addEventListener('lostpointercapture', onRelease)
   }, true)
 }

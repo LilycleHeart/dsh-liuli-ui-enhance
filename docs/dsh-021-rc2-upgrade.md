@@ -21,7 +21,7 @@
 | P02 DSH 差异审计 | skipped | 仅核对本插件涉及的发布说明、准确版本声明和实际行为；未执行全宿主 API/协议/数据格式审计 |
 | P03 七类接触点扫描 | completed | 扫描源码、依赖、补丁、事件、服务、文件访问、界面、通道及子进程；启发式命中七类，不代表逐路径功能验收 |
 | P04 源码迁移 | completed | 上述依赖、invariant、终端文案与工具调用类型变更 |
-| P05 静态与针对性测试 | completed | 原依赖基线构建通过；目标版本构建通过；7 项测试通过；无原有构建失败豁免 |
+| P05 静态与针对性测试 | completed | 原依赖基线构建通过；目标版本构建通过；14 项测试通过；无原有构建失败豁免 |
 | P06 Docker 冷启动 | skipped | 本机未发现 Docker；改用 Windows 上独立安装的准确版本真实 DSH 运行环境 |
 | P07 真实功能路径 | completed | 点击官方设置中的深色主题；琉璃主题桥存在；外观设置可打开，材质设置刷新后保留；左右布局中的左侧栏可收起和展开 |
 | P08 浏览器验证 | completed | Playwright 访问隔离主机；主题 DOM 挂载；插件管理页列出琉璃且开关启用；控制台零错误；测试证据位于 `output/playwright/` |
@@ -34,7 +34,7 @@ pnpm install --frozen-lockfile --ignore-scripts # 旧依赖基线
 pnpm build                                 # 旧依赖基线通过
 pnpm install --ignore-scripts --registry=https://registry.npmjs.org
 pnpm --config.verifyDepsBeforeRun=false run build
-node --test tests/wallpaper-format.test.mjs tests/tool-commits.test.mjs
+node --test tests/*.test.mjs
 pnpm --config.ignoreScripts=true --config.verifyDepsBeforeRun=false pack --pack-destination .liuli-pack
 ```
 
@@ -51,3 +51,7 @@ pnpm --config.ignoreScripts=true --config.verifyDepsBeforeRun=false pack --pack-
 本次未查询或注册命名中心，未发布 npm 或 GitHub Release。本地 tarball 不等同于已发布版本。
 
 本机安装的详细备份路径和诊断记录仅保留在本地，不随源码发布。恢复时退出桌面应用，使用安装前备份恢复依赖清单和锁文件，再恢复旧插件目录；保留其他插件的原有构建产物，不覆盖后续用户配置。
+
+## 与 master 集成
+
+合并最新 master 时保留侧栏、拖拽和工作步骤样式修复；版本号冲突保留本次适配包的 0.1.2-rc.34。合并结果重新通过完整构建及 14 项测试（包含真实 Chrome 的侧栏和工作步骤显示测试），并对打包后的产物执行准确版本的真实 DSH 冷启动与浏览器挂载检查。

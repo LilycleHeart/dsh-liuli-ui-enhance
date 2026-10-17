@@ -16,7 +16,7 @@
  * 边缘/面板内停靠、浮动窗口、标签页合并、sash 缩放；详情开合与宿主
  * layout 服务双向联动；dock 树自动保存/恢复（localStorage + 命名槽位 + 导出导入）。
  */
-import { Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { selectedSessionId } from './compat.ts'
@@ -46,8 +46,10 @@ import { LIULI_LS_KEY, liuliSettingsOf } from '../liuli-settings.ts'
 import css from './DockShellFrame.module.css'
 import { HMR_MARKER } from './hmr-marker.ts'
 import { tagConversationContainers } from './conversation-split.ts'
-import { beginResizePerf, endResizePerf, beginSidebarTransitionPerf, endSidebarTransitionPerf } from './resize-perf.ts'
+import { beginResizePerf, endResizePerf, beginSidebarTransitionPerf } from './resize-perf.ts'
 import { usePopupPresence, usePopupValuePresence } from './use-popup-presence.ts'
+import { useSidebarPresence } from './use-sidebar-presence.ts'
+import { SidebarContent } from './sidebar-content.tsx'
 
 /* ── 右侧边栏系列增强开关（与 client/index.ts 的 unofficial('sidebar') 同源） ──
  *  client/index.ts 在启动时按「总开关 && 右侧边栏组」写入 window.__liuliSidebarEnabled__；
@@ -461,11 +463,11 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
     return current !== undefined && s.byId[current]?.blank === false ? current : undefined
   })
   /** 琉璃 dock surface 的宿主能力（与自研侧边栏共用同一份数据面桥）。 */
-  const liuliDockHostAccess: LiuliSidebarHostAccess = {
+  const liuliDockHostAccess = useMemo<LiuliSidebarHostAccess>(() => ({
     ...(dockHostBridge.openPath === undefined ? {} : { openPath: dockHostBridge.openPath }),
     ...(dockHostBridge.addFileToChat === undefined ? {} : { addFileToChat: dockHostBridge.addFileToChat }),
     ...(dockHostBridge.sidePaneHost === undefined ? {} : { sidePaneHost: dockHostBridge.sidePaneHost }),
-  }
+  }), [dockHostBridge.openPath, dockHostBridge.addFileToChat, dockHostBridge.sidePaneHost])
   // 官方 API 打开的 tab（官方插件调 ctx.sidebarRight.openResource/openTab）会落进
   // 官方 layout，而官方 surface 在迁移模式下被 CSS 隐藏 —— 轮询官方 active() 把它们
   // 同步进琉璃的 dock 布局，用户才看得到内容。
@@ -488,6 +490,14 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
   /** 琉璃右栏以同步事件更新列宽；低频轮询只兜底恢复/跨会话状态。
    *  之前每 120ms 轮询会把一次开合额外拖慢最多 120ms。 */
   const [officialRightbarExpanded, setOfficialRightbarExpanded] = useState(false)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const rightbarPresence = useSidebarPresence(officialRightbarExpanded, officialRightbar === true && slotLayout === 'v209', rootRef)
+  const rightbarContent = useMemo(() => detailsSession === undefined ? null : (
+    <LiuliDockSurface sessionId={detailsSession} host={liuliDockHostAccess} retainExpanded={rightbarPresence.mounted} />
+  ), [detailsSession, liuliDockHostAccess, rightbarPresence.mounted])
+  const nativeRightbarContent = useMemo(() => officialRightbar === true && slotLayout === 'v209'
+    ? renderSlotLoose('rightbar', { width: 0, viewportWidth: 0, canShow: false })
+    : null, [officialRightbar, slotLayout, renderSlotLoose])
   useEffect(() => {
     if (officialRightbar !== true) return () => {}
     // 迁移模式下右栏列宽由 `__liuliForceExpanded__`（按钮/驱动入口写入）与
@@ -558,21 +568,6 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
     }
   }, [detailsSession, hostLayout, hostPanels.details, officialRightbar, officialRightbarExpanded, slotLayout])
 
-  /** 官方右栏展开/收起会让整列宽度变化（连同会话区一起被推挤），与拖手柄同属
-   *  「布局正在变」的场景 —— 复用 resize-perf 的磨砂归一机制：变化期间把模糊
-   *  渐变收敛（有 ~140ms 过渡，不是硬切），动画结束后再渐变回来，避免每帧重绘
-   *  大面积 backdrop-filter。420ms 覆盖官方滑入/滑出动画的时长。 */
-  const rightbarPerfReady = useRef(false)
-  useLayoutEffect(() => {
-    if (officialRightbar !== true) return () => {}
-    if (!rightbarPerfReady.current) { rightbarPerfReady.current = true; return () => {} }
-    // Column animation changes conversation width, so freeze measured file
-    // rows and soften blur; a click-triggered transition needs no pointer shield.
-    beginSidebarTransitionPerf()
-    const timer = window.setTimeout(endSidebarTransitionPerf, 360)
-    return () => { window.clearTimeout(timer); endSidebarTransitionPerf() }
-  }, [officialRightbar, officialRightbarExpanded])
-
   const dragOverlayRef = useRef<DockDragOverlayHandle | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
@@ -627,7 +622,18 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
   const modalPresence = usePopupValuePresence(modal)
   const toastPresence = usePopupValuePresence(toast)
   const shownModal = modalPresence.value
-  const rootRef = useRef<HTMLDivElement | null>(null)
+  const nativeRightbarHostRef = useRef<HTMLDivElement | null>(null)
+  useLayoutEffect(() => {
+    const host = nativeRightbarHostRef.current
+    if (host === null) return
+    // Own the interaction lock on our stable wrapper. Never write inert on an
+    // upstream panel: projection metadata can disappear before the open commit,
+    // leaving that reused panel permanently locked and its buttons unclickable.
+    host.inert = rightbarPresence.phase !== 'open'
+      && host.hasAttribute('data-liuli-native-column')
+      && !host.hasAttribute('data-liuli-native-float')
+      && !host.hasAttribute('data-liuli-native-fullscreen')
+  }, [officialRightbar, rightbarPresence.phase])
   /** 上次搬入页头面板 host 的 <header> 引用：页头面板被拆分/浮动时，header 会跟着
    *  旧 host 一起被 React 移出 DOM（detached），此时无法再从正文 phase 查到它；
    *  用这个引用把它「抢救」回新 host，否则页头面板出现空白。 */
@@ -1171,9 +1177,9 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
     // Opening the left column changes conversation width on every animation
     // frame. Protect upstream deliverable rows just as sash resize does, while
     // keeping click targets live because this is not a pointer drag.
-    beginSidebarTransitionPerf()
-    const timer = window.setTimeout(endSidebarTransitionPerf, 360)
-    return () => { window.clearTimeout(timer); endSidebarTransitionPerf() }
+    const release = beginSidebarTransitionPerf()
+    const timer = window.setTimeout(release, 360)
+    return () => { window.clearTimeout(timer); release() }
   }, [sidebarCollapsed])
 
   // 详情区域宽度（liuli 自管，突破 desktop shell 的 clamp 300-520；上限 = 视口 88%，
@@ -1236,7 +1242,7 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
         // 不能再当权威。展开状态由 LiuliRightbarExpandButton 驱动控制器、
         // 并写 `__liuliForceExpanded__` 供帧层即时读取（控制器未挂载时也能生效）。
         if (officialRightbar === true && slotLayout === 'v209') {
-          return officialRightbarExpanded ? officialRightbarTrackWidth(detailsWidth) : 0
+          return rightbarPresence.visible ? officialRightbarTrackWidth(detailsWidth) : 0
         }
         return hostPanels.details === 0 ? 0 : clampDetailsWidth(detailsWidth, window.innerWidth, sidebarWidth)
       }
@@ -1339,9 +1345,9 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
           // 即使用户把 details 区域拖走/关闭也不会丢失 ctx.sidebarRight 的绑定。
           return (
             <div className={css.officialRightbarCard} data-liuli-official-rightbar="">
-              {detailsSession !== undefined && (
-                <LiuliDockSurface sessionId={detailsSession} host={liuliDockHostAccess} />
-              )}
+              <SidebarContent phase={rightbarPresence.phase} trackWidth={officialRightbarTrackWidth(detailsWidth)} className={css.officialRightbarContent}>
+                {rightbarContent}
+              </SidebarContent>
             </div>
           )
         }
@@ -2242,15 +2248,22 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
       data-desktop-platform={platform}
       data-shell-mode={isAdvancedShell() ? undefined : 'web'}
       data-sidebar-collapsed={sidebarCollapsed || undefined}
-      // 迁移模式标记：CSS 据此禁用 .shard 的 flex-basis 过渡（见 module.css ——
-      // 该过渡在本模式下会被状态翻转冻结在 0，是"面板开了看不见"的元凶）。
+      // The shell resizes continuously; its retained content keeps a fixed width.
       data-liuli-official-shell={(officialRightbar === true && slotLayout === 'v209') || undefined}
       // 右栏收起标记：迁移模式下「开合」由我们的 dock 控制器决定（官方 details
       // 状态不再变化），因此这里必须与列宽用**同一个信号** —— 否则会出现
       // 「flex 给了 751px 但标记说收起」的自相矛盾，CSS 收起态规则把宽度压回 0。
       data-details-collapsed={(officialRightbar === true && slotLayout === 'v209'
-        ? !officialRightbarExpanded
+        ? !rightbarPresence.mounted
         : hostPanels.details === 0) || undefined}
+      data-liuli-rightbar-open={officialRightbarExpanded || undefined}
+      data-liuli-rightbar-visible={rightbarPresence.visible || undefined}
+      data-liuli-rightbar-phase={rightbarPresence.phase}
+      style={{ '--liuli-rightbar-slide': `${officialRightbarTrackWidth(detailsWidth)}px` } as CSSProperties}
+      onTransitionEnd={event => {
+        if (event.propertyName === 'flex-basis' && event.target instanceof HTMLElement
+          && event.target.matches('[data-shard-region="region:details"]')) rightbarPresence.finish()
+      }}
       data-testid="dock-shell"
       data-hmr-marker={HMR_MARKER}
       data-panels={String(panelCount(dock))}
@@ -2264,15 +2277,8 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
         ? <PanelInfoProbe usePanelInfo={usePanelInfo} onActivePanelChange={onActivePanelChange} />
         : null}
       {officialRightbar === true && slotLayout === 'v209' && (
-        <div className={css.officialRightbarHost} data-liuli-official-rightbar-host="">
-          {renderSlotLoose('rightbar', {
-            // 官方 Seat 维持 Tab 域和导航绑定。原生 guide/files/document
-            // 在琉璃 dock 的「官方侧栏」标签里展示；使用 auto-fullscreen 使
-            // 官方内容保持展开，却不再为它分配第二条 rightbar 轨道。
-            width: 0,
-            viewportWidth: 0,
-            canShow: false,
-          })}
+        <div ref={nativeRightbarHostRef} className={css.officialRightbarHost} data-liuli-official-rightbar-host="">
+          {nativeRightbarContent}
         </div>
       )}
       <div

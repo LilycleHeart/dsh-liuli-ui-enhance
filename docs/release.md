@@ -57,7 +57,7 @@ git merge --ff-only beta
 git push origin master
 
 pnpm build                          # 确保 lib/ 为最新（prepare 也会自动跑）
-npm version patch                   # 或 minor / major；改 package.json
+npm version patch --no-git-tag-version # 或 minor / major；下面统一提交和打标签
 git add package.json pnpm-lock.yaml
 git commit -m "chore(release): <新版本>"
 git tag -a v<新版本> -m "release <新版本>"
