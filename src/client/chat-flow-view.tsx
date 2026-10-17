@@ -50,6 +50,7 @@ const MD_LABELS: MarkdownLabels = {
   footnotes: '脚注',
 }
 const TERMINAL_LABELS: TerminalBlockLabels = {
+  commandLine: line => `命令第 ${line} 行`,
   signal: s => `信号 ${s}`,
   exitCode: c => `退出码 ${c}`,
   noExitCode: '无退出码',

@@ -91,9 +91,7 @@ function browserSourcePath(source: string, sourcemapPath: string): string {
  * half.
  * @param id - plugin id (package name), stamped into the __ModuleLoader__.load
  * handoff and onto the injected style tags.
- * @param libEntry - node-half entries, spelled at the call site so the
- * package-invariants gate can see `lib/types/invariant.js` in each package's
- * own tsdown.config.ts (a preset-side glob hides it from the mechanical check).
+ * @param libEntry - node-half entries, spelled at the call site.
  * @param options - phase placement, lib overrides, and companion Node configs.
  * @returns ENV-selected tsdown config for the current build face.
  */

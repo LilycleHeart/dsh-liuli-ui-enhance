@@ -7,7 +7,7 @@ import { clientBundle } from './scripts/tsdown.client.ts'
  * purity gate、banner/footer），只覆盖入口。
  */
 export default ((env: { env?: { DSH_BUILD_FACE?: string } }) =>
-  clientBundle('dsh-liuli-ui-enhance', ['lib/types/index.js', 'lib/types/invariant.js'])(env)
+  clientBundle('dsh-liuli-ui-enhance', ['lib/types/index.js'])(env)
     .map(config => config.name === 'dsh-liuli-ui-enhance/client'
       ? { ...config, entry: { client: 'src/client/index.ts' } }
       : config))

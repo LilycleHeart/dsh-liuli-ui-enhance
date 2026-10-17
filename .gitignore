@@ -21,6 +21,8 @@ preview-gifs/
 # 测试 / 覆盖率 / 浏览器自动化产物
 coverage/
 playwright-report/
+.playwright-cli/
+output/playwright/
 test-results/
 
 # demo 验证脚本不入库（仅本地开发调试用）
