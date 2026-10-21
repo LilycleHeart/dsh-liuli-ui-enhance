@@ -501,20 +501,14 @@ function WallpaperPreview(props: {
   }
   const imageAspect = imgRatio ?? 1
   // 完整壁纸层：铺满容器（容器按图片比例构建，图片不变形，上下超出的部分可见）。
-  // 编辑态叠加方向草稿：转 90/270 时先旋转再按 contain 缩放，避免被容器裁掉；
-  // 0° 时没有任何 transform，保持原有显示。
-  const draftRotated = props.rotate === 90 || props.rotate === 270
-  const draftParts: string[] = []
-  if (draftRotated) draftParts.push(`scale(${Math.min(imageAspect, 1 / imageAspect)})`)
-  if (props.rotate !== 0) draftParts.push(`rotate(${props.rotate}deg)`)
-  if (props.flipX) draftParts.push('scaleX(-1)')
+  // 编辑选区时图片保持原方向：选框就画在这一层里，图片一旦旋转，拖动方向会和
+  // 鼠标对不上（选区坐标始终以原图为基准）。方向草稿只记录，完成时一并保存。
   const fullImageStyle: React.CSSProperties = {
     position: 'absolute',
     inset: 0,
     backgroundImage: 'url("' + props.src + '")',
     backgroundSize: '100% 100%',
     backgroundRepeat: 'no-repeat',
-    ...(draftParts.length > 0 ? { transform: draftParts.join(' ') } : {}),
   }
   // 非框选：Cover 且有选区时，展示完整壁纸 + 静态选框（选区外暗色遮罩）。
   const viewportBox = displayArea !== null && imgRatio !== null && imgRatio > 0 && props.fit === 'cover'
