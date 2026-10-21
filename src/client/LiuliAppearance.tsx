@@ -208,6 +208,10 @@ export function SelectRow(props: {
     </Row>
   )
 }
+/** Material「flip」（左右镜像）与「rotate_right」（顺时针旋转）图标路径。 */
+const FLIP_ICON_PATH = 'M15 21h2v-2h-2v2zm4-12h2V7h-2v2zM3 5v14c0 1.1.9 2 2 2h4v-2H5V5h4V3H5c-1.1 0-2 .9-2 2zm16-2v2h2c0-1.1-.9-2-2-2zm-8 20h2V1h-2v22zm8-6h2v-2h-2v2zM15 5h2V3h-2v2zm4 8h2v-2h-2v2zm0 8c1.1 0 2-.9 2-2h-2v2z'
+const ROTATE_ICON_PATH = 'M15.55 5.55 11 1v3.07C7.06 4.56 4 7.92 4 12s3.05 7.44 7 7.93v-2.02c-2.84-.48-5-2.94-5-5.91s2.16-5.43 5-5.91V10l4.55-4.45zM19.93 11c-.17-1.39-.72-2.73-1.62-3.89l-1.42 1.42c.54.75.88 1.6 1.02 2.47h2.02zM13 17.9c1.39-.17 2.74-.71 3.9-1.61l-1.44-1.44c-.75.54-1.59.89-2.46 1.03v2.02zm4.5-4.99c-.14.86-.46 1.7-1 2.45l1.43 1.43c.9-1.15 1.45-2.5 1.62-3.88h-2.05z'
+
 /** 壁纸预览：按实际窗口比例显示效果（fit/选区所见即所得），可框选自定义选区。 */
 function WallpaperPreview(props: {
   src: string
@@ -215,6 +219,8 @@ function WallpaperPreview(props: {
   area: LiuliBgArea | null
   flipX: boolean
   rotate: 0 | 90 | 180 | 270
+  onFlipX: (value: boolean) => void
+  onRotate: (value: 0 | 90 | 180 | 270) => void
   onArea: (area: LiuliBgArea) => void
   onClearArea: () => void
   t: TranslateNS<'liuli-appearance'>
@@ -486,6 +492,29 @@ function WallpaperPreview(props: {
     <>
       <div className={css.previewActions}>
         {imageError && <span role="alert">壁纸预览加载失败，请重新选择图片。</span>}
+        {!selectMode && (
+          <>
+            <button
+              type="button"
+              className={css.iconAction}
+              aria-pressed={props.flipX}
+              aria-label={props.t('bgFlip.x')}
+              title={props.t('bgFlip.x')}
+              onClick={() => { props.onFlipX(!props.flipX) }}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d={FLIP_ICON_PATH} /></svg>
+            </button>
+            <button
+              type="button"
+              className={css.iconAction}
+              aria-label={`${props.t('bgFlip.rotate')} ${props.rotate}°`}
+              title={`${props.t('bgFlip.rotate')} ${props.rotate}°`}
+              onClick={() => { props.onRotate(((props.rotate + 90) % 360) as 0 | 90 | 180 | 270) }}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" style={{ transform: `rotate(${props.rotate}deg)` }}><path d={ROTATE_ICON_PATH} /></svg>
+            </button>
+          </>
+        )}
         {selectMode ? (
           <>
             <Button variant="ghost" size="sm" onClick={() => { setSelBox(windowArea()) }}>
@@ -832,24 +861,6 @@ export function LiuliAppearanceSection({
           onChange={(v) => { set({ bg_fit: v as LiuliSettings['bg_fit'] }) }}
         />
 
-        <ToggleRow
-          label={t('bgFlip.x')}
-          checked={s.bg_flip_x === true}
-          onChange={(v) => { set({ bg_flip_x: v }) }}
-        />
-
-        <SelectRow
-          label={t('bgFlip.rotate')}
-          value={String(normalizeBgRotate(s.bg_rotate))}
-          options={[
-            { value: '0', label: '0°' },
-            { value: '90', label: '90°' },
-            { value: '180', label: '180°' },
-            { value: '270', label: '270°' },
-          ]}
-          onChange={(v) => { set({ bg_rotate: Number(v) }) }}
-        />
-
         {shownWallpaper !== null && (
           <div ref={wallpaperWrapRef} data-liuli-wallpaper-preview="" className={css.wallpaperPreviewWrap} data-open={wallpaper !== null || undefined} aria-hidden={wallpaper === null}>
             <div className={css.wallpaperPreviewInner}><WallpaperPreview
@@ -858,6 +869,8 @@ export function LiuliAppearanceSection({
               area={s.bg_area}
               flipX={s.bg_flip_x === true}
               rotate={normalizeBgRotate(s.bg_rotate)}
+              onFlipX={(v) => { set({ bg_flip_x: v }) }}
+              onRotate={(v) => { set({ bg_rotate: v }) }}
               onArea={(area) => { set({ bg_area: area }) }}
               onClearArea={() => { set({ bg_area: null }) }}
               t={t}

@@ -614,6 +614,46 @@ body:not([data-ds-dark-theme]) .previewEffect::after {
   flex-wrap: wrap;
 }
 
+/* 镜像 / 旋转：与「编辑选区」同一栏的纯图标按钮，激活态用品牌色。 */
+.iconAction {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--liuli-radius-sm, 10px);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.iconAction:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, .12));
+  color: var(--dsw-alias-label-primary);
+}
+
+.iconAction[aria-pressed='true'] {
+  color: var(--dsw-alias-brand-primary);
+  border-color: var(--dsw-alias-brand-primary);
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 12%, transparent);
+}
+
+.iconAction:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 1px;
+}
+
+.iconAction svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  transition: transform 160ms ease;
+}
+
 .previewNote {
   font-size: 12px;
   line-height: 18px;
