@@ -513,7 +513,9 @@ function WallpaperPreview(props: {
     <>
       <div className={css.previewActions}>
         {imageError && <span role="alert">壁纸预览加载失败，请重新选择图片。</span>}
-        {!selectMode && (
+        {/* 镜像 / 旋转属于「编辑选区之后」的壁纸方向调整：没框过选区时不出现，
+            避免和选区编辑互相干扰（选区坐标始终以原图为基准）。 */}
+        {!selectMode && (displayArea !== null || props.area !== null) && (
           <>
             <button
               type="button"
