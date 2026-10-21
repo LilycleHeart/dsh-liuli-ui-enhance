@@ -217,12 +217,15 @@ function WallpaperPreview(props: {
   src: string
   fit: LiuliSettings['bg_fit']
   area: LiuliBgArea | null
+  /** 编辑选区里的方向草稿（图标状态 + 框选视图的方向预览）。 */
   flipX: boolean
   rotate: 0 | 90 | 180 | 270
-  /** 预览值与已应用的壁纸不同：需要显式「应用」才落地。 */
-  dirty: boolean
+  /** 已经保存的壁纸方向（非编辑态的窗口效果预览用）。 */
+  appliedFlipX: boolean
+  appliedRotate: 0 | 90 | 180 | 270
   onFlipX: (value: boolean) => void
   onRotate: (value: 0 | 90 | 180 | 270) => void
+  /** 点「完成选区」时把方向草稿一并落地。 */
   onApply: () => void
   onArea: (area: LiuliBgArea) => void
   onClearArea: () => void
@@ -468,12 +471,15 @@ function WallpaperPreview(props: {
       props.onArea(next)
       setDisplayArea(next)
     }
+    // 完成选区就是保存：选区与方向草稿一起落地（没有画新框时只保存方向）。
+    props.onApply()
     setSelectMode(false)
     setSelBox(null)
   }
 
   // 旋转 90/270 时承载层宽高互换，选区与 cover 都按互换后的视口比例计算。
-  const rotated = props.rotate === 90 || props.rotate === 270
+  // 非编辑态显示的是「已保存」的方向；编辑态里的草稿只影响框选视图。
+  const rotated = props.appliedRotate === 90 || props.appliedRotate === 270
   const g = bgGeometry(props.fit, props.area, imgRatio, rotated ? 1 / winRatio : winRatio)
   const stageStyle: React.CSSProperties = {
     aspectRatio: winRatio,
@@ -482,8 +488,8 @@ function WallpaperPreview(props: {
   }
   const transformParts: string[] = []
   if (rotated) transformParts.push('translate(-50%, -50%)')
-  if (props.rotate !== 0) transformParts.push(`rotate(${props.rotate}deg)`)
-  if (props.flipX) transformParts.push('scaleX(-1)')
+  if (props.appliedRotate !== 0) transformParts.push(`rotate(${props.appliedRotate}deg)`)
+  if (props.appliedFlipX) transformParts.push('scaleX(-1)')
   const transform = transformParts.length > 0 ? transformParts.join(' ') : undefined
   const effectStyle: React.CSSProperties = {
     backgroundImage: 'url("' + props.src + '")',
@@ -505,12 +511,17 @@ function WallpaperPreview(props: {
   }
   const imageAspect = imgRatio ?? 1
   // 完整壁纸层：铺满容器（容器按图片比例构建，图片不变形，上下超出的部分可见）。
+  // 编辑态里叠加方向草稿，调镜像/旋转时能直接看到图的变化。
+  const editTransformParts: string[] = []
+  if (props.rotate !== 0) editTransformParts.push(`rotate(${props.rotate}deg)`)
+  if (props.flipX) editTransformParts.push('scaleX(-1)')
   const fullImageStyle: React.CSSProperties = {
     position: 'absolute',
     inset: 0,
     backgroundImage: 'url("' + props.src + '")',
     backgroundSize: '100% 100%',
     backgroundRepeat: 'no-repeat',
+    ...(editTransformParts.length > 0 ? { transform: editTransformParts.join(' ') } : {}),
   }
   // 统一容器：选择态与非选择态完全一致（宽度按窗口、高度按完整壁纸比例），
   // 进入框选时容器不变，只是选框变为可交互。
@@ -523,10 +534,9 @@ function WallpaperPreview(props: {
     <>
       <div className={css.previewActions}>
         {imageError && <span role="alert">壁纸预览加载失败，请重新选择图片。</span>}
-        {/* 镜像 / 旋转属于「编辑选区之后」的壁纸方向调整：没框过选区时不出现，
-            避免和选区编辑互相干扰（选区坐标始终以原图为基准）。 */}
-        {!selectMode && (displayArea !== null || props.area !== null) && (
+        {selectMode ? (
           <>
+            {/* 方向调整只在「编辑选区」里出现：跟着选区一起调，点完成一起保存。 */}
             <button
               type="button"
               className={css.iconAction}
@@ -546,15 +556,6 @@ function WallpaperPreview(props: {
             >
               <svg viewBox="0 0 24 24" aria-hidden="true" style={{ transform: `rotate(${props.rotate}deg)` }}><path d={ROTATE_ICON_PATH} /></svg>
             </button>
-            {props.dirty && (
-              <Button variant="primary" size="sm" onClick={props.onApply}>
-                {props.t('bgFlip.apply')}
-              </Button>
-            )}
-          </>
-        )}
-        {selectMode ? (
-          <>
             <Button variant="ghost" size="sm" onClick={() => { setSelBox(windowArea()) }}>
               {props.t('area.reselect')}
             </Button>
@@ -689,8 +690,6 @@ export function LiuliAppearanceSection({
   const [draftTransform, setDraftTransform] = useState<{ flipX: boolean; rotate: 0 | 90 | 180 | 270 } | null>(null)
   const previewFlipX = draftTransform?.flipX ?? appliedFlipX
   const previewRotate = draftTransform?.rotate ?? appliedRotate
-  const transformDirty = draftTransform !== null
-    && (draftTransform.flipX !== appliedFlipX || draftTransform.rotate !== appliedRotate)
 
   return (
     <div className={css.section}>
@@ -897,11 +896,13 @@ export function LiuliAppearanceSection({
               area={s.bg_area}
               flipX={previewFlipX}
               rotate={previewRotate}
-              dirty={transformDirty}
+              appliedFlipX={appliedFlipX}
+              appliedRotate={appliedRotate}
               onFlipX={(v) => { setDraftTransform({ flipX: v, rotate: previewRotate }) }}
               onRotate={(v) => { setDraftTransform({ flipX: previewFlipX, rotate: v }) }}
               onApply={() => {
-                set({ bg_flip_x: previewFlipX, bg_rotate: previewRotate })
+                // 只在真的调过方向时写设置，避免每次完成选区都白写一遍。
+                if (draftTransform !== null) set({ bg_flip_x: draftTransform.flipX, bg_rotate: draftTransform.rotate })
                 setDraftTransform(null)
               }}
               onArea={(area) => { set({ bg_area: area }) }}
