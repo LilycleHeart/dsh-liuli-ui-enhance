@@ -229,7 +229,10 @@ function WallpaperPreview(props: {
   t: TranslateNS<'liuli-appearance'>
 }) {
   const stageRef = useRef<HTMLDivElement | null>(null)
-  const [winRatio, setWinRatio] = useState(() => window.innerWidth / window.innerHeight)
+  // 预览框必须始终等于"当前真实窗口"的宽高比：比例每次渲染现算，state 只负责在
+  // 尺寸变化时触发重渲染（保存下来的比例一旦错过一次 resize 就会停住）。
+  const [, setWinEpoch] = useState(0)
+  const winRatio = window.innerWidth / window.innerHeight
   // 预览框的像素尺寸：旋转 90/270 时承载层要按转置后的宽高（高×宽）显式设置，
   // 绝对定位元素上的 width:auto + aspect-ratio 量不出宽度，层会塌成 0。
   const [stageSize, setStageSize] = useState<{ w: number; h: number } | null>(null)
@@ -246,9 +249,16 @@ function WallpaperPreview(props: {
   >(null)
 
   useEffect(() => {
-    const onResize = (): void => { setWinRatio(window.innerWidth / window.innerHeight) }
+    const onResize = (): void => { setWinEpoch(n => n + 1) }
     window.addEventListener('resize', onResize)
-    return () => { window.removeEventListener('resize', onResize) }
+    // 桌面端窗口尺寸变化不一定冒泡成 window resize（分栏/缩放容器也会改变可用宽度），
+    // 同时观察文档根，保证预览比例跟着真实窗口走。
+    const observer = new ResizeObserver(onResize)
+    observer.observe(document.documentElement)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      observer.disconnect()
+    }
   }, [])
 
   // 量预览框（选择态/效果态是同一个 ref，切换时重新观察）。
