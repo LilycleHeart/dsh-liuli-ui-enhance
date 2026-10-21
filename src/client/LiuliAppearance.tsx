@@ -232,10 +232,7 @@ function WallpaperPreview(props: {
   t: TranslateNS<'liuli-appearance'>
 }) {
   const stageRef = useRef<HTMLDivElement | null>(null)
-  // 预览框必须始终等于"当前真实窗口"的宽高比：比例每次渲染现算，state 只负责在
-  // 尺寸变化时触发重渲染（保存下来的比例一旦错过一次 resize 就会停住）。
-  const [, setWinEpoch] = useState(0)
-  const winRatio = window.innerWidth / window.innerHeight
+  const [winRatio, setWinRatio] = useState(() => window.innerWidth / window.innerHeight)
   // 预览框的像素尺寸：旋转 90/270 时承载层要按转置后的宽高（高×宽）显式设置，
   // 绝对定位元素上的 width:auto + aspect-ratio 量不出宽度，层会塌成 0。
   const [stageSize, setStageSize] = useState<{ w: number; h: number } | null>(null)
@@ -252,16 +249,9 @@ function WallpaperPreview(props: {
   >(null)
 
   useEffect(() => {
-    const onResize = (): void => { setWinEpoch(n => n + 1) }
+    const onResize = (): void => { setWinRatio(window.innerWidth / window.innerHeight) }
     window.addEventListener('resize', onResize)
-    // 桌面端窗口尺寸变化不一定冒泡成 window resize（分栏/缩放容器也会改变可用宽度），
-    // 同时观察文档根，保证预览比例跟着真实窗口走。
-    const observer = new ResizeObserver(onResize)
-    observer.observe(document.documentElement)
-    return () => {
-      window.removeEventListener('resize', onResize)
-      observer.disconnect()
-    }
+    return () => { window.removeEventListener('resize', onResize) }
   }, [])
 
   // 量预览框（选择态/效果态是同一个 ref，切换时重新观察）。
@@ -511,18 +501,25 @@ function WallpaperPreview(props: {
   }
   const imageAspect = imgRatio ?? 1
   // 完整壁纸层：铺满容器（容器按图片比例构建，图片不变形，上下超出的部分可见）。
-  // 编辑态里叠加方向草稿，调镜像/旋转时能直接看到图的变化。
-  const editTransformParts: string[] = []
-  if (props.rotate !== 0) editTransformParts.push(`rotate(${props.rotate}deg)`)
-  if (props.flipX) editTransformParts.push('scaleX(-1)')
+  // 编辑态叠加方向草稿：转 90/270 时先旋转再按 contain 缩放，避免被容器裁掉；
+  // 0° 时没有任何 transform，保持原有显示。
+  const draftRotated = props.rotate === 90 || props.rotate === 270
+  const draftParts: string[] = []
+  if (draftRotated) draftParts.push(`scale(${Math.min(imageAspect, 1 / imageAspect)})`)
+  if (props.rotate !== 0) draftParts.push(`rotate(${props.rotate}deg)`)
+  if (props.flipX) draftParts.push('scaleX(-1)')
   const fullImageStyle: React.CSSProperties = {
     position: 'absolute',
     inset: 0,
     backgroundImage: 'url("' + props.src + '")',
     backgroundSize: '100% 100%',
     backgroundRepeat: 'no-repeat',
-    ...(editTransformParts.length > 0 ? { transform: editTransformParts.join(' ') } : {}),
+    ...(draftParts.length > 0 ? { transform: draftParts.join(' ') } : {}),
   }
+  // 非框选：Cover 且有选区时，展示完整壁纸 + 静态选框（选区外暗色遮罩）。
+  const viewportBox = displayArea !== null && imgRatio !== null && imgRatio > 0 && props.fit === 'cover'
+    ? normalizeAreaToRatio(displayArea, cropRatio)
+    : null
   // 统一容器：选择态与非选择态完全一致（宽度按窗口、高度按完整壁纸比例），
   // 进入框选时容器不变，只是选框变为可交互。
   const contextStyle: React.CSSProperties = {
@@ -609,6 +606,26 @@ function WallpaperPreview(props: {
           ) : (
             <div className={css.previewLoading} />
           )}
+        </div>
+      ) : viewportBox !== null ? (
+        <div
+          ref={stageRef}
+          className={css.previewContext}
+          style={contextStyle}
+        >
+          {/* 完整壁纸层：铺满容器，上下超出的部分可见。 */}
+          <div className={css.previewFull} style={fullImageStyle} />
+          {/* 原来的选框样式：选区外暗色遮罩，静态展示当前选区。 */}
+          <div
+            className={css.previewCropBox}
+            style={{
+              left: viewportBox.x * 100 + '%',
+              top: viewportBox.y * 100 + '%',
+              width: viewportBox.w * 100 + '%',
+              height: viewportBox.h * 100 + '%',
+              pointerEvents: 'none',
+            }}
+          />
         </div>
       ) : (
         <div
