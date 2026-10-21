@@ -17,6 +17,7 @@ import { LIULI_SETTINGS_DEFAULTS } from '../liuli-settings.ts'
 import { bgGeometry, normalizeAreaToRatio, normalizeBgRotate, loadWallpaper, subscribeWallpaper } from './liuli-runtime.ts'
 import type { createLiuliStore } from './liuli-store.ts'
 import { usePopupValuePresence } from './use-popup-presence.ts'
+import { pointerToImage } from './wallpaper-pointer.ts'
 import css from './LiuliAppearance.module.css'
 import { FontPriorityPanel } from './FontPriorityEditor.tsx'
 import type { FontRole } from './font-priority.ts'
@@ -291,16 +292,31 @@ function WallpaperPreview(props: {
     setDisplayArea(props.area)
   }, [props.area])
 
-  /** 指针位置 → 图片归一化坐标（0..1）。容器按完整壁纸比例构建，直接 1:1 对应。 */
+  // 编辑态的方向草稿：图片层会旋转/缩放，指针必须先逆变换回图片空间，
+  // 否则鼠标往右、选框却往下走（选框画在图片层里，坐标轴跟着转了）。
+  const draftRotated = props.rotate === 90 || props.rotate === 270
+  const draftScale = draftRotated
+    ? Math.min(imgRatio ?? 1, 1 / (imgRatio ?? 1))
+    : 1
+
+  /** 指针位置 → 图片归一化坐标（0..1）。有方向草稿时按 transform 逆算回原图坐标。 */
   const norm = (e: React.PointerEvent): { x: number; y: number } | null => {
     const el = stageRef.current
     if (el === null) return null
     const r = el.getBoundingClientRect()
     if (r.width < 2 || r.height < 2) return null
-    const x = (e.clientX - r.left) / r.width
-    const y = (e.clientY - r.top) / r.height
-    if (x < 0 || x > 1 || y < 0 || y > 1) return null
-    return { x, y }
+    const vx = (e.clientX - r.left) / r.width
+    const vy = (e.clientY - r.top) / r.height
+    if (vx < 0 || vx > 1 || vy < 0 || vy > 1) return null
+    if (!selectMode || draftScale === 1 && props.rotate === 0 && !props.flipX) return { x: vx, y: vy }
+    // 与 fullImageStyle 的 transform（scale → rotate → scaleX）互逆。
+    return pointerToImage({ x: vx, y: vy }, {
+      width: r.width,
+      height: r.height,
+      rotate: props.rotate,
+      flipX: props.flipX,
+      scale: draftScale,
+    })
   }
 
   const clamp = (v: number, min: number, max: number): number => Math.min(max, Math.max(min, v))
@@ -386,27 +402,25 @@ function WallpaperPreview(props: {
     if (p0 === null) return
     const box = selBox
     if (box !== null && box.w > 0) {
-      // 角手柄是 8px 方块，且有一半伸出选框外；用像素级命中判定（手柄 + 4px 容差），
-      // 避免点到手柄外侧时被当成“在选框外按下”而清空选框（现象：一拉伸选框就消失）。
-      const handleHitPx = 12
-      const borderHitPx = 6
-      const leftPx = box.x * r.width
-      const topPx = box.y * r.height
-      const rightPx = (box.x + box.w) * r.width
-      const bottomPx = (box.y + box.h) * r.height
-      const distLeft = Math.abs(e.clientX - r.left - leftPx)
-      const distRight = Math.abs(e.clientX - r.left - rightPx)
-      const distTop = Math.abs(e.clientY - r.top - topPx)
-      const distBottom = Math.abs(e.clientY - r.top - bottomPx)
-      const nearLeft = distLeft < handleHitPx
-      const nearRight = distRight < handleHitPx
-      const nearTop = distTop < handleHitPx
-      const nearBottom = distBottom < handleHitPx
+      // 角手柄是 8px 方块，且有一半伸出选框外；命中判定换算成图片空间的归一化容差
+      // （图片层带方向草稿时，屏幕像素与图片坐标不再是 1:1）。
+      const handleHitX = 12 / r.width
+      const handleHitY = 12 / r.height
+      const borderHitX = 6 / r.width
+      const borderHitY = 6 / r.height
+      const distLeft = Math.abs(p0.x - box.x)
+      const distRight = Math.abs(p0.x - (box.x + box.w))
+      const distTop = Math.abs(p0.y - box.y)
+      const distBottom = Math.abs(p0.y - (box.y + box.h))
+      const nearLeft = distLeft < handleHitX
+      const nearRight = distRight < handleHitX
+      const nearTop = distTop < handleHitY
+      const nearBottom = distBottom < handleHitY
       const nearCorner = (nearLeft || nearRight) && (nearTop || nearBottom)
       // 边框/角手柄本身有 1.5px 描边且可点区域略大于选框；把靠近选框边缘的按下也视为
       // 对当前选框的操作（移动），只有离选框明显更远时才新建选区，避免选框被误清空。
-      const nearBox = p0.x >= box.x - borderHitPx / r.width && p0.x <= box.x + box.w + borderHitPx / r.width
-        && p0.y >= box.y - borderHitPx / r.height && p0.y <= box.y + box.h + borderHitPx / r.height
+      const nearBox = p0.x >= box.x - borderHitX && p0.x <= box.x + box.w + borderHitX
+        && p0.y >= box.y - borderHitY && p0.y <= box.y + box.h + borderHitY
       if (nearCorner) {
         const corner = `${distTop <= distBottom ? 't' : 'b'}${distLeft <= distRight ? 'l' : 'r'}` as 'tl' | 'tr' | 'bl' | 'br'
         drag.current = { mode: 'resize', box, corner }
@@ -501,14 +515,19 @@ function WallpaperPreview(props: {
   }
   const imageAspect = imgRatio ?? 1
   // 完整壁纸层：铺满容器（容器按图片比例构建，图片不变形，上下超出的部分可见）。
-  // 编辑选区时图片保持原方向：选框就画在这一层里，图片一旦旋转，拖动方向会和
-  // 鼠标对不上（选区坐标始终以原图为基准）。方向草稿只记录，完成时一并保存。
+  // 编辑态叠加方向草稿：转 90/270 时按 contain 缩放，图完整可见且不被裁切；
+  // 选框画在这一层里跟着转，指针坐标由 norm() 逆变换回图片空间，拖动仍然跟手。
+  const draftParts: string[] = []
+  if (draftRotated) draftParts.push(`scale(${draftScale})`)
+  if (props.rotate !== 0) draftParts.push(`rotate(${props.rotate}deg)`)
+  if (props.flipX) draftParts.push('scaleX(-1)')
   const fullImageStyle: React.CSSProperties = {
     position: 'absolute',
     inset: 0,
     backgroundImage: 'url("' + props.src + '")',
     backgroundSize: '100% 100%',
     backgroundRepeat: 'no-repeat',
+    ...(draftParts.length > 0 ? { transform: draftParts.join(' ') } : {}),
   }
   // 非框选：Cover 且有选区时，展示完整壁纸 + 静态选框（选区外暗色遮罩）。
   const viewportBox = displayArea !== null && imgRatio !== null && imgRatio > 0 && props.fit === 'cover'
