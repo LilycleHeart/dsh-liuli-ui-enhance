@@ -11,6 +11,7 @@ import { createPortal } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
 import type { ObservableSnapshot, SessionId, SessionListState } from './compat.ts'
 import type { SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
+import { relativeTime, StateDot, type RelativeTimeUnit } from '@deepseek-ai/dsh-client-ui-primitives'
 import { groupActivities, type ActivityKind } from './activity-grouping.ts'
 import css from './LeftActivityView.module.css'
 
@@ -32,40 +33,68 @@ function useSnapshot<T>(source: ObservableSnapshot<T>): T {
   return snapshot
 }
 
-function Glyph({ name }: { name: 'workspaces' | 'activity' | ActivityKind }) {
+function Glyph({ name }: { name: 'workspaces' | 'activity' }) {
   // Material Symbols paths; currentColor follows Liuli's dynamic theme.
   const paths = {
     workspaces: 'M10 4H2c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h20c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2H12l-2-2z',
     activity: 'M13 2 3 14h7l-1 8 12-14h-7l1-6h-2z',
-    attention: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z',
-    running: 'M12 2a10 10 0 1 0 10 10h-2a8 8 0 1 1-8-8V2zm1 3h-2v8l6 3 1-1.7-5-2.5V5z',
-    completed: 'M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm-1 15-5-5 1.4-1.4L11 14.2l5.6-5.6L18 10l-7 7z',
-    idle: 'M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6l-4 3V6a2 2 0 0 1 2-2zm0 2v13l1.3-1H20V6H4z',
   } satisfies Record<string, string>
   return <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d={paths[name]} /></svg>
 }
 
-interface ActivityItem { id: SessionId; title: string; cwd: string | undefined; updatedAt: number; kind: ActivityKind }
+interface ActivityItem { id: SessionId; title: string; updatedAt: number; kind: ActivityKind }
 
-const kindLabel: Record<ActivityKind, string> = {
-  attention: '需要处理',
-  running: '进行中',
-  completed: '刚完成',
-  idle: '',
+/** Row status rides on the official state dot, exactly like the official session row. */
+const dotState: Record<ActivityKind, 'warning' | 'ongoing' | 'done' | 'idle'> = {
+  attention: 'warning',
+  running: 'ongoing',
+  completed: 'done',
+  idle: 'idle',
 }
 
-function currentWorkspace(cwd: string | undefined): string | undefined {
-  if (cwd === undefined) return undefined
-  const trimmed = cwd.replace(/[\\/]+$/, '')
-  return trimmed.split(/[\\/]/).pop() || trimmed
+/** Official relative-time words (ui-workspace zh dictionary) so both lists read the same. */
+const timeWords: Record<RelativeTimeUnit, (n: number) => string> = {
+  now: () => '刚刚',
+  minutes: n => `${n}分钟`,
+  hours: n => `${n}小时`,
+  days: n => `${n}天`,
+  months: n => `${n}个月`,
+  years: n => `${n}年`,
 }
 
-function formatAge(timestamp: number): string {
-  const minutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60000))
-  if (minutes < 1) return '刚刚'
-  if (minutes < 60) return `${minutes} 分钟前`
-  const hours = Math.floor(minutes / 60)
-  return hours < 24 ? `${hours} 小时前` : `${Math.floor(hours / 24)} 天前`
+function rowTimeLabel(timestamp: number): string {
+  const { unit, n } = relativeTime(timestamp, Date.now())
+  return timeWords[unit](n)
+}
+
+interface RowSkin { row: string; slot: string | undefined; title: string | undefined; time: string | undefined }
+
+function pickClass(element: Element | null, suffix: string): string | undefined {
+  if (element === null) return undefined
+  for (const name of element.classList) {
+    if (name.endsWith(`_${suffix}`)) return name
+  }
+  return undefined
+}
+
+/**
+ * Official session-row class names (e.g. `hIlkoa_sessionRow`, stable within one
+ * client build). The Activity list reuses the official row/slot/title/time
+ * classes instead of inventing its own session styling, so height, padding,
+ * hover and the state dot come from the same CSS the sidebar uses. When the
+ * official list has not rendered yet, fall back to this module's look-alike.
+ */
+function readRowSkin(): RowSkin | undefined {
+  const row = document.querySelector<HTMLElement>('[data-row-key^="session:"]:not([data-liuli-activity-row])')
+  if (row === null) return undefined
+  const rowClass = pickClass(row, 'sessionRow')
+  if (rowClass === undefined) return undefined
+  return {
+    row: rowClass,
+    slot: pickClass(row.querySelector('[class*="_slot"]'), 'slot') ?? css.slot,
+    title: pickClass(row.querySelector('[class*="_title"]'), 'title') ?? css.title,
+    time: pickClass(row.querySelector('[class*="_time"]'), 'time') ?? css.time,
+  }
 }
 
 function ActivityPanel({ host }: { host: LeftActivityHost }) {
@@ -85,23 +114,41 @@ function ActivityPanel({ host }: { host: LeftActivityHost }) {
         : (status?.running ?? row.running)
           ? 'running'
           : status?.completionUnread === true ? 'completed' : 'idle'
-      rows.push({ id, title: row.displayTitle || row.title || String(id), cwd: row.cwd, updatedAt: row.updatedAt, kind })
+      rows.push({ id, title: row.displayTitle || row.title || String(id), updatedAt: row.updatedAt, kind })
     }
     // The host's updatedAt is the authoritative latest-activity timestamp; the
     // pinned-active block and the 今天/昨天/前天 day groups live in the grouping
     // module so the ordering rules stay testable without React.
     return groupActivities(rows)
   }, [list, statuses, archived])
+  // Re-read the official row classes whenever the sidebar list changes shape.
+  const skin = useMemo(() => readRowSkin(), [list, statuses, archived])
 
-  return <div className={css.panel} role="region" aria-label="活动会话">
+  return <div className={css.panel} role="tree" aria-label="活动会话">
     {groups.length === 0
       ? <div className={css.empty}><Glyph name="activity" /><span>还没有会话</span></div>
-      : groups.map(group => <section key={group.key} className={group.key === 'active' ? `${css.section} ${css.activeSection}` : css.section} aria-label={group.label}>
-        <div className={group.key === 'active' ? `${css.dateTitle} ${css.activeTitle}` : css.dateTitle}>{group.label}</div>
-        {group.items.map(item => <button key={item.id} type="button" className={css.row} onClick={() => { host.openSession(item.id) }} title={item.title}>
-          <span className={`${css.statusIcon} ${css[item.kind]}`}><Glyph name={item.kind} /></span>
-          <span className={css.rowText}><span className={css.rowTitle}>{item.title}</span><span className={css.rowMeta}>{kindLabel[item.kind] && <><span className={css.statusLabel}>{kindLabel[item.kind]}</span><span aria-hidden="true"> · </span></>}{currentWorkspace(item.cwd) ?? '会话'} · {formatAge(item.updatedAt)}</span></span>
-        </button>)}
+      : groups.map(group => <section key={group.key} role="group" className={group.key === 'active' ? `${css.section} ${css.activeSection}` : css.section} aria-label={group.label}>
+        <div className={group.key === 'active' ? `${css.dateTitle} ${css.activeTitle}` : css.dateTitle} aria-hidden="true">{group.label}</div>
+        {group.items.map(item => <div
+          key={item.id}
+          role="treeitem"
+          aria-selected={false}
+          data-liuli-activity-row=""
+          data-row-key={`session:${item.id}`}
+          tabIndex={0}
+          title={item.title}
+          className={skin?.row ?? css.row}
+          onClick={() => { host.openSession(item.id) }}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return
+            event.preventDefault()
+            host.openSession(item.id)
+          }}
+        >
+          <span className={skin?.slot ?? css.slot}><StateDot state={dotState[item.kind]} /></span>
+          <span className={skin?.title ?? css.title}>{item.title}</span>
+          <span className={skin?.time ?? css.time}>{rowTimeLabel(item.updatedAt)}</span>
+        </div>)}
       </section>)}
   </div>
 }
