@@ -64,6 +64,10 @@ export interface LiuliSettings {
   bg_fit: LiuliBgFit
   /** 壁纸自定义选区（cover 模式下放大显示该区域，按窗口比例约束）；null 为全图。 */
   bg_area: LiuliBgArea | null
+  /** 壁纸水平翻转（左右镜像）。 */
+  bg_flip_x: boolean
+  /** 壁纸顺时针旋转角度（0 / 90 / 180 / 270）。 */
+  bg_rotate: number
   /** 声纹响应总开关：关闭后停止系统音频监听并隐藏会话页头波形（参数保留，重新开启即恢复）。 */
   vp_enabled: boolean
   /** 声纹响应灵敏度：连续响应的参考响度（ENV_REF，0.05-0.5，越小越灵敏）。 */
@@ -190,6 +194,8 @@ export const LIULI_SETTINGS_DEFAULTS: LiuliSettings = {
   dock_padding: 8,
   bg_fit: 'cover',
   bg_area: null,
+  bg_flip_x: false,
+  bg_rotate: 0,
   vp_enabled: true,
   vp_sensitivity: 0.15,
   vp_beat_gain: 1.2,
@@ -264,6 +270,9 @@ export const LiuliSettingsSchema: z<LiuliSettings> = z.object({
   bg_fit: z.union(['cover', 'contain', 'stretch']).default('cover'),
   // bg_area 为可选对象（null 表示全图），这里用 unknown 占位避免被 schema 过滤掉。
   bg_area: z.any(),
+  bg_flip_x: z.boolean().default(false),
+  // 运行时归一化到 0/90/180/270，schema 不做枚举以免旧设置被整份拒绝。
+  bg_rotate: z.number().default(0),
   vp_enabled: z.boolean().default(true),
   vp_sensitivity: z.number().default(0.15),
   vp_beat_gain: z.number().default(1.2),
@@ -318,6 +327,12 @@ export const LiuliSettingsSchema: z<LiuliSettings> = z.object({
 /** 老版本把 false 写进完整设置快照，它不代表用户明确选择关闭。 */
 export function wantsLiuliOfficialSidebar(settings: LiuliSettings): boolean {
   return settings.official_sidebar_right_user_choice ? settings.official_sidebar_right : true
+}
+
+/** 壁纸旋转角归一化到 0/90/180/270（旧设置里可能是任意数字）。 */
+export function normalizeBgRotate(rotate: number | undefined): 0 | 90 | 180 | 270 {
+  const normalized = ((Math.round((rotate ?? 0) / 90) * 90) % 360 + 360) % 360
+  return normalized === 90 || normalized === 180 || normalized === 270 ? normalized : 0
 }
 
 /** 合并任意部分值到完整设置（读侧防御）。 */

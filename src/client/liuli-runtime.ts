@@ -19,7 +19,7 @@ import { hexFromArgb, sourceColorFromImage } from '../vendor/material-color-util
 import {
   LIULI_DEFAULT_SOURCE, liuliApplyBrand, liuliDerivePalette,
 } from './liuli-palette.ts'
-import { LIULI_SETTINGS_DEFAULTS, type LiuliBgArea, type LiuliBgFit, type LiuliSettings } from '../liuli-settings.ts'
+import { LIULI_SETTINGS_DEFAULTS, normalizeBgRotate, type LiuliBgArea, type LiuliBgFit, type LiuliSettings } from '../liuli-settings.ts'
 import { preservedWallpaperMime } from './wallpaper-format.ts'
 
 /** 壁纸持久化键（localStorage，dataURL）。 */
@@ -349,9 +349,28 @@ export function bgGeometry(
   return { size: 'cover', position: 'center' }
 }
 
-function applyBgLayer(wallpaperSrc: string, _blur: number, fit: LiuliBgFit, area: LiuliBgArea | null): void {
+/** 壁纸旋转角归一化（实现随设置模块走，便于单测）。 */
+export { normalizeBgRotate }
+
+function applyBgLayer(
+  wallpaperSrc: string,
+  _blur: number,
+  fit: LiuliBgFit,
+  area: LiuliBgArea | null,
+  flipX: boolean,
+  rotate: 0 | 90 | 180 | 270,
+): void {
   const layer = ensureBgLayer()
   layer.style.display = ''
+  // 90/270：先交换承载层宽高再做绕中心旋转，旋转后仍严格铺满视口；
+  // 180 只翻转方向，几何不变。镜像叠加在旋转之后（视觉上的「转正再左右翻」）。
+  const turned = rotate === 90 || rotate === 270
+  layer.style.left = turned ? '50vw' : '0'
+  layer.style.top = turned ? '50vh' : '0'
+  layer.style.width = turned ? '100vh' : '100vw'
+  layer.style.height = turned ? '100vw' : '100vh'
+  layer.style.transformOrigin = 'center center'
+  layer.style.transform = `${turned ? 'translate(-50%, -50%) ' : ''}rotate(${rotate}deg)${flipX ? ' scaleX(-1)' : ''}`
   // 壁纸本身不带遮罩：暗色遮罩由 CSS [data-ds-dark-theme] 选择器叠加（原项目同构），
   // 主题切换即时响应，无 JS 时序问题。
   // 壁纸不应用 filter：原图保持清晰（磨砂由表面 backdrop-filter 与
@@ -360,7 +379,9 @@ function applyBgLayer(wallpaperSrc: string, _blur: number, fit: LiuliBgFit, area
   layer.style.filter = 'none'
   // 比例必须取当前 src 的缓存值而非模块级全局：全局值可能被被淘汰的
   // 异步调用写成旧壁纸的比例（竞态），按 src 取值永不错位。
-  const g = bgGeometry(fit, area, imageRatioCache.get(wallpaperSrc) ?? currentImageRatio)
+  // 旋转 90/270 时承载层宽高互换，选区归一化也要按互换后的视口比例算。
+  const viewportRatio = turned ? window.innerHeight / window.innerWidth : window.innerWidth / window.innerHeight
+  const g = bgGeometry(fit, area, imageRatioCache.get(wallpaperSrc) ?? currentImageRatio, viewportRatio)
   layer.style.backgroundSize = g.size
   layer.style.backgroundPosition = g.position
   layer.style.backgroundRepeat = 'no-repeat'
@@ -380,7 +401,7 @@ export function applyLiuliWallpaper(settings: LiuliSettings): void {
   if (wallpaperSrc) {
     const blurPx = cfg.acrylic_enabled === false ? 0
       : Math.max(0, Math.min(100, cfg.material_blur ?? 5))
-    applyBgLayer(wallpaperSrc, blurPx, cfg.bg_fit, cfg.bg_area)
+    applyBgLayer(wallpaperSrc, blurPx, cfg.bg_fit, cfg.bg_area, cfg.bg_flip_x === true, normalizeBgRotate(cfg.bg_rotate))
   } else {
     clearBgLayer()
   }
@@ -534,7 +555,7 @@ export async function applyLiuliSettings(settings: LiuliSettings): Promise<void>
     const blurPx = cfg.acrylic_enabled === false ? 0
       : Math.max(0, Math.min(100, cfg.material_blur ?? 5))
     set('--liuli-scrim', scrim + '')
-    applyBgLayer(wallpaperSrc, blurPx, cfg.bg_fit, cfg.bg_area)
+    applyBgLayer(wallpaperSrc, blurPx, cfg.bg_fit, cfg.bg_area, cfg.bg_flip_x === true, normalizeBgRotate(cfg.bg_rotate))
     set('--liuli-frame-bg', 'transparent')
     unset('--liuli-frame-bg-image')
     unset('--liuli-frame-bg-size')

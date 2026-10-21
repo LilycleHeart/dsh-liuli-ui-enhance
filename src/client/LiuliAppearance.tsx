@@ -14,7 +14,7 @@ import {
 import type { PropsLocale, PropsRuntime, PropsStore, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { LiuliBgArea, LiuliSettings } from '../liuli-settings.ts'
 import { LIULI_SETTINGS_DEFAULTS } from '../liuli-settings.ts'
-import { bgGeometry, normalizeAreaToRatio, loadWallpaper, subscribeWallpaper } from './liuli-runtime.ts'
+import { bgGeometry, normalizeAreaToRatio, normalizeBgRotate, loadWallpaper, subscribeWallpaper } from './liuli-runtime.ts'
 import type { createLiuliStore } from './liuli-store.ts'
 import { usePopupValuePresence } from './use-popup-presence.ts'
 import css from './LiuliAppearance.module.css'
@@ -213,6 +213,8 @@ function WallpaperPreview(props: {
   src: string
   fit: LiuliSettings['bg_fit']
   area: LiuliBgArea | null
+  flipX: boolean
+  rotate: 0 | 90 | 180 | 270
   onArea: (area: LiuliBgArea) => void
   onClearArea: () => void
   t: TranslateNS<'liuli-appearance'>
@@ -432,17 +434,33 @@ function WallpaperPreview(props: {
     setSelBox(null)
   }
 
-  const g = bgGeometry(props.fit, props.area, imgRatio, winRatio)
+  // 旋转 90/270 时承载层宽高互换，选区与 cover 都按互换后的视口比例计算。
+  const rotated = props.rotate === 90 || props.rotate === 270
+  const g = bgGeometry(props.fit, props.area, imgRatio, rotated ? 1 / winRatio : winRatio)
   const stageStyle: React.CSSProperties = {
     aspectRatio: winRatio,
     width: '100%',
     maxWidth: 220 * winRatio,
   }
+  const mirror = props.flipX ? ' scaleX(-1)' : ''
   const effectStyle: React.CSSProperties = {
     backgroundImage: 'url("' + props.src + '")',
     backgroundSize: g.size,
     backgroundPosition: g.position,
     backgroundRepeat: 'no-repeat',
+    ...(rotated
+      ? {
+        // 先交换宽高再绕中心旋转，预览里旋转后仍严格铺满预览框。
+        top: '50%',
+        left: '50%',
+        right: 'auto',
+        bottom: 'auto',
+        height: '100%',
+        width: 'auto',
+        aspectRatio: String(winRatio),
+        transform: `translate(-50%, -50%) rotate(${props.rotate}deg)${mirror}`,
+      }
+      : props.flipX ? { transform: 'scaleX(-1)' } : {}),
   }
   const imageAspect = imgRatio ?? 1
   // 完整壁纸层：铺满容器（容器按图片比例构建，图片不变形，上下超出的部分可见）。
@@ -814,12 +832,32 @@ export function LiuliAppearanceSection({
           onChange={(v) => { set({ bg_fit: v as LiuliSettings['bg_fit'] }) }}
         />
 
+        <ToggleRow
+          label={t('bgFlip.x')}
+          checked={s.bg_flip_x === true}
+          onChange={(v) => { set({ bg_flip_x: v }) }}
+        />
+
+        <SelectRow
+          label={t('bgFlip.rotate')}
+          value={String(normalizeBgRotate(s.bg_rotate))}
+          options={[
+            { value: '0', label: '0°' },
+            { value: '90', label: '90°' },
+            { value: '180', label: '180°' },
+            { value: '270', label: '270°' },
+          ]}
+          onChange={(v) => { set({ bg_rotate: Number(v) }) }}
+        />
+
         {shownWallpaper !== null && (
           <div ref={wallpaperWrapRef} data-liuli-wallpaper-preview="" className={css.wallpaperPreviewWrap} data-open={wallpaper !== null || undefined} aria-hidden={wallpaper === null}>
             <div className={css.wallpaperPreviewInner}><WallpaperPreview
               src={shownWallpaper}
               fit={s.bg_fit}
               area={s.bg_area}
+              flipX={s.bg_flip_x === true}
+              rotate={normalizeBgRotate(s.bg_rotate)}
               onArea={(area) => { set({ bg_area: area }) }}
               onClearArea={() => { set({ bg_area: null }) }}
               t={t}
