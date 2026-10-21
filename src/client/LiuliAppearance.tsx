@@ -230,6 +230,9 @@ function WallpaperPreview(props: {
 }) {
   const stageRef = useRef<HTMLDivElement | null>(null)
   const [winRatio, setWinRatio] = useState(() => window.innerWidth / window.innerHeight)
+  // 预览框的像素尺寸：旋转 90/270 时承载层要按转置后的宽高（高×宽）显式设置，
+  // 绝对定位元素上的 width:auto + aspect-ratio 量不出宽度，层会塌成 0。
+  const [stageSize, setStageSize] = useState<{ w: number; h: number } | null>(null)
   const [imgRatio, setImgRatio] = useState<number | null>(null)
   const [imageError, setImageError] = useState(false)
   const [selectMode, setSelectMode] = useState(false)
@@ -247,6 +250,22 @@ function WallpaperPreview(props: {
     window.addEventListener('resize', onResize)
     return () => { window.removeEventListener('resize', onResize) }
   }, [])
+
+  // 量预览框（选择态/效果态是同一个 ref，切换时重新观察）。
+  useEffect(() => {
+    const element = stageRef.current
+    if (element === null) return
+    const measure = (): void => {
+      const rect = element.getBoundingClientRect()
+      setStageSize(previous => (previous !== null && Math.abs(previous.w - rect.width) < 0.5 && Math.abs(previous.h - rect.height) < 0.5)
+        ? previous
+        : { w: rect.width, h: rect.height })
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    return () => { observer.disconnect() }
+  }, [selectMode])
 
   // 读取图片原始宽高比：框选模式下按原图比例显示，避免被拉伸。
   useEffect(() => {
@@ -451,7 +470,11 @@ function WallpaperPreview(props: {
     width: '100%',
     maxWidth: 220 * winRatio,
   }
-  const mirror = props.flipX ? ' scaleX(-1)' : ''
+  const transformParts: string[] = []
+  if (rotated) transformParts.push('translate(-50%, -50%)')
+  if (props.rotate !== 0) transformParts.push(`rotate(${props.rotate}deg)`)
+  if (props.flipX) transformParts.push('scaleX(-1)')
+  const transform = transformParts.length > 0 ? transformParts.join(' ') : undefined
   const effectStyle: React.CSSProperties = {
     backgroundImage: 'url("' + props.src + '")',
     backgroundSize: g.size,
@@ -464,12 +487,11 @@ function WallpaperPreview(props: {
         left: '50%',
         right: 'auto',
         bottom: 'auto',
-        height: '100%',
-        width: 'auto',
-        aspectRatio: String(winRatio),
-        transform: `translate(-50%, -50%) rotate(${props.rotate}deg)${mirror}`,
+        width: stageSize !== null ? `${stageSize.h}px` : '100%',
+        height: stageSize !== null ? `${stageSize.w}px` : '100%',
       }
-      : props.flipX ? { transform: 'scaleX(-1)' } : {}),
+      : {}),
+    ...(transform !== undefined ? { transform } : {}),
   }
   const imageAspect = imgRatio ?? 1
   // 完整壁纸层：铺满容器（容器按图片比例构建，图片不变形，上下超出的部分可见）。
@@ -480,10 +502,6 @@ function WallpaperPreview(props: {
     backgroundSize: '100% 100%',
     backgroundRepeat: 'no-repeat',
   }
-  // 非框选：Cover 且有选区时，展示完整壁纸 + 静态选框（选区外暗色遮罩）。
-  const viewportBox = displayArea !== null && imgRatio !== null && imgRatio > 0 && props.fit === 'cover'
-    ? normalizeAreaToRatio(displayArea, cropRatio)
-    : null
   // 统一容器：选择态与非选择态完全一致（宽度按窗口、高度按完整壁纸比例），
   // 进入框选时容器不变，只是选框变为可交互。
   const contextStyle: React.CSSProperties = {
@@ -578,26 +596,6 @@ function WallpaperPreview(props: {
           ) : (
             <div className={css.previewLoading} />
           )}
-        </div>
-      ) : viewportBox !== null ? (
-        <div
-          ref={stageRef}
-          className={css.previewContext}
-          style={contextStyle}
-        >
-          {/* 完整壁纸层：铺满容器，上下超出的部分可见。 */}
-          <div className={css.previewFull} style={fullImageStyle} />
-          {/* 原来的选框样式：选区外暗色遮罩，静态展示当前选区。 */}
-          <div
-            className={css.previewCropBox}
-            style={{
-              left: viewportBox.x * 100 + '%',
-              top: viewportBox.y * 100 + '%',
-              width: viewportBox.w * 100 + '%',
-              height: viewportBox.h * 100 + '%',
-              pointerEvents: 'none',
-            }}
-          />
         </div>
       ) : (
         <div
