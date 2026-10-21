@@ -91,7 +91,7 @@ import { installResizePerfWatcher } from './resize-perf.ts'
 import { startHeaderTabIndicator } from './header-tab-indicator.ts'
 import { startHeaderTextAnimation } from './header-text-animation.ts'
 import { startConversationSplit } from './conversation-split.ts'
-import { disposeSupplierQuota, initSupplierQuota, refreshSupplierQuota, setCommandCodeRemote, setDeepSeekAccountRemote } from './supplier-quota.ts'
+import { disposeSupplierQuota, hasCommandCodeRemote, initSupplierQuota, refreshSupplierQuota, setCommandCodeRemote, setDeepSeekAccountRemote } from './supplier-quota.ts'
 import type { DeepSeekAccountQuotaRemote } from './deepseek-account-quota.ts'
 import { startQuotaTokenInject } from './quota-token-inject.ts'
 import { SupplierQuota } from './SupplierQuota.tsx'
@@ -108,7 +108,7 @@ import { startSessionRename } from './session-rename.ts'
 import { startSessionMarkerDecoration } from './session-markers.ts'
 import { startSessionTitleFilter } from './session-title-filter.ts'
 import { startSessionContextMenu } from './session-context-menu.ts'
-import { startLeftActivityView } from './left-activity-view.tsx'
+import { startSessionTimeGroups } from './session-time-groups.ts'
 import { startSettingsSelectUpgrade } from './settings-selects.ts'
 import { startStatsLineIcons } from './stats-line-icons.ts'
 import { startComposerSeatAnchor } from './composer-seat-anchor.ts'
@@ -923,20 +923,13 @@ export function apply(ctx: ClientContext): void {
     return startSessionContextMenu(ctx)
   }, 'dsh-liuli-ui-enhance: session context menu')
 
-  // 左栏活动视图：保留官方工作区浏览器，通过官方会话状态与导航服务展示
-  // 需要处理、进行中和刚完成的会话，随时切回原工作区列表。
+  // ── 侧栏会话日期分段：官方「视图选项 → 单列表 + 最近更新」本身就是按最后活动
+  //    时间倒序的扁平列表，这里只在行之间补 今天/昨天/前天/日期 标题；排序、置顶、
+  //    行样式仍归官方，不另起视图。──
   ctx.effect(() => {
     if (!unofficial('dom')) return () => {}
-    return startLeftActivityView({
-      sessions: ctx.sessions.list,
-      statuses: ctx.uiSession.sessionStatus,
-      archived: {
-        getSnapshot: () => ctx.workspaces.list.getSnapshot().archivedSessionIds,
-        subscribe: listener => ctx.workspaces.list.subscribe(listener),
-      },
-      openSession: id => { ctx.uiWorkspace.openSession(id) },
-    })
-  }, 'dsh-liuli-ui-enhance: left activity view')
+    return startSessionTimeGroups({ sessions: ctx.sessions, workspaces: ctx.workspaces })
+  }, 'dsh-liuli-ui-enhance: sidebar session date groups')
 
   // ── 工作区/目录行右键菜单：重命名/删除工作区（不改官方代码）──
   ctx.effect(() => {
@@ -1033,8 +1026,7 @@ export function apply(ctx: ClientContext): void {
   //    卸载时传 null 让额度回退到 unavailable（页头隐藏，不报错）。
   //    刻意不写进包级 inject：插件缺席时那会让启动图死锁。 ──
   ctx.effect(() => {
-    const fiber = ctx.inject(['remote.commandcode'], (remoteCtx) => {
-      const namespace = liuliRemoteNamespace(remoteCtx, 'commandcode')
+    const attach = (namespace: ReturnType<typeof liuliRemoteNamespace>): void => {
       setCommandCodeRemote(namespace === null ? null : {
         // 每次调用都重新取方法：贡献卸载时 gateway 会删掉该属性，
         // 拿住的旧引用会变成「调用已撤销的 Remote」，这里改为当场判定。
@@ -1046,9 +1038,30 @@ export function apply(ctx: ClientContext): void {
           return method.call(namespace) as Promise<{ ok?: boolean; value?: unknown; error?: { message?: string } }>
         },
       })
+    }
+    const fiber = ctx.inject(['remote.commandcode'], (remoteCtx) => {
+      attach(liuliRemoteNamespace(remoteCtx, 'commandcode'))
       return () => { setCommandCodeRemote(null) }
     })
-    return () => { void fiber.dispose() }
+    // 兜底：inject 依赖服务名 remote.commandcode 的就绪事件；若宿主把命名空间服务
+    // 挂在别的作用域上，页面里服务可用但这里收不到回调（表现为页头一直不显示额度
+    // 且没有任何提示）。轮询按服务名直接取一次，拿到即挂上，之后不再重复覆盖。
+    const timer = setInterval(() => {
+      if (hasCommandCodeRemote()) return
+      let service: unknown
+      try {
+        service = (ctx as unknown as { get(name: string, strict?: boolean): unknown }).get('remote.commandcode', false)
+      } catch {
+        return
+      }
+      if (service !== null && typeof service === 'object') {
+        attach(service as ReturnType<typeof liuliRemoteNamespace>)
+      }
+    }, 2000)
+    return () => {
+      clearInterval(timer)
+      void fiber.dispose()
+    }
   }, 'dsh-liuli-ui-enhance: commandcode quota remote')
   // ── 模型请求重试：注入 remote 适配层，供通用设置区编辑各供应商 retryPolicy ──
   initModelRetry(liuliRemoteApi(ctx))
