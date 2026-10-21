@@ -41,6 +41,10 @@
 }
 .section { margin: 3px 0 9px; }
 .dateTitle { margin: 0 7px 2px; color: var(--dsw-alias-label-tertiary, #888); font: 600 11px/1.4 system-ui; }
+/* Pinned "active" block: sessions the user still owes an answer to, or that are
+   still running. Its heading keeps the brand accent so it reads as a live zone. */
+.activeSection { margin-top: 0; }
+.activeTitle { color: var(--dsw-alias-brand-primary, var(--liuli-accent, #6ca6ff)); }
 .row { width: 100%; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 5px 7px; border: 0; border-radius: 9px; background: transparent; color: var(--dsw-alias-label-primary, inherit); text-align: left; cursor: pointer; }
 .row:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, .12)); }
 .statusIcon { flex: none; display: grid; place-items: center; width: 17px; height: 17px; color: var(--dsw-alias-label-tertiary, #888); }

@@ -11,10 +11,10 @@ import { createPortal } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
 import type { ObservableSnapshot, SessionId, SessionListState } from './compat.ts'
 import type { SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
+import { groupActivities, type ActivityKind } from './activity-grouping.ts'
 import css from './LeftActivityView.module.css'
 
 type View = 'workspaces' | 'activity'
-type ActivityKind = 'attention' | 'running' | 'completed' | 'idle'
 
 export interface LeftActivityHost {
   sessions: ObservableSnapshot<SessionListState>
@@ -46,19 +46,6 @@ function Glyph({ name }: { name: 'workspaces' | 'activity' | ActivityKind }) {
 }
 
 interface ActivityItem { id: SessionId; title: string; cwd: string | undefined; updatedAt: number; kind: ActivityKind }
-
-interface DateGroup { key: string; label: string; items: ActivityItem[] }
-
-function localDateKey(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-}
-
-function dateGroupLabel(date: Date, today: Date, yesterday: Date): string {
-  const key = localDateKey(date)
-  if (key === localDateKey(today)) return '今天'
-  if (key === localDateKey(yesterday)) return '昨天'
-  return `${date.getFullYear()} 年 ${date.getMonth() + 1} 月 ${date.getDate()} 日`
-}
 
 const kindLabel: Record<ActivityKind, string> = {
   attention: '需要处理',
@@ -100,30 +87,17 @@ function ActivityPanel({ host }: { host: LeftActivityHost }) {
           : status?.completionUnread === true ? 'completed' : 'idle'
       rows.push({ id, title: row.displayTitle || row.title || String(id), cwd: row.cwd, updatedAt: row.updatedAt, kind })
     }
-    // The host's updatedAt is the authoritative latest-activity timestamp.
-    // Status affects only each row's marker, never order or inclusion.
-    rows.sort((a, b) => b.updatedAt - a.updatedAt || String(a.id).localeCompare(String(b.id)))
-    const today = new Date()
-    const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1)
-    const byDate = new Map<string, DateGroup>()
-    for (const item of rows) {
-      const date = new Date(item.updatedAt)
-      const key = localDateKey(date)
-      let group = byDate.get(key)
-      if (group === undefined) {
-        group = { key, label: dateGroupLabel(date, today, yesterday), items: [] }
-        byDate.set(key, group)
-      }
-      group.items.push(item)
-    }
-    return [...byDate.values()]
+    // The host's updatedAt is the authoritative latest-activity timestamp; the
+    // pinned-active block and the 今天/昨天/前天 day groups live in the grouping
+    // module so the ordering rules stay testable without React.
+    return groupActivities(rows)
   }, [list, statuses, archived])
 
   return <div className={css.panel} role="region" aria-label="活动会话">
     {groups.length === 0
       ? <div className={css.empty}><Glyph name="activity" /><span>还没有会话</span></div>
-      : groups.map(group => <section key={group.key} className={css.section} aria-label={group.label}>
-        <div className={css.dateTitle}>{group.label}</div>
+      : groups.map(group => <section key={group.key} className={group.key === 'active' ? `${css.section} ${css.activeSection}` : css.section} aria-label={group.label}>
+        <div className={group.key === 'active' ? `${css.dateTitle} ${css.activeTitle}` : css.dateTitle}>{group.label}</div>
         {group.items.map(item => <button key={item.id} type="button" className={css.row} onClick={() => { host.openSession(item.id) }} title={item.title}>
           <span className={`${css.statusIcon} ${css[item.kind]}`}><Glyph name={item.kind} /></span>
           <span className={css.rowText}><span className={css.rowTitle}>{item.title}</span><span className={css.rowMeta}>{kindLabel[item.kind] && <><span className={css.statusLabel}>{kindLabel[item.kind]}</span><span aria-hidden="true"> · </span></>}{currentWorkspace(item.cwd) ?? '会话'} · {formatAge(item.updatedAt)}</span></span>
