@@ -219,8 +219,11 @@ function WallpaperPreview(props: {
   area: LiuliBgArea | null
   flipX: boolean
   rotate: 0 | 90 | 180 | 270
+  /** 预览值与已应用的壁纸不同：需要显式「应用」才落地。 */
+  dirty: boolean
   onFlipX: (value: boolean) => void
   onRotate: (value: 0 | 90 | 180 | 270) => void
+  onApply: () => void
   onArea: (area: LiuliBgArea) => void
   onClearArea: () => void
   t: TranslateNS<'liuli-appearance'>
@@ -513,6 +516,11 @@ function WallpaperPreview(props: {
             >
               <svg viewBox="0 0 24 24" aria-hidden="true" style={{ transform: `rotate(${props.rotate}deg)` }}><path d={ROTATE_ICON_PATH} /></svg>
             </button>
+            {props.dirty && (
+              <Button variant="primary" size="sm" onClick={props.onApply}>
+                {props.t('bgFlip.apply')}
+              </Button>
+            )}
           </>
         )}
         {selectMode ? (
@@ -663,6 +671,16 @@ export function LiuliAppearanceSection({
   const [uploadError, setUploadError] = useState<string>('')
 
   const set = (patch: Partial<LiuliSettings>): void => { save(patch) }
+
+  // 翻转 / 旋转是"试效果"型操作：先只改预览，点「应用」才写进设置，
+  // 免得每按一次图标就把桌面壁纸翻一遍。
+  const appliedFlipX = s.bg_flip_x === true
+  const appliedRotate = normalizeBgRotate(s.bg_rotate)
+  const [draftTransform, setDraftTransform] = useState<{ flipX: boolean; rotate: 0 | 90 | 180 | 270 } | null>(null)
+  const previewFlipX = draftTransform?.flipX ?? appliedFlipX
+  const previewRotate = draftTransform?.rotate ?? appliedRotate
+  const transformDirty = draftTransform !== null
+    && (draftTransform.flipX !== appliedFlipX || draftTransform.rotate !== appliedRotate)
 
   return (
     <div className={css.section}>
@@ -867,10 +885,15 @@ export function LiuliAppearanceSection({
               src={shownWallpaper}
               fit={s.bg_fit}
               area={s.bg_area}
-              flipX={s.bg_flip_x === true}
-              rotate={normalizeBgRotate(s.bg_rotate)}
-              onFlipX={(v) => { set({ bg_flip_x: v }) }}
-              onRotate={(v) => { set({ bg_rotate: v }) }}
+              flipX={previewFlipX}
+              rotate={previewRotate}
+              dirty={transformDirty}
+              onFlipX={(v) => { setDraftTransform({ flipX: v, rotate: previewRotate }) }}
+              onRotate={(v) => { setDraftTransform({ flipX: previewFlipX, rotate: v }) }}
+              onApply={() => {
+                set({ bg_flip_x: previewFlipX, bg_rotate: previewRotate })
+                setDraftTransform(null)
+              }}
               onArea={(area) => { set({ bg_area: area }) }}
               onClearArea={() => { set({ bg_area: null }) }}
               t={t}
