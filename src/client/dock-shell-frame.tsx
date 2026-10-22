@@ -46,7 +46,7 @@ import { LIULI_LS_KEY, liuliSettingsOf } from '../liuli-settings.ts'
 import css from './DockShellFrame.module.css'
 import { HMR_MARKER } from './hmr-marker.ts'
 import { tagConversationContainers } from './conversation-split.ts'
-import { beginResizePerf, endResizePerf, beginSidebarTransitionPerf } from './resize-perf.ts'
+import { beginResizePerf, endResizePerf, beginSidebarTransitionPerf, isWindowResizing, LAYOUT_SETTLED_EVENT } from './resize-perf.ts'
 import { usePopupPresence, usePopupValuePresence } from './use-popup-presence.ts'
 import { useSidebarPresence } from './use-sidebar-presence.ts'
 import { SidebarContent } from './sidebar-content.tsx'
@@ -1080,16 +1080,35 @@ export function DockShellFrame({ dockShell, hostLayout, slotLayout, useSessions,
   useEffect(() => {
     const rootEl = rootRef.current
     if (rootEl === null) return
-    const ro = new ResizeObserver(() => { recomputeGeometry() })
+    // 窗口拉伸期让位：拖窗口边缘时 root 尺寸与 window resize 每帧都变，
+    // 一次全量 getBoundingClientRect + setState 会强制同步布局，与声纹位图重建
+    // 叠加就是「拉伸卡顿」。拉伸期只置脏，等 resize-perf 的 layout-settled
+    // 事件做一次补算；sash / 面板手柄拖拽（几何必须实时跟随）不跳过。
+    let settledPending = false
+    const onGeometryChange = (): void => {
+      if (isWindowResizing()) {
+        settledPending = true
+        return
+      }
+      recomputeGeometry()
+    }
+    const onSettled = (): void => {
+      if (!settledPending) return
+      settledPending = false
+      recomputeGeometry()
+    }
+    const ro = new ResizeObserver(onGeometryChange)
     ro.observe(rootEl)
-    window.addEventListener('resize', recomputeGeometry)
+    window.addEventListener('resize', onGeometryChange)
     // shard 宽度/高度有 0.3s flex-basis/flex-grow 过渡；布局树切换（导入/恢复/重置）
     // 时 root 尺寸不变，RO 不会触发，必须在过渡结束后重算一次贴边标记。
-    rootEl.addEventListener('transitionend', recomputeGeometry)
+    rootEl.addEventListener('transitionend', onGeometryChange)
+    window.addEventListener(LAYOUT_SETTLED_EVENT, onSettled)
     return () => {
       ro.disconnect()
-      window.removeEventListener('resize', recomputeGeometry)
-      rootEl.removeEventListener('transitionend', recomputeGeometry)
+      window.removeEventListener('resize', onGeometryChange)
+      rootEl.removeEventListener('transitionend', onGeometryChange)
+      window.removeEventListener(LAYOUT_SETTLED_EVENT, onSettled)
     }
   }, [recomputeGeometry])
 

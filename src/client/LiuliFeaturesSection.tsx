@@ -117,6 +117,13 @@ export function LiuliFeaturesSection({
           onChange={(v) => { set({ auto_drive_browser: v }) }}
         />
 
+        <ToggleRow
+          label={t('tokenSpeedPersistent')}
+          tip={t('tokenSpeedPersistentHint')}
+          checked={s.token_speed_persistent}
+          onChange={(v) => { set({ token_speed_persistent: v }) }}
+        />
+
         <SelectRow
           label={t('terminalShell')}
           value={s.terminal_shell}

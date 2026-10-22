@@ -15,6 +15,7 @@
  * 观察式：React 重渲染/尺寸变化后重新测量；测量与写入都是幂等的（值没变不写）。
  */
 import type { Context } from '@deepseek-ai/cordis'
+import { deferWhileWindowResizing } from './resize-perf.ts'
 
 /** 被校正的元素与宿主属性（官方标记，跨构建稳定）。 */
 const SCROLL_ATTR = 'data-conversation-scroll'
@@ -98,7 +99,10 @@ export function startComposerSeatAnchor(ctx: Context): () => void {
     // 但容器尺寸/面板留白变化会影响，故需要它。
     for (const node of Array.from(document.querySelectorAll<HTMLElement>(`[${SCROLL_ATTR}]`))) ro.observe(node)
   }
-  window.addEventListener('resize', schedule)
+  // 窗口拉伸期让位：applySeat 读裁切祖先矩形再写 sticky bottom，是「读→写」
+  // 交替的强制重排；拖窗口时每帧跑一次就是拉伸掉帧的来源之一。拉伸结束补算一次。
+  const resizeDefer = deferWhileWindowResizing(schedule)
+  window.addEventListener('resize', resizeDefer.handler)
   schedule()
   return () => {
     started = false
@@ -106,7 +110,8 @@ export function startComposerSeatAnchor(ctx: Context): () => void {
     observer = null
     ro?.disconnect()
     ro = null
-    window.removeEventListener('resize', schedule)
+    window.removeEventListener('resize', resizeDefer.handler)
+    resizeDefer.dispose()
     if (raf !== 0) {
       cancelAnimationFrame(raf)
       raf = 0

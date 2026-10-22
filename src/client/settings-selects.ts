@@ -298,9 +298,11 @@ function openMenu(up: SelectUpgrade): void {
   const el = document.createElement('div')
   el.className = C.menu
   el.setAttribute('role', 'listbox')
+  // Marks our own popup so liuli-css's broad div[class*="_menu"] rules (which
+  // pin the z-index with !important) can tell it apart from upstream menus.
+  el.dataset.liuliSettingsMenu = 'true'
   el.setAttribute('aria-label', s.getAttribute('aria-label') ?? '')
   el.tabIndex = -1
-  el.dataset.liuliSettingsMenu = 'true'
 
   /** 可选项（键盘导航只在可选项间移动）。 */
   const enabled: HTMLDivElement[] = []
@@ -397,6 +399,11 @@ function openMenu(up: SelectUpgrade): void {
   addCls(up.chev, C.triggerChevronOpen)
 
   positionMenu(up)
+  // Fonts/scrollbars can settle one frame later; re-anchor once the menu has its
+  // final box so the first measurement can never leave it detached or clipped.
+  requestAnimationFrame(() => {
+    if (open !== null && open.el === el) positionMenu(up)
+  })
   el.focus({ preventScroll: true })
 
   document.addEventListener('mousedown', onDocDown, true)
@@ -423,14 +430,31 @@ function positionMenu(up: SelectUpgrade): void {
   const width = Math.min(Math.max(r.width, 200), 360)
   const el = open.el
   el.style.width = `${width}px`
-  const menuH = el.getBoundingClientRect().height
+  // Measure the natural height first: the class keeps max-height:60vh, and a
+  // clamped reading is what used to misplace the menu (see below).
+  el.style.maxHeight = 'none'
+  const naturalH = el.getBoundingClientRect().height
   const left = Math.min(Math.max(8, r.left), Math.max(8, winW - width - 8))
-  let top = r.bottom + 4
-  if (top + menuH > winH - 8) top = Math.max(8, r.top - 4 - menuH)
-  top = Math.max(8, Math.min(top, winH - 8 - menuH))
+  const below = winH - 8 - (r.bottom + 4)
+  const above = Math.max(0, r.top - 4 - 8)
+  // Prefer downwards; flip only when the menu really does not fit and there is
+  // more room above. When neither side fits, keep it anchored to its trigger
+  // and shrink it (the menu scrolls) — the old clamp-to-top pushed a long list
+  // to y=8px, i.e. the top of the window, far away from the field.
+  let top: number
+  let available: number
+  if (naturalH <= below || below >= above) {
+    top = r.bottom + 4
+    available = below
+  } else {
+    available = above
+    top = r.top - 4 - Math.min(naturalH, above)
+  }
+  available = Math.max(72, available)
+  el.style.maxHeight = `${Math.min(naturalH, available)}px`
+  top = Math.max(8, Math.min(top, winH - 8 - Math.min(naturalH, available)))
   el.style.left = `${left}px`
   el.style.top = `${top}px`
-  el.style.maxHeight = `${Math.min(menuH, winH - 16)}px`
 }
 
 function syncMenu(up: SelectUpgrade): void {

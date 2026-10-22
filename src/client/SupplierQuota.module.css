@@ -53,6 +53,12 @@
   opacity: 0.7;
 }
 
+/* 额度中断点的灰字提示（仅 Command Code 且未拿到数据时出现，用于诊断加载链路） */
+.quotaDiag {
+  color: var(--dsw-alias-label-tertiary);
+  cursor: help;
+}
+
 .quotaError {
   color: var(--dsw-alias-state-error-primary);
   cursor: help;

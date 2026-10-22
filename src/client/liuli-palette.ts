@@ -2,8 +2,11 @@
 
 import {
   argbFromHex,
+  Cam16,
   hexFromArgb,
+  sanitizeDegreesDouble,
   themeFromSourceColor,
+  TonalPalette,
 } from '../vendor/material-color-utilities.js'
 
 /** 默认源色 = Twitter 蓝 */
@@ -14,6 +17,27 @@ const SURFACE_TONES = {
   dark: { appBg: 6, low: 10, mid: 12, high: 17, highest: 22 },
 }
 const SCRIM = { low: 0.05, mid: 0.08, high: 0.11, highest: 0.14 }
+
+/** 图表色板（统计面板等）：以源色相为基准的和谐扩展。
+ *  色相偏移逐级拉开、彩度与明度交错，让 10 个模型色在同一主题下仍可区分；
+ *  供应商另用一组偏移与模型色分开，避免同一个对象两处不同色。 */
+const CHART_HUE_STEPS = [0, 36, -36, 72, -72, 144, -144, 108, -108, 180]
+const CHART_CHROMAS = [56, 48, 44, 40, 44, 40, 36, 40, 36, 32]
+const CHART_TONES = {
+  light: [44, 50, 48, 54, 52, 58, 56, 62, 60, 66],
+  dark: [80, 74, 76, 72, 74, 70, 72, 68, 70, 64],
+}
+const PROVIDER_HUE_STEPS = [20, 56, -56, -20, 120]
+const PROVIDER_CHROMAS = [52, 46, 46, 42, 40]
+const PROVIDER_TONES = {
+  light: [46, 44, 50, 48, 54],
+  dark: [76, 80, 72, 74, 70],
+}
+const HEAT_CHROMA = 52
+const HEAT_TONES = {
+  light: [95, 88, 78, 66, 53, 42],
+  dark: [18, 28, 40, 54, 68, 82],
+}
 
 const paletteCache: Record<string, LiuliPalette> = {}
 
@@ -69,6 +93,16 @@ export interface LiuliPalette {
   popupFg: string
   errorFg: string
   errorBg: string
+  /** 图表色板：模型 10 色（rank 序）、供应商 5 色、热力图 6 档与曲线色，
+   *  全部由源色 HCT 派生（同一套 M3 动态取色，不跟随固定的 reasonix 色板）。 */
+  charts: string[]
+  chartOther: string
+  providers: string[]
+  providerOther: string
+  heat: string[]
+  heatSheen: string
+  heatShade: string
+  trendLine: string
 }
 
 /** 从源色派生 M3 调色板（按明暗缓存）。 */
@@ -84,7 +118,13 @@ export function liuliDerivePalette(sourceHex: string | undefined, isDark: boolea
   const neutral = theme.palettes.neutral
   const nv = theme.palettes.neutralVariant
   const st = SURFACE_TONES[isDark ? 'dark' : 'light']
+  const tones = isDark ? 'dark' : 'light'
   const sc = (t: number): string => hexFromArgb(neutral.tone(t))
+  // 图表色板：从源色 HCT 色相出发，按固定色相偏移 + 彩度/明度阶梯生成，
+  // 这样动态取色（壁纸主色 / 手选品牌色）一变，统计面板的图表色一起变。
+  const sourceHue = Cam16.fromInt(argb).hue
+  const fromHue = (hueOffset: number, chroma: number, tone: number): string =>
+    hexFromArgb(TonalPalette.fromHueAndChroma(sanitizeDegreesDouble(sourceHue + hueOffset), chroma).tone(tone))
   const primaryHex = hexFromArgb(s.primary)
   const cLow = sc(st.low), cMid = sc(st.mid), cHigh = sc(st.high), cHighest = sc(st.highest)
   const pal: LiuliPalette = {
@@ -122,6 +162,14 @@ export function liuliDerivePalette(sourceHex: string | undefined, isDark: boolea
     popupFg: hexFromArgb(s.onSurface),
     errorFg: hexFromArgb(s.error),
     errorBg: hexFromArgb(s.errorContainer),
+    charts: CHART_HUE_STEPS.map((step, i) => fromHue(step, CHART_CHROMAS[i]!, CHART_TONES[tones][i]!)),
+    chartOther: hexFromArgb(nv.tone(isDark ? 70 : 60)),
+    providers: PROVIDER_HUE_STEPS.map((step, i) => fromHue(step, PROVIDER_CHROMAS[i]!, PROVIDER_TONES[tones][i]!)),
+    providerOther: hexFromArgb(nv.tone(isDark ? 70 : 60)),
+    heat: HEAT_TONES[tones].map((t) => fromHue(0, HEAT_CHROMA, t)),
+    heatSheen: isDark ? 'rgb(255 255 255 / 0.30)' : 'rgb(255 255 255 / 0.55)',
+    heatShade: isDark ? 'rgb(0 0 0 / 0.50)' : 'rgb(0 0 0 / 0.20)',
+    trendLine: fromHue(0, 56, isDark ? 78 : 42),
   }
   paletteCache[key] = pal
   return pal
@@ -253,6 +301,18 @@ export function liuliApplyBrand(pal: LiuliPalette, isDark: boolean, sourceHex?: 
   set('--dsw-alias-state-error-primary', pal.errorFg)
   set('--dsw-alias-state-error-secondary', pal.errorFg)
 
+  // 图表色板（统计面板等）：模型 10 色 / 供应商 5 色 / 热力图 6 档 + 曲线色。
+  // 面板把 --dsw-chart-* 定义在自身（.panel）上，不能靠 body 继承覆盖，
+  // 所以这里发布 --liuli-* 图表令牌，由 liuli-css 在面板作用域里映射过去。
+  pal.charts.forEach((c, i) => set(`--liuli-chart-${i + 1}`, c))
+  set('--liuli-chart-other', pal.chartOther)
+  pal.providers.forEach((c, i) => set(`--liuli-provider-${i + 1}`, c))
+  set('--liuli-provider-other', pal.providerOther)
+  pal.heat.forEach((c, i) => set(`--liuli-heat-${i}`, c))
+  set('--liuli-heat-sheen', pal.heatSheen)
+  set('--liuli-heat-shade', pal.heatShade)
+  set('--liuli-trend-line', pal.trendLine)
+
   // 亚克力 RGB（随 M3 表面色动态变化）
   set('--liuli-acrylic-rgb', rgbStr(pal.bg2))
   set('--liuli-acrylic-rgb-low', rgbStr(pal.bg1))
@@ -297,6 +357,12 @@ export function liuliClearBrand(): void {
     '--dsw-alias-state-warn-label', '--dsw-alias-state-warn-primary', '--dsw-alias-state-warn-secondary', '--dsw-alias-state-warn-tertiary',
     '--dsw-alias-state-error-primary', '--dsw-alias-state-error-secondary',
     '--liuli-acrylic-rgb', '--liuli-acrylic-rgb-low', '--liuli-acrylic-rgb-high', '--liuli-control-rgb',
+    ...Array.from({ length: 10 }, (_, i) => `--liuli-chart-${i + 1}`),
+    '--liuli-chart-other',
+    ...Array.from({ length: 5 }, (_, i) => `--liuli-provider-${i + 1}`),
+    '--liuli-provider-other',
+    ...Array.from({ length: 6 }, (_, i) => `--liuli-heat-${i}`),
+    '--liuli-heat-sheen', '--liuli-heat-shade', '--liuli-trend-line',
   ]
   for (const name of names) document.body.style.removeProperty(name)
 }

@@ -16,6 +16,8 @@
  *
  * 动画关闭：prefers-reduced-motion 时 CSS 已禁用 transition（liuli.css）。
  */
+import { deferWhileWindowResizing } from './resize-perf.ts'
+
 const TABS_SELECTOR = '[class*="_tabs"]'
 const TAB_ACTIVE_SELECTOR = '[class*="_tabActive"], [aria-selected="true"]'
 const INDICATOR_ATTR = 'data-liuli-tab-indicator'
@@ -122,20 +124,26 @@ export function startHeaderTabIndicator(): () => void {
   // 初始扫描 + 窗口尺寸变化（header 拉伸/字体加载改 tab 宽度时重定位）
   scan()
   let resizeRaf = 0
-  const onResize = (): void => {
+  const placeAll = (): void => {
+    for (const [tabs, { bar }] of states) {
+      if (tabs.isConnected) position(tabs, bar, false)
+    }
+  }
+  // 窗口拉伸期让位：position 读 tab 矩形再写 transform（强制重排），拖窗口时
+  // 每帧一次；拉伸结束后由 layout-settled 补算一次（rAF 合并仍在包装器内）。
+  const resizeDefer = deferWhileWindowResizing(() => {
     if (resizeRaf !== 0) return
     resizeRaf = requestAnimationFrame(() => {
       resizeRaf = 0
-      for (const [tabs, { bar }] of states) {
-        if (tabs.isConnected) position(tabs, bar, false)
-      }
+      placeAll()
     })
-  }
-  window.addEventListener('resize', onResize)
+  })
+  window.addEventListener('resize', resizeDefer.handler)
 
   return () => {
     bodyObserver.disconnect()
-    window.removeEventListener('resize', onResize)
+    window.removeEventListener('resize', resizeDefer.handler)
+    resizeDefer.dispose()
     for (const [, { bar, observer }] of states) {
       observer.disconnect()
       bar.remove()

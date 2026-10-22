@@ -98,6 +98,51 @@ export function isResizeInProgress(): boolean {
   return typeof document !== 'undefined' && document.body.hasAttribute(RESIZING_ATTR)
 }
 
+/**
+ * 当前是否是「窗口尺寸变化」引起的护栏（区别于 sash / 面板手柄拖拽）。
+ *
+ * 窗口拉伸时几何几乎不变，却会每帧触发所有 resize 监听；调用方据此把全量
+ * getBoundingClientRect / setState 让位给 LAYOUT_SETTLED_EVENT 的一次补算。
+ * sash 拖拽必须实时重排，因此不能只判 isResizeInProgress()。
+ */
+export function isWindowResizing(): boolean {
+  return windowResizeActive
+}
+
+/**
+ * 窗口拉伸期把「读布局 + 写样式」的更新延后到 layout-settled。
+ *
+ * 拖窗口边缘时 resize 事件每帧连发；任何同步 `getBoundingClientRect()` 都是一次
+ * 强制重排（forced reflow），几处叠加就把主线程塞满 —— 用户感知就是「拉伸卡顿，
+ * 是重排的问题」。用这个包装器替换直接监听 resize 的 handler：拉伸期间只记脏，
+ * 护栏落下（LAYOUT_SETTLED_EVENT）后补跑一次。
+ *
+ * @param run - 真正做几何测量/写入的回调。
+ * @returns handler 供 resize 监听使用，dispose 解除 settle 订阅。
+ */
+export function deferWhileWindowResizing(run: () => void): { handler: () => void; dispose: () => void } {
+  let pending = false
+  const handler = (): void => {
+    if (isWindowResizing()) {
+      pending = true
+      return
+    }
+    run()
+  }
+  const onSettled = (): void => {
+    if (!pending) return
+    pending = false
+    run()
+  }
+  if (typeof window !== 'undefined') window.addEventListener(LAYOUT_SETTLED_EVENT, onSettled)
+  return {
+    handler,
+    dispose: () => {
+      if (typeof window !== 'undefined') window.removeEventListener(LAYOUT_SETTLED_EVENT, onSettled)
+    },
+  }
+}
+
 function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 }

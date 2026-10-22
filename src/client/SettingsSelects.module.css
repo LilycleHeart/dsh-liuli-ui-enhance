@@ -1,13 +1,15 @@
 /* 设置页原生 select → 琉璃下拉组件：触发器与下拉菜单（body portal + fixed，与终端
    Shell 选择器同款观感）。类名随本模块编译为哈希，天然作用域化，不触碰宿主类。
-   层级分工：菜单是临时浮层，用全局顶层 z（2147482500，可盖住设置面板一切元素）；
-   触发器默认不再用全局顶层 —— JS 会把触发器挂进宿主设置内容子树（select 所在字段，
-   inline z-index 20，仅盖原 select，不盖面板里其它菜单），类里这档 2147482500 只是
-   找不到设置容器、回退 body 直挂时的兜底值。 */
+   层级分工：菜单是临时浮层，必须压住宿主设置浮层 —— 后者（overlay，position:fixed）
+   实测 z-index 2147482800，旧的 2147482500 会被它整块盖住（展开的选项被面板挡在
+   下面、点不到）。这里取 2147483600：高于宿主设置浮层（2147482800）与琉璃窗口按钮
+   （2147483503），仍低于 int32 上限。触发器默认不再用全局顶层 —— JS 会把触发器挂进
+   宿主设置内容子树（select 所在字段，inline z-index 20，仅盖原 select，不盖面板里
+   其它菜单），类里这档值只是找不到设置容器、回退 body 直挂时的兜底。 */
 
 .trigger {
   position: fixed;
-  z-index: 2147482500;
+  z-index: 2147483600;
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
@@ -72,7 +74,7 @@
 /* 下拉菜单（body portal + fixed，镜像终端 Shell 选择器） */
 .menu {
   position: fixed;
-  z-index: 2147482500;
+  z-index: 2147483600;
   box-sizing: border-box;
   padding: 4px;
   border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.25));
@@ -90,6 +92,13 @@
   max-height: 60vh;
   outline: none;
   animation: liuli-select-menu-enter 160ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* liuli-css.ts 的通用 div[class*="_menu"] / body > div[class*="_menu"] 规则用
+   !important 把 z 钉在 2147482500（低于宿主设置浮层 2147482800）。这里用
+   「类 + 两个属性」的特异性（0,3,0）压过它们，确保展开的选项真的在最上层。 */
+.menu[role='listbox'][data-liuli-settings-menu] {
+  z-index: 2147483600 !important;
 }
 
 .menu[data-closing] {

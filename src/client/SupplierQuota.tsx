@@ -37,7 +37,20 @@ export function SupplierQuota({ sessionId }: { sessionId: SessionId }) {
     )
   }
 
-  if (state.data === null || state.data.kind === 'unavailable') return null
+  if (state.data === null || state.data.kind === 'unavailable') {
+    // 诊断面：Command Code 的额度完全来自第三方插件的 Remote，出现「页头什么都没有」
+    // 时无法区分是 remote 没挂载、目录没选模型还是字段为空。这里只在 commandcode
+    // 供应商下把中断点以灰字显示出来；其它供应商维持原来的静默隐藏（不打扰）。
+    if (state.provider === 'commandcode' && state.reason !== '') {
+      return (
+        <span className={css.quota + ' ' + css.quotaDiag} title={state.reason}>
+          <span className={css.quotaLabel}>额度</span>
+          <span className={css.quotaValue}>{state.reason}</span>
+        </span>
+      )
+    }
+    return null
+  }
 
   if (state.data.kind === 'balance') {
     return (

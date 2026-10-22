@@ -24,7 +24,7 @@ import type { ChatNode } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import { collectToolCommits } from './tool-commits.ts'
 import css from './TurnRail.module.css'
-import { RESIZING_ATTR } from './resize-perf.ts'
+import { RESIZING_ATTR, deferWhileWindowResizing } from './resize-perf.ts'
 import { usePopupPresence, usePopupValuePresence } from './use-popup-presence.ts'
 
 type TurnRailProps = PropsRuntime<'conversation.session.header.utilities'>
@@ -243,11 +243,15 @@ export function TurnRail({ useChat, sessionId }: TurnRailProps) {
     ro.observe(phaseRoot)
     const mo = new MutationObserver(update)
     mo.observe(host, { childList: true, subtree: true })
-    window.addEventListener('resize', update)
+    // 窗口拉伸期让位：贴边判断要读两处 getBoundingClientRect（强制重排），
+    // 拖窗口时每帧一次；拉伸结束后由 layout-settled 补算一次。
+    const resizeDefer = deferWhileWindowResizing(update)
+    window.addEventListener('resize', resizeDefer.handler)
     return () => {
       ro.disconnect()
       mo.disconnect()
-      window.removeEventListener('resize', update)
+      window.removeEventListener('resize', resizeDefer.handler)
+      resizeDefer.dispose()
     }
   }, [host, phaseRoot])
 

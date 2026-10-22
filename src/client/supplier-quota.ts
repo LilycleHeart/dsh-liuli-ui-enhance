@@ -328,10 +328,6 @@ interface CommandCodeAccountEntry {
   report?: CommandCodeReport
 }
 
-interface CommandCodeAccountsReport {
-  accounts?: unknown
-}
-
 /** 数字读取（非有限数返回 undefined，避免把 NaN 渲染出来）。 */
 function finiteOf(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
@@ -384,39 +380,87 @@ function windowItem(
 }
 
 /**
- * 把 `commandcode/report` 的一行账户数据翻译成本插件统一的额度模型。
+ * 把 `commandcode/report` 的账户数据翻译成本插件统一的额度模型。
  *
- * 展示顺序：5 小时窗口 → 每周窗口 → 月额度 → 附加信用。
- * - 窗口额度是「已用 / 上限」，与 OpenCode Go 的百分比风格同源，故直接显示金额；
- * - 月额度显示套餐内含额度，附加信用（已购 + 赠送）单独一行，两者相加才是可用总量；
+ * 数据来自第三方插件自己的 Host 半（它已经算好 5 小时 / 每周 / 月额度 / 信用），
+ * 琉璃只做「对方的展示字段 → 页头额度行」的映射。
+ *
+ * 两个现实约束：
+ * - 交付面在网关解码差异下可能是 `{ accounts }` 或 `{ result: { accounts } }`，两种都认；
+ * - 多账户轮换时以「当前生效账户」为准，但它缺可展示字段时退到其它有数据的账户，
+ *   绝不因为某一个账户没数据就把整条额度隐藏。
+ *
  * - 账户全部端点失败（`blocked`）时抛错，页头显示「额度不可用」并在悬停里给出原因；
- * - 一个可用字段都没有时返回 unavailable（页头隐藏，不报错）。
+ * - 所有账户都没有可用字段时返回 unavailable（页头给出诊断原因）。
  */
 function parseCommandCodeReport(provider: string, raw: unknown): SupplierQuotaData {
-  const accounts = (raw as CommandCodeAccountsReport | null)?.accounts
-  if (!Array.isArray(accounts) || accounts.length === 0) {
-    return { kind: 'unavailable', provider }
+  const entries = commandCodeAccountsOf(raw)
+  if (entries === undefined || entries.length === 0) return { kind: 'unavailable', provider }
+  // 当前生效账户优先；其次已配置账户；最后才是未配置/冷却中的账户。
+  const ordered = [
+    ...entries.filter(candidate => candidate.active === true),
+    ...entries.filter(candidate => candidate.active !== true && candidate.configured !== false),
+    ...entries.filter(candidate => candidate.active !== true && candidate.configured === false),
+  ]
+  let blocked: string | undefined
+  for (const entry of ordered) {
+    // 正常形态是 { report: {...} }；若对方直接把 report 平铺在账户上，也认。
+    const report = entry.report ?? (looksLikeCommandCodeReport(entry) ? entry as CommandCodeReport : undefined)
+    if (report === undefined || report === null) continue
+    const code = textOf(report.blocked)
+    if (code !== undefined) {
+      if (blocked === undefined) blocked = code
+      continue
+    }
+    const data = commandCodeEntryData(provider, entry, report)
+    if (data !== undefined) return data
   }
-  const entries = accounts as CommandCodeAccountEntry[]
-  // 多账户轮换时优先展示当前生效的账户；否则取第一个已配置的。
-  const entry = entries.find(candidate => candidate.active === true)
-    ?? entries.find(candidate => candidate.configured !== false)
-    ?? entries[0]
-  if (entry === undefined) return { kind: 'unavailable', provider }
-  const report = entry.report
-  if (report === undefined) return { kind: 'unavailable', provider }
-
-  // 全部端点失败：把对方给的分类翻成可读原因（页头红字 + 悬停详情）。
-  const blocked = textOf(report.blocked)
   if (blocked !== undefined) {
-    const reason = blocked === 'invalid-key'
-      ? 'API 密钥被拒绝（401）'
-      : blocked === 'service-unavailable' ? 'Command Code 服务不可用（5xx）'
-        : blocked === 'network' ? '网络不可达'
-          : blocked
-    throw new Error(`Command Code 额度查询失败：${reason}`)
+    throw new Error(`Command Code 额度查询失败：${blockedReasonText(blocked)}`)
   }
+  return { kind: 'unavailable', provider }
+}
 
+/** 从交付面里取账户数组（兼容 `{ accounts }` 与 `{ result: { accounts } }`）。 */
+function commandCodeAccountsOf(raw: unknown): CommandCodeAccountEntry[] | undefined {
+  if (raw === null || typeof raw !== 'object') return undefined
+  const root = raw as Record<string, unknown>
+  const direct = root.accounts
+  if (Array.isArray(direct)) return direct as CommandCodeAccountEntry[]
+  // 网关/解码差异下可能多包一层：result / data / payload / value 都认。
+  for (const key of ['result', 'data', 'payload', 'value']) {
+    const wrapped = root[key]
+    if (wrapped === null || typeof wrapped !== 'object') continue
+    const nested = (wrapped as Record<string, unknown>).accounts
+    if (Array.isArray(nested)) return nested as CommandCodeAccountEntry[]
+  }
+  return undefined
+}
+
+/** 该对象是否本身就是一份 report（有 credits / usage / plan / blocked 任一字段）。 */
+function looksLikeCommandCodeReport(value: unknown): value is CommandCodeReport {
+  if (value === null || typeof value !== 'object') return false
+  const candidate = value as Record<string, unknown>
+  return candidate.credits !== undefined || candidate.usage !== undefined
+    || candidate.plan !== undefined || candidate.blocked !== undefined
+}
+
+/** 把对方给的 blocked 分类翻成可读原因。 */
+function blockedReasonText(blocked: string): string {
+  return blocked === 'invalid-key'
+    ? 'API 密钥被拒绝（401）'
+    : blocked === 'service-unavailable' ? 'Command Code 服务不可用（5xx）'
+      : blocked === 'network' ? '网络不可达'
+        : blocked === 'invalid-response' ? '响应格式异常'
+          : blocked
+}
+
+/** 单个账户 → 页头额度；没有可展示字段时返回 undefined（由调用方换下一个账户）。 */
+function commandCodeEntryData(
+  provider: string,
+  entry: CommandCodeAccountEntry,
+  report: CommandCodeReport,
+): SupplierQuotaData | undefined {
   const credits = report.credits
   const items: SupplierQuotaItem[] = []
   const fiveHour = windowItem('fiveHours', '5小时', credits?.fiveHour)
@@ -428,12 +472,30 @@ function parseCommandCodeReport(provider: string, raw: unknown): SupplierQuotaDa
     const monthly = finiteOf(credits.monthlyCredits)
     if (monthly !== undefined && monthly > 0) {
       const periodEnd = resetLabel(finiteOf(report.plan?.currentPeriodEnd))
-      items.push({
-        key: 'month',
-        label: '月额度',
-        value: money(monthly),
-        ...(periodEnd === undefined ? {} : { hint: `本周期至 ${periodEnd}` }),
-      })
+      // 本周期已用：对方 usage.totalCost（美元口径）；缺失时退回 totalCredits。
+      // 有已用值就按 5小时/本周 同款样式显示「已用/上限」+ 细进度条。
+      const spentRaw = finiteOf(report.usage?.totalCost) ?? finiteOf(report.usage?.totalCredits)
+      const spent = spentRaw === undefined ? undefined : Math.max(0, spentRaw)
+      if (spent !== undefined) {
+        const ratio = Math.max(0, Math.min(1, spent / monthly))
+        const hints: string[] = []
+        if (periodEnd !== undefined) hints.push(`本周期至 ${periodEnd}`)
+        hints.push(`${Math.round(ratio * 100)}%`)
+        items.push({
+          key: 'month',
+          label: '月额度',
+          value: `${money(spent)}/${money(monthly)}`,
+          ratio,
+          hint: hints.join(' · '),
+        })
+      } else {
+        items.push({
+          key: 'month',
+          label: '月额度',
+          value: money(monthly),
+          ...(periodEnd === undefined ? {} : { hint: `本周期至 ${periodEnd}` }),
+        })
+      }
     }
     const purchased = finiteOf(credits.purchasedCredits) ?? 0
     const free = finiteOf(credits.freeCredits) ?? 0
@@ -447,9 +509,9 @@ function parseCommandCodeReport(provider: string, raw: unknown): SupplierQuotaDa
     }
   }
 
-  if (items.length === 0) return { kind: 'unavailable', provider }
+  if (items.length === 0) return undefined
 
-  // 悬停标题：账户名 + 套餐名 + 本周期用量（页面卡片上的同源事实）。
+  // 悬停标题：账户名 + 套餐名 + 本周期用量（与对方面板同源的事实）。
   const label = textOf(entry.label)
   const accountName = textOf(report.account?.userName) ?? textOf(report.account?.name)
   const planName = textOf(report.plan?.name)
@@ -472,6 +534,16 @@ export interface CommandCodeRemoteLike {
 let commandCodeRemote: CommandCodeRemoteLike | null = null
 
 /**
+ * 是否已经拿到第三方插件的 `commandcode/report` Remote。
+ *
+ * client/index.ts 的兜底轮询用它判断「inject 回调有没有落地」，避免对已挂载的
+ * 命名空间反复覆盖同一个对象（每次覆盖都会清缓存并触发一次上游请求）。
+ */
+export function hasCommandCodeRemote(): boolean {
+  return commandCodeRemote !== null
+}
+
+/**
  * 报告缓存：对方的 `report()` 每次都会打 4 个账户端点（whoami / usage /
  * credits / subscriptions），而本插件的额度刷新会被切会话、设置变更、重连
  * 等多个事件触发 —— 不缓存会把 header 变成对上游的轮询器。这里按 TTL 缓存
@@ -482,8 +554,38 @@ let commandCodeRemote: CommandCodeRemoteLike | null = null
  */
 const COMMANDCODE_CACHE_TTL_MS = 60_000
 const COMMANDCODE_ERROR_TTL_MS = 30_000
-let commandCodeCache: { at: number; ttl: number; data?: SupplierQuotaData; error?: string } | null = null
+let commandCodeCache: { at: number; ttl: number; data?: SupplierQuotaData; error?: string; diagnostic?: string } | null = null
 let commandCodeInflight: Promise<SupplierQuotaData> | null = null
+
+/**
+ * 最近一次 `commandcode/report` 返回面的结构摘要。
+ *
+ * 解析结果为「不可展示」时页头就是一片空白，看不到是 accounts 层级变了、账户没
+ * 配 report，还是字段全空。这里把返回面压成一句人话，作为页头灰字的诊断原因
+ * （只在 provider 命中 commandcode 时使用，不参与正常展示）。
+ */
+let commandCodeDiagnostic = ''
+
+/** 把远端返回面压成一句可读的结构摘要（顶层键 / accounts / 首个账户 report 的键）。 */
+function describeCommandCodeReport(raw: unknown): string {
+  if (raw === null || raw === undefined) return `返回面为空（${String(raw)}）`
+  if (typeof raw !== 'object') return `返回面不是对象（${typeof raw}）`
+  const root = raw as Record<string, unknown>
+  const keys = Object.keys(root)
+  const accounts = root.accounts
+  if (!Array.isArray(accounts)) {
+    return `返回面没有 accounts 数组（顶层键：${keys.length === 0 ? '(空)' : keys.join(',')}）`
+  }
+  if (accounts.length === 0) return '账户列表为空（accounts: []）'
+  const first = accounts[0] as Record<string, unknown> | null
+  if (first === null || typeof first !== 'object') return `首个账户不是对象（${String(first)}）`
+  const report = first.report
+  if (report === null || report === undefined || typeof report !== 'object') {
+    return `首个账户没有 report（账户键：${Object.keys(first).join(',') || '(空)'}）`
+  }
+  const reportKeys = Object.keys(report as Record<string, unknown>)
+  return `首个账户 report 键：${reportKeys.length === 0 ? '(空)' : reportKeys.join(',')}`
+}
 
 /**
  * 注入（或清除）第三方插件贡献的 `commandcode/report` Remote。
@@ -495,6 +597,7 @@ export function setCommandCodeRemote(remote: CommandCodeRemoteLike | null): void
   commandCodeRemote = remote
   commandCodeCache = null
   commandCodeInflight = null
+  commandCodeDiagnostic = ''
   if (currentSessionId !== null) void refreshSupplierQuota()
 }
 
@@ -506,7 +609,10 @@ async function fetchCommandCode(_api: LiuliRemoteApi, ctx: { provider: string })
   const cached = commandCodeCache
   if (cached !== null && Date.now() - cached.at < cached.ttl) {
     if (cached.error !== undefined) throw new Error(cached.error)
-    if (cached.data !== undefined) return cached.data
+    if (cached.data !== undefined) {
+      commandCodeDiagnostic = cached.diagnostic ?? ''
+      return cached.data
+    }
   }
 
   if (commandCodeInflight !== null) return commandCodeInflight
@@ -517,7 +623,9 @@ async function fetchCommandCode(_api: LiuliRemoteApi, ctx: { provider: string })
         throw new Error(response?.error?.message ?? 'commandcode/report remote failed')
       }
       const data = parseCommandCodeReport(ctx.provider, response.value)
-      commandCodeCache = { at: Date.now(), ttl: COMMANDCODE_CACHE_TTL_MS, data }
+      // 解析出不了可展示行时，把远端的结构摘要留下来给页头做诊断。
+      commandCodeDiagnostic = data.kind === 'unavailable' ? describeCommandCodeReport(response.value) : ''
+      commandCodeCache = { at: Date.now(), ttl: COMMANDCODE_CACHE_TTL_MS, data, diagnostic: commandCodeDiagnostic }
       return data
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -623,6 +731,14 @@ export interface SupplierQuotaState {
   data: SupplierQuotaData | null
   status: 'idle' | 'loading' | 'ready' | 'error'
   error: string
+  /**
+   * 页头为什么没有可展示的额度（诊断用，空串表示不缺数据）。
+   *
+   * 「数据缺失」与「该供应商暂无可展示额度」原本都静默隐藏，线上出现「页头没有
+   * 额度」时无法区分是没拿到模型、第三方 Remote 没挂载，还是字段为空。这里记下
+   * 中断点，页头只在 provider 命中 commandcode 时以灰字提示，其它供应商维持静默。
+   */
+  reason: string
   updatedAt: number
 }
 
@@ -638,6 +754,7 @@ const initialState: SupplierQuotaState = {
   data: null,
   status: 'idle',
   error: '',
+  reason: '',
   updatedAt: 0,
 }
 
@@ -684,7 +801,7 @@ export function setSupplierQuotaSession(sessionId: SessionId): void {
   unsubscribeModel?.()
   unsubscribeModel = null
   currentSessionId = sessionId
-  setState({ provider: null, model: null, data: null, status: 'idle', error: '' })
+  setState({ provider: null, model: null, data: null, status: 'idle', error: '', reason: '' })
   subscribeCurrentModelDirectory()
   void refreshSupplierQuota()
 }
@@ -695,7 +812,7 @@ export function setSupplierQuotaSession(sessionId: SessionId): void {
 export async function refreshSupplierQuota(): Promise<void> {
   if (remote === null || currentSessionId === null) return
   const generation = ++refreshGeneration
-  setState({ status: 'loading', error: '' })
+  setState({ status: 'loading', error: '', reason: '' })
 
   try {
     const current: ModelSelection | null = modelDirectory === null
@@ -704,7 +821,15 @@ export async function refreshSupplierQuota(): Promise<void> {
     if (generation !== refreshGeneration) return
     if (current === null) {
       // 目录未就绪（catalog 未加载）：不报错，保持 idle 语义等目录回调重跑。
-      setState({ provider: null, model: null, data: null, status: 'idle', error: '' })
+      // 记下卡点：目录服务缺失与「目录还没选出当前模型」是两种不同病因。
+      setState({
+        provider: null,
+        model: null,
+        data: null,
+        status: 'idle',
+        error: '',
+        reason: modelDirectory === null ? '模型目录服务不可用（ctx.modelDirectories）' : '当前会话还没有模型选择',
+      })
       return
     }
 
@@ -715,6 +840,20 @@ export async function refreshSupplierQuota(): Promise<void> {
         model: current.model,
         data: { kind: 'unavailable', provider: current.provider },
         status: 'ready',
+        reason: `没有适配 ${current.provider} 的额度查询`,
+      })
+      return
+    }
+
+    // Command Code 的数据只来自第三方插件的 Remote：没挂载时不必打空请求，
+    // 直接把「未挂载」记成中断点（页头据此给出可区分的灰字提示）。
+    if (adapter.id === 'commandcode' && commandCodeRemote === null) {
+      setState({
+        provider: current.provider,
+        model: current.model,
+        data: { kind: 'unavailable', provider: current.provider },
+        status: 'ready',
+        reason: 'commandcode/report Remote 未挂载',
       })
       return
     }
@@ -724,13 +863,19 @@ export async function refreshSupplierQuota(): Promise<void> {
       model: current.model,
     })
     if (generation !== refreshGeneration) return
-    setState({ provider: current.provider, model: current.model, data, status: 'ready' })
+    setState({
+      provider: current.provider,
+      model: current.model,
+      data,
+      status: 'ready',
+      reason: data.kind === 'unavailable'
+        ? (adapter.id === 'commandcode' && commandCodeDiagnostic !== '' ? commandCodeDiagnostic : '该供应商暂无可展示额度')
+        : '',
+    })
   } catch (error) {
     if (generation !== refreshGeneration) return
-    setState({
-      status: 'error',
-      error: error instanceof Error ? error.message : String(error),
-    })
+    const message = error instanceof Error ? error.message : String(error)
+    setState({ status: 'error', error: message, reason: message })
   }
 }
 
@@ -746,6 +891,7 @@ export function disposeSupplierQuota(): void {
   deepSeekAccountInflight = null
   commandCodeCache = null
   commandCodeInflight = null
+  commandCodeDiagnostic = ''
   refreshGeneration += 1
   state = { ...initialState, updatedAt: Date.now() }
   emit()

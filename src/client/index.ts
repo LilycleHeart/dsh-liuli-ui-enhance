@@ -95,6 +95,7 @@ import { disposeSupplierQuota, hasCommandCodeRemote, initSupplierQuota, refreshS
 import type { DeepSeekAccountQuotaRemote } from './deepseek-account-quota.ts'
 import { startQuotaTokenInject } from './quota-token-inject.ts'
 import { SupplierQuota } from './SupplierQuota.tsx'
+import { TokenSpeedPill } from './TokenSpeedPill.tsx'
 import { loadHistoryBatches, saveHistoryBatches } from './history-load-store.ts'
 import { initModelRetry, disposeModelRetry, loadModelRetry, saveModelRetry, cacheModelRetryBackoff } from './model-retry-controller.ts'
 import { initThinkingFill, disposeThinkingFill, loadThinkingFill, applyThinkingFill, autoApplyThinkingFill } from './thinking-fill-controller.ts'
@@ -979,6 +980,19 @@ export function apply(ctx: ClientContext): void {
     if (!unofficial('dom') || slotLayout === 'v209') return () => {}
     return startStatsLineIcons()
   }, 'dsh-liuli-ui-enhance: stats line icons')
+
+  // ── 实时输出速度：官方 composer 下方统计条（conversation.composer.dock）里
+  //    补一枚 v209 版才有的「当下 tok/s」胶囊。官方 activity 胶囊里的 tok/s 是
+  //    整会话历史均值（sessionStats 每步结算），流式过程中看不出即时速度；
+  //    这里读 ChatSnapshot.legacy.partial（逐帧变化）自行计量。走官方 slot
+  //    扩展点，属非侵入增强，只在 v209（2.0.9+ 有该 dock）注册。 ──
+  if (slotLayout === 'v209') {
+    ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({
+      name: 'conversation.composer.dock',
+      id: 'liuli-token-speed',
+      order: 2,
+    }, TokenSpeedPill))
+  }
 
   // ── composer 贴底校正：琉璃给 [data-conversation-scroll] 的 -16px 负 margin
   //    让滚动容器下缘越过裁切边界，官方 sticky 的 composer 跟着悬进裁切区

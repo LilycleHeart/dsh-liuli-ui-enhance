@@ -57,6 +57,55 @@ function positionNativeSeat(host: HTMLElement, target: HTMLElement, fullscreen: 
   return true
 }
 
+/** How long a projected native browser guest may still report "loading" before
+ * we stop it; see wakeNativeFrames. */
+const NATIVE_FRAME_STALL_MS = 4000
+const NATIVE_FRAME_SELECTOR = 'webview[data-sidebar-browser-frame]'
+interface NativeBrowserFrame extends HTMLElement {
+  isLoading?: () => boolean
+  stop?: () => void
+}
+
+/**
+ * The upstream browser panel derives its loading mask from the guest's
+ * did-start/did-stop-loading stream. That guest is created inside this Seat's
+ * hidden host (fixed 0x0 + visibility:hidden): Chromium throttles first paint
+ * for an invisible guest, so a page that is already painted on screen can still
+ * never deliver did-stop-loading — upstream then keeps the "opening…" mask over
+ * the page forever and swallows every pointer event. Once the projection is
+ * visible, re-read the guest: refresh upstream's store when it already finished,
+ * and stop a load that cannot settle.
+ */
+function wakeNativeFrames(host: HTMLElement, started: Map<HTMLElement, number>): void {
+  const frames = host.querySelectorAll<NativeBrowserFrame>(NATIVE_FRAME_SELECTOR)
+  if (frames.length === 0) return
+  const now = performance.now()
+  for (const frame of frames) {
+    if (typeof frame.isLoading !== 'function') continue
+    let loading: boolean
+    try { loading = frame.isLoading() } catch { continue }
+    if (!loading) {
+      started.delete(frame)
+      // Upstream only refreshes its store from this event. Send it once per
+      // settled guest; a new load clears the marker so it can sync again.
+      if (frame.dataset.liuliFrameSynced !== '1') {
+        frame.dataset.liuliFrameSynced = '1'
+        try { frame.dispatchEvent(new Event('did-stop-loading')) } catch { /* ignore */ }
+      }
+      continue
+    }
+    delete frame.dataset.liuliFrameSynced
+    const since = started.get(frame)
+    if (since === undefined) {
+      started.set(frame, now)
+      continue
+    }
+    if (now - since < NATIVE_FRAME_STALL_MS) continue
+    started.delete(frame)
+    try { frame.stop?.() } catch { /* ignore */ }
+  }
+}
+
 /** Each Liuli chip owns a target. The single upstream Seat follows whichever
  * native occurrence is active; inactive split cards offer a focus affordance. */
 export function OfficialSidebarSeatPane({ onCollapse, nativeTabId, label = '开始' }: {
@@ -73,6 +122,8 @@ export function OfficialSidebarSeatPane({ onCollapse, nativeTabId, label = '开�
     let fullscreen = false
     let collapsedByUser = false
     let frame = 0
+    /** Guest → first moment it was observed loading while projected. */
+    const frameStarted = new Map<HTMLElement, number>()
     let motionFrame = 0
     let motionUntil = 0
     const shell = target.closest<HTMLElement>('[data-testid="dock-shell"]')
@@ -120,6 +171,8 @@ export function OfficialSidebarSeatPane({ onCollapse, nativeTabId, label = '开�
       // viewportWidth=0 keeps the upstream seat in auto-fullscreen mode without
       // reserving another frame track. Restore its content when this tab shows.
       if (!collapsedByUser && controller?.isExpanded?.() === false) controller.toggleExpanded?.()
+      // The guest is laid out now; let upstream drop a stale "opening…" mask.
+      wakeNativeFrames(host, frameStarted)
     }
     const schedule = (): void => {
       if (!frozen() && frame === 0) frame = requestAnimationFrame(sync)
@@ -226,6 +279,7 @@ export function OfficialSidebarSeatPane({ onCollapse, nativeTabId, label = '开�
       document.removeEventListener('click', onNativeClick, true)
       if (frame !== 0) cancelAnimationFrame(frame)
       if (motionFrame !== 0) cancelAnimationFrame(motionFrame)
+      frameStarted.clear()
       clearProjection()
     }
   }, [onCollapse, nativeTabId])

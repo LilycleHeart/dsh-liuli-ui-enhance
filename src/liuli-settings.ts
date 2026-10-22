@@ -139,6 +139,8 @@ export interface LiuliSettings {
   auto_drive_browser: boolean
   /** 侧边栏终端默认 Shell（功能设置页配置；'' = 宿主默认 cmd/bash）。 */
   terminal_shell: LiuliTerminalShell
+  /** 实时速度胶囊常驻：关闭时仅在流式输出中/刚结束时显示，开启后空闲时也保留上一次读数。 */
+  token_speed_persistent: boolean
   /** 非官方增强总开关：关闭后仅保留官方扩展点功能（主题/声纹/设置页），
    *  全部非官方（侵入式/观察式）功能不挂载，用于与其它插件冲突时一键降级。 */
   unofficial_enabled: boolean
@@ -230,6 +232,7 @@ export const LIULI_SETTINGS_DEFAULTS: LiuliSettings = {
   transition_effect: 'rise',
   auto_drive_browser: true,
   terminal_shell: '',
+  token_speed_persistent: false,
   unofficial_enabled: true,
   unofficial_layout: true,
   unofficial_desktop: true,
@@ -309,6 +312,7 @@ export const LiuliSettingsSchema: z<LiuliSettings> = z.object({
   ]).default('rise'),
   auto_drive_browser: z.boolean().default(true),
   terminal_shell: z.union(['', 'cmd', 'powershell', 'pwsh', 'bash']).default(''),
+  token_speed_persistent: z.boolean().default(false),
   // 非官方增强开关（兼容其它插件）：默认全部开启（行为不变）；关闭后相应功能不挂载。
   unofficial_enabled: z.boolean().default(true),
   unofficial_layout: z.boolean().default(true),

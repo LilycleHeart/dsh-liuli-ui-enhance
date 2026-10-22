@@ -1,0 +1,77 @@
+/* 琉璃 · 实时输出速度胶囊
+ *
+ * 结构照抄官方 StatsPills（span 锚点 > 胶囊 > 图标 + 标签），配色走琉璃令牌，
+ * 以便和其它统计胶囊连排时基线与间距完全一致；只在「实时」状态上加一枚呼吸点，
+ * 静止时与官方胶囊无差别。
+ */
+.anchor {
+  display: inline-flex;
+  min-width: 0;
+  font-size: calc(var(--dsh-content-font-size-secondary, 13px) - 1px);
+  line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: 1px 8px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  line-height: inherit;
+  white-space: nowrap;
+}
+
+/* 实时态：读数提亮，与历史均值胶囊拉开层次（不抢静息态的视觉）。 */
+.pill[data-liuli-speed-live='true'] {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.icon {
+  display: inline-flex;
+  flex: none;
+}
+
+.icon > :global(svg) {
+  width: 14px;
+  height: 14px;
+}
+
+.pill[data-liuli-speed-live='true'] .icon {
+  color: var(--dsw-alias-brand-primary);
+  animation: liuli-speed-pulse 1.6s ease-in-out infinite;
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 静息态读数（流式刚停的保留期）略淡，暗示这是「上一次」的值。 */
+.pill:not([data-liuli-speed-live='true']) {
+  opacity: 0.7;
+  transition: opacity 240ms ease;
+}
+
+@keyframes liuli-speed-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+/* 用户开启「减动效」时不做呼吸动画，避免无谓的重绘。 */
+@media (prefers-reduced-motion: reduce) {
+  .pill[data-liuli-speed-live='true'] .icon {
+    animation: none;
+  }
+}
+/* 常驻但本次会话尚无输出时的占位读数：比静息态更淡，明确「还没有数」。 */
+.pill[data-liuli-speed-idle='true'] {
+  opacity: 0.45;
+}

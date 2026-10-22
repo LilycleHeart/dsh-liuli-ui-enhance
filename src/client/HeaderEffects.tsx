@@ -853,8 +853,26 @@ export function LiuliHeaderVoiceprint() {
       ctx.shadowBlur = 0
     }
 
+    // 窗口拉伸期（resize-perf 在 body 上挂的 data-liuli-resizing）跳过位图重建与
+    // 逐帧重绘：拖窗口边缘时 resize 每秒几十次，每次都重设 canvas 位图再重画
+    // shadowBlur 辉光，是拖拽掉帧的最大两笔开销。此时让 CSS 拉伸上一帧，
+    // 标记消失后补一次 resize + 绘制。
+    const inResizeGuard = (): boolean => document.body.hasAttribute('data-liuli-resizing')
+    let resizeDeferred = false
     const loop = (now: number): void => {
       raf = requestAnimationFrame(loop)
+      if (inResizeGuard()) {
+        resizeDeferred = true
+        lastDrawAt = 0
+        return
+      }
+      if (resizeDeferred) {
+        resizeDeferred = false
+        lastDrawAt = 0
+        resize()
+        draw(0)
+        return
+      }
       // 静音且余波消退后只绘制约 30 FPS；仍逐帧检查监听状态，开始播放时
       // 下一帧立即恢复完整刷新率。相位按实际间隔推进，空闲波形流速不变。
       const idle = vpState.analyser === null
@@ -870,6 +888,10 @@ export function LiuliHeaderVoiceprint() {
     // 尺寸变化会重设 canvas 位图尺寸（清空画布），必须同步补一帧，
     // 避免 ResizeObserver 清空后要等下一帧 rAF 才重绘的闪断。
     const onResize = (): void => {
+      if (inResizeGuard()) {
+        resizeDeferred = true
+        return
+      }
       resize()
       draw(0)
     }
