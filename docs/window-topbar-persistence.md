@@ -90,6 +90,20 @@ pwsh -File scripts/install-topbar-guard.ps1 -Uninstall
 常驻看护每 5 秒轮询一次 `tasklist`（毫秒级开销），日志写在
 `%LOCALAPPDATA%\liuli-topbar-guard.log`。
 
+Watch 模式注册的计划任务带两个触发器：**登录时启动** + **每 10 分钟兜底拉起**，
+并开启「失败后重启 3 次」。看护进程被结束（实测出现过 `LastResult=0xC000013A`）
+或意外退出后，最多 10 分钟自动恢复；`MultipleInstances IgnoreNew` 保证不会叠实例。
+
+### 实测记录（2026-10-25）
+
+| 时间 | 事件 |
+|---|---|
+| 01:44:27 | 启动常驻看护，随后报告 `pending`（客户端在运行、补丁缺失） |
+| 01:59:37 | 看护仍存活并继续轮询 |
+| 02:00:02 | 客户端退出 → 看护判定 `missing`，自动执行补丁 |
+| 02:00:09 | 备份目录 `liuli-window-controls-backup-0.2.1-rc.3` 与 `app.asar.unpacked/lib/{main.js,preload-app.cjs}` 写入完成 |
+| 05:41 | 新会话启动客户端，`liuli-topbar-guard` 报告 `state=patched`；页面 `window.liuliWindowControls.official === true`、`[data-liuli-window-controls="caption"]` 已挂载 —— 顶栏恢复，用户全程无需手动操作 |
+
 ## 四、已知限制
 
 - **锚点漂移**：官方若改写主窗口创建代码，补丁脚本会因找不到锚点而拒绝写入（安全失败）。此时需要更新

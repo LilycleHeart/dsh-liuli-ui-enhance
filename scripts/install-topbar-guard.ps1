@@ -81,7 +81,15 @@ $node = Get-NodePath
 
 if ($Mode -eq 'Watch') {
   $action = New-ScheduledTaskAction -Execute $node -Argument "`"$watch`"" -WorkingDirectory $scriptDir
-  $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+  # 登录时启动常驻看护；再叠一个每 10 分钟的兜底触发器 —— 看护进程被结束
+  # （实测出现过 LastResult=0xC000013A）或意外退出后，最多 10 分钟重新拉起。
+  # MultipleInstances IgnoreNew 保证已在运行时不会叠出第二个实例。
+  $trigger = @(
+    (New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME),
+    (New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
+      -RepetitionInterval (New-TimeSpan -Minutes 10) `
+      -RepetitionDuration (New-TimeSpan -Days 3650))
+  )
 } else {
   $action = New-ScheduledTaskAction -Execute $node -Argument "`"$guard`" --apply --quiet" -WorkingDirectory $scriptDir
   $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
@@ -89,7 +97,8 @@ if ($Mode -eq 'Watch') {
     -RepetitionDuration (New-TimeSpan -Days 3650)
 }
 $settings = New-ScheduledTaskSettingsSet -Hidden -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
-  -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable
+  -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable `
+  -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
 
 if ($DryRun) {
@@ -98,7 +107,7 @@ if ($DryRun) {
   Write-Host "  执行      : $node"
   Write-Host "  参数      : $($action.Arguments)"
   Write-Host "  工作目录  : $scriptDir"
-  Write-Host "  触发器    : $(if ($Mode -eq 'Watch') { '登录时' } else { "登录后每 $Minutes 分钟" })"
+  Write-Host "  触发器    : $(if ($Mode -eq 'Watch') { '登录时 + 每 10 分钟兜底拉起' } else { "登录后每 $Minutes 分钟" })"
   Write-Host "  说明      : 隐藏窗口、忽略新实例、不因电池停止、不限执行时长"
   return
 }
