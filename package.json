@@ -63,6 +63,9 @@
     "install:desktop:npm": "node scripts/install-desktop.mjs --from-npm",
     "patch:desktop": "node scripts/patch-desktop-frameless.mjs",
     "patch:official": "node scripts/patch-official-window-controls.mjs",
+    "topbar:status": "node scripts/liuli-topbar-guard.mjs",
+    "topbar:guard": "pwsh -NoProfile -File scripts/install-topbar-guard.ps1 -Mode Watch",
+    "topbar:watch": "node scripts/liuli-topbar-watch.mjs",
     "release": "node scripts/publish.mjs"
   },
   "license": "MIT",
@@ -149,6 +152,10 @@
     "scripts/install-desktop.mjs",
     "scripts/patch-desktop-frameless.mjs",
     "scripts/patch-official-window-controls.mjs",
+    "scripts/liuli-topbar-guard.mjs",
+    "scripts/liuli-topbar-watch.mjs",
+    "scripts/liuli-launch.cmd",
+    "scripts/install-topbar-guard.ps1",
     "cordis.patch.yml"
   ],
   "engines": {

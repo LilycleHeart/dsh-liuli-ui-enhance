@@ -70,6 +70,7 @@ pnpm patch:desktop      # 推荐：win32 无边框补丁（自动补丁失败不
 
 - [功能详解](docs/features.md)
 - [并入官方右侧栏：迁移说明与自研 dock 外壳退役范围](docs/official-sidebar-migration.md)
+- [窗口顶栏为什么每次客户端更新后都会失效（含四种恢复方式）](docs/window-topbar-persistence.md)
 - [样式规范](docs/style-guide.md)
 - [安装与构建](docs/install.md)
 - [版本发布与分支约定](docs/release.md)

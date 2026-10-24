@@ -114,6 +114,22 @@ const exe = readFileSync(exePath);
 const oldHash = hash(info.json);
 const at = exe.indexOf(oldHash);
 if (at < 0 || exe.indexOf(oldHash, at + 1) >= 0) fail('Expected exactly one ASAR integrity hash in executable');
+/** 报告 Electron 的 embeddedAsarIntegrityValidation fuse 状态（只读，不改变写入行为）。
+ *  该 fuse 关闭时，改 asar 头并不会被 Electron 校验 —— 本机官方构建即为关闭状态，
+ *  「必须同步 exe 内嵌哈希」在此前提下并非硬约束。写入路径仍保持同步 exe 的保守做法，
+ *  因为 fuse 可能随版本变化，判错的代价是客户端起不来。 */
+const fuseState = (() => {
+  const wire = Buffer.from('dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX', 'ascii');
+  const at0 = exe.indexOf(wire);
+  if (at0 < 0) return 'unknown';
+  const version = exe[at0 + wire.length];
+  const count = exe[at0 + wire.length + 1];
+  if (version !== 1 || !(count >= 5 && count <= 32)) return 'unknown';
+  const bits = exe.subarray(at0 + wire.length + 2, at0 + wire.length + 2 + count).toString('ascii');
+  if (!/^[01]+$/.test(bits)) return 'unknown';
+  // fuse v1 顺序第 5 位 = EnableEmbeddedAsarIntegrityValidation
+  return bits[4] === '0' ? 'off' : bits[4] === '1' ? 'on' : 'unknown';
+})();
 const targets = [['lib/main.js', main], ['lib/preload-app.cjs', preload]];
 for (const [name, text] of targets) {
   const bytes = Buffer.from(text);
@@ -136,7 +152,10 @@ if (stageArg) {
   execFileSync(process.execPath, ['--check', join(stage,'main.mjs')]);
   execFileSync(process.execPath, ['--check', join(stage,'preload-app.cjs')]);
 }
-console.log(JSON.stringify({app:identity.name,version,mainAndPreloadPrepared:true,integrityHashOffset:at,backup,mode:process.argv.includes('--apply')?'apply':'check'},null,2));
+console.log(JSON.stringify({app:identity.name,version,mainAndPreloadPrepared:true,integrityHashOffset:at,asarIntegrityFuse:fuseState,backup,mode:process.argv.includes('--apply')?'apply':'check'},null,2));
+if (fuseState === 'off') {
+  console.log('[liuli] 提示：该客户端的 Electron embeddedAsarIntegrityValidation fuse 处于关闭状态，asar 头不会被启动校验（本脚本仍按保守做法同步 exe 内嵌哈希）。');
+}
 if (!process.argv.includes('--apply')) process.exit(0);
 assertClosed();
 if (existsSync(join(backup, 'record.json'))) fail('Backup exists; inspect or revert it before a new patch');
