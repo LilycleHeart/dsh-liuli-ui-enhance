@@ -41,7 +41,7 @@ DSH Desktop 于 2026-10-23 更新到内置 DSH `0.2.1-rc.3`（`@deepseek-ai/dsh-
 | P07 安装 | completed | `node scripts/install-desktop.mjs`：`0.1.2-rc.38-bf7c3d4808ce.tgz` 写入 desktop profile 依赖，bundles 保持不变 |
 | P08 真实客户端加载 | completed | 插件页由「异常」变为正常运行；页面未刷新即挂载 `[data-liuli-theme]`、注入 `--liuli` 样式、`[data-liuli-bg]` 壁纸生效、`body` 背景为琉璃暗色 |
 | P09 刷新后稳定性 | completed | 重新加载 `dsh-app` 页面后仍挂载；网络面板 0 个失败请求；控制台仅剩 KaTeX 的 `unicodeTextInMathMode` 警告（与插件无关） |
-| P10 rc.3 新菜单样式 | completed | 左栏「更多」菜单实测：容器 `data-menu-material="translucent"`、`rgba(54,42,46,0.92)` + `blur(20px) saturate(1.6)`、边框 `rgb(81,67,71)`、文字 `rgb(235,224,225)`、圆角 10/12px，已是琉璃配色 |
+| P10 rc.3 新菜单样式 | completed | 见下节；三处偏差已修，真机回归量值全部达标 |
 | P11 宿主无边框/窗控桥 | skipped→需用户配合 | 见下节：需要完全退出桌面端后 `--apply` |
 | P12 其他插件 | 部分 | `dsh-cli-providers@0.3.0`、`@mars-sea/dsh-commandcode-provider@0.13.4` 仍是「异常」，原因同类 |
 
@@ -61,6 +61,26 @@ node scripts/install-desktop.mjs
 本次实测：**不必重启桌面端**。`install-desktop.mjs` 更新 profile 依赖后，宿主的插件清单还是旧的（`__DSH_BOOT__.entries` 里没有琉璃，刷新页面也不重建）；在「插件」页把琉璃开关**关掉再打开**，宿主的实时重载就会把新的客户端模块推进页面——不刷新即可看到主题挂载。
 
 若开关后仍无变化，再重启一次桌面端即可（会改变 Web 端口）。
+
+## rc.3 新增 UI 的样式适配
+
+rc.3 给左侧栏、会话 View 标签行、右侧栏起始页各加了一个「更多」菜单（`@deepseek-ai/dsh-client-ui-entry-customization` 往三个新槽位各注册一行）。它们都走宿主 `ui-primitives` 的 **MenuSurface 原语**，根节点为 `div[role="menu"][data-menu-material="translucent"]`，材质由内部 `[aria-hidden][class*="_material"]` 子层单独承担。据此修了三处：
+
+1. **菜单表面双层刷漆（缺陷）**：琉璃原有的通用规则 `[role="menu"][class*="_list"]` 与 `div[role="menu"]` 也会命中这个新根，特异性高于 `[data-menu-material]` 重置，于是根先画 0.92 亚克力 + 噪声 + `blur(20)`，子层再画 0.61，实测合色 ≈0.97 近实底，且根的 `backdrop-filter` 让子层只能采样本层色板 —— 壁纸磨砂在菜单里彻底丢失。改法：这两条通用规则限定 `:not([data-menu-material])`；层级与圆角两条**刻意不排除**（专属层不提供层阶，排除会掉回官方 1100）。
+2. **菜单项比面板还圆**：官方 `._item` 用 `--dsw-radius-md`（12px），琉璃面板是 10px，内层比容器圆。按样式规范把 `[data-menu-material] [role="menuitem"]` 钉到 8px。
+3. **右栏「更多工具」入口不合群**：官方只给已知引导项写 `data-sidebar-right-guide-entry`，rc.3 新增的这项没有该属性，于是没有噪声、没有强磨砂、圆角是官方 `--dsw-radius-xl`（20px），与同屏 5 个兄弟入口（14px + 噪声 + `blur(20)`）不一致。用稳定锚点 `[data-sidebar-right-guide] button[class*="_entry"][aria-haspopup="menu"]` 补齐同一套配方。
+
+左栏「更多」入口本体（`button.wtg9ga_panelRow`）**未改**：它与同屏 4 个兄弟行逐值一致，单独改反而破坏一致性。菜单文字、图标与 hover 底色由琉璃 token 层（`--dsw-alias-label-primary`、`--dsw-alias-menu-icon`、`--dsw-alias-interactive-bg-hover`）正确驱动，未重复声明。
+
+真机回归（安装 0.1.2-rc.38 后，CDP 实测计算样式）：
+
+| 探针 | 结果 |
+|---|---|
+| 左栏「更多」菜单根 | `background rgba(0,0,0,0)`、`background-image none`、`backdrop-filter none`、圆角 10px、`z-index 2147482500`、边框 `rgb(81,67,71)` |
+| 上述菜单的材质子层 | `rgba(54,42,46,0.61)` + 噪声图 + `blur(20px) saturate(1.6)`（单层配方） |
+| 菜单项 | `border-radius 8px`、文字 `rgb(235,224,225)` |
+| 会话 View 标签行的「更多会话视图」（`an3WzG_viewsMore`，22×22） | 与左栏同值 |
+| 右栏「更多工具」入口 | 圆角 14px + 噪声 + `blur(20px) saturate(1.6)`，与兄弟入口一致 |
 
 ## 边界
 
