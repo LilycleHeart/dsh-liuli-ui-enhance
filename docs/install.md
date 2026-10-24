@@ -48,8 +48,15 @@ pnpm install
 #    确保 iconv-lite、react 等依赖能正确装进 profile）
 pnpm install:desktop
 
-# 2. 给 DSH Desktop 打 win32 无边框宿主补丁（隐藏原生标题栏/窗口按钮；可选——
-#    插件启动时也会自动必装该补丁，手动执行只是提前打上，免去重启一次）
+# 2. 给 DSH Desktop 打 win32 无边框宿主补丁（隐藏原生标题栏/窗口按钮；可选）
+#    0.2.1 起窗口参数由 app.asar 内的 lib/main.js 承载，用官方窗口控制补丁：
+node scripts/patch-official-window-controls.mjs --check    # 预检，不改盘
+#    确认无误后「完全退出 DSH Desktop」，再执行：
+node scripts/patch-official-window-controls.mjs --apply
+#    还原：node scripts/patch-official-window-controls.mjs --revert
+#
+#    0.2.0 及更早的客户端才用旧的无边框补丁（0.2.1+ 上会因找不到
+#    electron-runtime-*.js 而失败，脚本会提示改用上面的命令）：
 pnpm patch:desktop
 
 # 或从 npm 安装，安装器会先检查 registry 中的版本：

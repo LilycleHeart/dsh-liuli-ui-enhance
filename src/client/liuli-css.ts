@@ -203,7 +203,10 @@ body {
   --dsw-alias-state-warn-tertiary: #ffddb2;
 
   /* 弹出/提示 */
+  /* 通知药丸：与 DockShellFrame.module.css 的 .toast 同源的反色配方
+     （底 = 主文字 / 字 = 应用背景）。两枚令牌必须成对，单改 bg 会撞上官方的近白 label。 */
   --dsw-alias-toast-bg: #1a1c1e;
+  --dsw-alias-toast-label: #f8f9fa;
   --dsw-alias-tooltip-bg: #2f3133;
 
   /* 专用 */
@@ -334,7 +337,9 @@ body[data-ds-dark-theme] {
   --dsw-alias-state-warn-tertiary: #624000;
 
   /* 弹出/提示 */
-  --dsw-alias-toast-bg: #333d4e;
+  /* 暗色反色板：底浅 / 字深（见亮色块注释） */
+  --dsw-alias-toast-bg: #e2e2e6;
+  --dsw-alias-toast-label: #121316;
   --dsw-alias-tooltip-bg: #3f4a5c;
 
   /* 专用 */
@@ -578,7 +583,12 @@ div[aria-label][class*="_card"][class*="_copyable"] * {
 /* 菜单/树菜单需要更强背景对比度：浮动卡片统一的 22% 透明（input-major）
    在亮壁纸上会让浅色菜单文字不可读（右键/下拉菜单看起来像"消失"）。
    菜单单独提高到 70% 不透明，仍保留磨砂亚克力质感与噪声。 */
-div[role="menu"],
+/* :not([data-menu-material]) —— rc.3 起官方菜单改走 MenuSurface 原语：根节点带
+   data-menu-material="translucent"，材质由内部 [class*="_material"] 子层单独承担
+   （settings-menu-material.ts 的专属层）。这条旧通用规则的特异性高于那条重置，
+   若继续命中会把菜单根再刷一遍 0.7 亚克力 + 噪声 + 强磨砂，与子层叠成近实底，
+   故把 MenuSurface 排除在外。三处 rc.3「更多」菜单均为此原语。 */
+div[role="menu"]:not([data-menu-material]),
 /* DockShellFrame 布局工作台 / 导入导出模态不是弹出菜单：class*="_menu" 会
    误伤其 menuCard/menuHead/menuRow/menuBtn/addMenuItem 等全部类名带 _menu
    的元素——元素选择器上"到处都是 rgba(27,47,48,0.7)"就是这条规则画的。
@@ -3444,8 +3454,15 @@ body[data-ds-dark-theme] [class*="_jsonTree"][class*="_root"] {
  *       强磨砂（菜单与背景之间隔了其它 backdrop 根，取 5.4 强磨砂档）。0.92 沿用规范给菜单的
  *       0.92–0.96 区间（liuli-css.ts:531-546 记录过「亮壁纸上浅色菜单文字不可读」的先例）。
  * ──────────────────────────────────────────────────────────── */
-[role="menu"][class*="_list"],
-[role="menu"][class*="_submenu"] {
+/* :not([data-menu-material]) —— 这条 (0,4,0) 规则与 settings-menu-material.ts 的
+ * [data-menu-material="translucent"] 重置（0,1,0）撞车：后者要把「菜单根」刷成透明、
+ * 把材质交给内部 _material 子层（0.61 单层配方），前者特异性更高会把它压回去，
+ * 于是根画 0.92、子层再画 0.61，实测合色 ≈0.97 近实底，根的 backdrop-filter 还让
+ * 子层只能采样本层色板（壁纸磨砂丢失）。排除 MenuSurface 后材质只画一层，
+ * 与同屏琉璃自绘右键菜单 [data-liuli-context-menu] 的 0.61 单层配方一致。
+ * 同组的 z-index / 圆角两条刻意不排除（专属层未提供层阶，排除会掉回官方 1100）。 */
+[role="menu"][class*="_list"]:not([data-menu-material]),
+[role="menu"][class*="_submenu"]:not([data-menu-material]) {
   background-color: rgba(var(--liuli-acrylic-rgb), 0.92) !important;
   background-image: var(--liuli-noise) !important;
   -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;
@@ -3537,15 +3554,59 @@ body[data-ds-dark-theme] [class*="_jsonTree"][class*="_root"] {
 }
 
 /* ────────────────────────────────────────────────────────────
- * [dsh-client-ui-primitives · Toast.module.css] .toast —— Toast 层级（medium）
- * 问题：position:fixed + z-index:1100（官方注释自述「Above the 1000 the image lightbox
- *       backdrop uses」），而琉璃 Toast 档位是 2147482900（遮罩之上、悬浮球之下）。
- *       停在 1100 时会被琉璃模态遮罩、浮窗、悬浮球全部盖住，「操作反馈被吞掉」。
- *       圆角 14px 与底色令牌本身合规，只改层级。
- * 处理：归规范第 8 节 Toast 档 2147482900。
+ * [dsh-client-ui-primitives · Toast.module.css] .toast —— 通知药丸配方与层级（medium）
+ * 问题（2026-10-23 用户实拍「会话已归档，可撤销或筛选已归档会话」）：
+ *   1) 层级：position:fixed + z-index:1100（官方注释自述「Above the 1000 the image lightbox
+ *      backdrop uses」），而琉璃 Toast 档位是 2147482900（遮罩之上、悬浮球之下）。停在 1100
+ *      会被琉璃模态遮罩、浮窗、悬浮球全部盖住，「操作反馈被吞掉」。
+ *   2) 配色：底色走 --dsw-alias-toast-bg、文字走 --dsw-alias-toast-label。旧实现把 bg 交给
+ *      M3 inverseSurface（liuli-palette.ts），而 label 仍是官方固定近白 —— 暗色主题下
+ *      inverseSurface 反而变浅，组合成「浅底白字」，提示几乎不可读。琉璃自己的提示条
+ *      （DockShellFrame.module.css 的 .toast）用的是「底 = label-primary、字 = bg-base」的
+ *      反色板，两个主题都成立；这里让官方 Toast 与它同源（令牌层已同步，见
+ *      liuli-palette.ts 的 toast 段与 liuli.css 的「弹出/提示」块）。
+ *   3) 形状：圆角走 --dsw-radius-lg，不在琉璃台阶上 —— 规范 4.1 把 toast 归药丸档 999px。
+ *   4) 材质：纯实底 + 官方 elevation 阴影，与旁边的磨砂卡割裂；补噪声、发丝描边与仓库
+ *      提示条同款大投影（投影随「阴影强度」滑条，见 --liuli-shadow-strength）。
+ * 选择器说明：官方 Toast 根独有 role="alert"（asar 前端 bundle：jsxs("div", { className: Hi.toast,
+ *      role: "alert" … })，而插件自己的 dock toast 是 [data-testid="dock-toast"] 且无 role——
+ *      两者类名同为 <hash>_toast，不锚定 role 就会把 dock toast 一起改形。
  * ──────────────────────────────────────────────────────────── */
-[class*="_toast"] {
+div[role="alert"][class*="_toast"] {
   z-index: 2147482900 !important;
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-bg-base) 16%, transparent) !important;
+  border-radius: 999px !important;
+  background-color: var(--dsw-alias-label-primary) !important;
+  background-image: var(--liuli-noise) !important;
+  color: var(--dsw-alias-bg-base) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, calc(0.4 * var(--liuli-shadow-strength, 1))) !important;
+}
+
+/* 状态图标：官方 warn 用 --state-warn-label、success 用 --state-success-primary，
+ * 两枚都是「常规底色」口径的色，压在反色板上会糊（亮色主题下深绿 / 暗色主题下浅绿）。
+ * 与字色（--dsw-alias-bg-base，始终是反色板的另一半）混合 → 自动随主题反向，保住状态语义。 */
+div[role="alert"][class*="_toast"] > [class*="_icon"] {
+  color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 42%, var(--dsw-alias-bg-base)) !important;
+}
+
+div[role="alert"][class*="_toast"] > [class*="_icon"][class*="_success"] {
+  color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 40%, var(--dsw-alias-bg-base)) !important;
+}
+
+/* 动作链接（撤销 / 筛选已归档会话）：官方固定 --dsw-static-deepseek-400(#7aaaff)，
+ * 在暗色主题的浅底反色板上对比不足；同样与字色混合。 */
+div[role="alert"][class*="_toast"] button[class*="_action"] {
+  color: color-mix(in srgb, var(--dsw-alias-brand-primary) 45%, var(--dsw-alias-bg-base)) !important;
+  border-radius: 6px;
+}
+
+div[role="alert"][class*="_toast"] button[class*="_action"]:hover {
+  opacity: 0.8;
+}
+
+div[role="alert"][class*="_toast"] button[class*="_action"]:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 70%, transparent);
+  outline-offset: 2px;
 }
 
 /* ────────────────────────────────────────────────────────────
@@ -5246,6 +5307,50 @@ body [data-dsh-usage-glass='panel'] {
   --dsw-heat-sheen: var(--liuli-heat-sheen);
   --dsw-heat-shade: var(--liuli-heat-shade);
   --dsw-trend-line: var(--liuli-trend-line);
+}
+
+/* ════════════════════════════════════════════════════════════
+ * rc.3 官方三处「更多」菜单（MenuSurface 原语）收尾适配
+ * ------------------------------------------------------------
+ * 官方登记（dsh-client-ui-entry-customization/README.zh.md:31）：
+ *   左栏导航入口下方   button.wtg9ga_panelRow[aria-label="更多"]
+ *   会话 View 标签之后 button.an3WzG_viewsMore[aria-label="更多会话视图"]
+ *   右侧栏起始页之后   button.p2k40q_entry[aria-label="更多工具"]
+ * 三者都 portal 到 body，根节点 = div[role="menu"][data-menu-material="translucent"]，
+ * 内部 _material 子层承担材质。
+ * 已由专属层覆盖、本条不重复的项：材质单层配方、10px 面板圆角、1px border-l2
+ * 描边、--liuli-shadow、弹出层层级 2147482500、菜单项 hover 的
+ * --dsw-alias-interactive-bg-hover（琉璃品牌 7%）与 120ms 过渡、文本
+ * --dsw-alias-label-primary、图标 --dsw-alias-menu-icon（= label-secondary）。
+ * 左栏那个入口本体是官方 panelRow，与同屏 4 个兄弟行（插件/自动化任务/
+ * 使用统计）逐值一致（36px 高、--dsw-radius-md 12px、开合态走
+ * interactive-bg-hover），故不为它单写规则；会话 View 的 22x22 与右栏头部的
+ * 28x28 图标按钮圆角 8px 已在 §4.1 图标小按钮档内，同样不改。
+ * ════════════════════════════════════════════════════════════ */
+
+/* 1) 菜单项圆角：官方 ._item_* 走 var(--dsw-radius-md)=12px，比它所在的菜单面板
+ *    （琉璃 10px）还圆 —— 内层比容器圆，hover 底的圆角会溢出面板曲率；规范
+ *    4.1 / 6.5.2 把菜单项钉在 7–8px 档。这里取 8px。锚点 [data-menu-material]
+ *    只命中 MenuSurface，插件自绘菜单 [data-liuli-context-menu] 与官方旧菜单不受影响。 */
+[data-menu-material] [role="menuitem"] {
+  border-radius: 8px !important;
+}
+
+/* 2) 右侧栏「更多工具」入口：官方 GuideBody 只给已知引导项写
+ *    data-sidebar-right-guide-entry（files/terminal/browser/...），rc.3 新增的
+ *    这一项是 aria-haspopup="menu" 的 MenuSurface 锚点、没有该属性 → 拿不到
+ *    [data-sidebar-right-guide-entry] 的通用配方：实测与同屏 5 个兄弟入口不一致，
+ *    圆角 20px（官方 --dsw-radius-xl）对 14px，且没有噪声与强磨砂。
+ *    这里用官方稳定锚点（guide 容器 + aria-haspopup）补齐同一套配方 —— 380x56
+ *    入口在原生模式与迁移模式下都与兄弟项一致（底色仍由
+ *    :is([data-liuli-official-rightbar], .) button[class*="_entry"] 统一为
+ *    材质滑条 + 0.3 档，与兄弟项相同）。 */
+[data-sidebar-right-guide] button[class*="_entry"][aria-haspopup="menu"] {
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity)) !important;
+  background-image: var(--liuli-noise) !important;
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;
+  border-radius: var(--liuli-radius, 14px) !important;
 }
 
 `

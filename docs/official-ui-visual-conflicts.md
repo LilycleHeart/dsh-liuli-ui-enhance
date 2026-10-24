@@ -297,3 +297,18 @@
 **合并时的两个坑（供后续自动化参考）**：
 1. CSS 注释里出现反引号会截断 `liuli-css.ts` 的模板字符串 → 合并脚本需先把反引号替换掉；
 2. CSS 中的反斜杠转义（如 `\201C`）在 JS 模板字符串里需写成 `\\`，另需清理零宽字符 / 不换行空格。
+
+### 追加轮：通知药丸（Toast）配色与材质（2026-10-23）
+
+**现象**：归档会话后弹出的「会话已归档，可撤销或筛选已归档会话」提示是**浅底白字**，几乎读不清，与界面其余部分的琉璃材质割裂。
+
+**根因**（两处叠加）：
+1. `liuli-palette.ts` 把 `--dsw-alias-toast-bg` 交给 M3 `inverseSurface`（`pal.bgInv`）；官方 `--dsw-alias-toast-label` 固定近白、琉璃未覆盖。暗色主题下 `inverseSurface` 反而变浅（≈`#e6e1e9`），组合成浅底白字。
+2. 组件层只改过 z-index，圆角（`--dsw-radius-lg`）、实底材质、状态图标色与动作链接色都没进琉璃体系。
+
+**修复**：
+- 令牌层：`toast-bg` / `toast-label` 改为与插件 dock toast 同源的**反色对**（`pal.fg1` / `pal.appBg`），静态主题块同步写入（亮 `#1a1c1e` / `#f8f9fa`，暗 `#e2e2e6` / `#121316`）。
+- 组件层（`liuli-css.ts` 的 Toast 块）：`role="alert"` 锚定 → 药丸 999px、反色底/字、噪声、1px 发丝描边、随阴影强度的大投影；状态图标与动作链接改为与字色 `color-mix`，随主题自动反向。
+- 规范：`docs/style-guide.md` 新增 6.11 通知药丸。
+
+**验证**：本地双主题渲染对比（官方真实 DOM/CSS + 注入琉璃样式），暗色下 bad 例复现浅底白字、good 例为浅底深字；`pnpm build` 与既有测试通过；已用 `scripts/install-desktop.mjs` 重装 desktop profile。

@@ -604,7 +604,9 @@ function detectTitlebarIndentBefore(text, beforeIndex) {
 // 1. 定位 runtime 文件（磁盘 unpacked 或 asar 打包条目）
 const runtime = resolveRuntime();
 if (runtime === undefined) {
-  fail(`找不到 electron-runtime-*.js（磁盘 ${libDir} 与 app.asar 头内均未命中；可设置 DSH_DESKTOP_DIR 指向 DSH Desktop 安装目录后重试；当前安装目录：${installDir}）`);
+  fail(`找不到 electron-runtime-*.js（磁盘 ${libDir} 与 app.asar 头内均未命中；可设置 DSH_DESKTOP_DIR 指向 DSH Desktop 安装目录后重试；当前安装目录：${installDir}）。`
+    + ' DSH Desktop 0.2.1 起窗口参数改由 app.asar 内的 lib/main.js 承载，本脚本已不适用；'
+    + '请改用 node scripts/patch-official-window-controls.mjs --check 预检，完全退出桌面端后加 --apply。');
 }
 if (!looseInstall && !existsSync(asarPath)) {
   fail(`找不到 ${asarPath}（可设置 DSH_DESKTOP_DIR 指向 DSH Desktop 安装目录后重试；当前安装目录：${installDir}）`);

@@ -591,6 +591,23 @@ CSS Modules 内普通面板只用 `edgeBottom` 类；区域表面镜像用 `:glo
 - 选中文本：品牌色 24% 底。
 - 焦点环：品牌 70% 描边 + 1px offset。
 
+### 6.11 通知药丸（Toast）
+
+宿主（`dsh-client-ui-primitives` 的 `Toast`，`role="alert"`）与插件自己的 dock toast（`DockShellFrame.module.css` 的 `.toast`）共用同一配方——**反色药丸**：
+
+| 部位 | 配方 |
+| --- | --- |
+| 形状 | `border-radius: 999px`（规范 4.1 药丸档） |
+| 底色 | `var(--dsw-alias-label-primary)`（亮色深 / 暗色浅，即主文字色） |
+| 文字 | `var(--dsw-alias-bg-base)`（与应用底色互换，恒可读） |
+| 描边 | `1px solid color-mix(in srgb, var(--dsw-alias-bg-base) 16%, transparent)` |
+| 投影 | `0 8px 24px rgba(0,0,0, calc(0.4 * var(--liuli-shadow-strength)))` |
+| 层级 | `2147482900`（第 8 节 Toast 档） |
+
+- **两枚令牌必须成对**：`--dsw-alias-toast-bg` / `--dsw-alias-toast-label` 由 `liuli-palette.ts` 与静态主题块写入同一对反色值。只改 bg 会让官方固定的近白 label 压回来 —— 暗色主题下 M3 `inverseSurface` 反而变浅，会得到「浅底白字」（2026-10-23 实拍「会话已归档」提示即此故障）。
+- **状态图标与动作链接必须与字色混合**：图标 `color-mix(state-success-primary 40%, bg-base)`、`state-warn-primary 42%`；链接 `color-mix(brand 45%, bg-base)`。它们的底色始终是反色板，固定色在另一半主题里必然不可读。
+- **选择器锚定 `role="alert"`**：官方 toast 与插件 dock toast 的类名同为 `<hash>_toast`，不锚定会把 dock toast 一起改形。
+
 ---
 
 ## 7. 动效规范

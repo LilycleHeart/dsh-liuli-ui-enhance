@@ -69,9 +69,9 @@ async function fixture(t, version, { unpacked = false, main = mainSource } = {})
   return { root, archive, exe, run, contents }
 }
 
-for (const version of ['0.2.0-rc.2', '0.2.1-rc.2']) {
+for (const version of ['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.3']) {
   test(`official ${version}: check, apply, repeat and revert preserve the original shell`, { skip: process.platform !== 'win32' }, async t => {
-    const f = await fixture(t, version, { unpacked: version === '0.2.1-rc.2' })
+    const f = await fixture(t, version, { unpacked: version !== '0.2.0-rc.2' })
     const stage = join(f.root, 'stage')
     const check = f.run('--check', `--stage-dir=${stage}`)
     assert.equal(check.status, 0, check.stderr)
@@ -92,7 +92,7 @@ for (const version of ['0.2.0-rc.2', '0.2.1-rc.2']) {
     assert.equal(revert.status, 0, revert.stderr)
     assert.deepEqual(await readFile(join(f.root, 'resources/app.asar')), f.archive)
     assert.deepEqual(await readFile(join(f.root, 'DeepSeek Harness.exe')), f.exe)
-    if (version === '0.2.1-rc.2') {
+    if (version !== '0.2.0-rc.2') {
       for (const name of ['lib/main.js', 'lib/preload-app.cjs']) {
         assert.equal(await readFile(join(f.root, 'resources/app.asar.unpacked', name), 'utf8'), f.contents[name])
       }
@@ -101,7 +101,7 @@ for (const version of ['0.2.0-rc.2', '0.2.1-rc.2']) {
 }
 
 test('unsupported versions and drifted anchors fail without changing the shell', async t => {
-  for (const [version, main] of [['0.2.1-rc.3', mainSource], ['0.2.1-rc.2', mainSource.replace('height: 40', 'height: 41')]]) {
+  for (const [version, main] of [['0.2.1-rc.4', mainSource], ['0.2.1-rc.2', mainSource.replace('height: 40', 'height: 41')]]) {
     const f = await fixture(t, version, { main })
     const result = f.run('--check')
     assert.notEqual(result.status, 0)

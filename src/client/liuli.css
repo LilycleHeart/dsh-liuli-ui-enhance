@@ -198,7 +198,10 @@ body {
   --dsw-alias-state-warn-tertiary: #ffddb2;
 
   /* 弹出/提示 */
+  /* 通知药丸：与 DockShellFrame.module.css 的 .toast 同源的反色配方
+     （底 = 主文字 / 字 = 应用背景）。两枚令牌必须成对，单改 bg 会撞上官方的近白 label。 */
   --dsw-alias-toast-bg: #1a1c1e;
+  --dsw-alias-toast-label: #f8f9fa;
   --dsw-alias-tooltip-bg: #2f3133;
 
   /* 专用 */
@@ -325,7 +328,9 @@ body[data-ds-dark-theme] {
   --dsw-alias-state-warn-tertiary: #624000;
 
   /* 弹出/提示 */
-  --dsw-alias-toast-bg: #333d4e;
+  /* 暗色反色板：底浅 / 字深（见亮色块注释） */
+  --dsw-alias-toast-bg: #e2e2e6;
+  --dsw-alias-toast-label: #121316;
   --dsw-alias-tooltip-bg: #3f4a5c;
 
   /* 专用 */
@@ -637,7 +642,12 @@ body > [class*="_card"],
 div[aria-label][class*="_card"],
 [role="dialog"][class*="_dialog"],
 [role="dialog"][class*="_panel"],
-div[role="menu"],
+/* :not([data-menu-material]) —— rc.3 起官方菜单改走 MenuSurface 原语：根节点带
+   data-menu-material="translucent"，材质由内部 [class*="_material"] 子层单独承担
+   （settings-menu-material.ts 的专属层）。这条旧通用规则的特异性高于那条重置，
+   若继续命中会把菜单根再刷一遍 0.55 亚克力 + 噪声 + 强磨砂，与子层叠成近实底，
+   故把 MenuSurface 排除在外。三处 rc.3「更多」菜单均为此原语。 */
+div[role="menu"]:not([data-menu-material]),
 div[class$="_menu"],
 ul[class$="_menu"] {
   background-color: var(--dsw-specific-input-major);
@@ -1748,5 +1758,49 @@ body [data-dsh-usage-glass='panel'] {
   --dsw-heat-sheen: var(--liuli-heat-sheen);
   --dsw-heat-shade: var(--liuli-heat-shade);
   --dsw-trend-line: var(--liuli-trend-line);
+}
+
+/* ════════════════════════════════════════════════════════════
+ * rc.3 官方三处「更多」菜单（MenuSurface 原语）收尾适配
+ * ------------------------------------------------------------
+ * 官方登记（dsh-client-ui-entry-customization/README.zh.md:31）：
+ *   左栏导航入口下方   button.wtg9ga_panelRow[aria-label="更多"]
+ *   会话 View 标签之后 button.an3WzG_viewsMore[aria-label="更多会话视图"]
+ *   右侧栏起始页之后   button.p2k40q_entry[aria-label="更多工具"]
+ * 三者都 portal 到 body，根节点 = div[role="menu"][data-menu-material="translucent"]，
+ * 内部 _material 子层承担材质。
+ * 已由专属层覆盖、本条不重复的项：材质单层配方、10px 面板圆角、1px border-l2
+ * 描边、--liuli-shadow、弹出层层级 2147482500、菜单项 hover 的
+ * --dsw-alias-interactive-bg-hover（琉璃品牌 7%）与 120ms 过渡、文本
+ * --dsw-alias-label-primary、图标 --dsw-alias-menu-icon（= label-secondary）。
+ * 左栏那个入口本体是官方 panelRow，与同屏 4 个兄弟行（插件/自动化任务/
+ * 使用统计）逐值一致（36px 高、--dsw-radius-md 12px、开合态走
+ * interactive-bg-hover），故不为它单写规则；会话 View 的 22x22 与右栏头部的
+ * 28x28 图标按钮圆角 8px 已在 §4.1 图标小按钮档内，同样不改。
+ * ════════════════════════════════════════════════════════════ */
+
+/* 1) 菜单项圆角：官方 ._item_* 走 var(--dsw-radius-md)=12px，比它所在的菜单面板
+ *    （琉璃 10px）还圆 —— 内层比容器圆，hover 底的圆角会溢出面板曲率；规范
+ *    4.1 / 6.5.2 把菜单项钉在 7–8px 档。这里取 8px。锚点 [data-menu-material]
+ *    只命中 MenuSurface，插件自绘菜单 [data-liuli-context-menu] 与官方旧菜单不受影响。 */
+[data-menu-material] [role="menuitem"] {
+  border-radius: 8px !important;
+}
+
+/* 2) 右侧栏「更多工具」入口：官方 GuideBody 只给已知引导项写
+ *    data-sidebar-right-guide-entry（files/terminal/browser/...），rc.3 新增的
+ *    这一项是 aria-haspopup="menu" 的 MenuSurface 锚点、没有该属性 → 拿不到
+ *    [data-sidebar-right-guide-entry] 的通用配方：实测与同屏 5 个兄弟入口不一致，
+ *    圆角 20px（官方 --dsw-radius-xl）对 14px，且没有噪声与强磨砂。
+ *    这里用官方稳定锚点（guide 容器 + aria-haspopup）补齐同一套配方 —— 380x56
+ *    入口在原生模式与迁移模式下都与兄弟项一致（底色仍由
+ *    :is([data-liuli-official-rightbar], .) button[class*="_entry"] 统一为
+ *    材质滑条 + 0.3 档，与兄弟项相同）。 */
+[data-sidebar-right-guide] button[class*="_entry"][aria-haspopup="menu"] {
+  background-color: rgba(var(--liuli-acrylic-rgb), var(--liuli-material-opacity)) !important;
+  background-image: var(--liuli-noise) !important;
+  -webkit-backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;
+  backdrop-filter: var(--liuli-material-blur-strong, var(--liuli-material-blur)) !important;
+  border-radius: var(--liuli-radius, 14px) !important;
 }
 

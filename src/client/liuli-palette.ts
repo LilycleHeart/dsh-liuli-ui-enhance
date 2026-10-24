@@ -274,7 +274,13 @@ export function liuliApplyBrand(pal: LiuliPalette, isDark: boolean, sourceHex?: 
   set('--dsw-alias-button-ghost-active-fill', pal.bg2)
   set('--dsw-alias-button-ghost-active-hover', pal.bg3)
   set('--dsw-alias-button-ghost-active-border', pal.stroke1)
-  set('--dsw-alias-toast-bg', pal.bgInv)
+  // Toast 与插件自己的 dock toast 同一配方（DockShellFrame.module.css 的 .toast）：
+  // 底 = 主文字色、字 = 应用背景色 —— 亮色深底浅字、暗色浅底深字，两个主题都保证对比度。
+  // 不能再用 bgInv（M3 inverseSurface）配官方固定的近白 --dsw-alias-toast-label：
+  // 暗色主题下 inverseSurface 反而变浅，就成了「浅底白字」——会话归档提示几乎不可读
+  // （2026-10-23 实拍）。label 必须与 bg 同源写入，否则官方近白会压回来。
+  set('--dsw-alias-toast-bg', pal.fg1)
+  set('--dsw-alias-toast-label', pal.appBg)
   // Tooltip 板官方语义是"亮暗两模式都保持深色"（ui-primitives/Tooltip.module.css），
   // 不能用 bgInv（inverseSurface：暗色下反而变浅）——否则暗色主题下 tooltip
   // 变成浅底，配合白色文字不可读。固定为中性深灰。
@@ -347,7 +353,7 @@ export function liuliClearBrand(): void {
     '--dsw-alias-brand-text', '--dsw-alias-brand-primary-invert',
     '--dsw-alias-button-contrast-fill', '--dsw-alias-button-elevated-fill', '--dsw-alias-button-floating-fill',
     '--dsw-alias-button-floating-hover', '--dsw-alias-button-ghost-active-fill', '--dsw-alias-button-ghost-active-hover',
-    '--dsw-alias-button-ghost-active-border', '--dsw-alias-toast-bg', '--dsw-alias-tooltip-bg', '--dsw-alias-bg-mask-drop',
+    '--dsw-alias-button-ghost-active-border', '--dsw-alias-toast-bg', '--dsw-alias-toast-label', '--dsw-alias-tooltip-bg', '--dsw-alias-bg-mask-drop',
     '--dsw-alias-markdown-code-block', '--dsw-alias-markdown-code-block-banner', '--dsw-alias-markdown-inline-code',
     '--dsw-alias-markdown-tag', '--dsw-alias-markdown-citation', '--dsw-alias-markdown-placeholder',
     '--dsw-alias-markdown-code-segment-selected', '--dsw-alias-markdown-code-segment-unselected',
