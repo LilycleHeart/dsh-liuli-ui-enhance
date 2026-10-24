@@ -51,6 +51,26 @@ export function isOfficialWindowBridge(): boolean {
     && windowBridge()?.official === true && windowBridge()?.platform === 'win32'
 }
 
+/** 还原命令：宿主补丁被客户端更新覆盖后重新应用（需先完全退出客户端）。 */
+export const TOPBAR_PATCH_COMMAND = 'node scripts/patch-official-window-controls.mjs --apply'
+
+/**
+ * 设置页用的「宿主补丁缺失」提示。null = 无需提示。
+ *
+ * 无边框 + 窗口控制桥只能由宿主补丁提供，而客户端每次自动更新都会用官方文件
+ * 覆盖 app.asar / exe，补丁随之失效。此处把「为什么顶栏设置没反应」讲清楚，
+ * 并给出两种恢复方式（手动命令 / 自动看护），避免用户以为是插件坏了。
+ */
+export function desktopTopbarPatchNotice(): string | null {
+  if (typeof window === 'undefined') return null
+  if (window.location.protocol !== 'dsh-app:' || window.location.hostname !== 'app') return null
+  if (!/win32/i.test(navigator.userAgent)) return null
+  if (isOfficialWindowBridge()) return null
+  return '未检测到宿主窗口控制桥：当前使用官方原生标题栏，「窗口顶栏」设置不会生效。'
+    + '客户端每次更新都会用官方文件覆盖 resources/app.asar 与 exe，无边框补丁随之失效。'
+    + '恢复：完全退出客户端后运行下面的命令，或启用自动看护（脚本在插件目录 scripts/ 下）。'
+}
+
 function windowBridge(): LiuliWindowBridge | undefined {
   const candidate = (globalThis as { liuliWindowControls?: unknown }).liuliWindowControls
   if (typeof candidate !== 'object' || candidate === null) return undefined
@@ -77,22 +97,30 @@ async function fetchWindowState(): Promise<WindowControlsState | undefined> {
   }
 }
 
-/** 发送一个窗口动作：优先走窗口控制桥，其次回退 POST /liuli-window。 */
+/**
+ * 发送一个窗口动作：优先走窗口控制桥，其次回退 POST /liuli-window。
+ * 两条通道都拒绝时，close 交回渲染进程自己执行 —— 官方宿主明确要求关闭由
+ * 渲染进程调用 `window.close()`（主进程会把它收进托盘），这在拿不到
+ * BrowserWindow 的 utility-process 宿主里是唯一可用的关闭路径。
+ */
 async function postWindowAction(action: 'minimize' | 'toggleMaximize' | 'close'): Promise<void> {
   const bridge = windowBridge()
   if (bridge !== undefined) {
     try {
-      await bridge.invoke(action)
-      return
+      const result = await bridge.invoke(action)
+      if (result?.ok !== false) return
     } catch { /* 桥不可用时回退宿主路由 */ }
   }
   try {
-    await fetch('/liuli-window', {
+    const res = await fetch('/liuli-window', {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
       body: JSON.stringify({ action }),
     })
-  } catch { /* 宿主路由不可达时按钮无动作即可 */ }
+    const data = await res.json().catch(() => undefined) as { ok?: boolean } | undefined
+    if (data?.ok !== false) return
+  } catch { /* 宿主路由不可达时按下方兜底处理 */ }
+  if (action === 'close' && typeof window.close === 'function') window.close()
 }
 
 /* ── 智能避让 ─────────────────────────────────────────────────── */

@@ -49,6 +49,28 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
+/* 宿主补丁缺失提示（「窗口顶栏」下方）：横跨整行，避免挤进 240px 的网格列 */
+.patchNotice {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-md, 10px);
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.patchNotice code {
+  font-family: var(--ds-font-family-code);
+  font-size: 11px;
+  color: var(--dsw-alias-label-primary);
+  word-break: break-all;
+}
+
 /* 悬浮功能描述：ⓘ 图标 + portal 浮层（fixed 定位，不随容器裁剪） */
 .tipWrap {
   display: inline-flex;
