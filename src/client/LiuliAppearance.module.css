@@ -71,6 +71,37 @@
   word-break: break-all;
 }
 
+.patchNoticeHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.patchNoticeBtn {
+  flex: none;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: var(--dsw-radius-md, 10px);
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 24px;
+  cursor: pointer;
+  transition: background 120ms ease, opacity 120ms ease;
+}
+
+.patchNoticeBtn:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover-2, var(--dsw-alias-interactive-bg-hover));
+  opacity: 0.92;
+}
+
+.patchNoticeBtn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 /* 悬浮功能描述：ⓘ 图标 + portal 浮层（fixed 定位，不随容器裁剪） */
 .tipWrap {
   display: inline-flex;

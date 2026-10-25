@@ -14,6 +14,8 @@ import { createPortal } from 'react-dom'
 import { attachElementPicker, describeElement, inspectElement, type InspectedElement, type PickedElement } from './element-picker.ts'
 import type { InsertElementFn } from './FloatBall.types.ts'
 import { usePopupPresence, usePopupValuePresence } from './use-popup-presence.ts'
+import { applyTopbarPatch, describeTopbarPatch, fetchTopbarPatchStatus } from './topbar-patch.ts'
+import type { TopbarPatchStatus } from './topbar-patch.ts'
 import css from './FloatBall.module.css'
 
 /** 圆点尺寸（px）。 */
@@ -119,6 +121,9 @@ export function FloatBall({ insertElement, openLayoutMenu }: { insertElement: In
   const [pickerMode, setPickerMode] = useState<'insert' | 'inspect'>('insert')
   const [devtoolsBusy, setDevtoolsBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  /** 顶栏补丁状态：打开工具栏时刷新；missing / needs-exit 时多出一个修复入口。 */
+  const [topbarPatch, setTopbarPatch] = useState<TopbarPatchStatus | undefined>(undefined)
+  const [topbarPatchBusy, setTopbarPatchBusy] = useState(false)
   const toolbarPresence = usePopupPresence(open)
   const pickedPresence = usePopupValuePresence(picked)
   const inspectedPresence = usePopupValuePresence(inspected)
@@ -470,6 +475,34 @@ export function FloatBall({ insertElement, openLayoutMenu }: { insertElement: In
     void navigator.clipboard?.writeText(inspected.outerHTML).catch(() => {})
   }
 
+  /* ── 顶栏补丁：客户端自动更新会覆盖无边框补丁，打开工具栏时检测一次，
+        缺补丁就多出一个「修复窗口顶栏」入口（点击就地写盘，重启后生效） ── */
+  useEffect(() => {
+    if (!open) return () => {}
+    let alive = true
+    void fetchTopbarPatchStatus().then((next) => {
+      if (alive) setTopbarPatch(next)
+    })
+    return () => { alive = false }
+  }, [open])
+
+  const runTopbarPatch = async (): Promise<void> => {
+    if (topbarPatchBusy) return
+    setTopbarPatchBusy(true)
+    try {
+      const result = await applyTopbarPatch()
+      if (result === undefined) {
+        setNotice('补丁请求失败（Host 路由不可达）')
+        return
+      }
+      setNotice(result.message + (result.ok && result.requiresRestart ? '（重启客户端后生效）' : ''))
+      const next = await fetchTopbarPatchStatus()
+      if (next !== undefined) setTopbarPatch(next)
+    } finally {
+      setTopbarPatchBusy(false)
+    }
+  }
+
   const tools: Tool[] = [
     {
       id: 'element-picker',
@@ -529,6 +562,20 @@ export function FloatBall({ insertElement, openLayoutMenu }: { insertElement: In
         </svg>
       ),
       onSelect: () => { openLayoutMenu() },
+    })
+  }
+
+  if (topbarPatch !== undefined && (topbarPatch.state === 'missing' || topbarPatch.state === 'needs-exit')) {
+    tools.push({
+      id: 'topbar-patch',
+      label: topbarPatchBusy ? '正在打补丁…' : '修复窗口顶栏',
+      hint: describeTopbarPatch(topbarPatch),
+      icon: (
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+          <path fill="currentColor" d="M12.9 1.4a3.6 3.6 0 0 0-4 4.9L2 13.2l.8.8 6.9-6.9a3.6 3.6 0 0 0 4.9-4l-2.2 2.2-1.9-.5-.5-1.9 2.9-2.5z" />
+        </svg>
+      ),
+      onSelect: () => { void runTopbarPatch() },
     })
   }
 

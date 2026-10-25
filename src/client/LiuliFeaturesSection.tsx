@@ -13,7 +13,7 @@ import type { LiuliSettings, LiuliTerminalShell } from '../liuli-settings.ts'
 import { LIULI_SETTINGS_DEFAULTS, TERMINAL_SHELL_IDS } from '../liuli-settings.ts'
 import type { createLiuliStore } from './liuli-store.ts'
 import { SelectRow, SliderRow, ToggleRow } from './LiuliAppearance.tsx'
-import { TOPBAR_PATCH_COMMAND, desktopTopbarPatchNotice } from './WindowControls.tsx'
+import { TopbarPatchNotice } from './TopbarPatchNotice.tsx'
 import { ModelRetryRow } from './ModelRetryRow.tsx'
 import { HistoryLoadRow } from './HistoryLoadRow.tsx'
 import { ThinkingFillRow } from './ThinkingFillRow.tsx'
@@ -74,8 +74,6 @@ export function LiuliFeaturesSection({
   const state = useStore(s => s)
   const s = state.settings
   const set = (patch: Partial<LiuliSettings>): void => { save(patch) }
-  // 宿主补丁缺失（客户端更新后最常见）时，把原因与恢复方式直接摆在设置页里
-  const topbarNotice = desktopTopbarPatchNotice()
 
   return (
     <div className={css.section}>
@@ -87,13 +85,7 @@ export function LiuliFeaturesSection({
           tip="悬浮控件在右上角按需唤出；传统标题栏常驻显示应用菜单和最小化、最大化、关闭按钮，并把卡片内容排在其下方。"
           options={[{ value: 'floating', label: '悬浮控件（无标题栏）' }, { value: 'persistent', label: '传统标题栏（常驻）' }]}
           onChange={v => { set({ desktop_menu_mode: v as LiuliSettings['desktop_menu_mode'] }) }} />
-        {topbarNotice !== null && (
-          <div className={css.patchNotice} role="status">
-            <span>{topbarNotice}</span>
-            <code>{TOPBAR_PATCH_COMMAND}</code>
-            <code>node scripts/liuli-topbar-guard.mjs &nbsp;（查状态）</code>
-          </div>
-        )}
+        <TopbarPatchNotice />
         <SliderRow label="触顶卡片拖窗高度" value={s.desktop_drag_height} suffix="px" min={0} max={40} step={2}
           onChange={v => { set({ desktop_drag_height: v }) }} />
         <ToggleRow

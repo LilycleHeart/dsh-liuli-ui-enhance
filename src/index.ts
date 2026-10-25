@@ -23,6 +23,7 @@ import type { WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
 import { createBrowserEngine } from './browser-engine.ts'
 import { applyFramelessPatch, revertFramelessPatch } from './frameless-patch.ts'
 import { windowControlRoute } from './host-window.ts'
+import { topbarPatchRoute } from './host-topbar-patch.ts'
 import { openExternalRoute } from './host-open-external.ts'
 import { audioCaptureRoute, installSystemAudioCapture } from './host-audio.ts'
 
@@ -1012,6 +1013,9 @@ export function apply(ctx: Context): void {
   // advanced（无边框）模式页面内窗口按钮（WindowControls.tsx）的宿主窗口控制面：
   // GET 查询可用/最大化态，POST 触发 minimize/toggleMaximize/close；纯 Web 返回 available:false。
   ctx.effect(() => ctx.webServer.register(windowControlRoute(ctx)), 'dsh-liuli-ui-enhance: /liuli-window route')
+  // 顶栏补丁修复面：客户端更新后无边框补丁会被官方文件覆盖，悬浮球/设置页按钮
+  // 经 GET 检测、POST 就地打补丁（只改 asar 头 + unpacked 文件，重启后生效）。
+  ctx.effect(() => ctx.webServer.register(topbarPatchRoute()), 'dsh-liuli-ui-enhance: /liuli-topbar-patch route')
   // 2.0.9+ utility process 宿主没有主进程 shell 模块，用 child_process 承接
   // 客户端 <webview> 面板的「在外部打开」（file:/http:/https:/mailto:）。
   ctx.effect(() => ctx.webServer.register(openExternalRoute()), 'dsh-liuli-ui-enhance: /liuli-browser/open-external route')
