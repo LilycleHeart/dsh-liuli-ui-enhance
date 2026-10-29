@@ -75,6 +75,7 @@ import { pluginManagerLayoutCss } from './plugin-manager-layout.ts'
 import { officialMaterialGapsCss } from './official-material-gaps.ts'
 import { settingsMenuMaterialCss } from './settings-menu-material.ts'
 import { startPluginManagerIcons } from './plugin-manager-icons.ts'
+import { startHasSelectorPerf } from './has-selector-perf.ts'
 import {
   LiuliHeaderVoiceprint, LiuliHeaderChrome, LiuliHeaderResizer,
   LiuliHeaderFullscreen,
@@ -595,6 +596,8 @@ function unequipRootEntryChildren(ctx: ClientContext): void {
 export function apply(ctx: ClientContext): void {
   injectThemeCss()
   ctx.effect(() => startPluginManagerIcons(), 'dsh-liuli-ui-enhance: plugin manager icons')
+  // 自有样式表 :has() 等价改写：消除整页样式失效（视觉不变，见 has-selector-perf.ts）。
+  ctx.effect(() => startHasSelectorPerf(), 'dsh-liuli-ui-enhance: :has selector perf')
 
   // 客户端槽位布局版本：2.0.9 起 advanced 的 root 子槽位改名/改 kind
   // （conversation→main(keyed)、details→rightbar），root 声明表与 details

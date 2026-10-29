@@ -9,15 +9,20 @@ export function startDesktopDrag(): () => void {
   let pressed = false
   let signature = ''
   const interactive = 'button,a,input,textarea,select,label,[role="button"],[role="tab"],[role="slider"],[role="separator"],[contenteditable="true"],[data-testid="dock-tab-chip"]'
+  const interactiveOutsideScroll = `:is(${interactive}):not([data-conversation-scroll] *)`
   const sync = () => {
     frame = 0
+    // 窗口最小化/隐藏时无需维护拖拽区。
+    if (document.hidden) return
     const height = Number(document.documentElement.dataset.liuliDragHeight ?? 24)
     const blocked = pressed || isLayoutInProgress() || document.body.hasAttribute('data-liuli-settings-open')
       || Array.from(document.querySelectorAll<HTMLElement>('[aria-modal="true"], [role="menu"], [role="listbox"]'))
         .some(el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden' && getComputedStyle(el).opacity !== '0')
     const rects: Array<{ x: number; y: number; w: number; h: number }> = []
     if (!blocked && height > 0) {
-      const exclusions = Array.from(document.querySelectorAll<HTMLElement>(interactive))
+      // 消息滚动区不可能伸进顶部拖拽条（它在页头之下），其中的数百个按钮/链接
+      // 直接在选择器层排除，省掉逐个 checkVisibility（每 250ms 一轮）。
+      const exclusions = Array.from(document.querySelectorAll<HTMLElement>(interactiveOutsideScroll))
         // getClientRects() on a child of a skipped content-visibility subtree
         // realizes that entire message. Check visibility before any geometry.
         .filter(el => typeof el.checkVisibility === 'function'

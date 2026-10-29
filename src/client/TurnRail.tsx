@@ -311,15 +311,24 @@ export function TurnRail({ useChat, sessionId }: TurnRailProps) {
     setPillTop(tickCenterTop(tick))
   }
 
+  // 跟随计算读取的最新值放 ref：流式输出时 turnItems 每批 token 都换引用，
+  // 若作为 effect 依赖，每次 React commit 都会拆装监听器并同步跑一遍
+  // update()（逐轮 getBoundingClientRect，强制布局）——实测空闲态 5s 内
+  // 540ms 耗在这里。改为 effect 只随 host 建立一次，数据变化只排一帧。
+  const followRef = useRef({ turnItems, hoveredTurn, locations })
+  followRef.current = { turnItems, hoveredTurn, locations }
+  const followScheduleRef = useRef<((resetIndex: boolean) => void) | null>(null)
+  const hasTurns = turnItems.length > 0
+
   // 滚动时跟随视口中心最近的对话轮次（无 hover 时）。
   useEffect(() => {
-    if (host === null || turnItems.length === 0) return
+    if (host === null || !hasTurns) return
     // host 即正文卡片（[data-conversation-scroll]），自身就是滚动容器。
     const scrollport = host
-    if (scrollport === null) return
     // 锚点到消息行的映射仅在 DOM 换行/虚拟列表换页时变化；滚动时复用。
     let anchorIndex: AnchorIndex | null = null
     const update = (): void => {
+      const { turnItems, hoveredTurn, locations } = followRef.current
       // hover 胶囊时跟随暂停（胶囊展示 hover 轮）。
       if (hoveredTurn !== null) return
       // 缩放期（sash/窗口 resize）让位：此时主线程忙于布局，且视口几何不变，
@@ -351,7 +360,11 @@ export function TurnRail({ useChat, sessionId }: TurnRailProps) {
         update()
       })
     }
-    update()
+    followScheduleRef.current = (resetIndex) => {
+      if (resetIndex) anchorIndex = null
+      schedule()
+    }
+    schedule()
     scrollport.addEventListener('scroll', schedule, { passive: true })
     const ro = new ResizeObserver(schedule)
     ro.observe(scrollport)
@@ -360,13 +373,18 @@ export function TurnRail({ useChat, sessionId }: TurnRailProps) {
     const mo = new MutationObserver(() => { anchorIndex = null; schedule() })
     mo.observe(scrollport, { childList: true, subtree: true })
     return () => {
+      followScheduleRef.current = null
       if (raf !== 0) cancelAnimationFrame(raf)
       scrollport.removeEventListener('scroll', schedule)
       ro.disconnect()
       mo.disconnect()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [host, turnItems, hoveredTurn, locations])
+  }, [host, hasTurns])
+
+  // 轮次集合 / hover 状态变化：只排一帧重算（同帧多次合并），不拆装监听器。
+  // 结构变化（轮次增删、locations 换表）时锚点索引一并失效。
+  useEffect(() => { followScheduleRef.current?.(true) }, [turnItems.length, locations])
+  useEffect(() => { followScheduleRef.current?.(false) }, [hoveredTurn])
 
   /** 点击 commit 后把 commit 号送回对话窗口（由插件注入处理函数）。 */
   const onCommitClick = (turn: number): void => {
