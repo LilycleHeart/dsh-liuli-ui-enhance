@@ -1,7 +1,8 @@
 # 官方 DeepSeek Harness Desktop 0.1.7-rc.2 适配
 
 > 当前适配桌面端为 **0.2.1-rc.5**（本轮变更见 [dsh-021-rc5-upgrade.md](dsh-021-rc5-upgrade.md)）。系统更新会覆盖之前的窗口补丁；
-> `scripts/patch-official-window-controls.mjs` 支持 0.2.0-rc.2、0.2.1-rc.2、0.2.1-rc.3、0.2.1-rc.5，
+> `scripts/patch-official-window-controls.mjs` 不再按版本白名单拒绝：真机验证过的版本（0.2.0-rc.2、0.2.1-rc.2、rc.3、rc.5）只作标记，
+> 其他版本只要四处锚点逐字命中同样放行（`--check` 会报 `verified: false`），
 > 备份目录按实际版本命名为 `liuli-window-controls-backup-<版本>`。下文早期接口迁移与逐版记录保留作历史说明。
 
 0.2.0-rc.2 的设置和通用模态遮罩读取 `--dsh-frame-chrome-top`，原生标题栏移除后由琉璃置为 0；设置弹窗打开时窗口顶栏也落在遮罩下方，暗色遮罩覆盖整个视口。

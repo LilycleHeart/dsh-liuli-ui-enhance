@@ -54,16 +54,20 @@
    完全不变，所以客户端**运行时**写盘也不会让已经加载的进程读错位；
 2. 把补丁后的 `main.js` / `preload-app.cjs` 写到 `app.asar.unpacked/lib/`；
 3. exe 内嵌哈希**能写就同步**；写不了时，只有 fuse 明确为 `off` 才允许「只写 asar」；
-4. 若该客户端启用了完整性校验（fuse `on`/`unknown`）或版本、锚点不支持 → 返回
-   `needs-exit` / `unsupported` 并**拒绝写入**，绝不让客户端起不来；
+4. 若该客户端启用了完整性校验（fuse `on`/`unknown`）或**锚点/结构与预期不符** → 返回
+   `needs-exit` / `unsupported` 并**拒绝写入**，绝不让客户端起不来（版本号本身不再是门槛，见下）；
 5. **重启客户端后生效**（窗口参数只在创建窗口时读取）。
 
 状态含义：`patched`（已应用）/ `missing`（可补）/ `needs-exit`（需退出客户端走离线脚本）/
-`unsupported`（版本或锚点不在支持范围）。
+`unsupported`（**锚点或结构不匹配**，不是「版本没被收录」）。
 
-> `unsupported` 最常见的成因是**客户端自动更新**：新版本号还没进 `scripts/patch-official-window-controls.mjs`
-> 与 `src/host-topbar-patch.ts` 这两份白名单（它们必须同步，`tests/topbar-patch-versions.test.mjs`
-> 会守住这一点）。适配流程与版本语义见 [dsh-021-rc5-upgrade.md](dsh-021-rc5-upgrade.md)。
+> **版本不是门槛（2026-11 起）**：补丁的硬判据只有三样 —— 四处锚点逐字命中且唯一、exe 内嵌 asar 哈希唯一命中、
+> fuse 判定。版本号只作「真机验证过」的标记：`--check` 会输出 `verified: true|false`，未验证但锚点命中时
+> **照样放行**（stderr 打一条提示，插件内按钮显示「未在真实 <version> 上验证过，但四处补丁锚点逐字命中」）。
+> 所以客户端小版本更新后一般不需要人工改代码；真出问题是锚点漂移，那时的动作是更新三处锚点常量
+> （`MAIN_BEFORE` / `MAIN_IPC_ANCHOR` / `MAIN_SETTITLEBAR` 与脚本里的对应字符串），**而不是往白名单里加版本号**。
+> 两份「已验证版本」列表必须一致、且不得按版本硬拒绝，`tests/topbar-patch-versions.test.mjs` 守的就是这件事。
+> 完整策略与代码改动见 [dsh-021-rc5-upgrade.md](dsh-021-rc5-upgrade.md) §3。
 
 ### 命令行兜底
 
@@ -93,11 +97,14 @@ node scripts/patch-official-window-controls.mjs --apply
 ## 四、已知限制
 
 - **锚点漂移**：官方若改写主窗口创建代码，检测会返回 `unsupported` 并拒绝写入（安全失败）。
-  此时需要更新 `src/host-topbar-patch.ts` 与离线脚本里的锚点、版本白名单 —— 属于大版本升级的正常维护。
+  此时需要更新三处锚点常量（`src/host-topbar-patch.ts` 的 `MAIN_BEFORE` / `MAIN_IPC_ANCHOR` /
+  `MAIN_SETTITLEBAR`，以及离线脚本里的对应字符串）—— 属于大版本升级的正常维护；
+  「已验证版本」列表只影响提示文案，不影响能否写入。
 - **备份占用**：离线脚本每成功补丁一次都会在安装目录留下 `liuli-window-controls-backup-<版本>/`
   （`app.asar` + `exe`，约 400 MB）。确认不需要回滚时可以手动删除（客户端更新本身也会清掉它）。
-- **内嵌浏览器**：`webviewTag` 同属宿主补丁，历史上由 `patch-desktop-frameless.mjs` 负责；0.2.1 起窗口参数
-  搬进 `lib/main.js` 后，本补丁未接管这一项，内嵌浏览器当前走官方 `WebContentsView`。
+- **内嵌浏览器**：`webviewTag` 同属宿主补丁，历史上由 `patch-desktop-frameless.mjs` 负责；官方 Desktop 的窗口参数
+  一直在 `app.asar` 的 `lib/main.js`（`electron-runtime-*.js` 属于更早的社区 / `2.0.x` 旧布局），本补丁未接管这一项，
+  内嵌浏览器当前走官方 `WebContentsView`。
 - **如果官方将来提供无边框/自定义标题栏开关**，这套补丁就可以整体退休 —— 优先用官方能力。
 
 ## 五、排查清单
@@ -105,7 +112,9 @@ node scripts/patch-official-window-controls.mjs --apply
 | 现象 | 先看这里 |
 |---|---|
 | 顶栏没了、原生标题栏回来了 | 悬浮球或设置里的「打补丁」按钮；`node scripts/liuli-topbar-guard.mjs` 查状态 |
-| 想知道按钮会不会成功 | 设置页那块会显示 `state` 与 fuse 状态；或 `node scripts/patch-official-window-controls.mjs --check`（不改盘） |
+| 想知道按钮会不会成功 | 设置页那块会显示 `state`、`verified` 与 fuse 状态；或 `node scripts/patch-official-window-controls.mjs --check`（不改盘） |
+| 提示「未在真实版本上验证过」 | 正常：`verified: false` 只是没在真机上跑过这个版本，四处锚点命中就会写入 |
 | 提示 `needs-exit` | 完全退出客户端 → `node scripts/patch-official-window-controls.mjs --apply` → 启动 |
+| 提示 `unsupported` / 锚点不匹配 | 官方改写了窗口创建代码：更新三处锚点常量，不要去加版本号（策略见 [dsh-021-rc5-upgrade.md](dsh-021-rc5-upgrade.md) §3） |
 | 客户端启动即崩溃 / Integrity check failed | `--revert` 还原，或删除安装目录下的 `liuli-window-controls-backup-*` 后重装客户端 |
 | 打完补丁没变化 | 需要**重启客户端**（窗口参数只在创建窗口时读取） |

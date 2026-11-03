@@ -156,6 +156,6 @@
     "cordis.patch.yml"
   ],
   "engines": {
-    "dsh": "^0.2.1-rc.5"
+    "dsh": ">=0.2.1-rc.5"
   }
 }

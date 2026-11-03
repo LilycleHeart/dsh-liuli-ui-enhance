@@ -21,8 +21,9 @@
 >
 ### 官方插件安装
 
-本轮产物 `0.1.2-rc.39` 适配 DSH **0.2.1-rc.5**（`engines.dsh = ^0.2.1-rc.5`，范围写法，
-宿主再升小版本也不会被拒激活）。在官方「插件」页面输入 `dsh-liuli-ui-enhance@0.1.2` 安装，
+本轮产物 `0.1.2-rc.39` 适配 DSH **0.2.1-rc.5**（`engines.dsh = >=0.2.1-rc.5`：宿主只认这一个字段，
+范围写法让官方再升 `0.2.x` 甚至 `0.3/0.4` 时都不会整包被拒激活；代价是未来大改版可能部分功能失效，
+但能加载、主题还在、能在设置里关掉）。在官方「插件」页面输入 `dsh-liuli-ui-enhance@0.1.2` 安装，
 或通过官方 CLI 执行：
 
 ```bash
@@ -55,7 +56,10 @@ pnpm install:desktop
 
 # 2. 给 DSH Desktop 打窗口顶层补丁（无边框 + 页面内窗口按钮真正可用；可选）
 #    官方 Desktop 的窗口参数在 app.asar 内的 lib/main.js，用官方窗口控制补丁：
-node scripts/patch-official-window-controls.mjs --check    # 预检：版本白名单 / 锚点 / fuse，不改盘
+node scripts/patch-official-window-controls.mjs --check    # 预检：四处锚点 / exe 内嵌哈希 / fuse，不改盘
+#    版本号不再是门槛：`--check` 输出 `verified: true|false` 只表示「这个版本我们真机验证过没有」，
+#    未验证但四处锚点逐字命中时照样放行（stderr 会给一条提示）。锚点漂移才会拒绝写入，
+#    那时的适配动作是更新三处锚点常量（见 docs/dsh-021-rc5-upgrade.md §3），不是加版本号。
 #    确认无误后「完全退出 DSH Desktop（含托盘图标，任务管理器里也不留进程）」，再执行：
 node scripts/patch-official-window-controls.mjs --apply
 #    之后重新启动桌面端；还原（同样要求客户端已退出）：
@@ -200,7 +204,7 @@ pnpm add file:/tmp/liuli/dsh-liuli-ui-enhance-0.1.0.tgz
 
 7. 隐藏原生标题栏需要额外宿主补丁
    插件只能提供页面内窗口按钮，不能从渲染进程隐藏原生标题栏。
-   0.2.1+（窗口参数在 app.asar 的 lib/main.js 里）用官方窗口控制补丁：
+   官方 0.2.x（窗口参数在 app.asar 的 lib/main.js 里）用官方窗口控制补丁：
    node scripts/patch-official-window-controls.mjs --check
    # 完全退出桌面端（含托盘）后：
    node scripts/patch-official-window-controls.mjs --apply

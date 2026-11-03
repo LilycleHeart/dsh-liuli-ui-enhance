@@ -100,15 +100,30 @@ for (const version of ['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.3', '0.2.1-rc.5']) 
   })
 }
 
-test('unsupported versions and drifted anchors fail without changing the shell', async t => {
+test('unverified versions are allowed when the anchors still match, flagged verified:false', async t => {
+  // 版本号不再是门槛：官方发新版本后只要四处锚点没漂移就直接放行（verified:false
+  // 只表示「没在这台机器上真机跑过这个版本」）。旧的硬白名单在 rc.5 升级时误伤了
+  // 一次，这条用例就是那次事故的回归防护。
+  for (const version of ['0.2.1-rc.4', '0.2.1-rc.6', '0.2.2-alpha.2']) {
+    const f = await fixture(t, version, { main: mainSource })
+    const result = f.run('--check')
+    assert.equal(result.status, 0, `${version} 锚点匹配却仍被拒绝：${result.stderr}`)
+    const report = JSON.parse(result.stdout)
+    assert.equal(report.version, version)
+    assert.equal(report.verified, false)
+    assert.match(result.stderr, /不在真机验证过的版本列表里/)
+  }
+})
+
+test('drifted anchors still fail without changing the shell', async t => {
   for (const [version, main] of [
-    ['0.2.1-rc.4', mainSource], // 真实存在但未验证的版本，白名单不收录
-    ['0.2.1-rc.6', mainSource], // 尚未发布的版本
-    ['0.2.1-rc.5', mainSource.replace('height: 40', 'height: 41')], // 锚点漂移
+    ['0.2.1-rc.5', mainSource.replace('height: 40', 'height: 41')], // 已验证版本，但 titleBarOverlay 锚点漂移
+    ['0.2.1-rc.6', mainSource.replace('function createWindow(preload, show = false, primary = false)', 'function createWindow(preload, primary = false)')], // 未验证版本 + 工厂锚点漂移
   ]) {
     const f = await fixture(t, version, { main })
     const result = f.run('--check')
     assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /锚点|anchor|Primary window factory/i)
     assert.deepEqual(await readFile(join(f.root, 'resources/app.asar')), f.archive)
     assert.deepEqual(await readFile(join(f.root, 'DeepSeek Harness.exe')), f.exe)
   }

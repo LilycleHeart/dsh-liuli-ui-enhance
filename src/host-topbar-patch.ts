@@ -32,13 +32,17 @@ import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 /* ── 与 scripts/patch-official-window-controls.mjs 保持一致的补丁内容 ───── */
 
 const MARKER = '[liuli official window controls v1]'
-/** 与 scripts/patch-official-window-controls.mjs 的 supportedVersions 保持同步。
- *  两处白名单是同一个事实的两份副本：脚本负责离线（客户端已退出）写入，本模块负责
- *  运行中的就地写入。漏改任何一边都会让对应入口判成 unsupported。
- *  tests/topbar-patch-versions.test.mjs 会断言两边集合完全相等。
- *  0.2.1-rc.5 已核对：MAIN_BEFORE / MAIN_IPC_ANCHOR / MAIN_SETTITLEBAR 三个锚点在
- *  rc.5 的 lib/main.js 里逐字未变且唯一命中。 */
-const SUPPORTED = new Set(['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.3', '0.2.1-rc.5'])
+/** **真机验证过**的官方 Desktop 版本 —— 只作记录，不是门槛。
+ *
+ *  与 `scripts/patch-official-window-controls.mjs` 的 `verifiedVersions` 是同两份副本：
+ *  脚本负责离线（客户端已退出）写入，本模块负责运行中的就地写入。
+ *
+ *  真正的硬判据是下面的锚点常量（`MAIN_BEFORE` / `MAIN_IPC_ANCHOR` / `MAIN_SETTITLEBAR`）
+ *  必须逐字命中且唯一 —— 锚点漂移一样拒绝写入。官方小版本更新通常不动这几段代码，
+ *  所以不在这里的版本同样放行（UI 会标注「未在真实版本上验证过，但锚点命中」），
+ *  官方每次发版不需要人工回来补白名单。
+ *  `tests/topbar-patch-versions.test.mjs` 断言两份「已验证」列表一致、锚点两边逐字相同。 */
+const VERIFIED_VERSIONS = new Set(['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.3', '0.2.1-rc.5'])
 const FUSE_WIRE = 'dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX'
 
 const MAIN_BEFORE = `titleBarStyle: "hidden",\n\t\t\ttitleBarOverlay: {\n\t\t\t\theight: 40,\n\t\t\t\tcolor: chromeFallbackFill(),\n\t\t\t\tsymbolColor: nativeTheme.shouldUseDarkColors ? "#f9fafb" : "#0f1115"\n\t\t\t}`
@@ -272,13 +276,28 @@ function inspectTopbarPatchInner(): TopbarPatchStatus {
   if (main.includes(MARKER)) {
     return { state: 'patched', version, fuse, canApply: false, message: '无边框补丁已应用。' }
   }
-  if (version !== undefined && !SUPPORTED.has(version)) {
-    return { state: 'unsupported', version, fuse, canApply: false, message: `客户端 ${version} 不在补丁支持范围内（需更新插件的补丁锚点）。` }
-  }
+  // 版本只作「已验证」标记，不再当门槛：官方小版本更新通常不动窗口创建代码，
+  // 真正的判据是下面的锚点检查 —— 锚点漂移一样拒绝，并提示去更新锚点而不是加版本号。
+  const verified = version !== undefined && VERIFIED_VERSIONS.has(version)
   const anchorAt = main.indexOf(MAIN_BEFORE)
   const createAt = main.indexOf('function createWindow(preload, show = false, primary = false)')
   if (createAt < 0 || anchorAt < 0) {
-    return { state: 'unsupported', version, fuse, canApply: false, message: '找不到主窗口创建代码的补丁点（官方可能改写了窗口参数）。' }
+    return {
+      state: 'unsupported',
+      version,
+      fuse,
+      canApply: false,
+      message: '找不到主窗口创建代码的补丁点：官方可能改写了窗口参数，需要更新补丁锚点（见 docs/dsh-021-rc5-upgrade.md）。',
+    }
+  }
+  if (!main.includes(MAIN_IPC_ANCHOR) || !main.includes(MAIN_SETTITLEBAR)) {
+    return {
+      state: 'unsupported',
+      version,
+      fuse,
+      canApply: false,
+      message: '找不到 IPC 注入点或 setTitleBarOverlay 调用：官方可能改写了窗口代码，需要更新补丁锚点。',
+    }
   }
   return {
     state: 'missing',
@@ -287,7 +306,9 @@ function inspectTopbarPatchInner(): TopbarPatchStatus {
     canApply: true,
     message: fuse === 'on'
       ? '需要同步 exe 内嵌哈希：请退出客户端后运行补丁脚本（运行时无法写 exe）。'
-      : '可立即打补丁，重启客户端后生效。',
+      : verified
+        ? '可立即打补丁，重启客户端后生效。'
+        : `未在真实 ${version ?? '该版本'} 上验证过，但四处补丁锚点逐字命中，可立即打补丁（重启后生效）。`,
   }
 }
 

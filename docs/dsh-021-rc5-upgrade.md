@@ -16,7 +16,7 @@ semver.satisfies('0.2.1-rc.4', '^0.2.1-rc.3', { includePrerelease: true }) === t
 所以这次插件页**没有**变「异常」，主题、侧栏、悬浮球照常加载 —— 范围写法按预期工作了。
 本轮的问题不在激活，而在三件功能面的失配：
 
-1. **悬浮控件补丁失效**（用户报障）：补丁的版本白名单有两份副本，都还停在 rc.3，rc.5 直接被判 `unsupported`；
+1. **悬浮控件补丁失效**（用户报障）：补丁的版本白名单有两份副本，都还停在 rc.3，rc.5 直接被判 `unsupported` —— 本轮随后把门槛改成「锚点为准」，版本只作已验证标记（见 §3）；
 2. **设置页下拉菜单不能下滑**（用户报障）：琉璃自己的 `SettingsSelects` 菜单滚动问题，与宿主版本无关但同期修复；
 3. **依赖与补丁声明滞后于宿主**：依赖、peer、dev 仍钉 rc.3，`pnpm build` 用的是 rc.3 的类型；dockkit 补丁键也钉在 rc.3。
 
@@ -30,7 +30,7 @@ semver.satisfies('0.2.1-rc.4', '^0.2.1-rc.3', { includePrerelease: true }) === t
 |---|---|---|
 | `package.json` `dependencies` / `peerDependencies` / `devDependencies` | 所有 `@deepseek-ai/dsh-*` 由 `0.2.1-rc.3` → `0.2.1-rc.5`（含 `@deepseek-ai/dsh-client-ui-dockkit`） | 50 |
 | `package.json` `dsh.compatibility.dsh` | `0.2.1-rc.5` | 1 |
-| `package.json` `engines.dsh` | `^0.2.1-rc.3` → **`^0.2.1-rc.5`**（范围写法，见下） | 1 |
+| `package.json` `engines.dsh` | `^0.2.1-rc.3` → **`>=0.2.1-rc.5`**（见下） | 1 |
 | `package.json` `dsh.compatibility.dshReleases` | 新增 `"0.2.1-rc.4"`、`"0.2.1-rc.5": "compatible"`（`rc.2`/`rc.3` 历史条目保留） | +2 行 |
 | `package.json` `version` | `0.1.2-rc.38` → `0.1.2-rc.39` | 1 |
 | `pnpm-workspace.yaml` | `patchedDependencies` 键 + 补丁路径 + `minimumReleaseAgeExclude` 79 条 | 81 |
@@ -57,14 +57,20 @@ function unmetRequirements(fields, runtimeVersion) {
 写精确版本等于把自己钉死在某一个 rc 上，宿主前进一小步就被拒绝激活（插件从
 `window.__DSH_BOOT__.entries` 里消失 → 主题、侧栏、悬浮球全部不加载，插件页显示「异常」）。
 
-实测 `^0.2.1-rc.5` 的语义：
+本轮最终落成 **`>=0.2.1-rc.5`**（而不是 `^0.2.1-rc.5`）：`^` 只覆盖同一个 minor（0.2.x），
+官方一旦走到 0.3 / 0.4，插件又会被整包拒绝激活；`>=` 表示「rc.5 及以后的宿主都试一把」。
+代价是未来大改版时部分功能可能失效 —— 但**能加载、主题还在、可以在设置里关掉**，
+明显优于「插件页显示异常、什么都不能用」。
 
-| 声明 | 0.2.1-rc.5 | 0.2.1-rc.4 | 0.2.1（正式） | 0.2.2 | 0.2.1-alpha.1 | 0.3.0 |
-|---|---|---|---|---|---|---|
-| `^0.2.1-rc.5`（本轮） | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ |
-| `0.2.1-rc.3`（旧的精确写法） | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+实测语义：
 
-即：范围写法能吃掉后续 `0.2.x`（含正式版），又不会误放行更老的 alpha / 更高的 0.3。
+| 声明 | 0.2.1-rc.5 | 0.2.1-rc.4 | 0.2.1（正式） | 0.2.2 | 0.2.1-alpha.1 | 0.3.0 | 0.4.0 |
+|---|---|---|---|---|---|---|---|
+| `>=0.2.1-rc.5`（本轮） | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| `^0.2.1-rc.5`（上一轮做法） | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ |
+| `0.2.1-rc.3`（更早的精确写法） | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+
+即：范围写法能吃掉后续 `0.2.x`（含正式版）以及更高的 `0.3/0.4`，又不会误放行更老的 alpha / 更低的 rc。
 
 > 另：`dsh.compatibility` 与 `dshReleases` 在宿主 `dsh-app-boot@0.2.1-rc.5` 里**一次都没有被读取**
 > （对发布包与 `resources/app.asar` 做全量搜索均为 0 命中），它们只是给人看的声明性记录，
@@ -85,31 +91,78 @@ function unmetRequirements(fields, runtimeVersion) {
 （git 判定 similarity 100%），并同步 `pnpm-workspace.yaml` 的 `patchedDependencies` 键。
 **`patchedDependencies` 的键必须与补丁文件名里的版本一致**，否则 pnpm 会报找不到补丁。
 
-### 3. 悬浮控件补丁失效：两份白名单都漏了 rc.5
+### 3. 悬浮控件补丁失效：从「版本白名单」到「锚点为准」
 
-用户报的是「悬浮控件补丁失效」。实际是**两层**原因叠加：
+#### 3.1 事故：两份白名单都漏了 rc.5
+
+用户报的是「悬浮控件补丁失效」。表面原因是两层白名单叠加：
 
 | 层 | 位置 | 症状 |
 |---|---|---|
 | ① 离线脚本 | `scripts/patch-official-window-controls.mjs` 的 `supportedVersions` | 只收录到 `0.2.1-rc.3`，rc.5 上 `--check` 即被判「不支持的版本」，`--apply` 拒绝写入 |
 | ② 插件内同源副本 | `src/host-topbar-patch.ts` 的 `SUPPORTED` | 同样漏 rc.5 → `GET /liuli-topbar-patch` 返回 `state:"unsupported"`，文案 `客户端 0.2.1-rc.5 不在补丁支持范围内（需更新插件的补丁锚点）`，即用户在悬浮球 / 设置页点「立即打补丁」看到的那句 |
 
-两份副本其实是同一个事实的两次拷贝：脚本负责「客户端已退出」时的离线写入，模块负责「客户端运行中」的就地写入
+两份副本是同一个事实的两次拷贝：脚本负责「客户端已退出」时的离线写入，模块负责「客户端运行中」的就地写入
 （只改 asar 头，把 `lib/main.js`、`lib/preload-app.cjs` 标成 unpacked，长度差用 padding 补齐）。
-**漏任何一边，对应入口就报废** —— 这正是本轮事故的形态。
 
-修复与回归防护：
+但**根因不止「忘了加一行」**：版本白名单本身是个会腐烂的门槛 —— 宿主每发一个小版本，维护者就得回来补一行，
+漏了就等于「补丁功能整体消失」，而实际代码一个字都没变（`0.2.1-rc.2 → rc.3 → rc.5` 三处锚点逐字未变，
+asar 完整性哈希算法也没变）。本轮把这个门槛换成了真正的判据。
 
-- 两处白名单同步加入 `0.2.1-rc.5`（保留 `0.2.0-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.3`）；
-- 新增 `tests/topbar-patch-versions.test.mjs`（5 例）：两份白名单集合必须相等、rc.5 必须在两边、
-  `0.2.1-rc.4`/`0.2.1-rc.6` 这类未验证版本不得出现、三个补丁锚点在脚本与模块中逐字一致、
-  以及**本机真实 asar** 的版本必须已被收录、三个补丁锚点各唯一命中、`titleBarStyle: "hidden"` 出现次数不变；
-- 顺带修掉 `assertClosed()` 的两个老毛病：并行/高负载下「任一同名进程读不到 Path」会被误判成宿主在运行
-  （新逻辑只比对能读到路径的条目，全部不可读才保守拒绝，安全语义不变）；以及只有一个进程时
-  `ConvertTo-Json` 把数组解包成对象导致的崩溃。
+#### 3.2 新策略：锚点是硬门槛，版本只作「已验证」标记
 
-**必须澄清的用户误解**：rc.5 官方**默认**就是 `titleBarStyle: "hidden"` + `titleBarOverlay`，
-所以「没有原生标题栏」不是补丁的功劳。补丁真正做的是三件事：
+| 判据 | 内容 | 失败时 |
+|---|---|---|
+| **硬门槛 ① 四处锚点** | `createWindow` 工厂、win32 `titleBarOverlay` 分支（`MAIN_BEFORE`）、`PLATFORM_IPC.bootstrap` 监听（`MAIN_IPC_ANCHOR`）、`setTitleBarOverlay` 调用（`MAIN_SETTITLEBAR`）必须**逐字命中且唯一** | 拒绝写入，并提示「更新锚点常量，而不是加版本号」 |
+| **硬门槛 ② exe 内嵌哈希** | `SHA256(asar header)` 在 exe 里必须唯一命中：离线脚本写入前校验并同步；运行中按钮能写就同步 exe 哈希，写不了时只有 fuse=off 才允许「只写 asar」 | 拒绝写入（`needs-exit`） |
+| **硬门槛 ③ fuse 判定** | `embeddedAsarIntegrityValidation` 为 `off` 才允许运行中只写 asar，否则返回 `needs-exit` | 拒绝写入，要求退出客户端走离线脚本 |
+| 软标记 版本 | 是否在「真机验证过」的列表里 | **不影响写入**，只影响 `verified` 标记与提示文案 |
+
+具体行为（本轮实测）：
+
+- `--check` 的 stdout JSON 新增 **`"verified": true|false`**（其余字段不变，`liuli-topbar-guard.mjs` 的整体 `JSON.parse` 不受影响）；
+- 未验证但锚点命中 → 正常放行，stderr 提示：
+  `[liuli] 提示：客户端 <version> 不在真机验证过的版本列表里，但四处补丁锚点已逐字命中 —— 按锚点放行（verified=false）。`
+- 插件内 `GET /liuli-topbar-patch` → `state:"missing"`、`canApply:true`，文案
+  「未在真实 `<version>` 上验证过，但四处补丁锚点逐字命中，可立即打补丁（重启后生效）。」
+- 锚点失配 → 统一引导：`该版本的窗口创建代码可能已改写：请更新锚点常量（见 docs/dsh-021-rc5-upgrade.md），而不是加版本号。`
+
+#### 3.3 代码改动
+
+脚本 `scripts/patch-official-window-controls.mjs`：
+
+- `supportedVersions` → **`verifiedVersions`**，注释写明「只作记录，不再当作门槛」；
+- 身份校验与版本校验拆开：只有 `identity.name !== '@deepseek-ai/dsh-desktop'` 才 fail；版本只算
+  `const verified = verifiedVersions.has(version)`，**未知版本继续往下走锚点检查**；
+- `--check` 输出 `verified`；未验证时打一条 stderr 提示；锚点失配的错误信息统一带 `anchorHint` 引导。
+
+模块 `src/host-topbar-patch.ts`：
+
+- `SUPPORTED` → **`VERIFIED_VERSIONS`**（同样语义）；
+- `inspectTopbarPatchInner()` 里 `!SUPPORTED.has(version) → unsupported` 的分支已删除，改为
+  `const verified = version !== undefined && VERIFIED_VERSIONS.has(version)` 后直接走锚点判定；
+- **加严了一处**：inspect 阶段就把 `MAIN_IPC_ANCHOR` / `MAIN_SETTITLEBAR` 一起校验
+  （原来只校验 `MAIN_BEFORE` + `createWindow`，另两处要到 apply 才暴露），锚点缺任一 → `unsupported` + 提示更新锚点。
+  这样「能不能打」在状态查询阶段就与 apply 的判据一致，不会出现「显示可打、点下去失败」。
+
+#### 3.4 回归防护现在守什么
+
+两个测试文件的语义都变了：
+
+- `tests/window-shell-patch.test.mjs`（6 例）：4 个真实版本的 check→apply→重复 apply→revert 保持不变；
+  另两条新用例取代旧的「不支持版本」用例：
+  - `unverified versions are allowed when the anchors still match, flagged verified:false`：
+    `0.2.1-rc.4` / `0.2.1-rc.6` / `0.2.2-alpha.2` 三个未验证版本在锚点匹配时**必须放行**，且 stdout 的 `verified === false`；
+  - `drifted anchors still fail without changing the shell`：rc.5 的 `titleBarOverlay` 锚点漂移、rc.6 的
+    `createWindow` 工厂锚点漂移，仍然拒绝，且有**字节级断言**证明 asar/exe 一个字节都没被改。
+- `tests/topbar-patch-versions.test.mjs`（6 例）：不再只是「两份枚举集合相等」，而是守四层语义 ——
+  两份「已验证」列表一致 / rc.5 在两边 / 未验证版本不得被标成「已验证」/
+  **结构断言：源码里不得再出现按版本硬拒绝**（`!verifiedVersions.has(...) → fail`、`!VERIFIED_VERSIONS.has(...) → unsupported`），
+  且必须保留锚点失配出口 / 三锚点在脚本与模块中逐字一致 / 本机真实 asar 的四处锚点仍唯一命中（**版本不再要求被收录**）。
+
+合计 **73 例**（上一轮 71 例 + 2）。
+
+#### 3.5 用户误解澄清（补丁真正做的三件事）
 
 1. 把主窗口的 `titleBarStyle:"hidden" + titleBarOverlay{…}` 换成 `frame: false`，让**系统 −□× 条带消失**；
 2. 注入 `ipcMain.handle("liuli-official-window")` + preload 的 `window.liuliWindowControls` 桥，
@@ -118,7 +171,7 @@ function unmetRequirements(fields, runtimeVersion) {
    `native window control unavailable in utility-process host`；
 3. 把官方 `setTitleBarOverlay` 调用改成 `if (false && …)`，防止主题切换时系统按钮复活。
 
-本机实测（`2026-11-03`，安装目录 `%LOCALAPPDATA%\Programs\DeepSeek Harness`）：
+#### 3.6 本机实测（`2026-11-03`，安装目录 `%LOCALAPPDATA%\Programs\DeepSeek Harness`）
 
 | 探针 | 实测值 |
 |---|---|
@@ -126,7 +179,7 @@ function unmetRequirements(fields, runtimeVersion) {
 | 补丁标记 `[liuli official window controls v1]` | **不存在** → 当前客户端未打补丁 |
 | `createWindow` / `PLATFORM_IPC.bootstrap` / `setTitleBarOverlay` 锚点 | 各 1 处，唯一命中 |
 | `titleBarStyle: "hidden"` | 3 处（欢迎窗 darwin/win32 + 主窗 win32） |
-| `node scripts/patch-official-window-controls.mjs --check` | exit 0，`version 0.2.1-rc.5`、`mainAndPreloadPrepared: true`、`asarIntegrityFuse: "off"`、备份目录 `liuli-window-controls-backup-0.2.1-rc.5` |
+| `node scripts/patch-official-window-controls.mjs --check` | exit 0：`version 0.2.1-rc.5`、**`verified: true`**、`mainAndPreloadPrepared: true`、`asarIntegrityFuse: "off"`、`integrityHashOffset: 244979055`、备份目录 `liuli-window-controls-backup-0.2.1-rc.5`；stderr 只有 fuse=off 那条常规提示（`verified` 为 true，所以没有「未验证」提示）。未 `--apply`（需完全退出客户端） |
 
 ### 4. 设置页下拉菜单不能下滑
 
@@ -224,11 +277,12 @@ function unmetRequirements(fields, runtimeVersion) {
 
 | 文档 | 原文 | 更正 |
 |---|---|---|
-| [official-desktop-rc2.md](official-desktop-rc2.md) | 「当前适配桌面端为 0.2.1-rc.2」「脚本支持 0.2.0-rc.2 和 0.2.1-rc.2」 | 指到 rc.5 与本轮的补丁支持范围（见该文档顶部提示） |
+| [official-desktop-rc2.md](official-desktop-rc2.md) | 「当前适配桌面端为 0.2.1-rc.2」「脚本支持 0.2.0-rc.2 和 0.2.1-rc.2」 | 指到 rc.5，并改成「版本只作已验证标记、锚点命中即放行」（见该文档顶部提示） |
 | [features.md](features.md) | 「依赖对 DSH Desktop 的窗口参数补丁（`app.asar.unpacked/lib/electron-runtime-*.js` …）」 | 官方 Desktop 的窗口参数在 `app.asar` 内的 `lib/main.js`，由官方窗口控制补丁处理；`electron-runtime-*.js` 是更早的社区 / 2.0.x 旧布局的机制 |
 | [features.md](features.md) | 「无边框补丁还原：… 把 electron-runtime 里的补丁块还原 …」 | 同上：官方 0.2.x 上自动还原找不到目标文件（`--check` 可见），还原要离线跑 `patch-official-window-controls.mjs --revert` |
 | [install.md](install.md) | 「插件也会在 DSH Desktop 启动时自动重打该补丁」 | 官方 0.2.x 上启动时的自动补丁找不到 `electron-runtime-*.js`，只告警跳过；真正的路径是官方窗口控制补丁（`--check` → 退出客户端 → `--apply`，或客户端内按钮） |
-| [install.md](install.md) | 「0.1.2 适配 DSH 0.2.0-rc.2」 | 本轮产物 `0.1.2-rc.39` 适配 DSH `0.2.1-rc.5`（`engines.dsh = ^0.2.1-rc.5`） |
+| [window-topbar-persistence.md](window-topbar-persistence.md) | 「`unsupported`（版本或锚点不在支持范围）」「新版本号还没进两份白名单」 | `unsupported` 现在只表示锚点/结构不匹配；版本不再是门槛，未验证版本走 `verified:false` 放行（见 §3） |
+| [install.md](install.md) | 「0.1.2 适配 DSH 0.2.0-rc.2」 | 本轮产物 `0.1.2-rc.39` 适配 DSH `0.2.1-rc.5`（`engines.dsh = >=0.2.1-rc.5`；补丁版本判据见 §3） |
 | [dsh-021-rc3-upgrade.md](dsh-021-rc3-upgrade.md) | P06 记录的宿主补丁预检只到 rc.3 | 加一行指引：后续版本见本文档 |
 
 ## 验证记录
@@ -239,8 +293,8 @@ function unmetRequirements(fields, runtimeVersion) {
 | P02 兼容判定规则 | completed | `dsh-app-boot@0.2.1-rc.5` 的 `unmetRequirements`：有 `engines.dsh` 就只看它（`semver.satisfies(..., {includePrerelease:true})`）；`dshReleases`/`dsh.compatibility` 在宿主包与 asar 中 0 命中 |
 | P03 依赖与补丁迁移 | completed | `package.json` 52 处、`pnpm-workspace.yaml` 81 处、dockkit 补丁改名（similarity 100%）；`pnpm-lock.yaml` 里 rc.3 残留 **0** 处（rc.5 1016 处 / 79 个包） |
 | P04 构建 | completed | `pnpm install --ignore-scripts --no-frozen-lockfile` 9s（`+79 / -79`），复跑 `--frozen-lockfile` → `Already up to date`；`pnpm build` exit 0（`lib/index.js` 523.60 kB、`lib/client.js` 2.17 MB / map 3.20 MB），并入客户端源码改动后复跑仍 exit 0 |
-| P05 测试 | completed | `node --test tests/*.test.mjs` 连跑两次 **71 tests / 71 pass / 0 fail**（本机 9.1s / 9.4s，Lead 复核 14.9s），覆盖 15 个测试文件；其中 `window-shell-patch` 5 例、`topbar-patch-versions` 5 例、`settings-selects` 7 例（含菜单滚动与 `max-height:none` 回归锚点） |
-| P06 宿主补丁预检 | completed | `node scripts/patch-official-window-controls.mjs --check` exit 0：`version 0.2.1-rc.5`、`mainAndPreloadPrepared: true`、`asarIntegrityFuse: "off"`、`integrityHashOffset: 244979055`；未 `--apply`（需完全退出客户端） |
+| P05 测试 | completed | `node --test tests/*.test.mjs` → **73 tests / 73 pass / 0 fail**（11.1s），覆盖 15 个测试文件；其中 `window-shell-patch` 6 例（4 个真实版本 + 未验证放行 + 锚点漂移拒绝）、`topbar-patch-versions` 6 例、`settings-selects` 7 例（含菜单滚动与 `max-height:none` 回归锚点）；`npx tsc --noEmit` 无输出 |
+| P06 宿主补丁预检 | completed | `node scripts/patch-official-window-controls.mjs --check` exit 0：`version 0.2.1-rc.5`、**`verified: true`**、`mainAndPreloadPrepared: true`、`asarIntegrityFuse: "off"`、`integrityHashOffset: 244979055`；未 `--apply`（需完全退出客户端） |
 | P07 安装到 desktop profile | completed | `node scripts/install-desktop.mjs` → `.liuli-pack/dsh-liuli-ui-enhance-0.1.2-rc.39-ace165bb65ed.tgz` 写入 `~/.dsh/profiles/desktop/package.json` 的 `dependencies`；装后 `node_modules/dsh-liuli-ui-enhance/package.json` 的 `version` = `0.1.2-rc.39` |
 | P08 真实客户端加载 | completed | 宿主的 live reload **自己**把新客户端模块推进了页面（无需关开插件开关、无需刷新）；CDP 实测 `window.__liuliSettingsSelectsReady__.tag === 'settings-selects/2026-11-03'`、`[data-liuli-theme]` 已挂载、`--liuli-*` CSS 变量存在、`[data-liuli-bg]` 壁纸层 ×2、`data-liuli-day-group` ×31、`data-liuli-entered` ×19，以及 `data-liuli-dock-surface` / `data-liuli-official-rightbar` / `data-liuli-speed-idle` 等 30+ 个锚点齐全；插件页状态正常（非「异常」） |
 | P09 刷新后稳定性 | skipped（有意） | 用户 composer 里有未发送的输入（实测 `div.GRgSLq_input` 的 innerText 长度为 1），整页刷新会丢失，取舍上不做；以 P08 的模块热替换 + 全量测试作为替代证据 |
@@ -260,7 +314,7 @@ function unmetRequirements(fields, runtimeVersion) {
 
 ## 让窗口补丁真正生效（改代码 ≠ 补丁生效）
 
-这是本轮最容易踩的一步：**白名单修好只是让补丁「有资格」被写入，客户端不会自己变好**。
+这是本轮最容易踩的一步：**版本判据修好只是让补丁「有资格」被写入，客户端不会自己变好**。
 
 1. **桌面端每次自动更新都会整份重铺** `resources/app.asar` 与 `DeepSeek Harness.exe`，补丁必然丢失；
 2. 自 `3c1b5ba` 起，常驻看护（`liuli-launch.cmd`、计划任务、`liuli-topbar-watch.mjs`）已被移除，
@@ -279,12 +333,20 @@ node scripts/patch-official-window-controls.mjs --revert
 ```
 
 4. 还原与排查的完整清单见 [window-topbar-persistence.md](window-topbar-persistence.md)；
-   `node scripts/liuli-topbar-guard.mjs`（`pnpm topbar:status`）可随时查 `patched / missing / pending / unsupported`。
+   `node scripts/liuli-topbar-guard.mjs`（`pnpm topbar:status`）可随时查
+   `patched / missing / pending / unsupported`（`unsupported` 现在只表示锚点/结构不匹配，不再表示「版本没被收录」；
+   版本是否真机验证过看 `--check` 的 `verified` 字段与状态文案）。
 
 ## 边界
 
-- **rc.4 未实测**：这次只核对 rc.5；`dshReleases` 里把 rc.4 记成 `compatible` 是按「同一 minor 内的 rc 迭代」的
-  既有结论（范围写法本来就允许它），但没有在真实 rc.4 客户端上跑过。
+- **`engines.dsh = >=0.2.1-rc.5` 的代价**：官方未来大改版（0.3 / 0.4）插件**仍会加载**。好处是不再出现
+  「整包被拒激活、插件页显示异常、什么都不能用」；代价是那时可能部分功能失效 —— 但能加载、主题还在、
+  能在设置里关掉，整体优于完全不可用。
+- **锚点才是硬门槛**：官方一旦改写窗口创建代码，离线脚本与插件内按钮**都会拒绝写入**并提示更新锚点常量
+  （`MAIN_BEFORE` / `MAIN_IPC_ANCHOR` / `MAIN_SETTITLEBAR` 与脚本里的 `before` 和两处字符串），
+  不会半途写坏；`tests/window-shell-patch.test.mjs` 用字节级断言守住这一点。
+- **rc.4 未实测**：本轮只真机核对 rc.5。`dshReleases` 里把 rc.4 记成 `compatible` 是按「同一 minor 内的 rc 迭代」
+  的既有结论；补丁层面版本已不是门槛，rc.4 若真被安装且锚点未变，会走 `verified:false` 放行。
 - **未验证**：多显示器 / DPI 缩放下的菜单定位与顶栏拖拽、音频回环、内嵌浏览器（`webviewTag` 补丁属旧机制，
   官方 0.2.x 上内嵌浏览器走官方 `WebContentsView`）。
 - **P09 有意跳过**：用户 composer 里有未发送的输入，整页刷新会丢失，所以没有做「刷新后稳定性」这一项；

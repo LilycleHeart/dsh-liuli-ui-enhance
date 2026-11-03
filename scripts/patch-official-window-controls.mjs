@@ -8,12 +8,17 @@ import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
-/** 已验证的官方 Desktop 版本白名单。宿主每次更新都会重铺 app.asar / exe，
- *  未列在此处的版本一律拒绝写入（宁可少补，不可补错）。
- *  0.2.1-rc.5（构建提交 d4db512a）已核对：createWindow 工厂、win32 titleBarOverlay
- *  分支、PLATFORM_IPC.bootstrap 监听与 setTitleBarOverlay 调用四处锚点均逐字未变，
- *  且 exe 内嵌的 asar 完整性哈希仍唯一命中。 */
-const supportedVersions = new Set(['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.3', '0.2.1-rc.5']);
+/** **已验证过**的官方 Desktop 版本 —— 只作记录，不再当作门槛。
+ *
+ *  补丁真正的安全判据是锚点：`createWindow` 工厂、win32 `titleBarOverlay` 分支、
+ *  `PLATFORM_IPC.bootstrap` 监听、`setTitleBarOverlay` 调用四处必须逐字命中且唯一，
+ *  再加上 exe 内嵌 asar 哈希唯一命中与 fuse 判定。官方小版本更新通常不动这些代码
+ *  （0.2.1-rc.2 → rc.3 → rc.5 三处锚点一字未变，asar 完整性哈希算法也没变），所以
+ *  列在这里只是「我们真机跑过」的记录；**未列出的版本同样放行**，锚点不匹配一样
+ *  拒绝写入。这样官方每次小版本更新不需要人工回来补白名单。
+ *  （2026-11 之前的做法是白名单硬拒绝，rc.5 升级时脚本直接报 unsupported —— 那次
+ *  事故根因是维护滞后，不是补丁不兼容。） */
+const verifiedVersions = new Set(['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.3', '0.2.1-rc.5']);
 const marker = '[liuli official window controls v1]';
 const dir = resolve(process.env.DSH_OFFICIAL_DIR || join(process.env.LOCALAPPDATA, 'Programs', 'DeepSeek Harness'));
 const asarPath = join(dir, 'resources', 'app.asar');
@@ -30,8 +35,10 @@ const readEntry = (archive, info, name) => {
   const node = entry(info.header, name);
   return node.unpacked ? readFileSync(join(asarPath + '.unpacked', name)) : archive.subarray(info.start + Number(node.offset), info.start + Number(node.offset) + node.size);
 };
+/** 锚点失配的统一出口：引导去更新锚点，而不是让人回来加版本号。 */
+const anchorHint = '\n该版本的窗口创建代码可能已改写：请更新锚点常量（见 docs/dsh-021-rc5-upgrade.md），而不是加版本号。';
 function replaceOnce(text, before, after) {
-  if (text.split(before).length !== 2) fail('Patch anchor mismatch: ' + before.slice(0, 90));
+  if (text.split(before).length !== 2) fail('Patch anchor mismatch: ' + before.slice(0, 90) + anchorHint);
   return text.replace(before, after);
 }
 function assertClosed() {
@@ -96,10 +103,12 @@ if (process.platform === "win32" && process.isMainFrame && location.protocol ===
 const archive = readFileSync(asarPath);
 const info = unpack(archive);
 const identity = JSON.parse(readEntry(archive, info, 'package.json'));
-if (identity.name !== '@deepseek-ai/dsh-desktop' || !supportedVersions.has(identity.version)) {
-  fail('This patch supports only official Desktop ' + [...supportedVersions].join(' or '));
+if (identity.name !== '@deepseek-ai/dsh-desktop') {
+  fail('This patch targets the official @deepseek-ai/dsh-desktop build, found: ' + identity.name);
 }
 const version = identity.version;
+/** 版本只标记「我们真机验证过」，不作为门槛：下面的锚点检查才是硬判据。 */
+const verified = verifiedVersions.has(version);
 const backup = join(dir, 'liuli-window-controls-backup-' + version);
 function restoreUnpackedFiles() {
   for (const name of ['main.js', 'preload-app.cjs']) {
@@ -121,7 +130,7 @@ if (process.argv.includes('--revert')) {
 if (main.includes(marker)) { console.log('Official window controls patch already applied'); process.exit(0); }
 const before = `titleBarStyle: "hidden",\n\t\t\ttitleBarOverlay: {\n\t\t\t\theight: 40,\n\t\t\t\tcolor: chromeFallbackFill(),\n\t\t\t\tsymbolColor: nativeTheme.shouldUseDarkColors ? "#f9fafb" : "#0f1115"\n\t\t\t}`;
 const createAt = main.indexOf('function createWindow(preload, show = false, primary = false)');
-if (createAt < 0) fail('Primary window factory missing');
+if (createAt < 0) fail('Primary window factory missing' + anchorHint);
 main = main.slice(0, createAt) + replaceOnce(main.slice(createAt), before, 'frame: false');
 main = replaceOnce(main, '\tipcMain.on(PLATFORM_IPC.bootstrap, (event) => {', mainBridge + '\tipcMain.on(PLATFORM_IPC.bootstrap, (event) => {');
 main = replaceOnce(main, 'if (validColor(color) && validColor(symbolColor)) mainWindow.setTitleBarOverlay({', 'if (false && validColor(color) && validColor(symbolColor)) mainWindow.setTitleBarOverlay({');
@@ -168,11 +177,14 @@ if (stageArg) {
   execFileSync(process.execPath, ['--check', join(stage,'main.mjs')]);
   execFileSync(process.execPath, ['--check', join(stage,'preload-app.cjs')]);
 }
-console.log(JSON.stringify({app:identity.name,version,mainAndPreloadPrepared:true,integrityHashOffset:at,asarIntegrityFuse:fuseState,backup,mode:process.argv.includes('--apply')?'apply':'check'},null,2));
+console.log(JSON.stringify({app:identity.name,version,verified,mainAndPreloadPrepared:true,integrityHashOffset:at,asarIntegrityFuse:fuseState,backup,mode:process.argv.includes('--apply')?'apply':'check'},null,2));
 if (fuseState === 'off') {
   // 走 stderr：--check 的 stdout 必须能被调用方（如 liuli-topbar-guard.mjs）整体 JSON.parse，
   // 多一行中文提示会让它解析失败并丢掉 version。
   console.error('[liuli] 提示：该客户端的 Electron embeddedAsarIntegrityValidation fuse 处于关闭状态，asar 头不会被启动校验（本脚本仍按保守做法同步 exe 内嵌哈希）。');
+}
+if (!verified) {
+  console.error(`[liuli] 提示：客户端 ${version} 不在真机验证过的版本列表里，但四处补丁锚点已逐字命中 —— 按锚点放行（verified=false）。`);
 }
 if (!process.argv.includes('--apply')) process.exit(0);
 assertClosed();

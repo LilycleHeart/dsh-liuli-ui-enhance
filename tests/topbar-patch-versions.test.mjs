@@ -21,28 +21,42 @@ const read = path => readFileSync(path, 'utf8')
 
 function versionsOf(source, pattern, label) {
   const matched = source.match(pattern)
-  assert.ok(matched !== null, `未在 ${label} 中找到版本白名单（正则 ${pattern}）`)
+  assert.ok(matched !== null, `未在 ${label} 中找到「已验证版本」列表（正则 ${pattern}）`)
   return new Set([...matched[1].matchAll(/'([^']+)'/g)].map(item => item[1]))
 }
 
-const scriptVersions = versionsOf(read(scriptPath), /const supportedVersions = new Set\(\[([\s\S]*?)\]\)/, 'patch-official-window-controls.mjs')
-const moduleVersions = versionsOf(read(modulePath), /const SUPPORTED = new Set\(\[([\s\S]*?)\]\)/, 'host-topbar-patch.ts')
+const scriptVersions = versionsOf(read(scriptPath), /const verifiedVersions = new Set\(\[([\s\S]*?)\]\)/, 'patch-official-window-controls.mjs')
+const moduleVersions = versionsOf(read(modulePath), /const VERIFIED_VERSIONS = new Set\(\[([\s\S]*?)\]\)/, 'host-topbar-patch.ts')
 
-test('两处版本白名单内容完全一致', () => {
+test('两处「已验证版本」列表内容完全一致', () => {
   assert.deepEqual([...moduleVersions].sort(), [...scriptVersions].sort(),
-    'src/host-topbar-patch.ts 的 SUPPORTED 与 scripts/patch-official-window-controls.mjs 的 supportedVersions 必须一致')
+    'src/host-topbar-patch.ts 的 VERIFIED_VERSIONS 与 scripts/patch-official-window-controls.mjs 的 verifiedVersions 必须一致')
 })
 
-test('当前官方客户端 0.2.1-rc.5 在两边白名单内', () => {
-  assert.ok(scriptVersions.has('0.2.1-rc.5'), '脚本白名单缺少 0.2.1-rc.5')
-  assert.ok(moduleVersions.has('0.2.1-rc.5'), '模块白名单缺少 0.2.1-rc.5')
+test('当前官方客户端 0.2.1-rc.5 在两边已验证列表内', () => {
+  assert.ok(scriptVersions.has('0.2.1-rc.5'), '脚本已验证列表缺少 0.2.1-rc.5')
+  assert.ok(moduleVersions.has('0.2.1-rc.5'), '模块已验证列表缺少 0.2.1-rc.5')
 })
 
-test('未验证的版本不得出现在白名单里', () => {
+test('未在真机验证过的版本不得被标成「已验证」', () => {
   for (const version of ['0.2.1-rc.4', '0.2.1-rc.6']) {
-    assert.ok(!scriptVersions.has(version), `脚本白名单不应包含未验证的 ${version}`)
-    assert.ok(!moduleVersions.has(version), `模块白名单不应包含未验证的 ${version}`)
+    assert.ok(!scriptVersions.has(version), `脚本不应把未验证的 ${version} 标成已验证`)
+    assert.ok(!moduleVersions.has(version), `模块不应把未验证的 ${version} 标成已验证`)
   }
+})
+
+test('版本号不再是门槛：两处源码都不得按版本硬拒绝', () => {
+  const script = read(scriptPath)
+  const mod = read(modulePath)
+  // 旧实现：`!supportedVersions.has(version)` → fail（脚本）/ → state:'unsupported'（模块）。
+  // 这正是 rc.5 升级时「官方只前进一个 rc 就整条链路报 unsupported」的成因。
+  assert.ok(!/!\s*(?:supportedVersions|verifiedVersions)\.has\([^)]*\)\)\s*\{?\s*fail/.test(script),
+    '脚本里又出现了「版本不在列表就 fail」的硬拒绝，应改为按锚点判定')
+  assert.ok(!/!\s*SUPPORTED\.has\(/.test(mod) && !/!\s*VERIFIED_VERSIONS\.has\([^)]*\)\s*\)\s*\{/.test(mod),
+    '模块里又出现了「版本不在列表就 unsupported」的硬拒绝，应改为按锚点判定')
+  // 反过来要真的存在「锚点不匹配才拒绝」的出口。
+  assert.match(script, /Patch anchor mismatch/, '脚本缺少锚点失配的拒绝出口')
+  assert.match(mod, /找不到主窗口创建代码的补丁点/, '模块缺少锚点失配的拒绝出口')
 })
 
 test('三个补丁锚点在脚本与模块中逐字一致', () => {
@@ -70,7 +84,7 @@ const asarPath = resolve(
   process.env.DSH_OFFICIAL_DIR ? 'resources/app.asar' : 'Programs/DeepSeek Harness/resources/app.asar',
 )
 
-test('本机安装的客户端版本必须已被白名单收录，且锚点仍然命中', { skip: !existsSync(asarPath) }, () => {
+test('本机安装的客户端：四处锚点必须仍然唯一命中（版本只作记录）', { skip: !existsSync(asarPath) }, () => {
   const bytes = readFileSync(asarPath)
   assert.equal(bytes.readUInt32LE(0), 4, '未知的 ASAR 格式')
   const jsonLength = bytes.readUInt32LE(12)
@@ -83,10 +97,6 @@ test('本机安装的客户端版本必须已被白名单收录，且锚点仍�
   }
 
   const version = JSON.parse(readEntry('package.json').toString('utf8')).version
-  assert.ok(scriptVersions.has(version),
-    `本机客户端 ${version} 不在 scripts/patch-official-window-controls.mjs 白名单里（客户端升级后忘了适配？）`)
-  assert.ok(moduleVersions.has(version),
-    `本机客户端 ${version} 不在 src/host-topbar-patch.ts 白名单里（客户端升级后忘了适配？）`)
 
   const main = readEntry('lib/main.js').toString('utf8')
   if (main.includes('[liuli official window controls v1]')) return // 已打补丁：锚点自然已消失
