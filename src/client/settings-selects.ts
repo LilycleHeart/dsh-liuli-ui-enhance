@@ -28,6 +28,10 @@ import css from './SettingsSelects.module.css'
 /** DSH 模型服务商卡片的原生下拉（CSS Module 后缀类名跨构建稳定）。 */
 const SELECT_SELECTOR = 'select[class*="_selectInput"]'
 
+/** 诊断标记版本：排查「页面上装的是哪一版、scan 到底跑没跑」时直接读
+ *  `window.__liuliSettingsSelectsReady__`（改动本模块的扫描/定位逻辑时顺手改这里）。 */
+const READY_TAG = 'settings-selects/2026-11-03'
+
 const ICON_CHEVRON =
   '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>'
 const ICON_CHECK =
@@ -80,7 +84,7 @@ interface OpenMenu {
   /** 打开期间挂的全局监听（关闭时成对移除）。 */
   onDocDown: (e: MouseEvent) => void
   onResize: () => void
-  onScroll: () => void
+  onScroll: (e: Event) => void
   onToggle: () => void
 }
 
@@ -89,6 +93,7 @@ let open: OpenMenu | null = null
 /** Closing menus stay in the DOM only for their 120ms exit; never retain listeners. */
 const closingMenus = new Map<HTMLDivElement, number>()
 let scanRaf = 0
+let scanTimer = 0
 let syncRaf = 0
 
 function clearClosingMenus(): void {
@@ -388,7 +393,7 @@ function openMenu(up: SelectUpgrade): void {
     if (t instanceof Element && t.closest('[data-liuli-settings-trigger]') !== null) return
     closeMenu(false)
   }
-  const onScroll = (): void => { scheduleSync() }
+  const onScroll = onDocumentScroll
   const onResize = (): void => { closeMenu(false) }
   const onToggle = (): void => { closeMenu(false) }
 
@@ -421,6 +426,24 @@ function checkIcon(): HTMLSpanElement {
   return c
 }
 
+/**
+ * 菜单的「自然高度」（内容 + 上下边框，不含 max-height 裁切）。
+ *
+ * 为什么不用 `getBoundingClientRect().height`：旧实现先 `el.style.maxHeight = 'none'`
+ * 再量一次，那一瞬间元素高度等于内容高度、`scrollHeight === clientHeight`，
+ * 浏览器立刻把 `scrollTop` 钳回 0 —— 而菜单自己的滚动事件又会经
+ * `onDocumentScroll` → `scheduleSync` → `positionMenu` 再触发一次量高，
+ * 于是「用户往下滚一点、菜单被弹回顶部」，观感就是菜单不能下滑。
+ * `scrollHeight` 反映滚动内容高度、不受 max-height 裁切影响，也不受入场动画
+ * `transform: scale()` 影响，因此整个量高过程不需要解除 max-height、不产生
+ * 任何可被浏览器钳制的中间态（全程同一个同步块，不 yield）。
+ */
+function naturalMenuHeight(el: HTMLElement): number {
+  const cs = getComputedStyle(el)
+  const borders = (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.borderBottomWidth) || 0)
+  return el.scrollHeight + borders
+}
+
 /** 菜单/触发器浮层坐标：锚定 select 矩形，下方空间不足翻转到上方，视口内钳制。 */
 function positionMenu(up: SelectUpgrade): void {
   if (open === null) return
@@ -430,10 +453,8 @@ function positionMenu(up: SelectUpgrade): void {
   const width = Math.min(Math.max(r.width, 200), 360)
   const el = open.el
   el.style.width = `${width}px`
-  // Measure the natural height first: the class keeps max-height:60vh, and a
-  // clamped reading is what used to misplace the menu (see below).
-  el.style.maxHeight = 'none'
-  const naturalH = el.getBoundingClientRect().height
+  // 先量自然高度再决定 max-height（量高不再解除 max-height，详见 naturalMenuHeight）。
+  const naturalH = naturalMenuHeight(el)
   const left = Math.min(Math.max(8, r.left), Math.max(8, winW - width - 8))
   const below = winH - 8 - (r.bottom + 4)
   const above = Math.max(0, r.top - 4 - 8)
@@ -521,13 +542,45 @@ function teardown(up: SelectUpgrade): void {
 }
 
 function scan(): void {
-  scanRaf = 0
   for (const el of Array.from(document.querySelectorAll<HTMLSelectElement>(SELECT_SELECTOR))) {
-    try { upgrade(el) } catch { /* 单点失败不影响其它下拉 */ }
+    // 吞异常会让排查无从下手（rc.5 上踩过一次：注入的探针 select 没有升级标记，
+    // 没有这条 warn 就分不清是 scan 没跑、还是 upgrade 抛了）。
+    try {
+      upgrade(el)
+    } catch (error) {
+      console.warn('[liuli] settings select upgrade failed:', String(el.className), error)
+    }
   }
   for (const [select, up] of Array.from(upgrades)) {
     if (!select.isConnected || !select.matches(SELECT_SELECTOR)) teardown(up)
   }
+  // 诊断标记：装了哪一版、scan 最近一次何时跑过、当前升级了几个下拉。
+  ;(window as unknown as Record<string, unknown>).__liuliSettingsSelectsReady__ = {
+    tag: READY_TAG,
+    at: Date.now(),
+    upgraded: upgrades.size,
+  }
+}
+
+/**
+ * 合并同一帧内的多次 DOM 变更：可见窗口走 rAF（零延迟）；隐藏窗口里
+ * Chromium 完全不投递 animation frame（被遮挡/最小化），若只挂 rAF，
+ * 设置页在那一刻挂载的 select 要等到窗口重新可见才会被升级 —— 现场看起来
+ * 就像「扫描链路根本没生效」。这里按需补 200ms 定时器兜底，可见路径不变。
+ */
+function scheduleScan(): void {
+  if (scanRaf !== 0 || scanTimer !== 0) return
+  scanRaf = requestAnimationFrame(() => {
+    scanRaf = 0
+    if (scanTimer !== 0) { window.clearTimeout(scanTimer); scanTimer = 0 }
+    scan()
+  })
+  if (document.visibilityState !== 'hidden') return
+  scanTimer = window.setTimeout(() => {
+    scanTimer = 0
+    if (scanRaf !== 0) { cancelAnimationFrame(scanRaf); scanRaf = 0 }
+    scan()
+  }, 200)
 }
 
 function scheduleSync(): void {
@@ -537,6 +590,14 @@ function scheduleSync(): void {
     for (const up of upgrades.values()) syncTrigger(up)
     if (open !== null) syncMenu(open.up)
   })
+}
+
+/** Re-anchor on page scrolls only: the menu's own scroll moves neither the
+ *  trigger nor the menu, and re-positioning during it fights the user's scroll. */
+function onDocumentScroll(e: Event): void {
+  const target = e.target
+  if (target instanceof Element && target.closest('[data-liuli-settings-menu]') !== null) return
+  scheduleSync()
 }
 
 function onSelectKeydown(e: KeyboardEvent): void {
@@ -563,20 +624,21 @@ function onSelectBlur(e: FocusEvent): void {
 
 /** 启动设置页原生 select 升级；返回卸载函数（总开关关闭时调用）。 */
 export function startSettingsSelectUpgrade(): () => void {
-  const mo = new MutationObserver(() => {
-    if (scanRaf !== 0) return
-    scanRaf = requestAnimationFrame(scan)
-  })
+  const mo = new MutationObserver(() => { scheduleScan() })
   mo.observe(document.body, { childList: true, subtree: true })
   scan()
   window.addEventListener('resize', scheduleSync)
-  document.addEventListener('scroll', scheduleSync, true)
+  document.addEventListener('scroll', onDocumentScroll, true)
   return () => {
     if (scanRaf !== 0) cancelAnimationFrame(scanRaf)
+    if (scanTimer !== 0) window.clearTimeout(scanTimer)
+    scanRaf = 0
+    scanTimer = 0
     if (syncRaf !== 0) cancelAnimationFrame(syncRaf)
+    syncRaf = 0
     mo.disconnect()
     window.removeEventListener('resize', scheduleSync)
-    document.removeEventListener('scroll', scheduleSync, true)
+    document.removeEventListener('scroll', onDocumentScroll, true)
     closeMenu(false, true)
     clearClosingMenus()
     for (const up of Array.from(upgrades.values())) teardown(up)

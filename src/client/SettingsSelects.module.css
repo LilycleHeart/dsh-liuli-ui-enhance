@@ -89,6 +89,9 @@
   flex-direction: column;
   gap: 1px;
   overflow-y: auto;
+  /* 滚到顶/底后不再把滚轮/方向键的滚动链给下层页面：链给页面会触发宿主滚动
+     → 菜单重新锚定，长列表看起来会「抖一下」。 */
+  overscroll-behavior: contain;
   max-height: 60vh;
   outline: none;
   animation: liuli-select-menu-enter 160ms cubic-bezier(0.22, 1, 0.36, 1) both;

@@ -404,11 +404,18 @@ function isSettingsOverlayOpen(modern: boolean): boolean {
 
 /** 注入主题样式（幂等；已存在则跳过）。 */
 function injectThemeCss(): void {
-  if (document.getElementById(STYLE_ID) !== null) return
+  const css = liuliCss + '\n' + WIDE_MODE_CSS + '\n' + SETTINGS_DEFER_CSS + '\n' + DESKTOP_ADVANCED_CSS + '\n' + WEB_DOCK_SHELL_CSS + '\n' + pluginManagerLayoutCss + '\n' + officialMaterialGapsCss + '\n' + settingsMenuMaterialCss
+  // 实时重载（插件页开关 / patchReload: live）时旧 <style> 仍留在 head：
+  // 只按 id 跳过会让新版本客户端继续跑在旧样式上。内容不同则原地替换。
+  const existing = document.getElementById(STYLE_ID)
+  if (existing !== null) {
+    if (existing.textContent !== css) existing.textContent = css
+    return
+  }
   const style = document.createElement('style')
   style.id = STYLE_ID
   style.setAttribute('data-liuli-theme', '')
-  style.textContent = liuliCss + '\n' + WIDE_MODE_CSS + '\n' + SETTINGS_DEFER_CSS + '\n' + DESKTOP_ADVANCED_CSS + '\n' + WEB_DOCK_SHELL_CSS + '\n' + pluginManagerLayoutCss + '\n' + officialMaterialGapsCss + '\n' + settingsMenuMaterialCss
+  style.textContent = css
   document.head.appendChild(style)
 }
 

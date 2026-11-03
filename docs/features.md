@@ -56,7 +56,7 @@
 
 全部设置随浏览器持久化（`liuli:settings` / `liuli:wallpaper` / `liuli:header-height`）；DSH Desktop 因每次重启 Web 端口会变（localStorage 按 origin 隔离），还会额外同步到 Host 端 `~/.liuli-theme/settings.json`，跨重启不丢失。
 
-> **页面内窗口按钮（无边框模式）**：系统最小化/最大化/关闭三按钮移入页面——会话 header 最右端常驻、开始页兜底为标题拖拽条右上角的磨砂胶囊；动作经 Host `/liuli-window` 路由直驱 Electron 窗口（close 收进托盘，与原生同语义）。依赖对 DSH Desktop 的窗口参数补丁（`resources/app.asar.unpacked/lib/electron-runtime-*.js` 的 win32 advanced 分支：`titleBarStyle: "hidden" + titleBarOverlay` → `frame: false`），应用重启后生效；未打补丁时原生覆盖按钮仍在，页面内按钮与其并存。自动补丁为尽力而为：失败仅告警、不阻断插件加载。macOS 保持原生红绿灯不动。
+> **页面内窗口按钮（无边框模式）**：系统最小化/最大化/关闭三按钮移入页面——会话 header 最右端常驻、开始页兜底为标题拖拽条右上角的磨砂胶囊；动作经 Host `/liuli-window` 路由直驱 Electron 窗口（close 收进托盘，与原生同语义）。它依赖宿主侧补丁，而**补丁目标随版本换代**：官方 Desktop 的窗口参数在 `app.asar` 内的 `lib/main.js`（`0.1.7-rc.2` 起的官方端都如此，含 `0.2.1-rc.5`），由 `scripts/patch-official-window-controls.mjs` 的「官方窗口控制补丁」把主窗口换成 `frame: false` 并注入 `ipcMain` / preload 桥；更早的社区客户端与 `2.0.x` 旧布局才用改 `resources/app.asar.unpacked/lib/electron-runtime-*.js` 的旧无边框补丁。补丁**不会自动应用**：客户端更新会整份重铺 asar/exe，需要在悬浮球「修复窗口顶栏」或 设置 → 功能 → 「窗口顶栏」→「立即打补丁」显式触发，或完全退出客户端后跑离线脚本；生效需重启一次。未打补丁时原生覆盖按钮仍在（页面内按钮与其并存，`/liuli-window` 在 utility process 宿主里降级为「close 交给渲染进程，其它动作不可用」）。macOS 保持原生红绿灯不动。
 
 ## 非官方增强与插件兼容（功能分区开关）
 
@@ -66,7 +66,7 @@
 | --- | --- | --- |
 | 总开关 `unofficial_enabled` | 关闭后仅保留官方扩展点功能（主题 / 声纹 / 设置页），以下五组全部不挂载 | — |
 | Dockable 布局改造 `unofficial_layout` | 接管宿主 root slot（三栏拖拽/拆分/浮动；advanced 桌面壳与 Web UI 均生效）、会话页头独立面板、conversation-split、桌面 shell 别名类 | 抢占 root slot / 移动 React 管理的 DOM |
-| 桌面宿主补丁 `unofficial_desktop` | 自动补丁 DSH Desktop（无边框 / webviewTag）、页面内窗口按钮、系统回环音频授权；**关闭时自动还原已打的补丁（原生标题栏回归，需重启 DSH Desktop 生效）** | 改写 `app.asar` / 安装全局 `setDisplayMediaRequestHandler` |
+| 桌面宿主补丁 `unofficial_desktop` | 更早的社区客户端 / `2.0.x` 旧布局：启动时自动补丁 DSH Desktop（`electron-runtime` 无边框 / webviewTag）并在关闭时自动还原；页面内窗口按钮、系统回环音频授权、重置窗口顶栏补丁入口 | 改写 `app.asar` / 安装全局 `setDisplayMediaRequestHandler`；官方 0.2.x 的窗口顶栏补丁只能显式触发（悬浮球 / 设置页按钮 / 离线 `--apply`），需重启生效 |
 | 右侧边栏（详细页）`unofficial_sidebar` | 新版官方 `rightbar` 槽位默认保留官方服务并显示琉璃四向 dock；旧版沿用 PreviewDetailsPanel，均含审查/浏览器/终端/代码查看/开发者工具/辅助对话等面板及自动展开 | 新版以隐藏官方 surface + 当前活动 tab 桥接兼容官方入口，升级时需复核官方 tab kind；旧版占用宿主 details 列 |
 | 内嵌浏览器 `unofficial_browser` | Host 浏览器引擎（WebContentsView）、侧栏浏览器标签、模型活动自动驱动 | webviewTag 补丁 / 原生视图 |
 | DOM 观察增强 `unofficial_dom` | 悬浮球、自动展开、入场动画、会话标记/右键菜单、重命名、设置页原生下拉升级、缩放性能护栏、/side /btw 等 | MutationObserver 观察宿主 DOM / 自有 overlay |
@@ -75,7 +75,7 @@
 
 - 客户端在启动时同步读取 `liuli:settings`（localStorage）决定各挂载点是否生效；关闭的组**完全不挂载**（不留观察器、不接管布局），而非仅视觉隐藏。
 - Host 半在启动时同步读取 `~/.liuli-theme/settings.json`，只门控有真实副作用的动作（frameless 补丁、音频授权 handler、浏览器引擎、/side /btw 指令注册）；各 `/liuli-*` 数据路由（额度/设置/预览/侧栏/终端/代理/窗口/音频探测）保持注册——它们是被动 HTTP 端点，不与其它插件冲突。
-- **无边框补丁还原**：`unofficial_desktop` 关闭时，插件启动会把 electron-runtime 里的补丁块还原为 DSH Desktop 的**原始窗口参数**（`titleBarStyle: "hidden"` + `titleBarOverlay: { color: "#00000000", symbolColor: "#7f858f", height: 32 }`，即 win32 advanced 分支未打补丁前的原值）并移除 webviewTag、重建 asar 头；幂等、尽力而为，失败仅告警。手动等价命令：`pnpm patch:desktop --revert`。生效需重启 DSH Desktop 一次。
+- **无边框补丁还原（仅旧布局）**：`unofficial_desktop` 关闭时，插件启动会把**社区客户端 / 2.0.x 旧布局**的 `electron-runtime` 补丁块还原为 DSH Desktop 的**原始窗口参数**（`titleBarStyle: "hidden"` + `titleBarOverlay: { color: "#00000000", symbolColor: "#7f858f", height: 32 }`，即 win32 advanced 分支未打补丁前的原值）并移除 webviewTag、重建 asar 头；幂等、尽力而为，失败仅告警。手动等价命令：`pnpm patch:desktop --revert`。**官方 0.2.1+ 不参与自动还原**：窗口参数在 `app.asar` 内的 `lib/main.js`，启动时找不到 `electron-runtime-*.js` 只告警；还原需完全退出客户端后跑 `node scripts/patch-official-window-controls.mjs --revert`。生效需重启 DSH Desktop 一次。
 - DSH Desktop 重启后首载页面 localStorage 为空时，客户端会从 Host 拉取上次保存的设置；若其中的非官方开关与启动默认值不一致，页面自动重载一次让开关真正生效（sessionStorage 防循环）。
 
 ### 开发原则：主题与功能解耦、兼容其它插件

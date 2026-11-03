@@ -39,7 +39,7 @@ Full features: [docs/features.md](docs/features.md) (Chinese).
 
 ## Install
 
-For DSH 0.2.0-rc.2, enter `dsh-liuli-ui-enhance@0.1.2` on the official Plugins page,
+For DSH 0.2.1-rc.5, enter `dsh-liuli-ui-enhance@0.1.2` on the official Plugins page,
 or use the official CLI:
 
 ```bash

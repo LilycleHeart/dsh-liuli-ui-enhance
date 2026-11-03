@@ -9,15 +9,20 @@
 > `dsh-liuli-ui-enhance` 安装进 desktop profile 的 `package.json` 依赖，否则会报：
 > `Cannot find package 'dsh-liuli-ui-enhance'`。
 >
-> 另外，全新 DSH Desktop 默认没有应用 win32 无边框宿主补丁，原生标题栏/窗口按钮
-> 不会隐藏。可以手动执行 `pnpm patch:desktop`；插件也会在 DSH Desktop 启动时自动重打
-> 该补丁。**自动补丁为尽力而为**：找不到补丁点/写入失败只会在日志告警，不会阻止
-> 插件加载——此时页面内窗口按钮仍可用，只是原生标题栏按钮会保留；客户端更新后重启
-> 一次即恢复无边框。
+> 另外，全新 DSH Desktop 默认没有应用窗口补丁，原生标题栏/窗口按钮不会隐藏。
+> **官方 Desktop 的窗口参数在 `app.asar` 内的 `lib/main.js`**（`0.1.7-rc.2` 起的官方端都如此，含 `0.2.1-rc.5`），
+> 要用官方窗口控制补丁：
+> 先 `node scripts/patch-official-window-controls.mjs --check` 预检，再**完全退出客户端（含托盘）**
+> 后 `--apply`；也可以在客户端内点悬浮球「修复窗口顶栏」或 设置 → 功能 → 「窗口顶栏」→
+> 「立即打补丁」，之后重启一次客户端生效。补丁**不会后台自动重打**（`3c1b5ba` 起已移除常驻看护），
+> 客户端每次自动更新都会整份重铺 asar/exe，补丁必然丢失。
+> 社区客户端 / 旧 `2.0.x` 布局才用 `pnpm patch:desktop`（改 `electron-runtime-*.js` 的旧机制），
+> 那条路径在官方 0.2.x 上找不到目标文件，脚本会直接拒绝并提示改用上面的命令。
 >
 ### 官方插件安装
 
-0.1.2 适配 DSH 0.2.0-rc.2。在官方「插件」页面输入 `dsh-liuli-ui-enhance@0.1.2` 安装，
+本轮产物 `0.1.2-rc.39` 适配 DSH **0.2.1-rc.5**（`engines.dsh = ^0.2.1-rc.5`，范围写法，
+宿主再升小版本也不会被拒激活）。在官方「插件」页面输入 `dsh-liuli-ui-enhance@0.1.2` 安装，
 或通过官方 CLI 执行：
 
 ```bash
@@ -48,15 +53,21 @@ pnpm install
 #    确保 iconv-lite、react 等依赖能正确装进 profile）
 pnpm install:desktop
 
-# 2. 给 DSH Desktop 打 win32 无边框宿主补丁（隐藏原生标题栏/窗口按钮；可选）
-#    0.2.1 起窗口参数由 app.asar 内的 lib/main.js 承载，用官方窗口控制补丁：
-node scripts/patch-official-window-controls.mjs --check    # 预检，不改盘
-#    确认无误后「完全退出 DSH Desktop」，再执行：
+# 2. 给 DSH Desktop 打窗口顶层补丁（无边框 + 页面内窗口按钮真正可用；可选）
+#    官方 Desktop 的窗口参数在 app.asar 内的 lib/main.js，用官方窗口控制补丁：
+node scripts/patch-official-window-controls.mjs --check    # 预检：版本白名单 / 锚点 / fuse，不改盘
+#    确认无误后「完全退出 DSH Desktop（含托盘图标，任务管理器里也不留进程）」，再执行：
 node scripts/patch-official-window-controls.mjs --apply
-#    还原：node scripts/patch-official-window-controls.mjs --revert
+#    之后重新启动桌面端；还原（同样要求客户端已退出）：
+node scripts/patch-official-window-controls.mjs --revert
 #
-#    0.2.0 及更早的客户端才用旧的无边框补丁（0.2.1+ 上会因找不到
-#    electron-runtime-*.js 而失败，脚本会提示改用上面的命令）：
+#    不想退出客户端？运行中可在 悬浮球 →「修复窗口顶栏」或 设置 → 功能 →「窗口顶栏」
+#    →「立即打补丁」就地写入（只改 asar 头），写完重启一次客户端生效。
+#    注意：客户端每次自动更新都会整份重铺 asar/exe，补丁必然丢失且没有后台自愈，
+#    更新后需要重新打一次。
+#
+#    社区客户端 / 旧 2.0.x 布局才用旧的无边框补丁（官方 0.2.x 上会因找不到
+#    electron-runtime-*.js 被脚本拒绝，并提示改用上面的命令）：
 pnpm patch:desktop
 
 # 或从 npm 安装，安装器会先检查 registry 中的版本：
@@ -189,7 +200,11 @@ pnpm add file:/tmp/liuli/dsh-liuli-ui-enhance-0.1.0.tgz
 
 7. 隐藏原生标题栏需要额外宿主补丁
    插件只能提供页面内窗口按钮，不能从渲染进程隐藏原生标题栏。
-   在 DSH Desktop 安装目录执行：
+   0.2.1+（窗口参数在 app.asar 的 lib/main.js 里）用官方窗口控制补丁：
+   node scripts/patch-official-window-controls.mjs --check
+   # 完全退出桌面端（含托盘）后：
+   node scripts/patch-official-window-controls.mjs --apply
+   社区客户端 / 旧 2.0.x 布局才用旧布局补丁（改 electron-runtime-*.js）：
    DSH_DESKTOP_DIR="C:\Program Files\DSH Desktop" node scripts/patch-desktop-frameless.mjs
    或使用仓库脚本：
    pnpm patch:desktop
@@ -200,6 +215,7 @@ pnpm add file:/tmp/liuli/dsh-liuli-ui-enhance-0.1.0.tgz
    - package.json 的 dsh.profile.bundles 包含 dsh-liuli-ui-enhance
    - cordis.patch.yml 不含 dsh-liuli-ui-enhance 的 insert 块（重复注册会启动失败）
    - 重启后页面出现 [data-liuli-theme] 和右侧边栏/窗口控制胶囊
+   - node scripts/liuli-topbar-guard.mjs（或 pnpm topbar:status）显示 patched
 ```
 
 依赖宿主主题服务（`ctx.theme`，由 `dsh-client-ui-theme` 提供）：偏好持久化与 `theme/change` 事件由宿主承担，本插件只消费。host 半（node 半）提供两条本地路由：`/liuli-quota`（凭据额度）与 `/preview`（会话 cwd 静态站点，preview 面板用）。
@@ -262,7 +278,9 @@ src/
 scripts/
   tsdown.client.ts         # clientBundle 预设（CSS 内联、purity gate、banner/footer）
   install-desktop.mjs      # 安装到 DSH Desktop profile
-  patch-desktop-frameless.mjs
+  patch-official-window-controls.mjs  # 官方 Desktop 的窗口控制补丁（改 app.asar 内 lib/main.js）
+  patch-desktop-frameless.mjs         # 社区 / 旧 2.0.x 布局的 electron-runtime 无边框补丁
+  liuli-topbar-guard.mjs   # 顶栏补丁状态检查（pnpm topbar:status）
   browser-client.mjs       # 内嵌浏览器 agent 自动化 CLI（对应 docs/browser-use.md）
 demo/
   test-dock-model.ts       # dock-model 单测
@@ -273,6 +291,8 @@ skills/
 docs/
   features.md            # 完整功能清单、设计语言、限制（详细文档主入口）
   install.md             # 安装、构建、目录结构、避坑（本文档）
+  dsh-021-rc5-upgrade.md # 本轮 0.2.1-rc.5 适配记录（事故、变更、验证）
+  window-topbar-persistence.md  # 窗口顶栏补丁为何会失效 + 恢复方式
   browser-use.md         # 浏览器 agent 自动化用法
   sidebar-comparison.md
 ```

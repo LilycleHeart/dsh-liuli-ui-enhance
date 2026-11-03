@@ -8,7 +8,12 @@ import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
-const supportedVersions = new Set(['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.3']);
+/** 已验证的官方 Desktop 版本白名单。宿主每次更新都会重铺 app.asar / exe，
+ *  未列在此处的版本一律拒绝写入（宁可少补，不可补错）。
+ *  0.2.1-rc.5（构建提交 d4db512a）已核对：createWindow 工厂、win32 titleBarOverlay
+ *  分支、PLATFORM_IPC.bootstrap 监听与 setTitleBarOverlay 调用四处锚点均逐字未变，
+ *  且 exe 内嵌的 asar 完整性哈希仍唯一命中。 */
+const supportedVersions = new Set(['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.3', '0.2.1-rc.5']);
 const marker = '[liuli official window controls v1]';
 const dir = resolve(process.env.DSH_OFFICIAL_DIR || join(process.env.LOCALAPPDATA, 'Programs', 'DeepSeek Harness'));
 const asarPath = join(dir, 'resources', 'app.asar');
@@ -31,8 +36,19 @@ function replaceOnce(text, before, after) {
 }
 function assertClosed() {
   const output = execFileSync('powershell.exe', ['-NoProfile', '-Command', 'ConvertTo-Json -InputObject @(Get-Process -Name "DeepSeek Harness" -ErrorAction SilentlyContinue | Select-Object Id, Path) -Compress; exit 0'], { encoding: 'utf8', windowsHide: true });
-  const processes = JSON.parse(output.trim() || '[]');
-  if (processes.some(item => !item.Path || resolve(item.Path).toLowerCase() === exePath.toLowerCase())) {
+  const parsed = JSON.parse(output.trim() || '[]');
+  // ConvertTo-Json 在「恰好一个进程」时会把数组解包成对象，两种形状都要吃下。
+  const processes = (Array.isArray(parsed) ? parsed : parsed == null ? [] : [parsed])
+    .filter(item => item !== null && typeof item === 'object');
+  const target = exePath.toLowerCase();
+  // 有一条能读到路径、且路径就是本安装目录的 exe → 客户端确实在运行，拒绝写入。
+  const readable = processes.map(item => (typeof item.Path === 'string' && item.Path !== '' ? resolve(item.Path).toLowerCase() : undefined));
+  if (readable.some(path => path === target)) {
+    fail('Exit DeepSeek Harness before applying or reverting the shell patch');
+  }
+  // 有同名进程却一条路径都读不出：无法判定，保守拒绝（并行/高负载下个别条目读不到 Path
+  // 不再误判，但只要全部不可读仍按「可能在运行」处理）。
+  if (processes.length > 0 && readable.every(path => path === undefined)) {
     fail('Exit DeepSeek Harness before applying or reverting the shell patch');
   }
 }
@@ -154,7 +170,9 @@ if (stageArg) {
 }
 console.log(JSON.stringify({app:identity.name,version,mainAndPreloadPrepared:true,integrityHashOffset:at,asarIntegrityFuse:fuseState,backup,mode:process.argv.includes('--apply')?'apply':'check'},null,2));
 if (fuseState === 'off') {
-  console.log('[liuli] 提示：该客户端的 Electron embeddedAsarIntegrityValidation fuse 处于关闭状态，asar 头不会被启动校验（本脚本仍按保守做法同步 exe 内嵌哈希）。');
+  // 走 stderr：--check 的 stdout 必须能被调用方（如 liuli-topbar-guard.mjs）整体 JSON.parse，
+  // 多一行中文提示会让它解析失败并丢掉 version。
+  console.error('[liuli] 提示：该客户端的 Electron embeddedAsarIntegrityValidation fuse 处于关闭状态，asar 头不会被启动校验（本脚本仍按保守做法同步 exe 内嵌哈希）。');
 }
 if (!process.argv.includes('--apply')) process.exit(0);
 assertClosed();

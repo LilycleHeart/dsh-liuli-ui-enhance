@@ -32,7 +32,13 @@ import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 /* ── 与 scripts/patch-official-window-controls.mjs 保持一致的补丁内容 ───── */
 
 const MARKER = '[liuli official window controls v1]'
-const SUPPORTED = new Set(['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.3'])
+/** 与 scripts/patch-official-window-controls.mjs 的 supportedVersions 保持同步。
+ *  两处白名单是同一个事实的两份副本：脚本负责离线（客户端已退出）写入，本模块负责
+ *  运行中的就地写入。漏改任何一边都会让对应入口判成 unsupported。
+ *  tests/topbar-patch-versions.test.mjs 会断言两边集合完全相等。
+ *  0.2.1-rc.5 已核对：MAIN_BEFORE / MAIN_IPC_ANCHOR / MAIN_SETTITLEBAR 三个锚点在
+ *  rc.5 的 lib/main.js 里逐字未变且唯一命中。 */
+const SUPPORTED = new Set(['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.3', '0.2.1-rc.5'])
 const FUSE_WIRE = 'dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX'
 
 const MAIN_BEFORE = `titleBarStyle: "hidden",\n\t\t\ttitleBarOverlay: {\n\t\t\t\theight: 40,\n\t\t\t\tcolor: chromeFallbackFill(),\n\t\t\t\tsymbolColor: nativeTheme.shouldUseDarkColors ? "#f9fafb" : "#0f1115"\n\t\t\t}`

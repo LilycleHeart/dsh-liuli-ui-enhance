@@ -1,7 +1,7 @@
 # 官方 DeepSeek Harness Desktop 0.1.7-rc.2 适配
 
-> 当前适配桌面端为 **0.2.1-rc.2**。系统更新会覆盖之前的窗口补丁；
-> `scripts/patch-official-window-controls.mjs` 支持 0.2.0-rc.2 和 0.2.1-rc.2，
+> 当前适配桌面端为 **0.2.1-rc.5**（本轮变更见 [dsh-021-rc5-upgrade.md](dsh-021-rc5-upgrade.md)）。系统更新会覆盖之前的窗口补丁；
+> `scripts/patch-official-window-controls.mjs` 支持 0.2.0-rc.2、0.2.1-rc.2、0.2.1-rc.3、0.2.1-rc.5，
 > 备份目录按实际版本命名为 `liuli-window-controls-backup-<版本>`。下文早期接口迁移与逐版记录保留作历史说明。
 
 0.2.0-rc.2 的设置和通用模态遮罩读取 `--dsh-frame-chrome-top`，原生标题栏移除后由琉璃置为 0；设置弹窗打开时窗口顶栏也落在遮罩下方，暗色遮罩覆盖整个视口。
@@ -18,9 +18,9 @@
 
 ## 官方桌面壳边界
 
-旧版的无边框补丁只允许在应用包名为 `dsh-plugin-desktop` 的社区客户端上运行。官方桌面端包名为 `@deepseek-ai/dsh-desktop`；插件在其 Host 中不会修改 `app.asar` 或执行补丁还原。
+旧版的无边框补丁只允许在应用包名为 `dsh-plugin-desktop` 的社区客户端上运行。官方桌面端包名为 `@deepseek-ai/dsh-desktop`；插件在其 Host 中不会**自动**改写 `app.asar`——官方 0.2.x 上启动时的自动补丁找不到 `electron-runtime-*.js`，只会告警跳过，唯一的写入路径是用户显式触发（悬浮球 / 设置页的「立即打补丁」，或离线脚本）；更早的社区 / `2.0.x` 旧布局才会在启动时自动重打并随 `unofficial_desktop` 开关还原。
 
-默认保留官方标题栏。需要“窗口顶栏”开关和琉璃悬浮按钮时，可显式运行独立的 Windows 官方壳补丁；当前脚本支持 0.2.0-rc.2 与 0.2.1-rc.2，不会由插件自动执行。未安装此桥接时，仅保存设置无法改变原生标题栏。
+默认保留官方标题栏。需要“窗口顶栏”开关和琉璃悬浮按钮时，可显式运行独立的 Windows 官方壳补丁；当前脚本支持 0.2.0-rc.2、0.2.1-rc.2、0.2.1-rc.3、0.2.1-rc.5，不会由插件在后台自动执行（`3c1b5ba` 起已移除常驻看护）。0.2.1+ 的窗口参数在 `app.asar` 内的 `lib/main.js`，客户端运行中可点「立即打补丁」就地写入、重启后生效；解析失败或 fuse 开启时会返回 `needs-exit` 要求先退出客户端。未安装此桥接时，仅保存设置无法改变原生标题栏。
 
 ```powershell
 node scripts/patch-official-window-controls.mjs --check

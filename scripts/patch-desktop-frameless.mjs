@@ -23,6 +23,10 @@
 //   DSH_DESKTOP_DIR="C:\Program Files\DSH Desktop" node scripts/patch-desktop-frameless.mjs
 // 安装目录查找顺序：DSH_DESKTOP_DIR 环境变量 → 正在运行的 DSH Desktop 进程路径 → 默认安装路径。
 //
+// 版本边界：0.2.1 及以后（含 0.2.1-rc.5）的官方客户端把窗口参数移进了 app.asar 内的
+// lib/main.js，归档里已没有 electron-runtime-*.js，本脚本会在任何写盘动作之前拒绝执行，
+// 并提示改用 scripts/patch-official-window-controls.mjs。切勿在 0.2.1+ 上强行套用本脚本。
+//
 // 安全：
 //   - 首次运行会把 resources/app.asar 备份为 app.asar.bak-frameless。
 //   - 已包含 [liuli-theme patch] 时跳过文件修改，只校验/重建 asar 头。
@@ -605,7 +609,7 @@ function detectTitlebarIndentBefore(text, beforeIndex) {
 const runtime = resolveRuntime();
 if (runtime === undefined) {
   fail(`找不到 electron-runtime-*.js（磁盘 ${libDir} 与 app.asar 头内均未命中；可设置 DSH_DESKTOP_DIR 指向 DSH Desktop 安装目录后重试；当前安装目录：${installDir}）。`
-    + ' DSH Desktop 0.2.1 起窗口参数改由 app.asar 内的 lib/main.js 承载，本脚本已不适用；'
+    + ' DSH Desktop 0.2.1 起（含 0.2.1-rc.5）窗口参数改由 app.asar 内的 lib/main.js 承载，本脚本已不适用；'
     + '请改用 node scripts/patch-official-window-controls.mjs --check 预检，完全退出桌面端后加 --apply。');
 }
 if (!looseInstall && !existsSync(asarPath)) {

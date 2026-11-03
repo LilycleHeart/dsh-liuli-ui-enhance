@@ -188,7 +188,7 @@ body {
   --dsw-alias-state-business-primary: #0079bf;
   --dsw-alias-state-business-tertiary: #d0e8ff;
   --dsw-alias-state-error-primary: #ba1a1a;
-  --dsw-alias-state-error-secondary: #ffdad6;
+  --dsw-alias-state-error-secondary: #ba1a1a; /* 前景角色（官方同为文字色），不是 error container */
   --dsw-alias-state-success-primary: #006d3d;
   --dsw-alias-state-success-secondary: #69dd96;
   --dsw-alias-state-success-tertiary: #86fab1;

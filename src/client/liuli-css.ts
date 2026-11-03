@@ -193,7 +193,7 @@ body {
   --dsw-alias-state-business-primary: #0079bf;
   --dsw-alias-state-business-tertiary: #d0e8ff;
   --dsw-alias-state-error-primary: #ba1a1a;
-  --dsw-alias-state-error-secondary: #ffdad6;
+  --dsw-alias-state-error-secondary: #ba1a1a; /* 前景角色（官方同为文字色），不是 error container */
   --dsw-alias-state-success-primary: #006d3d;
   --dsw-alias-state-success-secondary: #69dd96;
   --dsw-alias-state-success-tertiary: #86fab1;
@@ -1474,6 +1474,28 @@ div[data-phase='active'] {
   background: transparent !important;
   box-shadow: none !important;
   color: var(--dsw-alias-label-primary) !important;
+}
+
+/* rc.3 起按钮内新增 _newSessionContent / _newSessionLabelMask / _newSessionShortcut
+   三层 span，类名同样含 "_newSession" 子串，会被上面两条主按钮配方误命中（重复刷
+   品牌实底与辉光）。内层一律回到透明，只继承按钮前景色。 */
+[class*="_sidebarCol"] [class*="_newSession"] [class*="_newSession"] {
+  background: transparent !important;
+  box-shadow: none !important;
+  color: inherit !important;
+}
+
+/* 快捷键提示（Ctrl + N）：官方 Shortcut 原语用 --dsw-alias-label-tertiary，配官方
+   中性按钮底是对的；琉璃把按钮换成品牌实底后，浅灰 tertiary 落在粉底上对比度
+   只有 ~1.5。改为跟随按钮前景（onBrand）并降一点不透明度，保持「次要」层级。 */
+[class*="_sidebarCol"] [class*="_newSessionShortcut"] :is(kbd, [class*="_keys"]) {
+  color: inherit !important;
+}
+[class*="_sidebarCol"] [class*="_newSessionShortcut"] {
+  --liuli-shortcut-dim: 0.72;
+}
+[class*="_sidebarCol"] [class*="_newSession"]:is(:hover, :focus-visible) [class*="_newSessionShortcut"] {
+  opacity: var(--liuli-shortcut-dim) !important;
 }
 
 /* ════════════════════════════════════════════════════════════

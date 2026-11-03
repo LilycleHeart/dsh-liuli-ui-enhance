@@ -69,7 +69,7 @@ async function fixture(t, version, { unpacked = false, main = mainSource } = {})
   return { root, archive, exe, run, contents }
 }
 
-for (const version of ['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.3']) {
+for (const version of ['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.3', '0.2.1-rc.5']) {
   test(`official ${version}: check, apply, repeat and revert preserve the original shell`, { skip: process.platform !== 'win32' }, async t => {
     const f = await fixture(t, version, { unpacked: version !== '0.2.0-rc.2' })
     const stage = join(f.root, 'stage')
@@ -101,7 +101,11 @@ for (const version of ['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.3']) {
 }
 
 test('unsupported versions and drifted anchors fail without changing the shell', async t => {
-  for (const [version, main] of [['0.2.1-rc.4', mainSource], ['0.2.1-rc.2', mainSource.replace('height: 40', 'height: 41')]]) {
+  for (const [version, main] of [
+    ['0.2.1-rc.4', mainSource], // 真实存在但未验证的版本，白名单不收录
+    ['0.2.1-rc.6', mainSource], // 尚未发布的版本
+    ['0.2.1-rc.5', mainSource.replace('height: 40', 'height: 41')], // 锚点漂移
+  ]) {
     const f = await fixture(t, version, { main })
     const result = f.run('--check')
     assert.notEqual(result.status, 0)

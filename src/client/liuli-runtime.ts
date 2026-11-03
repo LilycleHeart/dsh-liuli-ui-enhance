@@ -478,18 +478,27 @@ export async function applyLiuliSettings(settings: LiuliSettings): Promise<void>
   const isDark = currentIsDark()
   const pal = liuliDerivePalette(source, isDark)
   liuliApplyBrand(pal, isDark, source)
+  // 清理已撤回实验遗留在 body 上的变量/标记（热重载自那些版本时仍挂着）
+  unset('--liuli-veil')
+  delete body.dataset.liuliScheme
 
   // ── 状态色来源：hardcoded 回落到 liuli.css 静态内置色；
   //    mcu 从 MCU 多角色色板取色（success=primary / warn=secondary / error=tertiary）。
   if (cfg.status_color_mode === 'mcu') {
+    // 角色对齐官方 design-tokens：*-primary / *-secondary 都是「前景」角色
+    // （官方 rc.3：shortcuts 的 toastSuccess/toastError、插件向导完成图标、
+    // 审批卡描边、轨迹图配色都把 secondary 当 color / border 用），
+    // 只有 *-tertiary 是「容器底」角色（官方暗色 success-tertiary=#233c2c）。
+    // 之前把 secondary 也映射到 *-container，暗色下得到深色字，落在深色面上
+    // 对比度只有 ~2。secondary 改走与 primary 同源的前景色。
     set('--dsw-alias-state-success-primary', 'var(--liuli-mcu-primary)')
-    set('--dsw-alias-state-success-secondary', 'var(--liuli-mcu-primary-container)')
+    set('--dsw-alias-state-success-secondary', 'var(--liuli-mcu-primary)')
     set('--dsw-alias-state-success-tertiary', 'var(--liuli-mcu-primary-container)')
     set('--dsw-alias-state-warn-primary', 'var(--liuli-mcu-secondary)')
-    set('--dsw-alias-state-warn-secondary', 'var(--liuli-mcu-secondary-container)')
+    set('--dsw-alias-state-warn-secondary', 'var(--liuli-mcu-secondary)')
     set('--dsw-alias-state-warn-tertiary', 'var(--liuli-mcu-secondary-container)')
     set('--dsw-alias-state-error-primary', 'var(--liuli-mcu-tertiary)')
-    set('--dsw-alias-state-error-secondary', 'var(--liuli-mcu-tertiary-container)')
+    set('--dsw-alias-state-error-secondary', 'var(--liuli-mcu-tertiary)')
   } else {
     unset('--dsw-alias-state-success-primary')
     unset('--dsw-alias-state-success-secondary')

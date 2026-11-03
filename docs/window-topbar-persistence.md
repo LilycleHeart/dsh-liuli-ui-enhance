@@ -61,6 +61,10 @@
 状态含义：`patched`（已应用）/ `missing`（可补）/ `needs-exit`（需退出客户端走离线脚本）/
 `unsupported`（版本或锚点不在支持范围）。
 
+> `unsupported` 最常见的成因是**客户端自动更新**：新版本号还没进 `scripts/patch-official-window-controls.mjs`
+> 与 `src/host-topbar-patch.ts` 这两份白名单（它们必须同步，`tests/topbar-patch-versions.test.mjs`
+> 会守住这一点）。适配流程与版本语义见 [dsh-021-rc5-upgrade.md](dsh-021-rc5-upgrade.md)。
+
 ### 命令行兜底
 
 ```powershell

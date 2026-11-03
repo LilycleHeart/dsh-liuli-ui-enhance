@@ -48,7 +48,7 @@ DeepSeek Harness 的 **Material Design 3 × Fluent 2 融合主题**插件：动�
 
 ## 安装
 
-DSH 0.2.0-rc.2 用户可在官方「插件」页面输入 `dsh-liuli-ui-enhance@0.1.2` 安装。
+DSH 0.2.1-rc.5 用户可在官方「插件」页面输入 `dsh-liuli-ui-enhance@0.1.2` 安装。
 官方安装器会管理依赖和 bundle 注册，无需运行本地安装脚本。也可使用官方 CLI：
 
 ```bash
@@ -61,7 +61,11 @@ dsh plugin --profile desktop add dsh-liuli-ui-enhance@0.1.2
 ```bash
 pnpm install            # 首次：安装依赖并构建 lib/（install:desktop 也会自动补这步）
 pnpm install:desktop
-pnpm patch:desktop      # 推荐：win32 无边框补丁（自动补丁失败不阻断插件）
+# 0.2.1+ 的窗口顶栏补丁：先预检，再「完全退出客户端（含托盘）」后 --apply，然后重新启动
+node scripts/patch-official-window-controls.mjs --check
+node scripts/patch-official-window-controls.mjs --apply
+# 也可以不退出：客户端内 悬浮球 →「修复窗口顶栏」/ 设置 → 功能 →「立即打补丁」，重启后生效
+# 社区客户端 / 旧 2.0.x 布局才用旧布局补丁：pnpm patch:desktop
 ```
 
 详见 [docs/install.md](docs/install.md)。
@@ -69,6 +73,7 @@ pnpm patch:desktop      # 推荐：win32 无边框补丁（自动补丁失败不
 ## 文档
 
 - [功能详解](docs/features.md)
+- [DSH 0.2.1-rc.5 适配记录（事故、变更、验证）](docs/dsh-021-rc5-upgrade.md)
 - [并入官方右侧栏：迁移说明与自研 dock 外壳退役范围](docs/official-sidebar-migration.md)
 - [窗口顶栏为什么每次客户端更新后都会失效（含四种恢复方式）](docs/window-topbar-persistence.md)
 - [样式规范](docs/style-guide.md)
